@@ -4,8 +4,8 @@ context_type: greenfield
 created: 2026-10-25
 updated: 2026-10-25
 checkpoint:
-  current_phase: 3
-  phases_completed: [1, 2]
+  current_phase: 4
+  phases_completed: [1, 2, 3]
   gray_areas_resolved:
     - topic: context type
       decision: "greenfield (git history only: initial commit + context/ scaffold; no code, manifests or lockfiles)"
@@ -17,6 +17,10 @@ checkpoint:
       decision: "goście wchodzą w interakcję z telefonów (scope do doprecyzowania w fazie 3 — rekomendacja skilla na MVP to goście tylko oglądają TV)"
     - topic: access model
       decision: "organizator bez logowania; goście przez QR/link bez konta; dwie role (organizator, gość)"
+    - topic: MVP scope
+      decision: "MVP = finalny produkt na kolację 2026-11-08; w MVP także interakcja gości z telefonów (strzał kwoty, własny stolik, aktualne pytanie)"
+    - topic: guess visibility
+      decision: "strzały kwot ukryte do momentu odsłonięcia wyników przez organizatora"
   frs_drafted: 0
   quality_check_status: pending
 ---
@@ -53,3 +57,28 @@ Dwie role, bez kont użytkowników:
 - **Gość** — wchodzi z telefonu przez skan kodu QR lub link, bez zakładania konta. Uprawnienia ograniczone (które dokładnie funkcje — faza 3 i 4).
 
 > Open: ekran na TV jest widokiem tylko do odczytu, sterowanym przez organizatora (do potwierdzenia w fazie 4). Brak kont oznacza, że tożsamość gościa to wybór z listy; wpływ na możliwość podszywania się nie był omawiany.
+
+## Timeline Budget
+
+- `mvp_weeks`: 2 (MVP = finalny produkt; ok. 14 dni od 2026-10-25)
+- `hard_deadline`: 2026-11-08 (kolacja)
+- `after_hours_only`: do ustalenia w fazie 6
+
+Zakres flow przekracza typowe 6 akcji i obejmuje integrację z AI, ale termin (2 tygodnie) mieści się w progu 3 tygodni; użytkownik wprost uznał zakres za wykonalny w tym czasie.
+
+## Success Criteria
+
+Flow MVP według użytkownika (kolejność kroków): wpisanie gości → wrzucenie zrzutu ekranu powierzchni z podziałem na pokoje → rozsadzenie gości → oznaczenie nierozdzielnych par → przelosowania miejsc → generowanie tematów do rozmowy (AI + wprowadzona baza pytań) → goście wpisują swoje strzały kwoty → organizator odczytuje posortowane wyniki.
+
+### Primary
+- Cała kolacja 2026-11-08 (rozsadzenie, rotacje, pytania, ranking strzałów) jest przeprowadzona z jednej apki, bez wracania do Excela i kartek.
+
+### Secondary
+- Kategorie i filtrowanie pytań: wybór poziomu (kontrowersyjne / generyczne / refleksyjne) dla danej rundy rozmów.
+
+### Guardrails
+- Odświeżenie strony ani restart urządzenia nie kasuje gości, par ani rozsadzenia.
+- Apka działa na słabym wifi w lokalu (awaria sieci nie blokuje prowadzenia wieczoru).
+- Żadne losowanie nigdy nie rozdziela pary oznaczonej jako nierozdzielna.
+
+> Open: "Kategorie" pytań (kontrowersyjne / generyczne / refleksyjne) są w seed idea, a jako nice-to-have wybrano "kategorie i filtrowanie". Do rozstrzygnięcia w fazie 4: kategoria jako atrybut każdego pytania (must-have) vs filtrowanie rundy po kategorii (nice-to-have).
