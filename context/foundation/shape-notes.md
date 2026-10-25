@@ -4,11 +4,17 @@ context_type: greenfield
 created: 2026-10-25
 updated: 2026-10-25
 checkpoint:
-  current_phase: 1
-  phases_completed: []
+  current_phase: 2
+  phases_completed: [1]
   gray_areas_resolved:
     - topic: context type
       decision: "greenfield (git history only: initial commit + context/ scaffold; no code, manifests or lockfiles)"
+    - topic: pain category
+      decision: "rozproszone narzędzia + brak możliwości (rotacja z parami, ranking zgadywania) + obciążenie organizatora na żywo"
+    - topic: insight
+      decision: "wszystko w jednym widoku, z którego organizator steruje całym wieczorem"
+    - topic: guest role
+      decision: "goście wchodzą w interakcję z telefonów (scope do doprecyzowania w fazie 3 — rekomendacja skilla na MVP to goście tylko oglądają TV)"
   frs_drafted: 0
   quality_check_status: pending
 ---
@@ -18,3 +24,21 @@ checkpoint:
 ## Seed idea
 
 > Apka na kolację podwyżkową: wyświetlanie układu sal, przypisanych stolików, losowanie nowego rozkładu żeby przerotować ludzi zachowując pary razem, generowanie losowych pytań do rozmowy (kontrowersyjne / generyczne / refleksyjne), opcja szybkiego wprowadzenia odpowiedzi każdego człowieka na pytanie o finalną kwotę (podwyżki), sortowanie wg odległości od prawidłowej odpowiedzi.
+
+## Vision & Problem Statement
+
+Organizator (jedna osoba) przygotowuje i prowadzi raz w roku kolację dla 40 przyjaciół; to 10. edycja, goście zawsze mają 25+, w tym roku 35+. Logistykę wydarzenia (rozsadzenie, atrakcje) trzyma dziś w kilku Excelach i na kartkach. Kosztuje go to czas i stres, zarówno w przygotowaniach, jak i w trakcie samej kolacji.
+
+Wgląd: wszystko, czym organizator steruje podczas wieczoru, ma być w jednym widoku, który wyświetla się na telewizorze w sali. Reguły, których zwykły Excel nie obsługuje sam (rotacja gości z zachowaniem par, ranking zgadywania kwoty), mają być wbudowane w to narzędzie.
+
+Pain category (user-confirmed): rozproszone narzędzia, brak możliwości (rotacja z parami, ranking zgadywania), obciążenie organizatora na żywo.
+
+> Open: "w trakcie kolacji i logistyki dookoła" to dwa momenty — przygotowania przed wydarzeniem i obsługa na żywo. Do rozdzielenia w fazie 4 (FR).
+
+## User & Persona
+
+**Primary: organizator wydarzenia.** Jedna osoba, sam przygotowuje i prowadzi kolację dla 40 przyjaciół (10. edycja, raz w roku). Obsługuje całość sam, a swój widok wyświetla na telewizorze w sali.
+
+### Secondary persona
+
+**Goście** (ok. 40, w tym roku 35+): widzą jeden ekran wyświetlany na TV. Według deklaracji użytkownika część funkcji może trafić do nich do użycia z telefonów (zakres do doprecyzowania w fazie 3).
