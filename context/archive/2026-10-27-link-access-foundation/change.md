@@ -1,10 +1,10 @@
 ---
 change_id: link-access-foundation
 title: Link-key access foundation, no-access page, Vitest and CI on main
-status: implemented
+status: archived
 created: 2026-10-27
 updated: 2026-10-27
-archived_at: null
+archived_at: 2026-10-26T23:32:44Z
 ---
 
 ## Notes

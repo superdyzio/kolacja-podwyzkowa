@@ -23,6 +23,7 @@ Dziennik decyzji, zależności i blokerów nocnego builda (zasady: `overnight-br
 - 2026-10-27 — F-01 strony z kluczem: zamiast `return Astro.rewrite("/404")` we frontmatterze (ESLint `no-misused-promises` się wysypuje na `return` na najwyższym poziomie) strony ustawiają `Astro.response.status = 404` i renderują wspólny komponent `NoAccess`.
 - 2026-10-27 — F-01 nazwy: `package.json` i `wrangler.jsonc` `name` → `kolacja-podwyzkowa`; `supabase/config.toml` `project_id` bez zmian (od niego zależą nazwy kontenerów `supabase_*_10x-astro-starter`).
 - 2026-10-27 — F-01 /10x-implement: ręczne wiersze planu (4.6, 5.6) zostawione na rano zamiast pauzy (opcja „Pause” skilla jest sprzeczna z poleceniem nienadzorowanego przebiegu); zmiana zarchiwizowana po zielonych checkach automatycznych.
+- 2026-10-27 — F-01 /10x-archive: ostrzeżenia „2 ręczne wiersze Progress w toku (4.6, 5.6)” i „brak impl-review” → „Continue archiving” (Recommended przy samych ręcznych wierszach); F-01 w roadmapie → done.
 
 ## Do sprawdzenia rano (Manual)
 
