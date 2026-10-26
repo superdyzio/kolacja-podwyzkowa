@@ -17,7 +17,8 @@ export default defineConfig({
   env: {
     schema: {
       SUPABASE_URL: envField.string({ context: "server", access: "secret", optional: true }),
-      SUPABASE_KEY: envField.string({ context: "server", access: "secret", optional: true }),
+      // Service-role key: bypasses RLS, so it must never reach the browser. All DB access goes through the server.
+      SUPABASE_SERVICE_ROLE_KEY: envField.string({ context: "server", access: "secret", optional: true }),
     },
   },
 });

@@ -26,6 +26,7 @@ Dziennik decyzji, zależności i blokerów nocnego builda (zasady: `overnight-br
 (slice → pakiet → uzasadnienie)
 
 - F-01 → `vitest@^5.0.5` (dev) → runner testów jednostkowych i integracyjnych (`npm test`); wspiera Vite 8 używany przez Astro 7, decyzja z briefu.
+- F-01 → usunięty `@supabase/ssr` → służył tylko do sesji logowania e-mail ze startera; dostęp do bazy idzie teraz przez `@supabase/supabase-js` z kluczem service role po stronie serwera.
 
 ## Blokery
 

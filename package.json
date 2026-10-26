@@ -1,5 +1,5 @@
 {
-  "name": "10x-astro-starter",
+  "name": "kolacja-podwyzkowa",
   "type": "module",
   "version": "0.0.1",
   "scripts": {
@@ -12,6 +12,7 @@
     "format": "prettier --write .",
     "test": "vitest run",
     "test:watch": "vitest",
+    "env:local": "node scripts/local-env.mjs",
     "smoke": "node scripts/smoke.mjs"
   },
   "dependencies": {
@@ -21,7 +22,6 @@
     "@astrojs/sitemap": "^3.7.4",
     "@eslint/config-helpers": "^0.7.0",
     "@radix-ui/react-slot": "^1.1.2",
-    "@supabase/ssr": "^0.12.7",
     "@supabase/supabase-js": "^2.99.1",
     "@tailwindcss/vite": "^4.2.4",
     "@types/react": "^19.2.14",

@@ -1,5 +1,6 @@
 declare namespace App {
   interface Locals {
-    user: import("@supabase/supabase-js").User | null;
+    // Set by src/middleware.ts for routes guarded by a link key; null on public routes.
+    access: null;
   }
 }

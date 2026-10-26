@@ -342,20 +342,20 @@ First migration in the repo. Locally: `npx supabase migration up` (or `npx supab
 
 #### Automated
 
-- [x] 1.1 Unit tests pass: `npm test`
-- [x] 1.2 Lint passes: `npm run lint`
-- [x] 1.3 Type check passes: `npx astro check`
+- [x] 1.1 Unit tests pass: `npm test` — aa66b34
+- [x] 1.2 Lint passes: `npm run lint` — aa66b34
+- [x] 1.3 Type check passes: `npx astro check` — aa66b34
 
 ### Phase 2: Remove starter e-mail auth; server-only DB access config
 
 #### Automated
 
-- [ ] 2.1 No starter auth left (grep prints nothing)
-- [ ] 2.2 Local env written and key verified: `npm run env:local`
-- [ ] 2.3 Lint passes: `npm run lint`
-- [ ] 2.4 Type check passes: `npx astro sync && npx astro check`
-- [ ] 2.5 Build passes: `npm run build`
-- [ ] 2.6 Unit tests still pass: `npm test`
+- [x] 2.1 No starter auth left (grep prints nothing)
+- [x] 2.2 Local env written and key verified: `npm run env:local`
+- [x] 2.3 Lint passes: `npm run lint`
+- [x] 2.4 Type check passes: `npx astro sync && npx astro check`
+- [x] 2.5 Build passes: `npm run build`
+- [x] 2.6 Unit tests still pass: `npm test`
 
 ### Phase 3: Event table and access resolution
 
