@@ -24,6 +24,20 @@ Dziennik decyzji, zależności i blokerów nocnego builda (zasady: `overnight-br
 - 2026-10-27 — F-01 nazwy: `package.json` i `wrangler.jsonc` `name` → `kolacja-podwyzkowa`; `supabase/config.toml` `project_id` bez zmian (od niego zależą nazwy kontenerów `supabase_*_10x-astro-starter`).
 - 2026-10-27 — F-01 /10x-implement: ręczne wiersze planu (4.6, 5.6) zostawione na rano zamiast pauzy (opcja „Pause” skilla jest sprzeczna z poleceniem nienadzorowanego przebiegu); zmiana zarchiwizowana po zielonych checkach automatycznych.
 - 2026-10-27 — F-01 /10x-archive: ostrzeżenia „2 ręczne wiersze Progress w toku (4.6, 5.6)” i „brak impl-review” → „Continue archiving” (Recommended przy samych ręcznych wierszach); F-01 w roadmapie → done.
+- 2026-10-27 — S-01 /10x-plan, research: bez równoległych sub-agentów Explore (kod mały i w całości przeczytany; polecenie „nic równolegle”).
+- 2026-10-27 — S-01 /10x-plan, złożoność: MEDIUM (10 pytań) — zgoda z oceną skilla.
+- 2026-10-27 — S-01 unikalne nazwy: wyświetlana nazwa unikalna bez względu na wielkość liter (po przycięciu i scaleniu spacji; indeks unikalny `(event_id, lower(display_name))`); dwie „Kasie” trzeba rozróżnić, np. „Kasia M.”, bo inaczej są nie do odróżnienia na TV i karteczkach (Recommended).
+- 2026-10-27 — S-01 wklejanie listy: wszystko albo nic — za długa linia (> 40 znaków), powtórzenie w samej wklejce albo nazwa już na liście → nic nie zapisane, komunikat wskazuje linie/nazwy, tekst zostaje w polu; puste linie pomijane, znaczniki list (`-`, `*`, `•`, `1.`, `1)`) i tabulatory z arkusza normalizowane (Recommended, rada recenzenta: żaden gość nie znika po cichu).
+- 2026-10-27 — S-01 usunięcie członka grupy: gość wypada z grupy; gdy zostaje < 2 osoby, grupa rozwiązuje się sama (trigger w bazie), trójka staje się parą (Recommended).
+- 2026-10-27 — S-01 nieobecny członek grupy: zostaje w grupie; S-04 sadza razem obecnych członków (grupa z 1 obecnym = zwykły gość) (Recommended).
+- 2026-10-27 — S-01 edycja grupy: tylko utworzenie (2–5 gości bez grupy) i rozwiązanie, zgodnie z FR-002; bez dodawania/usuwania członków (zmiana = rozwiąż i utwórz ponownie) (Recommended).
+- 2026-10-27 — S-01 integralność grup: tworzenie grupy w jednej funkcji Postgresa `create_guest_group` (blokada wierszy, walidacja 2–5, gość bez grupy), rozwiązanie = usunięcie wiersza grupy (FK `on delete set null`), trigger rozwiązuje grupę z < 2 członkami; EXECUTE odebrany `public`/`anon`/`authenticated` (Recommended; supabase-js nie ma transakcji).
+- 2026-10-27 — S-01 organizator jako gość: bez flagi w S-01 — organizator dodaje siebie jak zwykłego gościa; ewentualne „to ja” dopiero w S-03, jeśli widok organizatora będzie go potrzebował (Recommended, mniejszy zakres).
+- 2026-10-27 — S-01 UI: osobna strona `/o/<klucz>/goscie` z wyspą React; karta „Goście i grupy” w panelu staje się linkiem z licznikami; lista alfabetyczna (`Intl.Collator("pl")`); grupa przez zaznaczenie 2–5 gości i przycisk „Utwórz parę” / „Utwórz grupę (N)” (Recommended).
+- 2026-10-27 — S-01 limity: najwyżej 100 gości na liście, nazwa 1–40 znaków (czytelność na TV) (Recommended).
+- 2026-10-27 — S-01 testy: jednostkowe parsowania wklejki i nazw; integracyjne serwisów gości/grup oraz odmowy anonimowego REST/RPC na lokalnej bazie (losowe sufiksy nazw, sprzątanie tylko własnych wierszy); HTTP smoke rozszerzony o API gości (klucz TV → 404) (Recommended).
+- 2026-10-27 — S-01 /10x-plan, podział na fazy: 4 fazy (schemat+parsowanie → serwisy → API+smoke → strona+link), każda z automatycznym checkiem — „Looks good, proceed” (Recommended).
+- 2026-10-27 — S-01 walidacja API: `import { z } from "astro/zod"` (zod 4 dostarczany przez Astro) zamiast dodawania `zod` do zależności (rada recenzenta: brak nowej zależności).
 
 ## Do sprawdzenia rano (Manual)
 
