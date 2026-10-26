@@ -2,10 +2,10 @@
 project: null
 context_type: greenfield
 created: 2026-10-25
-updated: 2026-10-25
+updated: 2026-10-26
 checkpoint:
-  current_phase: 4.5
-  phases_completed: [1, 2, 3]
+  current_phase: 5
+  phases_completed: [1, 2, 3, 4]
   gray_areas_resolved:
     - topic: context type
       decision: "greenfield (git history only: initial commit + context/ scaffold; no code, manifests or lockfiles)"
@@ -93,29 +93,43 @@ Flow MVP według użytkownika (kolejność kroków): wpisanie gości → wrzucen
 
 ### Goście i pary
 - FR-001: Organizator can dodać, edytować i usunąć gościa. Priority: must-have
+  > Socrates: Counter-argument considered: "Lista gości jest stała, wystarczy import." Resolution: do ustalenia (wpisane do Open Questions).
 - FR-002: Organizator can oznaczyć dwóch gości jako nierozdzielną parę. Priority: must-have
+  > Socrates: Counter-argument considered: "Nie tylko pary: trójki, rodzina z dzieckiem." Resolution: do ustalenia (wpisane do Open Questions).
 
 ### Sale i stoliki
 - FR-003: Organizator can wgrać zrzut ekranu planu powierzchni z podziałem na pokoje. Priority: must-have
+  > Socrates: Counter-argument considered: "Stoliki można narysować w apce bez zrzutu." Resolution: do ustalenia (wpisane do Open Questions).
 - FR-004: Organizator can zdefiniować pokoje i stoliki (z liczbą miejsc) na wgranym planie. Priority: must-have
+  > Socrates: Brak kontrargumentu; stoi jak napisano.
 - FR-005: Organizator can ręcznie przypisać gościa do stolika. Priority: must-have
+  > Socrates: Brak kontrargumentu; stoi jak napisano.
 - FR-006: Organizator can wyświetlić na telewizorze układ sal z przypisanymi gośćmi. Priority: must-have
+  > Socrates: Counter-argument considered: "40 nazwisk na jednym ekranie jest nieczytelne." Resolution: do ustalenia (wpisane do Open Questions).
 
 ### Rotacja
 - FR-007: Organizator can wylosować nowy rozkład miejsc tak, żeby goście się przemieszali, a oznaczone pary zostały razem. Priority: must-have
+  > Socrates: Counter-argument considered: "Czysta losowość może powtarzać sąsiadów." Resolution: do ustalenia (wpisane do Open Questions).
 
 ### Rozmowy
 - FR-008: Organizator can dodać pytanie do bazy wraz z kategorią (kontrowersyjne / generyczne / refleksyjne). Priority: must-have
+  > Socrates: Counter-argument considered: "Baza początkowa powinna być gotowa na starcie." Resolution: do ustalenia (wpisane do Open Questions).
 - FR-009: Organizator lub gość can wylosować pytanie z bazy, wybierając kategorię lub dowolną; wylosowane pytanie widzi na swoim telefonie tylko ten, kto je wylosował. Priority: must-have
+  > Socrates: Brak kontrargumentu; stoi jak napisano.
 - FR-010: Organizator lub gość can wygenerować temat do rozmowy z pomocą AI. Priority: must-have
+  > Socrates: Counter-argument considered: "Koszt i abuse: 40 gości może zalewać AI zapytaniami." Resolution: do ustalenia (wpisane do Open Questions).
 
 ### Strzały kwoty
 - FR-011: Gość can z telefonu wpisać swój strzał finalnej kwoty podwyżki. Priority: must-have
+  > Socrates: Counter-argument considered: "Gość może wpisać strzał za kogoś innego." Resolution: do ustalenia (wpisane do Open Questions).
 - FR-012: Organizator can szybko wpisać strzał kwoty za gościa. Priority: must-have
+  > Socrates: Brak kontrargumentu; stoi jak napisano.
 - FR-013: Organizator can wpisać prawidłową kwotę i zobaczyć na własnym urządzeniu listę strzałów posortowaną wg odległości od niej (remis = równe miejsce); wyniki nie są pokazywane gościom ani na TV. Priority: must-have
+  > Socrates: Brak kontrargumentu; stoi jak napisano.
 
 ### Gość na telefonie
 - FR-014: Gość can zobaczyć na telefonie swój stolik i miejsce. Priority: must-have
+  > Socrates: Counter-argument considered: "Po przelosowaniu 40 telefonów musi się odświeżyć naraz." Resolution: do ustalenia (wpisane do Open Questions).
 
 ## User Stories
 
@@ -131,3 +145,15 @@ Flow MVP według użytkownika (kolejność kroków): wpisanie gości → wrzucen
 - Po przelosowaniu żadna para nie jest rozdzielona.
 - Strzały gości nie są widoczne dla innych gości ani na TV.
 - Remis w odległości jest pokazany jako równe miejsce.
+
+## Open Questions
+
+1. **FR-001: import listy gości?** — Socrates: lista gości jest stała, może wystarczy import. Owner: user.
+2. **FR-002: nierozdzielne grupy większe niż para?** — Socrates: trójki, rodzina z dzieckiem. Owner: user.
+3. **FR-003: wgrany zrzut vs. rysowanie planu w apce?** — Socrates: układ można narysować w apce. Owner: user.
+4. **FR-006: czytelność 40 nazwisk na TV?** — Socrates: nieczytelne z kilku metrów. Owner: user.
+5. **FR-007: czy losowanie ma unikać powtórzenia sąsiadów z poprzedniego rozkładu?** — Socrates: czysta losowość może powtarzać sąsiadów. Block: wpływa na regułę domenową. Owner: user.
+6. **FR-008: masowe wklejenie listy pytań do bazy na starcie?** — Socrates: baza początkowa gotowa na starcie. Owner: user.
+7. **FR-010: limity zapytań do AI i kontrola treści?** — Socrates: koszt i abuse przy 40 gościach. Owner: user.
+8. **FR-011: ochrona przed wpisaniem strzału za kogoś innego?** — Socrates: bez kont tylko wybór z listy chroni tożsamość. Owner: user.
+9. **FR-014: odświeżanie telefonów po przelosowaniu?** — Socrates: wymaga aktualizacji na żywo u wszystkich. Owner: user.
