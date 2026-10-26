@@ -27,6 +27,12 @@ checkpoint:
       decision: "zostaje: organizator może wpisać strzał za gościa"
     - topic: ties
       decision: "remis w odległości = równe miejsce, oznaczone jako remis"
+    - topic: inseparable groups
+      decision: "nierozdzielna grupa to 2–5 osób, domyślnie 2 (para)"
+    - topic: repeated neighbours
+      decision: "losowanie ma unikać powtórzenia sąsiadów z poprzednich rozkładów"
+    - topic: key organizer wins
+      decision: "przelosowanie, żeby ludzie się poznawali + szybkie sortowanie strzałów, żeby organizator mógł ogłaszać wyniki czytając od końca"
   frs_drafted: 14
   quality_check_status: pending
 ---
@@ -85,7 +91,7 @@ Flow MVP według użytkownika (kolejność kroków): wpisanie gości → wrzucen
 ### Guardrails
 - Odświeżenie strony ani restart urządzenia nie kasuje gości, par ani rozsadzenia.
 - Apka działa na słabym wifi w lokalu (awaria sieci nie blokuje prowadzenia wieczoru).
-- Żadne losowanie nigdy nie rozdziela pary oznaczonej jako nierozdzielna.
+- Żadne losowanie nigdy nie rozdziela grupy (2–5 osób, domyślnie pary) oznaczonej jako nierozdzielna.
 - Strzały kwot i posortowane wyniki nigdy nie pokazują się gościom ani na TV; widzi je tylko organizator.
 
 
@@ -94,8 +100,8 @@ Flow MVP według użytkownika (kolejność kroków): wpisanie gości → wrzucen
 ### Goście i pary
 - FR-001: Organizator can dodać, edytować i usunąć gościa. Priority: must-have
   > Socrates: Counter-argument considered: "Lista gości jest stała, wystarczy import." Resolution: do ustalenia (wpisane do Open Questions).
-- FR-002: Organizator can oznaczyć dwóch gości jako nierozdzielną parę. Priority: must-have
-  > Socrates: Counter-argument considered: "Nie tylko pary: trójki, rodzina z dzieckiem." Resolution: do ustalenia (wpisane do Open Questions).
+- FR-002: Organizator can oznaczyć od dwóch do pięciu gości jako nierozdzielną grupę (domyślnie parę). Priority: must-have
+  > Socrates: Counter-argument considered: "Nie tylko pary: trójki, rodzina z dzieckiem." Resolution: grupa nierozdzielna może mieć 2–5 osób, domyślnie 2.
 
 ### Sale i stoliki
 - FR-003: Organizator can wgrać zrzut ekranu planu powierzchni z podziałem na pokoje. Priority: must-have
@@ -108,8 +114,8 @@ Flow MVP według użytkownika (kolejność kroków): wpisanie gości → wrzucen
   > Socrates: Counter-argument considered: "40 nazwisk na jednym ekranie jest nieczytelne." Resolution: do ustalenia (wpisane do Open Questions).
 
 ### Rotacja
-- FR-007: Organizator can wylosować nowy rozkład miejsc tak, żeby goście się przemieszali, a oznaczone pary zostały razem. Priority: must-have
-  > Socrates: Counter-argument considered: "Czysta losowość może powtarzać sąsiadów." Resolution: do ustalenia (wpisane do Open Questions).
+- FR-007: Organizator can wylosować nowy rozkład miejsc tak, żeby goście się przemieszali, nie powtarzali sąsiadów z poprzednich rozkładów, a oznaczone grupy zostały razem. Priority: must-have
+  > Socrates: Counter-argument considered: "Czysta losowość może powtarzać sąsiadów." Resolution: losowanie ma unikać powtórzenia sąsiadów.
 
 ### Rozmowy
 - FR-008: Organizator can dodać pytanie do bazy wraz z kategorią (kontrowersyjne / generyczne / refleksyjne). Priority: must-have
@@ -124,12 +130,18 @@ Flow MVP według użytkownika (kolejność kroków): wpisanie gości → wrzucen
   > Socrates: Counter-argument considered: "Gość może wpisać strzał za kogoś innego." Resolution: do ustalenia (wpisane do Open Questions).
 - FR-012: Organizator can szybko wpisać strzał kwoty za gościa. Priority: must-have
   > Socrates: Brak kontrargumentu; stoi jak napisano.
-- FR-013: Organizator can wpisać prawidłową kwotę i zobaczyć na własnym urządzeniu listę strzałów posortowaną wg odległości od niej (remis = równe miejsce); wyniki nie są pokazywane gościom ani na TV. Priority: must-have
+- FR-013: Organizator can wpisać prawidłową kwotę i zobaczyć na własnym urządzeniu listę strzałów posortowaną wg odległości od niej, z możliwością czytania od ostatniego miejsca (remis = równe miejsce); wyniki nie są pokazywane gościom ani na TV. Priority: must-have
   > Socrates: Brak kontrargumentu; stoi jak napisano.
 
 ### Gość na telefonie
 - FR-014: Gość can zobaczyć na telefonie swój stolik i miejsce. Priority: must-have
   > Socrates: Counter-argument considered: "Po przelosowaniu 40 telefonów musi się odświeżyć naraz." Resolution: do ustalenia (wpisane do Open Questions).
+
+## Business Logic
+
+Apka losuje nowy rozkład miejsc tak, żeby goście nie siedzieli ponownie obok tych samych sąsiadów, a nierozdzielne grupy (2–5 osób, domyślnie pary) zawsze zostawały razem, i układa strzały kwot wg odległości od prawidłowej kwoty, tak by organizator mógł ogłaszać wyniki od ostatniego miejsca.
+
+> Open: czy "unikać powtórzeń sąsiadów" jest twardą regułą, czy preferencją (przy małej liczbie stolików i wielu rotacjach nie da się jej zawsze spełnić); do doprecyzowania w cross-checku.
 
 ## User Stories
 
@@ -142,17 +154,17 @@ Flow MVP według użytkownika (kolejność kroków): wpisanie gości → wrzucen
 - **Then** TV pokazuje układ sal, a organizator na własnym urządzeniu widzi strzały posortowane wg odległości od prawidłowej kwoty i czyta je na głos
 
 #### Acceptance Criteria
-- Po przelosowaniu żadna para nie jest rozdzielona.
+- Po przelosowaniu żadna nierozdzielna grupa (para lub do 5 osób) nie jest rozdzielona.
 - Strzały gości nie są widoczne dla innych gości ani na TV.
 - Remis w odległości jest pokazany jako równe miejsce.
 
 ## Open Questions
 
 1. **FR-001: import listy gości?** — Socrates: lista gości jest stała, może wystarczy import. Owner: user.
-2. **FR-002: nierozdzielne grupy większe niż para?** — Socrates: trójki, rodzina z dzieckiem. Owner: user.
+2. ~~**FR-002: nierozdzielne grupy większe niż para?**~~ — Rozstrzygnięte: grupy 2–5 osób, domyślnie 2.
 3. **FR-003: wgrany zrzut vs. rysowanie planu w apce?** — Socrates: układ można narysować w apce. Owner: user.
 4. **FR-006: czytelność 40 nazwisk na TV?** — Socrates: nieczytelne z kilku metrów. Owner: user.
-5. **FR-007: czy losowanie ma unikać powtórzenia sąsiadów z poprzedniego rozkładu?** — Socrates: czysta losowość może powtarzać sąsiadów. Block: wpływa na regułę domenową. Owner: user.
+5. ~~**FR-007: czy losowanie ma unikać powtórzenia sąsiadów z poprzedniego rozkładu?**~~ — Rozstrzygnięte: tak, unikać powtórzeń.
 6. **FR-008: masowe wklejenie listy pytań do bazy na starcie?** — Socrates: baza początkowa gotowa na starcie. Owner: user.
 7. **FR-010: limity zapytań do AI i kontrola treści?** — Socrates: koszt i abuse przy 40 gościach. Owner: user.
 8. **FR-011: ochrona przed wpisaniem strzału za kogoś innego?** — Socrates: bez kont tylko wybór z listy chroni tożsamość. Owner: user.
