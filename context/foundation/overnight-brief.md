@@ -48,6 +48,21 @@ Subject: `[<model>] <message>`, gdzie `<model>` to model, który faktycznie prac
 3. Nie planuj slice'a, zanim poprzednie, od których zależy, nie są zbudowane. Plan ma się opierać na istniejącym kodzie.
 4. Po ostatnim slice'ie: pełny suite, lint, typecheck, ręczne przejście US-01..US-04 na lokalnym dev (na ile to możliwe z CLI/testów e2e), raport poranny.
 
+## Protokół wykonania (ustalony 2026-10-27)
+
+- Sesja główna (orkiestrator) deleguje każdy element roadmapy (F-01, S-01…S-09) do jednego subagenta, **po kolei, nigdy równolegle** (polecenie użytkownika: „uważaj na wykorzystanie zasobów na maszynie”). Subagent: `/10x-new` → `/10x-plan` → `/10x-implement` → `/10x-archive` dla jednego Change ID, z odpowiedziami według tego pliku.
+- Po każdym elemencie orkiestrator sprawdza: `npm test`, `npm run lint`, `npx astro check`, `npm run build`, historię commitów i status w roadmapie.
+- Lokalny Supabase działa tylko z bazą, REST i gatewayem. Jeśli trzeba go zrestartować: `npx supabase start -x gotrue,realtime,storage-api,imgproxy,studio,postgres-meta,mailpit,edge-runtime,logflare,vector,supavisor`. Nie włączaj pozostałych usług.
+- Zasoby: żadnych testów w prawdziwej przeglądarce w nocy (bez Playwright i pobierania przeglądarek); każdy uruchomiony dev server zamknij przed końcem kroku; nie ruszaj kontenerów Dockera spoza tego projektu.
+
+## Decyzje architektoniczne wspólne dla slice'ów
+
+- Cały dostęp do bazy idzie przez serwer Astro (strony SSR i trasy API) kluczem service role ze zmiennej środowiskowej po stronie serwera; RLS włączone na każdej tabeli, bez polityk dla `anon`/`authenticated`, więc przeglądarka nie czyta bazy bezpośrednio.
+- Logowanie e-mail ze startera jest usuwane; tożsamość to klucz w ścieżce URL (np. `/o/<klucz>`, `/tv/<klucz>`, `/g/<klucz>`), sprawdzany na każdej stronie i trasie API zgodnie z macierzą Access Control.
+- Odświeżanie na żywo: odpytywanie lekkiego endpointu wersji stanu co 2–3 s. Supabase Realtime nie jest używany.
+- Obraz planu sal jest przechowywany w bazie, bez Supabase Storage.
+- Testy: Vitest (jednostkowe + integracyjne przeciw lokalnej bazie).
+
 ## Domyślne odpowiedzi na typowe pytania skilli
 
 - Złożoność planu: zgódź się z oceną skilla.
