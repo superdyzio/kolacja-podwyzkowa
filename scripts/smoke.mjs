@@ -286,4 +286,30 @@ check(
   listAfter.body,
 );
 
+// 10. Guest page (S-01): organizer only, rendered with the current list; the shell links to it with counts.
+const guestPage = await request(`/o/${organizerKey}/goscie`);
+check(
+  "guest page renders the list",
+  guestPage.status === 200 &&
+    guestPage.body.includes("Goście i grupy") &&
+    guestPage.body.includes(GUEST_NAMES[0]) &&
+    guestPage.body.includes(GUEST_NAMES[2]),
+  String(guestPage.status),
+);
+check("guest page is not cacheable", guestPage.cacheControl.includes("no-store"), guestPage.cacheControl);
+const tvGuestPage = await request(`/o/${tvKey}/goscie`);
+check(
+  "guest page with the TV key: no access, no guest data",
+  tvGuestPage.status === 404 &&
+    tvGuestPage.body.includes(NO_ACCESS_TEXT) &&
+    GUEST_NAMES.every((name) => !tvGuestPage.body.includes(name)),
+  String(tvGuestPage.status),
+);
+const shell = await request(`/o/${organizerKey}`);
+check(
+  "organizer shell links to the guest page with counts",
+  shell.status === 200 && shell.body.includes(`/o/${organizerKey}/goscie`) && shell.body.includes("2 gości"),
+  String(shell.status),
+);
+
 finish();

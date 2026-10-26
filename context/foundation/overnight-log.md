@@ -38,11 +38,16 @@ Dziennik decyzji, zależności i blokerów nocnego builda (zasady: `overnight-br
 - 2026-10-27 — S-01 testy: jednostkowe parsowania wklejki i nazw; integracyjne serwisów gości/grup oraz odmowy anonimowego REST/RPC na lokalnej bazie (losowe sufiksy nazw, sprzątanie tylko własnych wierszy); HTTP smoke rozszerzony o API gości (klucz TV → 404) (Recommended).
 - 2026-10-27 — S-01 /10x-plan, podział na fazy: 4 fazy (schemat+parsowanie → serwisy → API+smoke → strona+link), każda z automatycznym checkiem — „Looks good, proceed” (Recommended).
 - 2026-10-27 — S-01 walidacja API: `import { z } from "astro/zod"` (zod 4 dostarczany przez Astro) zamiast dodawania `zod` do zależności (rada recenzenta: brak nowej zależności).
+- 2026-10-27 — S-01 /10x-implement: bramki ręczne między fazami i akceptacja treści commitów → „Approve as proposed” / kontynuacja bez pauzy (nienadzorowany przebieg); wiersz ręczny 4.6 zostawiony na rano.
+- 2026-10-27 — S-01 komponenty `input` i `textarea` shadcn (new-york) przepisane ręcznie ze źródła zamiast `npx shadcn add` (bez sieci i bez ryzyka zmian w `components.json`/CSS; brak nowych zależności).
+- 2026-10-27 — S-01 adaptacja planu: `access.test.ts` zostaje przy własnym wyścigu dwóch `createEvent` (nie da się go wyrazić przez `acquireTestEvent`); nowy helper używany przez testy gości.
+- 2026-10-27 — S-01 `npm run preview` w Astro 7 odpala serwer w tle (odłączony); po smoke zatrzymywany `npx astro preview stop`, a dane smoke usuwane `delete from public.event` (kaskada usuwa gości i grupy). Dopisane do CLAUDE.md.
 
 ## Do sprawdzenia rano (Manual)
 
 - F-01 4.6 — na pustej bazie otwórz `/`, kliknij „Utwórz wydarzenie”, dodaj link organizatora do zakładek, otwórz adres TV na drugim urządzeniu; polskie strony wyglądają dobrze na telefonie i TV.
 - F-01 5.6 — pierwszy przebieg CI na GitHubie po pushu na `main` jest zielony (oba joby).
+- S-01 4.6 — na telefonie (~360 px) otwórz panel organizatora → „Goście i grupy” (`/o/<klucz>/goscie`): wklej 40 imion, zmień nazwę jednemu, usuń jednego, utwórz parę i grupę 3 osób, rozwiąż jedną, oznacz kogoś jako nieobecnego i z powrotem; układ i polskie teksty wyglądają dobrze, nic nie przewija się w poziomie.
 
 ## Dodane zależności
 

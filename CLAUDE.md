@@ -13,7 +13,7 @@ This file provides guidance to AI Agent when working with code in this repositor
 
 - `npm run dev` — start dev server (Cloudflare workerd runtime)
 - `npm run build` — production build (SSR via `@astrojs/cloudflare`); copies `.dev.vars` into `dist/server/`, so rebuild after changing it
-- `npm run preview` — preview production build
+- `npm run preview` — preview production build (Astro 7 runs it detached; stop it with `npx astro preview stop`)
 - `npm test` — Vitest unit + integration tests (`vitest run`); `npm run test:watch` for watch mode
 - `npm run lint` — ESLint with type-checked rules; `npm run lint:fix` to auto-fix
 - `npx astro check` — type check (run `npx astro sync` first after changing the env schema)
@@ -49,6 +49,14 @@ Identity is an unguessable key in the URL path (PRD Access Control, NFR-009): or
 - `src/lib/db.ts` — `getDb()`: the only reader of `astro:env/server` (`SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`); returns `null` when not configured.
 - `src/lib/supabase-client.ts` — `createServiceClient(url, key)` and the `DbClient` type. Business logic takes a `DbClient` parameter and must not import `astro:*`, so Vitest can test it against the local DB.
 - `src/lib/event.ts` — the singleton event (`EVENT_ID = 1`, `hasEvent`, `createEvent`). Created once from `/` (POST `/api/event`).
+- Guests and groups (S-01), `src/lib/guests/` (`names.ts` pure rules, `service.ts` DB, `summary.ts` counts; import from `@/lib/guests`, but React islands import `names`/`summary` directly):
+  - Tables `public.guest` (`id`, `event_id`, `display_name`, `is_absent`, `group_id`, `created_at`) and `public.guest_group` (`id`, `event_id`, `created_at`); both cascade-delete with the event.
+  - `display_name`: normalized (`normalizeDisplayName`), 1–40 code points, unique per event case-insensitively (index on `lower(display_name)`); at most `MAX_GUESTS = 100`.
+  - Groups: 2–5 members, a guest in at most one group (`guest.group_id`). Create only via the DB function `create_guest_group(p_guest_ids)` (service `createGroup`); dissolve = delete the `guest_group` row (`dissolveGroup`). A trigger dissolves a group that drops below 2 members (e.g. a member deleted). Absent members stay in their group.
+  - Service: `getGuestList` (→ `GuestListDto`: guests in Polish alphabetical order, groups with `memberIds`), `addGuests` (all-or-nothing), `updateGuest` (rename / `isAbsent`), `deleteGuest`, `createGroup`, `dissolveGroup`; results are status unions.
+  - Organizer API: `/api/o/<key>/guests` (GET, POST `{ text }`), `/guests/<id>` (PATCH `{ displayName?, isAbsent? }`, DELETE), `/groups` (POST `{ guestIds }`), `/groups/<id>` (DELETE); every mutation answers with the whole `GuestListDto`. Page `/o/<key>/goscie` (island `src/components/guests/GuestManager.tsx`).
+- API routes: `organizerApi(locals)` (`src/lib/organizer-api.ts`) does the organizer re-check and returns the DB client; `src/lib/http.ts` has `jsonResponse`, `jsonError`, `readJsonBody` (zod, 400 "Nieprawidłowe dane."), `parseId`. Validate with `import { z } from "astro/zod"` (zod ships with Astro; no separate dependency).
+- New DB functions: `set search_path = ''` and `revoke execute … from public, anon, authenticated` (Supabase grants EXECUTE to them by default).
 - Supabase errors always throw; `null`/empty results mean "not found".
 - `src/db/database.types.ts` — hand-written `Database` type (generated-types shape); extend it with every migration.
 

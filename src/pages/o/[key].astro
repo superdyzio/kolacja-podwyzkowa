@@ -2,6 +2,8 @@
 import NoAccess from "@/components/NoAccess.astro";
 import Layout from "@/layouts/Layout.astro";
 import { accessFor, organizerPath, tvPath } from "@/lib/access";
+import { getDb } from "@/lib/db";
+import { formatGuestSummary, getGuestList, summarizeGuestList } from "@/lib/guests";
 
 // Organizer view (shell). The middleware has already checked the key; this is the second, role-specific check.
 const access = accessFor(Astro.locals, "organizer");
@@ -9,16 +11,18 @@ if (!access) {
   Astro.response.status = 404;
 }
 
+const db = access ? getDb() : null;
 const view = access
   ? {
       name: access.event.name,
       organizerUrl: new URL(organizerPath(access.event.organizerKey), Astro.url).href,
       tvUrl: new URL(tvPath(access.event.tvKey), Astro.url).href,
+      guestsPath: `${organizerPath(access.event.organizerKey)}/goscie`,
+      guestSummary: db ? formatGuestSummary(summarizeGuestList(await getGuestList(db))) : null,
     }
   : null;
 
 const upcomingSections = [
-  { title: "Goście i grupy", description: "Lista gości, nierozdzielne grupy i nieobecni." },
   { title: "Sale i stoliki", description: "Plan sal oraz stoliki z miejscami i typem." },
   { title: "Rozsadzenie", description: "Ręczne sadzanie, losowanie, publikacja na TV i cofnięcie." },
   { title: "Linki gości i karteczki", description: "Osobiste linki, kody QR do druku i włącznik dostępu gości." },
@@ -76,6 +80,19 @@ const upcomingSections = [
           Przygotowanie i wieczór
         </h2>
         <ul class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <li>
+            <a
+              href={view.guestsPath}
+              class="flex h-full flex-col gap-2 rounded-xl border p-4 transition-colors hover:bg-accent focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
+            >
+              <div class="flex items-center justify-between gap-2">
+                <h3 class="font-semibold">Goście i grupy</h3>
+                <span class="rounded-full bg-primary px-2 py-0.5 text-xs text-primary-foreground">Otwórz</span>
+              </div>
+              <p class="text-sm text-muted-foreground">Lista gości, nierozdzielne grupy i nieobecni.</p>
+              {view.guestSummary && <p class="text-sm font-medium">{view.guestSummary}</p>}
+            </a>
+          </li>
           {upcomingSections.map((section) => (
             <li class="flex flex-col gap-2 rounded-xl border p-4">
               <div class="flex items-center justify-between gap-2">
