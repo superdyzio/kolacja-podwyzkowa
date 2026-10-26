@@ -342,9 +342,9 @@ First migration in the repo. Locally: `npx supabase migration up` (or `npx supab
 
 #### Automated
 
-- [ ] 1.1 Unit tests pass: `npm test`
-- [ ] 1.2 Lint passes: `npm run lint`
-- [ ] 1.3 Type check passes: `npx astro check`
+- [x] 1.1 Unit tests pass: `npm test`
+- [x] 1.2 Lint passes: `npm run lint`
+- [x] 1.3 Type check passes: `npx astro check`
 
 ### Phase 2: Remove starter e-mail auth; server-only DB access config
 
