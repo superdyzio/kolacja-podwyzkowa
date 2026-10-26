@@ -4,8 +4,8 @@ context_type: greenfield
 created: 2026-10-25
 updated: 2026-10-26
 checkpoint:
-  current_phase: 6
-  phases_completed: [1, 2, 3, 4, 5]
+  current_phase: 7
+  phases_completed: [1, 2, 3, 4, 5, 6]
   gray_areas_resolved:
     - topic: context type
       decision: "greenfield (git history only: initial commit + context/ scaffold; no code, manifests or lockfiles)"
@@ -74,7 +74,7 @@ Dwie role, bez kont użytkowników:
 
 - `mvp_weeks`: 2 (MVP = finalny produkt; ok. 14 dni od 2026-10-25)
 - `hard_deadline`: 2026-11-08 (kolacja)
-- `after_hours_only`: do ustalenia w fazie 6
+- `after_hours_only`: false (użytkownik ma czas także w dzień)
 
 Zakres flow przekracza typowe 6 akcji i obejmuje integrację z AI, ale termin (2 tygodnie) mieści się w progu 3 tygodni; użytkownik wprost uznał zakres za wykonalny w tym czasie.
 
@@ -137,6 +137,18 @@ Flow MVP według użytkownika (kolejność kroków): wpisanie gości → wrzucen
 - FR-014: Gość can zobaczyć na telefonie swój stolik i miejsce. Priority: must-have
   > Socrates: Counter-argument considered: "Po przelosowaniu 40 telefonów musi się odświeżyć naraz." Resolution: do ustalenia (wpisane do Open Questions).
 
+## Product Framing
+
+- `product_type`: aplikacja webowa (widok organizatora, ekran na TV, widok gościa z telefonu przez link/QR)
+- `target_scale.users`: ok. 40 gości jednocześnie + 1 organizator (jedno wydarzenie)
+
+## Non-Goals
+
+- Konta i logowanie gości (tylko link/QR i wybór z listy).
+- Pokazywanie strzałów i wyników w apce lub na TV (czyta je na głos organizator).
+- Obsługa wielu wydarzeń naraz i archiwum poprzednich edycji (jedna kolacja).
+- Rysowanie planu sal w apce (plan to wgrany zrzut ekranu; FR-003).
+
 ## Business Logic
 
 Apka losuje nowy rozkład miejsc tak, żeby goście nie siedzieli ponownie obok tych samych sąsiadów, a nierozdzielne grupy (2–5 osób, domyślnie pary) zawsze zostawały razem, i układa strzały kwot wg odległości od prawidłowej kwoty, tak by organizator mógł ogłaszać wyniki od ostatniego miejsca.
@@ -170,7 +182,7 @@ Apka losuje nowy rozkład miejsc tak, żeby goście nie siedzieli ponownie obok 
 
 1. **FR-001: import listy gości?** — Socrates: lista gości jest stała, może wystarczy import. Owner: user.
 2. ~~**FR-002: nierozdzielne grupy większe niż para?**~~ — Rozstrzygnięte: grupy 2–5 osób, domyślnie 2.
-3. **FR-003: wgrany zrzut vs. rysowanie planu w apce?** — Socrates: układ można narysować w apce. Owner: user.
+3. ~~**FR-003: wgrany zrzut vs. rysowanie planu w apce?**~~ — Rozstrzygnięte: wgrany zrzut; rysowanie planu w apce to Non-Goal.
 4. **FR-006: czytelność 40 nazwisk na TV?** — Socrates: nieczytelne z kilku metrów. Owner: user.
 5. ~~**FR-007: czy losowanie ma unikać powtórzenia sąsiadów z poprzedniego rozkładu?**~~ — Rozstrzygnięte: tak, unikać powtórzeń.
 6. **FR-008: masowe wklejenie listy pytań do bazy na starcie?** — Socrates: baza początkowa gotowa na starcie. Owner: user.
