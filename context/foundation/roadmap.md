@@ -41,7 +41,7 @@ Organizator co roku prowadzi kolację podwyżkową dla 35–40 przyjaciół i dz
 | ID   | Change ID                   | Outcome (user can …)                                                                 | Prerequisites       | PRD refs                                             | Status   |
 | ---- | --------------------------- | ------------------------------------------------------------------------------------ | ------------------- | ---------------------------------------------------- | -------- |
 | F-01 | link-access-foundation      | (foundation) wydarzenie z sekretnym linkiem organizatora i adresem TV; reszta bez dostępu; testy działają | —                   | NFR-009, Access Control                              | done     |
-| S-01 | guest-list-and-groups       | organizator wkleja i edytuje listę gości, tworzy grupy i oznacza nieobecnych          | F-01                | US-01, FR-001, FR-002, FR-003                        | in-progress |
+| S-01 | guest-list-and-groups       | organizator wkleja i edytuje listę gości, tworzy grupy i oznacza nieobecnych          | F-01                | US-01, FR-001, FR-002, FR-003                        | done     |
 | S-02 | rooms-and-tables-on-plan    | organizator wgrywa plan, nazywa sale i stawia pinezki stolików z miejscami i typem    | F-01                | US-01, FR-005, FR-006                                | proposed |
 | S-03 | manual-seating-on-tv        | organizator sadza gości ręcznie, przypina miejsca, publikuje, a TV pokazuje imiona na planie | S-01, S-02          | US-01, FR-004, FR-007, FR-008, NFR-003, NFR-006      | proposed |
 | S-04 | reshuffle-draft-and-publish | organizator losuje projekt rozkładu bez powtórek sąsiadów, poprawia go, publikuje i cofa | S-03                | US-02, FR-009, FR-010, NFR-007                       | proposed |
@@ -100,7 +100,7 @@ Foundations below assume these are present and do NOT re-scaffold them.
 - **Blockers:** —
 - **Unknowns:** —
 - **Risk:** Prosty CRUD, ale walidacja grup (2–5, gość w jednej grupie) musi być twarda, bo losowanie na niej polega.
-- **Status:** in-progress
+- **Status:** done
 
 ### S-02: Sale i stoliki na planie
 
@@ -244,3 +244,4 @@ Foundations below assume these are present and do NOT re-scaffold them.
 ## Done
 
 - **F-01: (foundation) istnieje jedno wydarzenie z sekretnym linkiem organizatora i osobnym adresem TV; wejście bez ważnego klucza pokazuje stronę braku dostępu; przykładowe logowanie e-mail startera jest usunięte; testy jednostkowe uruchamiają się jedną komendą, a CI działa na `main`.** — Archived 2026-10-27 → `context/archive/2026-10-27-link-access-foundation/`. Lesson: —.
+- **S-01: organizator wkleja listę gości (jedna osoba na linię), edytuje i usuwa gości z wyświetlaną nazwą, tworzy i rozwiązuje grupy 2–5 osób oraz oznacza nieobecnych.** — Archived 2026-10-27 → `context/archive/2026-10-27-guest-list-and-groups/`. Lesson: —.
