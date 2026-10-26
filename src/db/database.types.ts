@@ -9,7 +9,32 @@ export interface Database {
     PostgrestVersion: "12";
   };
   public: {
-    Tables: { [_ in never]: never };
+    Tables: {
+      event: {
+        Row: {
+          id: number;
+          name: string;
+          organizer_key: string;
+          tv_key: string;
+          created_at: string;
+        };
+        Insert: {
+          id?: number;
+          name?: string;
+          organizer_key: string;
+          tv_key: string;
+          created_at?: string;
+        };
+        Update: {
+          id?: number;
+          name?: string;
+          organizer_key?: string;
+          tv_key?: string;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
+    };
     Views: { [_ in never]: never };
     Functions: { [_ in never]: never };
     Enums: { [_ in never]: never };

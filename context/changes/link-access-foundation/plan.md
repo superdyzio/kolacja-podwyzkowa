@@ -350,21 +350,21 @@ First migration in the repo. Locally: `npx supabase migration up` (or `npx supab
 
 #### Automated
 
-- [x] 2.1 No starter auth left (grep prints nothing)
-- [x] 2.2 Local env written and key verified: `npm run env:local`
-- [x] 2.3 Lint passes: `npm run lint`
-- [x] 2.4 Type check passes: `npx astro sync && npx astro check`
-- [x] 2.5 Build passes: `npm run build`
-- [x] 2.6 Unit tests still pass: `npm test`
+- [x] 2.1 No starter auth left (grep prints nothing) — 72ac896
+- [x] 2.2 Local env written and key verified: `npm run env:local` — 72ac896
+- [x] 2.3 Lint passes: `npm run lint` — 72ac896
+- [x] 2.4 Type check passes: `npx astro sync && npx astro check` — 72ac896
+- [x] 2.5 Build passes: `npm run build` — 72ac896
+- [x] 2.6 Unit tests still pass: `npm test` — 72ac896
 
 ### Phase 3: Event table and access resolution
 
 #### Automated
 
-- [ ] 3.1 Migration applies cleanly: `npx supabase migration up`
-- [ ] 3.2 Unit + integration tests pass (integration not skipped): `npm test`
-- [ ] 3.3 Lint passes: `npm run lint`
-- [ ] 3.4 Type check passes: `npx astro check`
+- [x] 3.1 Migration applies cleanly: `npx supabase migration up`
+- [x] 3.2 Unit + integration tests pass (integration not skipped): `npm test`
+- [x] 3.3 Lint passes: `npm run lint`
+- [x] 3.4 Type check passes: `npx astro check`
 
 ### Phase 4: Routes, pages and HTTP smoke
 
