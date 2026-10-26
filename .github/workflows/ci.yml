@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [master]
+    branches: [main]
   pull_request:
-    branches: [master]
+    branches: [main]
 
 jobs:
   ci:
@@ -19,10 +19,12 @@ jobs:
       - run: npx astro sync
       - run: npm run lint
       - run: npx astro check
+      - name: Unit tests (DB integration tests skip without a local Supabase)
+        run: npm test
       - run: npm run build
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
 
   smoke:
     runs-on: ubuntu-latest
@@ -32,24 +34,19 @@ jobs:
         with:
           node-version: 22
           cache: npm
-      - uses: supabase/setup-cli@v1
-        with:
-          version: latest
       - run: npm ci
-      - name: Start local Supabase
-        run: |
-          supabase start -x studio,imgproxy,mailpit,edge-runtime,logflare,vector,realtime,storage-api,postgres-meta,supavisor
-          supabase status -o env | grep -E '^(API_URL|ANON_KEY)=' > supabase.env
-      - name: Configure secrets for build and preview
-        run: |
-          source supabase.env
-          printf 'SUPABASE_URL=%s\nSUPABASE_KEY=%s\n' "$API_URL" "$ANON_KEY" > .env
-          cp .env .dev.vars
+      # Supabase CLI comes from devDependencies (version pinned by package-lock.json), same as local development.
+      - name: Start local Supabase (database, REST and gateway only)
+        run: npx supabase start -x gotrue,realtime,storage-api,imgproxy,studio,postgres-meta,mailpit,edge-runtime,logflare,vector,supavisor
+      - name: Write local Supabase credentials to .env and .dev.vars
+        run: npm run env:local
+      - name: Unit and DB integration tests
+        run: npm test
       - run: npm run build
-      - name: Run smoke test against production preview
+      - name: Run the access smoke test against the production preview
         run: |
           npm run preview -- --port 4321 &
           for i in $(seq 1 60); do curl -sf -o /dev/null http://localhost:4321/ && break; sleep 1; done
           BASE_URL=http://localhost:4321 npm run smoke
       - if: always()
-        run: supabase stop --no-backup
+        run: npx supabase stop --no-backup

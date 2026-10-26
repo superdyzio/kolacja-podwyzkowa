@@ -370,11 +370,11 @@ First migration in the repo. Locally: `npx supabase migration up` (or `npx supab
 
 #### Automated
 
-- [x] 4.1 Lint passes: `npm run lint`
-- [x] 4.2 Type check passes: `npx astro check`
-- [x] 4.3 Build passes: `npm run build`
-- [x] 4.4 Tests pass: `npm test`
-- [x] 4.5 HTTP smoke passes against the production preview on an empty event table
+- [x] 4.1 Lint passes: `npm run lint` — f740174
+- [x] 4.2 Type check passes: `npx astro check` — f740174
+- [x] 4.3 Build passes: `npm run build` — f740174
+- [x] 4.4 Tests pass: `npm test` — f740174
+- [x] 4.5 HTTP smoke passes against the production preview on an empty event table — f740174
 
 #### Manual
 
@@ -384,11 +384,11 @@ First migration in the repo. Locally: `npx supabase migration up` (or `npx supab
 
 #### Automated
 
-- [ ] 5.1 CI targets main and runs tests (grep)
-- [ ] 5.2 Workflow YAML parses (`ruby -ryaml`)
-- [ ] 5.3 `README.md.scaffold` gone
-- [ ] 5.4 Formatting passes for docs: `npx prettier --check README.md CLAUDE.md .github/workflows/ci.yml`
-- [ ] 5.5 Full gate: `npm test && npm run lint && npx astro check && npm run build`
+- [x] 5.1 CI targets main and runs tests (grep)
+- [x] 5.2 Workflow YAML parses (`ruby -ryaml`)
+- [x] 5.3 `README.md.scaffold` gone
+- [x] 5.4 Formatting passes for docs: `npx prettier --check README.md CLAUDE.md .github/workflows/ci.yml`
+- [x] 5.5 Full gate: `npm test && npm run lint && npx astro check && npm run build`
 
 #### Manual
 
