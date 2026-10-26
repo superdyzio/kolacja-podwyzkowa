@@ -16,14 +16,29 @@ function check(name, ok, detail = "") {
   if (!ok) failed++;
 }
 
-async function request(path, { method = "GET" } = {}) {
-  const response = await fetch(BASE_URL + path, { method, redirect: "manual", headers: { Origin: BASE_URL } });
+// `json` sends a JSON body; `rawBody` sends the string as is (with a JSON content type).
+async function request(path, { method = "GET", json, rawBody } = {}) {
+  const headers = { Origin: BASE_URL };
+  let body;
+  if (json !== undefined || rawBody !== undefined) {
+    headers["Content-Type"] = "application/json";
+    body = rawBody ?? JSON.stringify(json);
+  }
+  const response = await fetch(BASE_URL + path, { method, redirect: "manual", headers, body });
+  const text = await response.text();
+  let data = null;
+  try {
+    data = JSON.parse(text);
+  } catch {
+    // not JSON (pages)
+  }
   return {
     status: response.status,
     location: response.headers.get("location") ?? "",
     cacheControl: response.headers.get("cache-control") ?? "",
     referrerPolicy: response.headers.get("referrer-policy") ?? "",
-    body: await response.text(),
+    body: text,
+    data,
   };
 }
 
@@ -121,5 +136,154 @@ for (const path of [`/api/o/${tvKey}/x`, "/api/tv/garbage", `/api/g/${organizerK
     `${res.status} ${res.body}`,
   );
 }
+
+// 9. Organizer guest API (S-01): guests, groups and absences; every mutation answers with the whole list.
+const api = `/api/o/${organizerKey}`;
+const GUEST_NAMES = ["Ania Smoke", "Kuba Smoke", "Ola Smoke"];
+const errorOf = (res) => res.data?.error ?? res.body;
+const guestNamed = (res, name) => res.data?.guests?.find((guest) => guest.displayName === name);
+
+const emptyList = await request(`${api}/guests`);
+check(
+  "guest list starts empty",
+  emptyList.status === 200 && emptyList.body === JSON.stringify({ guests: [], groups: [] }),
+  `${emptyList.status} ${emptyList.body}`,
+);
+check("guest API is not cacheable", emptyList.cacheControl.includes("no-store"), emptyList.cacheControl);
+
+const pasted = await request(`${api}/guests`, {
+  method: "POST",
+  json: { text: `${GUEST_NAMES[0]}\n- ${GUEST_NAMES[1]}\n\n${GUEST_NAMES[2]}` },
+});
+check(
+  "pasting 3 lines adds 3 guests",
+  pasted.status === 201 && pasted.data?.added === 3 && pasted.data?.guests?.length === 3,
+  `${pasted.status} ${pasted.body}`,
+);
+const [ania, kuba, ola] = GUEST_NAMES.map((name) => guestNamed(pasted, name));
+if (!ania || !kuba || !ola) {
+  check("pasted guests are listed by name", false, pasted.body);
+  finish();
+}
+
+const pastedAgain = await request(`${api}/guests`, { method: "POST", json: { text: GUEST_NAMES.join("\n") } });
+check(
+  "pasting existing names is refused as a whole",
+  pastedAgain.status === 409 && errorOf(pastedAgain).includes("Już są na liście"),
+  `${pastedAgain.status} ${errorOf(pastedAgain)}`,
+);
+const blank = await request(`${api}/guests`, { method: "POST", json: { text: " \n\t" } });
+check(
+  "blank paste is refused",
+  blank.status === 400 && errorOf(blank) === "Wpisz co najmniej jedno imię.",
+  `${blank.status} ${errorOf(blank)}`,
+);
+const tooLong = await request(`${api}/guests`, { method: "POST", json: { text: `Ewa Smoke\n${"x".repeat(41)}` } });
+check(
+  "too-long line is reported and nothing is added",
+  tooLong.status === 400 && tooLong.data?.problems?.length === 1 && tooLong.data.problems[0].startsWith("Linia 2:"),
+  `${tooLong.status} ${tooLong.body}`,
+);
+const badJson = await request(`${api}/guests`, { method: "POST", rawBody: "{" });
+check(
+  "malformed JSON is refused",
+  badJson.status === 400 && errorOf(badJson) === "Nieprawidłowe dane.",
+  `${badJson.status} ${badJson.body}`,
+);
+
+const pair = await request(`${api}/groups`, { method: "POST", json: { guestIds: [ania.id, kuba.id] } });
+check(
+  "a pair is created",
+  pair.status === 201 && pair.data?.groups?.length === 1 && guestNamed(pair, GUEST_NAMES[0])?.groupId !== null,
+  `${pair.status} ${pair.body}`,
+);
+const single = await request(`${api}/groups`, { method: "POST", json: { guestIds: [ola.id] } });
+check(
+  "a one-person group is refused",
+  single.status === 400 && errorOf(single) === "Grupa musi mieć od 2 do 5 osób.",
+  `${single.status} ${errorOf(single)}`,
+);
+const regroup = await request(`${api}/groups`, { method: "POST", json: { guestIds: [kuba.id, ola.id] } });
+check("a grouped guest cannot join another group", regroup.status === 409, `${regroup.status} ${errorOf(regroup)}`);
+
+const absent = await request(`${api}/guests/${ola.id}`, { method: "PATCH", json: { isAbsent: true } });
+check(
+  "a guest is marked absent",
+  absent.status === 200 && guestNamed(absent, GUEST_NAMES[2])?.isAbsent === true,
+  `${absent.status} ${absent.body}`,
+);
+const renameTaken = await request(`${api}/guests/${ola.id}`, { method: "PATCH", json: { displayName: "ANIA smoke" } });
+check(
+  "renaming to a taken name is refused",
+  renameTaken.status === 409,
+  `${renameTaken.status} ${errorOf(renameTaken)}`,
+);
+const setGroup = await request(`${api}/guests/${ola.id}`, {
+  method: "PATCH",
+  json: { groupId: pair.data?.groups?.[0]?.id },
+});
+check("group membership cannot be patched", setGroup.status === 400, `${setGroup.status} ${errorOf(setGroup)}`);
+const unknownGuest = await request(`${api}/guests/999999999`, { method: "PATCH", json: { isAbsent: true } });
+check(
+  "unknown guest is not found",
+  unknownGuest.status === 404 && errorOf(unknownGuest) === "Nie znaleziono gościa.",
+  `${unknownGuest.status} ${errorOf(unknownGuest)}`,
+);
+
+const removed = await request(`${api}/guests/${kuba.id}`, { method: "DELETE" });
+check(
+  "deleting a pair member dissolves the pair",
+  removed.status === 200 &&
+    removed.data?.guests?.length === 2 &&
+    removed.data?.groups?.length === 0 &&
+    guestNamed(removed, GUEST_NAMES[0])?.groupId === null,
+  `${removed.status} ${removed.body}`,
+);
+const pair2 = await request(`${api}/groups`, { method: "POST", json: { guestIds: [ania.id, ola.id] } });
+const pair2Id = pair2.data?.groups?.[0]?.id;
+const dissolved = await request(`${api}/groups/${pair2Id}`, { method: "DELETE" });
+check(
+  "a group is dissolved",
+  pair2.status === 201 && dissolved.status === 200 && dissolved.data?.groups?.length === 0,
+  `${pair2.status} ${dissolved.status} ${dissolved.body}`,
+);
+const dissolvedAgain = await request(`${api}/groups/${pair2Id}`, { method: "DELETE" });
+check(
+  "dissolving a missing group is not found",
+  dissolvedAgain.status === 404 && errorOf(dissolvedAgain) === "Nie znaleziono grupy.",
+  `${dissolvedAgain.status} ${errorOf(dissolvedAgain)}`,
+);
+
+// The TV key opens none of it, and the TV view shows no guest data in S-01.
+const tvApi = `/api/o/${tvKey}`;
+for (const [method, path, json] of [
+  ["GET", `${tvApi}/guests`],
+  ["POST", `${tvApi}/guests`, { text: "Intruz" }],
+  ["PATCH", `${tvApi}/guests/${ania.id}`, { isAbsent: true }],
+  ["DELETE", `${tvApi}/guests/${ania.id}`],
+  ["POST", `${tvApi}/groups`, { guestIds: [ania.id, ola.id] }],
+]) {
+  const res = await request(path, { method, json });
+  check(
+    `guest API with the TV key: ${method} ${path.replace(tvKey, "<tv>")}`,
+    res.status === 404 && res.body === JSON.stringify({ error: "Brak dostępu" }),
+    `${res.status} ${res.body}`,
+  );
+}
+const tvAfter = await request(`/tv/${tvKey}`);
+check(
+  "TV view shows no guest names",
+  tvAfter.status === 200 && GUEST_NAMES.every((name) => !tvAfter.body.includes(name)),
+  String(tvAfter.status),
+);
+const listAfter = await request(`${api}/guests`);
+check(
+  "TV-key requests changed nothing",
+  listAfter.data?.guests?.length === 2 &&
+    listAfter.data.guests.every((guest) => guest.displayName !== "Intruz") &&
+    guestNamed(listAfter, GUEST_NAMES[0])?.isAbsent === false &&
+    listAfter.data.groups.length === 0,
+  listAfter.body,
+);
 
 finish();
