@@ -315,10 +315,10 @@ Second migration. Locally `npx supabase migration up`; CI's `supabase start` app
 
 #### Automated
 
-- [ ] 1.1 Migration applies cleanly: `npx supabase migration up`
-- [ ] 1.2 Unit + integration tests pass (integration not skipped): `npm test`
-- [ ] 1.3 Lint passes: `npm run lint`
-- [ ] 1.4 Type check passes: `npx astro check`
+- [x] 1.1 Migration applies cleanly: `npx supabase migration up`
+- [x] 1.2 Unit + integration tests pass (integration not skipped): `npm test`
+- [x] 1.3 Lint passes: `npm run lint`
+- [x] 1.4 Type check passes: `npx astro check`
 
 ### Phase 2: Guest and group services
 

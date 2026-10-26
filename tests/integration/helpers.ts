@@ -1,4 +1,4 @@
-import { EVENT_ID } from "@/lib/event";
+import { createEvent, EVENT_ID, hasEvent } from "@/lib/event";
 import { createServiceClient, type DbClient } from "@/lib/supabase-client";
 
 // Integration tests run only against a LOCAL Supabase (127.0.0.1 / localhost) so they can never touch a hosted
@@ -52,6 +52,16 @@ export async function readEvent(db: DbClient): Promise<Omit<TestEvent, "createdB
   return { name: data.name, organizerKey: data.organizer_key, tvKey: data.tv_key };
 }
 
+// Reuses the existing event, or creates one that releaseEvent() deletes afterwards (its guests and groups go with
+// it through ON DELETE CASCADE).
+export async function acquireTestEvent(db: DbClient): Promise<TestEvent> {
+  if (await hasEvent(db)) {
+    return { ...(await readEvent(db)), createdByTest: false };
+  }
+  await createEvent(db);
+  return { ...(await readEvent(db)), createdByTest: true };
+}
+
 export async function releaseEvent(db: DbClient, event: TestEvent): Promise<void> {
   if (!event.createdByTest) {
     return;
@@ -59,5 +69,25 @@ export async function releaseEvent(db: DbClient, event: TestEvent): Promise<void
   const { error } = await db.from("event").delete().eq("organizer_key", event.organizerKey);
   if (error) {
     throw new Error(`Nie udało się usunąć testowego wydarzenia: ${error.message}`);
+  }
+}
+
+// A short random tag for names created by a test run, so they never collide with real guests (display names are
+// unique per event) and can be told apart from them.
+export function testTag(): string {
+  return Math.random().toString(36).slice(2, 8);
+}
+
+// Deletes only the given guests (rows a test created itself). Groups that drop below 2 members dissolve on their own.
+export async function deleteTestGuests(db: DbClient, ids: readonly number[]): Promise<void> {
+  if (ids.length === 0) {
+    return;
+  }
+  const { error } = await db
+    .from("guest")
+    .delete()
+    .in("id", [...ids]);
+  if (error) {
+    throw new Error(`Nie udało się usunąć testowych gości: ${error.message}`);
   }
 }

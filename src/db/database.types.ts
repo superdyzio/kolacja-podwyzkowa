@@ -34,9 +34,84 @@ export interface Database {
         };
         Relationships: [];
       };
+      guest_group: {
+        Row: {
+          id: number;
+          event_id: number;
+          created_at: string;
+        };
+        Insert: {
+          id?: never;
+          event_id?: number;
+          created_at?: string;
+        };
+        Update: {
+          id?: never;
+          event_id?: number;
+          created_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "guest_group_event_id_fkey";
+            columns: ["event_id"];
+            isOneToOne: false;
+            referencedRelation: "event";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      guest: {
+        Row: {
+          id: number;
+          event_id: number;
+          display_name: string;
+          is_absent: boolean;
+          group_id: number | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: never;
+          event_id?: number;
+          display_name: string;
+          is_absent?: boolean;
+          group_id?: number | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: never;
+          event_id?: number;
+          display_name?: string;
+          is_absent?: boolean;
+          group_id?: number | null;
+          created_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "guest_event_id_fkey";
+            columns: ["event_id"];
+            isOneToOne: false;
+            referencedRelation: "event";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "guest_group_id_fkey";
+            columns: ["group_id"];
+            isOneToOne: false;
+            referencedRelation: "guest_group";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
     };
     Views: { [_ in never]: never };
-    Functions: { [_ in never]: never };
+    Functions: {
+      // Atomic creation of an inseparable group (2–5 existing, ungrouped guests); returns the group id.
+      // Raises GROUP_SIZE, GUEST_NOT_FOUND or GUEST_ALREADY_GROUPED.
+      create_guest_group: {
+        Args: { p_guest_ids: number[] };
+        Returns: number;
+      };
+    };
     Enums: { [_ in never]: never };
     CompositeTypes: { [_ in never]: never };
   };

@@ -1,7 +1,7 @@
 ---
 change_id: guest-list-and-groups
 title: Guest list, inseparable groups of 2–5 and absent/present marking for the organizer
-status: planned
+status: implementing
 created: 2026-10-27
 updated: 2026-10-27
 archived_at: null
