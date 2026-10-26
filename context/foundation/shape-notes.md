@@ -4,8 +4,8 @@ context_type: greenfield
 created: 2026-10-25
 updated: 2026-10-26
 checkpoint:
-  current_phase: 5
-  phases_completed: [1, 2, 3, 4]
+  current_phase: 6
+  phases_completed: [1, 2, 3, 4, 5]
   gray_areas_resolved:
     - topic: context type
       decision: "greenfield (git history only: initial commit + context/ scaffold; no code, manifests or lockfiles)"
@@ -143,6 +143,14 @@ Apka losuje nowy rozkład miejsc tak, żeby goście nie siedzieli ponownie obok 
 
 > Open: czy "unikać powtórzeń sąsiadów" jest twardą regułą, czy preferencją (przy małej liczbie stolików i wielu rotacjach nie da się jej zawsze spełnić); do doprecyzowania w cross-checku.
 
+## Non-Functional Requirements
+
+- NFR-001: Akcja gościa na telefonie (wpisanie strzału, wylosowanie pytania, podgląd stolika) potwierdza się w ciągu 1 s na zwykłym wifi w lokalu.
+- NFR-002: Apka obsługuje do 40 gości korzystających z telefonów jednocześnie, bez zauważalnego spowolnienia.
+- NFR-003: Przy awarii wifi w lokalu organizator dalej może rozsadzać gości, losować rozkład i czytać ranking strzałów; bez sieci wypadają tylko funkcje gości i AI.
+- NFR-004: Każdy gość ma limit wygenerowanych tematów AI na wieczór; organizator jest bez limitu. Wartość limitu do ustalenia.
+- NFR-005: Widok gościa działa w zwykłej, aktualnej przeglądarce telefonu (iPhone/Safari, Android/Chrome), bez instalacji i konta.
+
 ## User Stories
 
 > Szkic ze ścieżki flow podanej przez użytkownika; do potwierdzenia po rundzie Sokratesa.
@@ -166,6 +174,6 @@ Apka losuje nowy rozkład miejsc tak, żeby goście nie siedzieli ponownie obok 
 4. **FR-006: czytelność 40 nazwisk na TV?** — Socrates: nieczytelne z kilku metrów. Owner: user.
 5. ~~**FR-007: czy losowanie ma unikać powtórzenia sąsiadów z poprzedniego rozkładu?**~~ — Rozstrzygnięte: tak, unikać powtórzeń.
 6. **FR-008: masowe wklejenie listy pytań do bazy na starcie?** — Socrates: baza początkowa gotowa na starcie. Owner: user.
-7. **FR-010: limity zapytań do AI i kontrola treści?** — Socrates: koszt i abuse przy 40 gościach. Owner: user.
+7. **FR-010: limity zapytań do AI i kontrola treści?** — Częściowo rozstrzygnięte (NFR-004): limit na gościa, organizator bez limitu. Do ustalenia: wartość limitu i kontrola treści. Owner: user.
 8. **FR-011: ochrona przed wpisaniem strzału za kogoś innego?** — Socrates: bez kont tylko wybór z listy chroni tożsamość. Owner: user.
 9. **FR-014: odświeżanie telefonów po przelosowaniu?** — Socrates: wymaga aktualizacji na żywo u wszystkich. Owner: user.
