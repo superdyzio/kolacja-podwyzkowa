@@ -4,7 +4,7 @@ context_type: greenfield
 created: 2026-10-25
 updated: 2026-10-25
 checkpoint:
-  current_phase: 4
+  current_phase: 4.5
   phases_completed: [1, 2, 3]
   gray_areas_resolved:
     - topic: context type
@@ -20,8 +20,14 @@ checkpoint:
     - topic: MVP scope
       decision: "MVP = finalny produkt na kolację 2026-11-08; w MVP także interakcja gości z telefonów (strzał kwoty, własny stolik, aktualne pytanie)"
     - topic: guess visibility
-      decision: "strzały kwot ukryte do momentu odsłonięcia wyników przez organizatora"
-  frs_drafted: 0
+      decision: "wyniki NIE są odsłaniane w aplikacji ani na TV; posortowane wyniki widzi tylko organizator na własnym telefonie/laptopie i czyta je na głos"
+    - topic: question flow
+      decision: "każdy (organizator i gość) losuje własne pytanie na telefonie, bez synchronizacji z TV; gość losuje z bazy, generuje temat z AI i wybiera kategorię; dodawanie pytań do bazy tylko organizator"
+    - topic: proxy guess entry
+      decision: "zostaje: organizator może wpisać strzał za gościa"
+    - topic: ties
+      decision: "remis w odległości = równe miejsce, oznaczone jako remis"
+  frs_drafted: 14
   quality_check_status: pending
 ---
 
@@ -74,11 +80,54 @@ Flow MVP według użytkownika (kolejność kroków): wpisanie gości → wrzucen
 - Cała kolacja 2026-11-08 (rozsadzenie, rotacje, pytania, ranking strzałów) jest przeprowadzona z jednej apki, bez wracania do Excela i kartek.
 
 ### Secondary
-- Kategorie i filtrowanie pytań: wybór poziomu (kontrowersyjne / generyczne / refleksyjne) dla danej rundy rozmów.
+- (brak) Kategorie i filtrowanie pytań, pierwotnie nice-to-have, weszły do MVP jako uprawnienie gościa (FR-009). Do uzupełnienia w cross-checku, jeśli pojawi się inny nice-to-have.
 
 ### Guardrails
 - Odświeżenie strony ani restart urządzenia nie kasuje gości, par ani rozsadzenia.
 - Apka działa na słabym wifi w lokalu (awaria sieci nie blokuje prowadzenia wieczoru).
 - Żadne losowanie nigdy nie rozdziela pary oznaczonej jako nierozdzielna.
+- Strzały kwot i posortowane wyniki nigdy nie pokazują się gościom ani na TV; widzi je tylko organizator.
 
-> Open: "Kategorie" pytań (kontrowersyjne / generyczne / refleksyjne) są w seed idea, a jako nice-to-have wybrano "kategorie i filtrowanie". Do rozstrzygnięcia w fazie 4: kategoria jako atrybut każdego pytania (must-have) vs filtrowanie rundy po kategorii (nice-to-have).
+
+## Functional Requirements
+
+### Goście i pary
+- FR-001: Organizator can dodać, edytować i usunąć gościa. Priority: must-have
+- FR-002: Organizator can oznaczyć dwóch gości jako nierozdzielną parę. Priority: must-have
+
+### Sale i stoliki
+- FR-003: Organizator can wgrać zrzut ekranu planu powierzchni z podziałem na pokoje. Priority: must-have
+- FR-004: Organizator can zdefiniować pokoje i stoliki (z liczbą miejsc) na wgranym planie. Priority: must-have
+- FR-005: Organizator can ręcznie przypisać gościa do stolika. Priority: must-have
+- FR-006: Organizator can wyświetlić na telewizorze układ sal z przypisanymi gośćmi. Priority: must-have
+
+### Rotacja
+- FR-007: Organizator can wylosować nowy rozkład miejsc tak, żeby goście się przemieszali, a oznaczone pary zostały razem. Priority: must-have
+
+### Rozmowy
+- FR-008: Organizator can dodać pytanie do bazy wraz z kategorią (kontrowersyjne / generyczne / refleksyjne). Priority: must-have
+- FR-009: Organizator lub gość can wylosować pytanie z bazy, wybierając kategorię lub dowolną; wylosowane pytanie widzi na swoim telefonie tylko ten, kto je wylosował. Priority: must-have
+- FR-010: Organizator lub gość can wygenerować temat do rozmowy z pomocą AI. Priority: must-have
+
+### Strzały kwoty
+- FR-011: Gość can z telefonu wpisać swój strzał finalnej kwoty podwyżki. Priority: must-have
+- FR-012: Organizator can szybko wpisać strzał kwoty za gościa. Priority: must-have
+- FR-013: Organizator can wpisać prawidłową kwotę i zobaczyć na własnym urządzeniu listę strzałów posortowaną wg odległości od niej (remis = równe miejsce); wyniki nie są pokazywane gościom ani na TV. Priority: must-have
+
+### Gość na telefonie
+- FR-014: Gość can zobaczyć na telefonie swój stolik i miejsce. Priority: must-have
+
+## User Stories
+
+> Szkic ze ścieżki flow podanej przez użytkownika; do potwierdzenia po rundzie Sokratesa.
+
+### US-01: Organizator prowadzi całą kolację z jednej apki
+
+- **Given** organizator, który wpisał gości, oznaczył pary i rozsadził ich na wgranym planie sal
+- **When** wylosuje nowy rozkład, goście losują pytania i wpisują strzały kwoty na telefonach, a organizator wpisze prawidłową kwotę
+- **Then** TV pokazuje układ sal, a organizator na własnym urządzeniu widzi strzały posortowane wg odległości od prawidłowej kwoty i czyta je na głos
+
+#### Acceptance Criteria
+- Po przelosowaniu żadna para nie jest rozdzielona.
+- Strzały gości nie są widoczne dla innych gości ani na TV.
+- Remis w odległości jest pokazany jako równe miejsce.
