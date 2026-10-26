@@ -39,6 +39,7 @@ Dziennik decyzji, zależności i blokerów nocnego builda (zasady: `overnight-br
 - 2026-10-27 — S-01 /10x-plan, podział na fazy: 4 fazy (schemat+parsowanie → serwisy → API+smoke → strona+link), każda z automatycznym checkiem — „Looks good, proceed” (Recommended).
 - 2026-10-27 — S-01 walidacja API: `import { z } from "astro/zod"` (zod 4 dostarczany przez Astro) zamiast dodawania `zod` do zależności (rada recenzenta: brak nowej zależności).
 - 2026-10-27 — S-01 /10x-implement: bramki ręczne między fazami i akceptacja treści commitów → „Approve as proposed” / kontynuacja bez pauzy (nienadzorowany przebieg); wiersz ręczny 4.6 zostawiony na rano.
+- 2026-10-27 — S-01 /10x-implement epilog: „1 wiersz Progress w toku (4.6, ręczny)” → „Proceed to epilogue” (opcja „Pause” sprzeczna z nienadzorowanym przebiegiem, jak w F-01); końcowy `/10x-impl-review` pominięty („Skip review”), zamiast niego przegląd recenzenta (advisor) przed archiwizacją.
 - 2026-10-27 — S-01 komponenty `input` i `textarea` shadcn (new-york) przepisane ręcznie ze źródła zamiast `npx shadcn add` (bez sieci i bez ryzyka zmian w `components.json`/CSS; brak nowych zależności).
 - 2026-10-27 — S-01 adaptacja planu: `access.test.ts` zostaje przy własnym wyścigu dwóch `createEvent` (nie da się go wyrazić przez `acquireTestEvent`); nowy helper używany przez testy gości.
 - 2026-10-27 — S-01 `npm run preview` w Astro 7 odpala serwer w tle (odłączony); po smoke zatrzymywany `npx astro preview stop`, a dane smoke usuwane `delete from public.event` (kaskada usuwa gości i grupy). Dopisane do CLAUDE.md.
