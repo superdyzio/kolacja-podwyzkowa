@@ -1,11 +1,11 @@
 ---
-project: null
+project: kolacja-podwyzkowa
 context_type: greenfield
 created: 2026-10-25
 updated: 2026-10-26
 checkpoint:
-  current_phase: 7
-  phases_completed: [1, 2, 3, 4, 5, 6]
+  current_phase: 8
+  phases_completed: [1, 2, 3, 4, 5, 6, 7, 8]
   gray_areas_resolved:
     - topic: context type
       decision: "greenfield (git history only: initial commit + context/ scaffold; no code, manifests or lockfiles)"
@@ -34,7 +34,7 @@ checkpoint:
     - topic: key organizer wins
       decision: "przelosowanie, żeby ludzie się poznawali + szybkie sortowanie strzałów, żeby organizator mógł ogłaszać wyniki czytając od końca"
   frs_drafted: 14
-  quality_check_status: pending
+  quality_check_status: warned
 ---
 
 # Shape notes
@@ -153,7 +153,7 @@ Flow MVP według użytkownika (kolejność kroków): wpisanie gości → wrzucen
 
 Apka losuje nowy rozkład miejsc tak, żeby goście nie siedzieli ponownie obok tych samych sąsiadów, a nierozdzielne grupy (2–5 osób, domyślnie pary) zawsze zostawały razem, i układa strzały kwot wg odległości od prawidłowej kwoty, tak by organizator mógł ogłaszać wyniki od ostatniego miejsca.
 
-> Open: czy "unikać powtórzeń sąsiadów" jest twardą regułą, czy preferencją (przy małej liczbie stolików i wielu rotacjach nie da się jej zawsze spełnić); do doprecyzowania w cross-checku.
+Unikanie powtórzeń sąsiadów jest preferencją, nie twardą regułą: gdy się nie da (mało miejsc, wiele rotacji), losowanie dopuszcza powtórki. Nierozdzielne grupy zostają razem zawsze.
 
 ## Non-Functional Requirements
 
@@ -177,6 +177,12 @@ Apka losuje nowy rozkład miejsc tak, żeby goście nie siedzieli ponownie obok 
 - Po przelosowaniu żadna nierozdzielna grupa (para lub do 5 osób) nie jest rozdzielona.
 - Strzały gości nie są widoczne dla innych gości ani na TV.
 - Remis w odległości jest pokazany jako równe miejsce.
+
+## Quality Cross-Check
+
+Access Control, Business Logic, Non-Goals i Timeline Budget przeszły. Ostrzeżenia, które użytkownik zaakceptował:
+- Secondary success criterion jest puste (kategorie weszły do MVP).
+- Open Questions 1, 4, 6, 7 (wartość limitu AI i kontrola treści), 8 i 9 nie są rozstrzygnięte; żadne nie blokuje PRD.
 
 ## Open Questions
 
