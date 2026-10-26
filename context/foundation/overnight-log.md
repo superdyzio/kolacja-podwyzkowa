@@ -22,6 +22,12 @@ Dziennik decyzji, zależności i blokerów nocnego builda (zasady: `overnight-br
 - 2026-10-27 — F-01 CI (adaptacja planu): zamiast `supabase/setup-cli` przypiętego do 2.117.0 job `smoke` używa `npx supabase` z devDependencies (wersja 2.117.0 przypięta w `package-lock.json`, ta sama co lokalnie) — jedno źródło wersji CLI.
 - 2026-10-27 — F-01 strony z kluczem: zamiast `return Astro.rewrite("/404")` we frontmatterze (ESLint `no-misused-promises` się wysypuje na `return` na najwyższym poziomie) strony ustawiają `Astro.response.status = 404` i renderują wspólny komponent `NoAccess`.
 - 2026-10-27 — F-01 nazwy: `package.json` i `wrangler.jsonc` `name` → `kolacja-podwyzkowa`; `supabase/config.toml` `project_id` bez zmian (od niego zależą nazwy kontenerów `supabase_*_10x-astro-starter`).
+- 2026-10-27 — F-01 /10x-implement: ręczne wiersze planu (4.6, 5.6) zostawione na rano zamiast pauzy (opcja „Pause” skilla jest sprzeczna z poleceniem nienadzorowanego przebiegu); zmiana zarchiwizowana po zielonych checkach automatycznych.
+
+## Do sprawdzenia rano (Manual)
+
+- F-01 4.6 — na pustej bazie otwórz `/`, kliknij „Utwórz wydarzenie”, dodaj link organizatora do zakładek, otwórz adres TV na drugim urządzeniu; polskie strony wyglądają dobrze na telefonie i TV.
+- F-01 5.6 — pierwszy przebieg CI na GitHubie po pushu na `main` jest zielony (oba joby).
 
 ## Dodane zależności
 

@@ -384,11 +384,11 @@ First migration in the repo. Locally: `npx supabase migration up` (or `npx supab
 
 #### Automated
 
-- [x] 5.1 CI targets main and runs tests (grep)
-- [x] 5.2 Workflow YAML parses (`ruby -ryaml`)
-- [x] 5.3 `README.md.scaffold` gone
-- [x] 5.4 Formatting passes for docs: `npx prettier --check README.md CLAUDE.md .github/workflows/ci.yml`
-- [x] 5.5 Full gate: `npm test && npm run lint && npx astro check && npm run build`
+- [x] 5.1 CI targets main and runs tests (grep) — a8e0b2e
+- [x] 5.2 Workflow YAML parses (`ruby -ryaml`) — a8e0b2e
+- [x] 5.3 `README.md.scaffold` gone — a8e0b2e
+- [x] 5.4 Formatting passes for docs: `npx prettier --check README.md CLAUDE.md .github/workflows/ci.yml` — a8e0b2e
+- [x] 5.5 Full gate: `npm test && npm run lint && npx astro check && npm run build` — a8e0b2e
 
 #### Manual
 
