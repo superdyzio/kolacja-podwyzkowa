@@ -361,20 +361,20 @@ First migration in the repo. Locally: `npx supabase migration up` (or `npx supab
 
 #### Automated
 
-- [x] 3.1 Migration applies cleanly: `npx supabase migration up`
-- [x] 3.2 Unit + integration tests pass (integration not skipped): `npm test`
-- [x] 3.3 Lint passes: `npm run lint`
-- [x] 3.4 Type check passes: `npx astro check`
+- [x] 3.1 Migration applies cleanly: `npx supabase migration up` — fbc6c2e
+- [x] 3.2 Unit + integration tests pass (integration not skipped): `npm test` — fbc6c2e
+- [x] 3.3 Lint passes: `npm run lint` — fbc6c2e
+- [x] 3.4 Type check passes: `npx astro check` — fbc6c2e
 
 ### Phase 4: Routes, pages and HTTP smoke
 
 #### Automated
 
-- [ ] 4.1 Lint passes: `npm run lint`
-- [ ] 4.2 Type check passes: `npx astro check`
-- [ ] 4.3 Build passes: `npm run build`
-- [ ] 4.4 Tests pass: `npm test`
-- [ ] 4.5 HTTP smoke passes against the production preview on an empty event table
+- [x] 4.1 Lint passes: `npm run lint`
+- [x] 4.2 Type check passes: `npx astro check`
+- [x] 4.3 Build passes: `npm run build`
+- [x] 4.4 Tests pass: `npm test`
+- [x] 4.5 HTTP smoke passes against the production preview on an empty event table
 
 #### Manual
 

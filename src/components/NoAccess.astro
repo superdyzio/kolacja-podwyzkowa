@@ -1,0 +1,13 @@
+---
+import Layout from "@/layouts/Layout.astro";
+
+// The no-access page (PRD Access Control): shown for unknown routes and for every request without a valid link key.
+// Deliberately contains no event data. Callers set the 404 status.
+---
+
+<Layout title="Brak dostępu">
+  <main class="mx-auto flex min-h-screen max-w-xl flex-col justify-center gap-4 p-6 text-center">
+    <h1 class="text-3xl font-bold">Brak dostępu</h1>
+    <p class="text-muted-foreground">Ta strona jest dostępna tylko przez link od organizatora.</p>
+  </main>
+</Layout>

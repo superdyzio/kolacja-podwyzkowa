@@ -1,0 +1,23 @@
+---
+import NoAccess from "@/components/NoAccess.astro";
+import Layout from "@/layouts/Layout.astro";
+import { accessFor } from "@/lib/access";
+
+// Read-only TV view (shell). TvAccess carries no keys, so nothing here can leak the organizer link.
+// The middleware has already checked the key; this is the second, role-specific check.
+const access = accessFor(Astro.locals, "tv");
+if (!access) {
+  Astro.response.status = 404;
+}
+---
+
+{access ? (
+  <Layout title={`${access.event.name} — TV`}>
+    <main class="flex min-h-screen flex-col items-center justify-center gap-[3vh] bg-neutral-950 p-[4vh] text-center text-white">
+      <h1 class="text-[7vh] leading-tight font-bold">{access.event.name}</h1>
+      <p class="text-[3.5vh] text-neutral-300">Rozsadzenie pojawi się tutaj po publikacji.</p>
+    </main>
+  </Layout>
+) : (
+  <NoAccess />
+)}

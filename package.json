@@ -13,6 +13,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "env:local": "node scripts/local-env.mjs",
+    "links": "node --env-file-if-exists=.env scripts/links.mjs",
     "smoke": "node scripts/smoke.mjs"
   },
   "dependencies": {

@@ -1,10 +1,36 @@
 ---
+import { Button } from "@/components/ui/button";
 import Layout from "@/layouts/Layout.astro";
+import { getDb } from "@/lib/db";
+import { hasEvent } from "@/lib/event";
+
+// Public entry. Before the event exists it offers one-time creation (POST /api/event → organizer page with links).
+// Once it exists it shows only the no-access message: the organizer enters through the bookmarked link.
+const db = getDb();
+const eventExists = db ? await hasEvent(db) : null;
+
+Astro.response.headers.set("Cache-Control", "no-store");
 ---
 
 <Layout>
   <main class="mx-auto flex min-h-screen max-w-xl flex-col justify-center gap-4 p-6">
     <h1 class="text-3xl font-bold">Kolacja podwyżkowa</h1>
-    <p class="text-muted-foreground">Dostęp tylko przez link od organizatora.</p>
+    {eventExists === null && <p class="text-muted-foreground">Baza danych nie jest skonfigurowana.</p>}
+    {eventExists === false && (
+      <>
+        <p class="text-muted-foreground">
+          Nie ma jeszcze wydarzenia. Utwórz je, a dostaniesz sekretny link organizatora i adres widoku TV.
+        </p>
+        <p class="text-muted-foreground">
+          Od razu dodaj link organizatora do zakładek: to jedyne wejście do panelu. Wydarzenie można utworzyć tylko raz.
+        </p>
+        <form method="post" action="/api/event">
+          <Button type="submit" size="lg">
+            Utwórz wydarzenie
+          </Button>
+        </form>
+      </>
+    )}
+    {eventExists === true && <p class="text-muted-foreground">Dostęp tylko przez link od organizatora.</p>}
   </main>
 </Layout>

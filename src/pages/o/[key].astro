@@ -1,0 +1,94 @@
+---
+import NoAccess from "@/components/NoAccess.astro";
+import Layout from "@/layouts/Layout.astro";
+import { accessFor, organizerPath, tvPath } from "@/lib/access";
+
+// Organizer view (shell). The middleware has already checked the key; this is the second, role-specific check.
+const access = accessFor(Astro.locals, "organizer");
+if (!access) {
+  Astro.response.status = 404;
+}
+
+const view = access
+  ? {
+      name: access.event.name,
+      organizerUrl: new URL(organizerPath(access.event.organizerKey), Astro.url).href,
+      tvUrl: new URL(tvPath(access.event.tvKey), Astro.url).href,
+    }
+  : null;
+
+const upcomingSections = [
+  { title: "Goście i grupy", description: "Lista gości, nierozdzielne grupy i nieobecni." },
+  { title: "Sale i stoliki", description: "Plan sal oraz stoliki z miejscami i typem." },
+  { title: "Rozsadzenie", description: "Ręczne sadzanie, losowanie, publikacja na TV i cofnięcie." },
+  { title: "Linki gości i karteczki", description: "Osobiste linki, kody QR do druku i włącznik dostępu gości." },
+  { title: "Pytania i tematy AI", description: "Baza pytań, losowanie pytań i tematy do rozmowy." },
+  { title: "Strzały i ranking", description: "Strzały gości, zamknięcie przyjmowania i ranking od końca." },
+];
+---
+
+{view ? (
+  <Layout title={`${view.name} — panel organizatora`}>
+    <main class="mx-auto flex max-w-3xl flex-col gap-8 p-4 sm:p-8">
+      <header class="flex flex-col gap-1">
+        <p class="text-sm text-muted-foreground">Panel organizatora</p>
+        <h1 class="text-3xl font-bold">{view.name}</h1>
+      </header>
+
+      <section aria-labelledby="links-heading" class="flex flex-col gap-4 rounded-xl border p-4 sm:p-6">
+        <h2 id="links-heading" class="text-xl font-semibold">
+          Twoje linki
+        </h2>
+        <div class="flex flex-col gap-2">
+          <label for="organizer-link" class="font-medium">
+            Link organizatora
+          </label>
+          <input
+            id="organizer-link"
+            type="text"
+            readonly
+            value={view.organizerUrl}
+            class="w-full rounded-md border bg-muted px-3 py-2 font-mono text-sm"
+          />
+          <p class="text-sm text-muted-foreground">
+            Dodaj ten link do zakładek: to jedyne wejście do panelu. Nie udostępniaj go nikomu.
+          </p>
+        </div>
+        <div class="flex flex-col gap-2">
+          <label for="tv-link" class="font-medium">
+            Adres TV
+          </label>
+          <input
+            id="tv-link"
+            type="text"
+            readonly
+            value={view.tvUrl}
+            class="w-full rounded-md border bg-muted px-3 py-2 font-mono text-sm"
+          />
+          <p class="text-sm text-muted-foreground">
+            Otwórz go na urządzeniu przy telewizorze. Pokazuje tylko rozsadzenie, bez strzałów i rankingu.
+          </p>
+        </div>
+      </section>
+
+      <section aria-labelledby="sections-heading" class="flex flex-col gap-4">
+        <h2 id="sections-heading" class="text-xl font-semibold">
+          Przygotowanie i wieczór
+        </h2>
+        <ul class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          {upcomingSections.map((section) => (
+            <li class="flex flex-col gap-2 rounded-xl border p-4">
+              <div class="flex items-center justify-between gap-2">
+                <h3 class="font-semibold">{section.title}</h3>
+                <span class="rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">Wkrótce</span>
+              </div>
+              <p class="text-sm text-muted-foreground">{section.description}</p>
+            </li>
+          ))}
+        </ul>
+      </section>
+    </main>
+  </Layout>
+) : (
+  <NoAccess />
+)}
