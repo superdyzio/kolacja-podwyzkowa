@@ -408,18 +408,18 @@ The guest's phone page with the polling seat card and the on-demand plan highlig
 
 #### Automated
 
-- [x] 2.1 Unit and integration tests pass (incl. the QR decode round trip): `npm test`
-- [x] 2.2 Lint passes: `npm run lint`
-- [x] 2.3 Type check passes: `npx astro check`
+- [x] 2.1 Unit and integration tests pass (incl. the QR decode round trip): `npm test` — ac78b0f
+- [x] 2.2 Lint passes: `npm run lint` — ac78b0f
+- [x] 2.3 Type check passes: `npx astro check` — ac78b0f
 
 ### Phase 3: Organizer links API, guest state API and HTTP smoke
 
 #### Automated
 
-- [ ] 3.1 Lint and type check pass: `npm run lint`, `npx astro check`
-- [ ] 3.2 Tests pass: `npm test`
-- [ ] 3.3 Production build succeeds: `npm run build`
-- [ ] 3.4 HTTP smoke passes on a DB without an event: `npm run preview` + `npm run smoke` (then stop the server and `delete from public.event`)
+- [x] 3.1 Lint and type check pass: `npm run lint`, `npx astro check`
+- [x] 3.2 Tests pass: `npm test`
+- [x] 3.3 Production build succeeds: `npm run build`
+- [x] 3.4 HTTP smoke passes on a DB without an event: `npm run preview` + `npm run smoke` (then stop the server and `delete from public.event`)
 
 ### Phase 4: Organizer links page, card sheet and shell card
 

@@ -965,4 +965,210 @@ for (const [method, path, json] of [
   );
 }
 
+// 17. Guest links and the guest's own seat (S-05). State here: Ania Smoke at seat 4 and Ola Smoke at seat 1 of
+// "Okno Smoke" in the latest snapshot (working arrangement = published); a plan image exists. Guest access starts OFF.
+const linksApi = `${api}/guest-links`;
+const linkOf = (res, guestId) => res.data?.guests?.find((guest) => guest.id === guestId);
+const isKey = (value) => typeof value === "string" && new RegExp(`^${KEY}$`).test(value);
+const noAccessJson = (res) => res.status === 404 && res.body === JSON.stringify({ error: "Brak dostępu" });
+const [deniedBody] = deniedBodies;
+
+const links = await request(linksApi);
+const aniaKey = linkOf(links, ania.id)?.key;
+const olaKey = linkOf(links, ola.id)?.key;
+check(
+  "guest links: access is off by default and every guest has a personal key",
+  links.status === 200 &&
+    links.data?.enabled === false &&
+    links.data.guests.length === 2 &&
+    isKey(aniaKey) &&
+    isKey(olaKey) &&
+    aniaKey !== olaKey &&
+    ![organizerKey, tvKey].includes(aniaKey) &&
+    links.cacheControl.includes("no-store"),
+  `${links.status} ${links.body}`,
+);
+if (!isKey(aniaKey) || !isKey(olaKey)) finish();
+
+for (const [method, path, json] of [
+  ["GET", `/api/o/${tvKey}/guest-links`],
+  ["PATCH", `/api/o/${tvKey}/guest-links`, { enabled: true }],
+  ["POST", `/api/o/${tvKey}/guest-links/${ania.id}/revoke`],
+  ["GET", `/api/o/${aniaKey}/guest-links`],
+  ["PATCH", `/api/o/${aniaKey}/guest-links`, { enabled: true }],
+]) {
+  const res = await request(path, { method, json });
+  check(
+    `guest links API with a wrong key: ${method} ${path.replace(tvKey, "<tv>").replace(aniaKey, "<guest>")}`,
+    noAccessJson(res),
+    `${res.status} ${res.body}`,
+  );
+}
+
+const guestOffPage = await request(`/g/${aniaKey}`);
+check(
+  "guest link with access off: the same no-access page, no data",
+  guestOffPage.status === 404 &&
+    guestOffPage.body === deniedBody &&
+    guestOffPage.cacheControl.includes("no-store") &&
+    !guestOffPage.body.includes(GUEST_NAMES[0]),
+  String(guestOffPage.status),
+);
+const guestOffApi = await request(`/api/g/${aniaKey}/state`);
+check("guest state with access off: JSON 404", noAccessJson(guestOffApi), `${guestOffApi.status} ${guestOffApi.body}`);
+
+for (const json of [{ enabled: "yes" }, { enabled: true, extra: 1 }, {}]) {
+  const res = await request(linksApi, { method: "PATCH", json });
+  check(
+    `guest access switch refuses ${JSON.stringify(json)}`,
+    res.status === 400 && errorOf(res) === "Nieprawidłowe dane.",
+    `${res.status} ${res.body}`,
+  );
+}
+const accessOn = await request(linksApi, { method: "PATCH", json: { enabled: true } });
+check(
+  "guest access is turned on",
+  accessOn.status === 200 && accessOn.data?.enabled === true && linkOf(accessOn, ania.id)?.key === aniaKey,
+  `${accessOn.status} ${accessOn.body}`,
+);
+
+const guestStateApi = (key) => `/api/g/${key}/state`;
+const guestSince = (key, version) => request(`${guestStateApi(key)}?since=${encodeURIComponent(version ?? "")}`);
+const leaksFromGuest = (body, ownKey) =>
+  [organizerKey, tvKey, ownKey === aniaKey ? olaKey : aniaKey, '"id"', '"guestId"', '"tableId"', '"key"'].filter(
+    (secret) => body.includes(secret),
+  );
+
+const aniaState = await request(guestStateApi(aniaKey));
+check(
+  "guest state shows her own published seat",
+  aniaState.status === 200 &&
+    aniaState.data?.name === GUEST_NAMES[0] &&
+    aniaState.data.status === "seated" &&
+    aniaState.data.seat?.table === TABLE_NAME &&
+    aniaState.data.seat.room === ROOM_NAME &&
+    aniaState.data.seat.seat === 4 &&
+    typeof aniaState.data.version === "string" &&
+    aniaState.cacheControl.includes("no-store"),
+  `${aniaState.status} ${aniaState.body}`,
+);
+check(
+  "guest state leaks no keys, ids or other guests",
+  leaksFromGuest(aniaState.body, aniaKey).length === 0 && !aniaState.body.includes(GUEST_NAMES[2]),
+  leaksFromGuest(aniaState.body, aniaKey).join(" "),
+);
+const olaState = await request(guestStateApi(olaKey));
+check(
+  "another guest sees only her own seat",
+  olaState.status === 200 &&
+    olaState.data?.name === GUEST_NAMES[2] &&
+    olaState.data.seat?.seat === 1 &&
+    !olaState.body.includes(GUEST_NAMES[0]),
+  `${olaState.status} ${olaState.body}`,
+);
+const aniaSame = await guestSince(aniaKey, aniaState.data?.version);
+check(
+  "guest state since the current version is 204",
+  aniaSame.status === 204 && aniaSame.body === "",
+  String(aniaSame.status),
+);
+
+const aniaMoved = await request(`${seatingApi}/guests/${ania.id}`, {
+  method: "PUT",
+  json: { tableId: oknoId, seat: 2 },
+});
+const aniaAfterDraft = await guestSince(aniaKey, aniaState.data?.version);
+check(
+  "an unpublished move does not reach the guest's phone",
+  aniaMoved.status === 200 && aniaAfterDraft.status === 204,
+  `${aniaMoved.status} ${aniaAfterDraft.status}`,
+);
+const publishedForGuest = await request(`${seatingApi}/publish`, { method: "POST" });
+const aniaAfterPublish = await guestSince(aniaKey, aniaState.data?.version);
+check(
+  "after a publish the guest's phone gets the new seat",
+  publishedForGuest.status === 201 &&
+    aniaAfterPublish.status === 200 &&
+    aniaAfterPublish.data?.seat?.seat === 2 &&
+    aniaAfterPublish.data.version !== aniaState.data?.version,
+  `${publishedForGuest.status} ${aniaAfterPublish.status} ${aniaAfterPublish.body}`,
+);
+
+const planForGuest = await requestBytes(`/api/g/${aniaKey}/plan/image`);
+check(
+  "guest gets the plan image for the table highlight",
+  planForGuest.status === 200 &&
+    planForGuest.contentType === "image/png" &&
+    planForGuest.nosniff === "nosniff" &&
+    sameBytes(planForGuest.bytes, TINY_PNG),
+  `${planForGuest.status} ${planForGuest.contentType}`,
+);
+
+for (const path of [`/o/${aniaKey}`, `/o/${aniaKey}/linki`, `/tv/${aniaKey}`]) {
+  const res = await request(path);
+  check(
+    `guest key opens no other role's page: ${path.replace(aniaKey, "<guest>")}`,
+    res.status === 404 && res.body === deniedBody,
+    String(res.status),
+  );
+}
+for (const path of [
+  `/api/o/${aniaKey}/guests`,
+  `/api/o/${aniaKey}/seating`,
+  `/api/tv/${aniaKey}/seating`,
+  `/api/tv/${aniaKey}/plan/image`,
+  `/api/g/${organizerKey}/state`,
+  `/api/g/${tvKey}/state`,
+  `/api/g/${organizerKey}/plan/image`,
+]) {
+  const res = await request(path);
+  check(
+    `wrong role on API: ${path.replace(aniaKey, "<guest>").replace(organizerKey, "<organizer>").replace(tvKey, "<tv>")}`,
+    noAccessJson(res),
+    `${res.status} ${res.body}`,
+  );
+}
+
+const revokeUnknown = await request(`${linksApi}/999999999/revoke`, { method: "POST" });
+const revokeMalformed = await request(`${linksApi}/abc/revoke`, { method: "POST" });
+check(
+  "revoking an unknown guest's link is not found",
+  revokeUnknown.status === 404 && errorOf(revokeUnknown) === "Nie znaleziono gościa." && revokeMalformed.status === 404,
+  `${revokeUnknown.status} ${revokeMalformed.status}`,
+);
+const revoked = await request(`${linksApi}/${ania.id}/revoke`, { method: "POST" });
+const aniaNewKey = linkOf(revoked, ania.id)?.key;
+check(
+  "revoking a link issues a new key and keeps the others",
+  revoked.status === 200 && isKey(aniaNewKey) && aniaNewKey !== aniaKey && linkOf(revoked, ola.id)?.key === olaKey,
+  `${revoked.status} ${revoked.body}`,
+);
+const oldKeyPage = await request(`/g/${aniaKey}`);
+const oldKeyState = await request(guestStateApi(aniaKey));
+const newKeyState = await request(guestStateApi(aniaNewKey));
+check(
+  "the revoked link is dead at once, the new one works",
+  oldKeyPage.status === 404 &&
+    oldKeyPage.body === deniedBody &&
+    noAccessJson(oldKeyState) &&
+    newKeyState.status === 200 &&
+    newKeyState.data?.seat?.seat === 2,
+  `${oldKeyPage.status} ${oldKeyState.status} ${newKeyState.status}`,
+);
+
+// S-05 page checks (links page, card sheet, guest page) go here, while guest access is on.
+
+const accessOff = await request(linksApi, { method: "PATCH", json: { enabled: false } });
+const offAgainPage = await request(`/g/${aniaNewKey}`);
+const offAgainState = await request(guestStateApi(aniaNewKey));
+check(
+  "turning guest access off closes every guest link again",
+  accessOff.status === 200 &&
+    accessOff.data?.enabled === false &&
+    offAgainPage.status === 404 &&
+    offAgainPage.body === deniedBody &&
+    noAccessJson(offAgainState),
+  `${accessOff.status} ${offAgainPage.status} ${offAgainState.status}`,
+);
+
 finish();
