@@ -1886,6 +1886,52 @@ check(
   `${reflectiveBack.status} ${reflectiveBack.data?.added}`,
 );
 
+// The organizer's questions page and the shell card; other roles get the identical denial without any question.
+const finalBase = reflectiveBack.data?.questions ?? [];
+const plainStarter = finalBase.find((question) => !/[&"'<>]/.test(question.text));
+const questionsPage = await request(`/o/${organizerKey}/pytania`);
+check(
+  "questions page shows the base, the starter card and the draw",
+  questionsPage.status === 200 &&
+    questionsPage.cacheControl.includes("no-store") &&
+    plainStarter !== undefined &&
+    questionsPage.body.includes(plainStarter.text) &&
+    questionsPage.body.includes("Pytania do rozmowy") &&
+    questionsPage.body.includes("Wczytaj bazę startową") &&
+    questionsPage.body.includes("Baza startowa jest kompletna.") &&
+    questionsPage.body.includes("Losuj pytanie") &&
+    questionsPage.body.includes("QuestionManager"),
+  String(questionsPage.status),
+);
+for (const [label, key] of [
+  ["<tv>", tvKey],
+  ["<guest>", aniaNewKey],
+]) {
+  const res = await request(`/o/${key}/pytania`);
+  check(
+    `questions page with a wrong key: ${label}`,
+    res.status === 404 && res.body === deniedBody && !finalBase.some((question) => res.body.includes(question.text)),
+    String(res.status),
+  );
+}
+const shellWithQuestions = await request(`/o/${organizerKey}`);
+const finalCounts = Object.fromEntries(
+  QUESTION_CATEGORIES.map((category) => [category, inCategory(finalBase, category).length]),
+);
+check(
+  "organizer shell links to the questions page with its summary",
+  shellWithQuestions.status === 200 &&
+    shellWithQuestions.body.includes(`/o/${organizerKey}/pytania`) &&
+    shellWithQuestions.body.includes("Pytania do rozmowy") &&
+    shellWithQuestions.body.includes(`${finalBase.length} pyta`) &&
+    shellWithQuestions.body.includes(
+      ` · kontrowersyjne ${finalCounts.kontrowersyjne} · generyczne ${finalCounts.generyczne} · refleksyjne ${finalCounts.refleksyjne}`,
+    ) &&
+    shellWithQuestions.body.includes("Tematy AI") &&
+    countOf(shellWithQuestions.body, "Wkrótce") === 1,
+  String(shellWithQuestions.status),
+);
+
 // Wrong roles: guests and the TV never reach the organizer question API; organizer and TV keys are not guest keys.
 for (const [label, key] of [
   ["<tv>", tvKey],

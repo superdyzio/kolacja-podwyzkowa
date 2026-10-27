@@ -1,0 +1,49 @@
+---
+import NoAccess from "@/components/NoAccess.astro";
+import { QuestionManager } from "@/components/questions/QuestionManager";
+import Layout from "@/layouts/Layout.astro";
+import { accessFor, organizerPath } from "@/lib/access";
+import { getDb } from "@/lib/db";
+import { getQuestionList } from "@/lib/questions";
+
+// Organizer questions page (S-07, US-03, FR-014, FR-015): the organizer's own draw, adding and pasting questions, the
+// starter base and the whole list with edit and delete. Organizer only — guests get just the question they draw on
+// their phone, the TV nothing. The middleware has already checked the key; this is the second, role-specific check.
+const access = accessFor(Astro.locals, "organizer");
+const db = access ? getDb() : null;
+if (!access || !db) {
+  Astro.response.status = 404;
+}
+
+const view =
+  access && db
+    ? {
+        name: access.event.name,
+        panelPath: organizerPath(access.event.organizerKey),
+        apiBase: `/api${organizerPath(access.event.organizerKey)}`,
+        list: await getQuestionList(db),
+      }
+    : null;
+---
+
+{view ? (
+  <Layout title={`Pytania do rozmowy — ${view.name}`}>
+    <main class="mx-auto flex max-w-3xl flex-col gap-6 p-4 sm:p-8">
+      <header class="flex flex-col gap-2">
+        <a
+          href={view.panelPath}
+          class="self-start py-2 text-sm text-muted-foreground underline-offset-4 hover:underline"
+        >
+          ← Panel organizatora
+        </a>
+        <h1 class="text-3xl font-bold">Pytania do rozmowy</h1>
+        <p class="text-sm text-muted-foreground">
+          Gość widzi tylko pytanie, które sam wylosuje. Listę widzisz tylko Ty.
+        </p>
+      </header>
+      <QuestionManager client:load apiBase={view.apiBase} initial={view.list} />
+    </main>
+  </Layout>
+) : (
+  <NoAccess />
+)}
