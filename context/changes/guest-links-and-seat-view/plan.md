@@ -437,9 +437,9 @@ The guest's phone page with the polling seat card and the on-demand plan highlig
 
 #### Automated
 
-- [x] 5.1 Lint, type check and tests pass: `npm run lint`, `npx astro check`, `npm test`
-- [x] 5.2 Build succeeds: `npm run build`
-- [x] 5.3 HTTP smoke passes: `npm run preview` + `npm run smoke` (then stop the server and `delete from public.event`)
+- [x] 5.1 Lint, type check and tests pass: `npm run lint`, `npx astro check`, `npm test` — db79ecb
+- [x] 5.2 Build succeeds: `npm run build` — db79ecb
+- [x] 5.3 HTTP smoke passes: `npm run preview` + `npm run smoke` (then stop the server and `delete from public.event`) — db79ecb
 
 #### Manual
 
