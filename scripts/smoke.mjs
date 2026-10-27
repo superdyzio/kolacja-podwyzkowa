@@ -608,6 +608,16 @@ check(
   String(tvEmptySame.status),
 );
 
+// The organizer's published seating for the offline readout (S-09) is empty before the first publish.
+const publishedSeatingEmpty = await request(`${seatingApi}/published`);
+check(
+  "published seating for the offline readout is null before any publish",
+  publishedSeatingEmpty.status === 200 &&
+    publishedSeatingEmpty.body === JSON.stringify({ published: null }) &&
+    publishedSeatingEmpty.cacheControl.includes("no-store"),
+  `${publishedSeatingEmpty.status} ${publishedSeatingEmpty.body}`,
+);
+
 const board = await request(seatingApi);
 check(
   "seating board starts empty and unpublished",
@@ -737,6 +747,27 @@ check(
 const tvFirstSame = await tvSince(tvFirst.data?.version);
 check("TV seating is 204 until the next publish", tvFirstSame.status === 204, String(tvFirstSame.status));
 
+// The organizer's published seating (S-09): the snapshot as names on seats with the room, no ids.
+const publishedSeating = await request(`${seatingApi}/published`);
+const publishedOkno = publishedSeating.data?.published?.tables?.find((table) => table.name === TABLE_NAME);
+check(
+  "published seating for the offline readout shows the snapshot with rooms",
+  publishedSeating.status === 200 &&
+    publishedSeating.cacheControl.includes("no-store") &&
+    publishedSeating.data?.published?.snapshotId === published.data?.published?.snapshotId &&
+    publishedSeating.data.published.publishedAt === tvFirst.data?.publishedAt &&
+    publishedOkno?.room === ROOM_NAME &&
+    publishedOkno.shape === "rectangular" &&
+    publishedOkno.seatCount === 6 &&
+    JSON.stringify(publishedOkno.seats) === JSON.stringify([{ seat: 4, name: GUEST_NAMES[0] }]),
+  `${publishedSeating.status} ${publishedSeating.body}`,
+);
+check(
+  "published seating leaks no ids, pins or absences",
+  leaksFromTv(publishedSeating.body).length === 0,
+  leaksFromTv(publishedSeating.body).join(" "),
+);
+
 const olaBack = await request(`${api}/guests/${ola.id}`, { method: "PATCH", json: { isAbsent: false } });
 const boardAfterAbsence = await request(seatingApi);
 const tvAfterAbsence = await tvSince(tvFirst.data?.version);
@@ -774,6 +805,7 @@ for (const [method, path, json] of [
   ["PATCH", `/api/o/${tvKey}/seating/guests/${ania.id}`, { pinned: true }],
   ["DELETE", `/api/o/${tvKey}/seating/guests/${ania.id}`],
   ["POST", `/api/o/${tvKey}/seating/publish`],
+  ["GET", `/api/o/${tvKey}/seating/published`],
   ["GET", `/api/tv/${organizerKey}/seating`],
 ]) {
   const res = await request(path, { method, json });
@@ -1116,6 +1148,7 @@ for (const path of [`/o/${aniaKey}`, `/o/${aniaKey}/linki`, `/tv/${aniaKey}`]) {
 for (const path of [
   `/api/o/${aniaKey}/guests`,
   `/api/o/${aniaKey}/seating`,
+  `/api/o/${aniaKey}/seating/published`,
   `/api/tv/${aniaKey}/seating`,
   `/api/tv/${aniaKey}/plan/image`,
   `/api/g/${organizerKey}/state`,

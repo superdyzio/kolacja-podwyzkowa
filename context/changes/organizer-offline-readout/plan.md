@@ -379,18 +379,18 @@ The after-refresh guarantee: a data-free readout page and a minimal service work
 
 #### Automated
 
-- [x] 1.1 Unit tests pass: `npm test`
-- [x] 1.2 Lint passes: `npm run lint`
-- [x] 1.3 Type check passes: `npx astro check`
+- [x] 1.1 Unit tests pass: `npm test` — b15b2c7
+- [x] 1.2 Lint passes: `npm run lint` — b15b2c7
+- [x] 1.3 Type check passes: `npx astro check` — b15b2c7
 
 ### Phase 2: Published seating API
 
 #### Automated
 
-- [ ] 2.1 Tests pass (unit + integration on the local DB): `npm test`
-- [ ] 2.2 Lint and type check pass: `npm run lint`, `npx astro check`
-- [ ] 2.3 Production build succeeds: `npm run build`
-- [ ] 2.4 HTTP smoke passes on a DB without an event: `npm run preview` + `npm run smoke` (then stop the server and `delete from public.event`)
+- [x] 2.1 Tests pass (unit + integration on the local DB): `npm test`
+- [x] 2.2 Lint and type check pass: `npm run lint`, `npx astro check`
+- [x] 2.3 Production build succeeds: `npm run build`
+- [x] 2.4 HTTP smoke passes on a DB without an event: `npm run preview` + `npm run smoke` (then stop the server and `delete from public.event`)
 
 ### Phase 3: Cache sync and the in-page offline readout
 

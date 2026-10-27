@@ -7,6 +7,7 @@ import type {
   DraftSeatDto,
   NeighbourHistoryDto,
   PublicationDto,
+  PublishedSeatingDto,
   SeatAssignmentDto,
   SeatOccupantDto,
   SeatingBoardDto,
@@ -17,7 +18,7 @@ import type {
 } from "@/types";
 import { describeDraftProblem, describeRestore, restoreSeats, validateDraft } from "./draft";
 import { neighbourPairs, type PairSeat, type PairTable } from "./neighbours";
-import { isUpToDate, seatingVersion, toTvSeating } from "./published";
+import { isUpToDate, seatingVersion, toPublishedSeating, toTvSeating } from "./published";
 
 // The working seating arrangement, publishing and the published reads (PRD FR-004, FR-007, FR-008) for the
 // singleton event. Functions take the client as a parameter (no `astro:*`), so they are tested against the local
@@ -306,6 +307,12 @@ export async function getSeatingVersion(db: DbClient): Promise<string> {
 export async function getTvSeating(db: DbClient): Promise<TvSeatingDto> {
   const [latest, plan] = await Promise.all([getLatestSnapshot(db), planVersion(db)]);
   return toTvSeating(latest, plan);
+}
+
+// The latest published arrangement for the organizer's offline readout (S-09): names on seats with the room, no ids;
+// null before the first publish.
+export async function getPublishedSeating(db: DbClient): Promise<PublishedSeatingDto | null> {
+  return toPublishedSeating(await getLatestSnapshot(db));
 }
 
 // Who sits where in the working arrangement (venue page confirmations).

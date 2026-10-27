@@ -83,6 +83,7 @@ export {
   type SaveDraftResult,
   getSeatOccupancy,
   getSeatingBoard,
+  getPublishedSeating,
   getPublishedVersion,
   getSeatingVersion,
   type PublishedVersion,
