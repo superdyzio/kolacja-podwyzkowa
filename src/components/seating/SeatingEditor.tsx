@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
+import { useOfflineSync } from "@/components/hooks/useOfflineSync";
 import { useSeatingBoard } from "@/components/hooks/useSeatingBoard";
+import { OfflineFallback } from "@/components/offline/OfflineFallback";
 import { Button } from "@/components/ui/button";
 import { seatClick, seatingHint, type SeatOccupant, type SelectedGuest } from "@/lib/seating/board";
 import { repeatedNeighbours } from "@/lib/seating/neighbours";
@@ -31,7 +33,8 @@ function seatKey(tableId: number, seat: number): string {
 
 // Organizer seating island (FR-004, FR-007, FR-009, FR-010): draw a draft, choose a person, then a seat; pin, unpin
 // and free seats; publish to the TV; discard changes or go back to the previous arrangement. Warnings (split groups,
-// absent guests with a seat) never block.
+// absent guests with a seat) never block. A publish also refreshes this device's offline copy of the published seating
+// (S-09).
 export function SeatingEditor({ apiBase, panelPath, initialBoard, initialHistory }: Props) {
   const {
     board,
@@ -51,6 +54,7 @@ export function SeatingEditor({ apiBase, panelPath, initialBoard, initialHistory
     dismissFailure,
     dismissNotice,
   } = useSeatingBoard(apiBase, initialBoard, initialHistory);
+  const { offline, syncNow } = useOfflineSync(apiBase);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const { guestList, venue, assignments } = board;
 
@@ -166,7 +170,11 @@ export function SeatingEditor({ apiBase, panelPath, initialBoard, initialHistory
     ) {
       return;
     }
-    void publish();
+    void publish().then((published) => {
+      if (published) {
+        syncNow();
+      }
+    });
   }
 
   function handleDraw() {
@@ -194,6 +202,8 @@ export function SeatingEditor({ apiBase, panelPath, initialBoard, initialHistory
 
   return (
     <div className={cn("flex flex-col gap-6", selected && "pb-40 sm:pb-28")}>
+      <OfflineFallback apiBase={apiBase} offline={offline} />
+
       <PublishBar
         published={board.published}
         upToDate={board.upToDate}

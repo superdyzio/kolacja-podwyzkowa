@@ -32,3 +32,4 @@ export {
   type ReadoutSeat,
   type ReadoutTable,
 } from "./readout";
+export { readOfflineState, type FetchFunction, type OfflineReadResult } from "./sync";

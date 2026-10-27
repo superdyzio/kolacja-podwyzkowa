@@ -1,5 +1,6 @@
 ---
 import NoAccess from "@/components/NoAccess.astro";
+import { OfflineSync } from "@/components/offline/OfflineSync";
 import { VenueEditor } from "@/components/venue/VenueEditor";
 import Layout from "@/layouts/Layout.astro";
 import { accessFor, organizerPath } from "@/lib/access";
@@ -44,6 +45,7 @@ const view =
           ma salę, nazwę, liczbę miejsc i typ; TV pokaże imiona gości przy tych pinezkach.
         </p>
       </header>
+      <OfflineSync client:load apiBase={view.apiBase} />
       <VenueEditor client:load apiBase={view.apiBase} initialVenue={view.venue} initialOccupancy={view.occupancy} />
     </main>
   </Layout>

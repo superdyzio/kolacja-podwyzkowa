@@ -1,5 +1,6 @@
 ---
 import NoAccess from "@/components/NoAccess.astro";
+import { OfflineSync } from "@/components/offline/OfflineSync";
 import { GuestManager } from "@/components/guests/GuestManager";
 import Layout from "@/layouts/Layout.astro";
 import { accessFor, organizerPath } from "@/lib/access";
@@ -41,6 +42,7 @@ const view =
           razem; nieobecni nie dostaną miejsca.
         </p>
       </header>
+      <OfflineSync client:load apiBase={view.apiBase} />
       <GuestManager client:load apiBase={view.apiBase} initialList={view.list} />
     </main>
   </Layout>

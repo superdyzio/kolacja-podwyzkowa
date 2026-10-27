@@ -1,5 +1,8 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { saveOfflineGuesses } from "@/components/hooks/offline-cache-store";
 import { useGuessBoard } from "@/components/hooks/useGuessBoard";
+import { useOfflineSync } from "@/components/hooks/useOfflineSync";
+import { OfflineFallback } from "@/components/offline/OfflineFallback";
 import { Button } from "@/components/ui/button";
 import { formatAmount } from "@/lib/guesses/amount";
 import type { GuessBoardDto, GuessGuestDto, GuessRankingDto } from "@/types";
@@ -24,8 +27,10 @@ function deleteQuestion(guest: GuessGuestDto): string {
 // Organizer guesses page island (S-06, FR-018..FR-020), ordered for the evening's last act (< 1 minute from closing
 // intake to reading the last place): intake, the correct amount, the ranking with „Czytaj od końca”, who is missing,
 // then every guest with entering/correcting/deleting a guess for them. The board refreshes every 5 s while visible.
+// Every board the server confirms is also saved on this device for the offline readout (S-09).
 export function GuessManager({ apiBase, guestsPath, initial }: Props) {
   const { board, pending, failure, offline, send, dismissFailure } = useGuessBoard(apiBase, initial);
+  const { offline: syncOffline } = useOfflineSync(apiBase);
   const [editingGuestId, setEditingGuestId] = useState<number | null>(null);
   const [editingCorrect, setEditingCorrect] = useState(false);
   const [readout, setReadout] = useState<GuessRankingDto | null>(null);
@@ -38,6 +43,11 @@ export function GuessManager({ apiBase, guestsPath, initial }: Props) {
     setReadout(null);
     window.setTimeout(() => readoutButton.current?.focus(), 0);
   }, []);
+
+  // Each poll and each saved change gives a new board object: „Stan z …” is the time of the last confirmed read.
+  useEffect(() => {
+    saveOfflineGuesses(apiBase, board, new Date().toISOString());
+  }, [apiBase, board]);
 
   async function toggleIntake() {
     await send({ method: "PATCH", path: "/guesses", body: { intakeOpen: !board.intakeOpen } });
@@ -76,11 +86,7 @@ export function GuessManager({ apiBase, guestsPath, initial }: Props) {
           </Button>
         </div>
       )}
-      {offline && (
-        <p role="status" className="rounded-lg border border-amber-500/60 bg-amber-50 p-3 text-sm text-amber-900">
-          Brak połączenia z serwerem — lista może być nieaktualna. Próbuję ponownie…
-        </p>
-      )}
+      <OfflineFallback apiBase={apiBase} offline={offline || syncOffline} />
 
       <section aria-labelledby="intake-heading" className="flex flex-col gap-3 rounded-xl border p-4">
         <h2 id="intake-heading" className="text-lg font-semibold">

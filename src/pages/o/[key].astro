@@ -1,5 +1,6 @@
 ---
 import NoAccess from "@/components/NoAccess.astro";
+import { OfflineSync } from "@/components/offline/OfflineSync";
 import Layout from "@/layouts/Layout.astro";
 import { accessFor, organizerPath, tvPath } from "@/lib/access";
 import { getAiProviderStatus } from "@/lib/ai";
@@ -33,6 +34,7 @@ const [board, guestAccessEnabled, guessBoard, questionList, aiUsage] = db
 const view = access
   ? {
       name: access.event.name,
+      apiBase: `/api${organizerPath(access.event.organizerKey)}`,
       organizerUrl: new URL(organizerPath(access.event.organizerKey), Astro.url).href,
       tvUrl: new URL(tvPath(access.event.tvKey), Astro.url).href,
       guestsPath: `${organizerPath(access.event.organizerKey)}/goscie`,
@@ -62,6 +64,7 @@ const view = access
         <p class="text-sm text-muted-foreground">Panel organizatora</p>
         <h1 class="text-3xl font-bold">{view.name}</h1>
       </header>
+      <OfflineSync client:load apiBase={view.apiBase} />
 
       <section aria-labelledby="links-heading" class="flex flex-col gap-4 rounded-xl border p-4 sm:p-6">
         <h2 id="links-heading" class="text-xl font-semibold">

@@ -2275,4 +2275,25 @@ check("guest question draw with access off: JSON 404", noAccessJson(drawWithAcce
 const aiWithAccessOff = await request(guestAiApi(aniaNewKey), { method: "POST", json: { category: null } });
 check("guest AI topic with access off: JSON 404", noAccessJson(aiWithAccessOff), aiWithAccessOff.body);
 
+// 21. Offline readout (S-09). Every organizer page except the print sheet carries the offline fallback (its own island
+// or OfflineSync), rendered online: the server HTML never contains the offline notice.
+const OFFLINE_NOTICE_TEXTS = ["Brak połączenia z serwerem", "Pokaż ostatni zapisany stan", "Ostatni zapisany stan"];
+for (const [path, island] of [
+  ["", "OfflineSync"],
+  ["/goscie", "OfflineSync"],
+  ["/sale", "OfflineSync"],
+  ["/linki", "OfflineSync"],
+  ["/pytania", "OfflineSync"],
+  ["/rozsadzenie", "SeatingEditor"],
+  ["/strzaly", "GuessManager"],
+]) {
+  const res = await request(`/o/${organizerKey}${path}`);
+  const notices = OFFLINE_NOTICE_TEXTS.filter((text) => res.body.includes(text));
+  check(
+    `organizer page /o/<org>${path} carries the offline fallback, no notice while online`,
+    res.status === 200 && res.body.includes(`component-export="${island}"`) && notices.length === 0,
+    `${res.status} ${notices.join(" | ")}`,
+  );
+}
+
 finish();

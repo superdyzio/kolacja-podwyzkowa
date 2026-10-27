@@ -1,5 +1,6 @@
 ---
 import NoAccess from "@/components/NoAccess.astro";
+import { OfflineSync } from "@/components/offline/OfflineSync";
 import { GuestLinksManager } from "@/components/guest-links/GuestLinksManager";
 import Layout from "@/layouts/Layout.astro";
 import { accessFor, organizerPath } from "@/lib/access";
@@ -45,6 +46,7 @@ const view =
           przerobić na cudzy. Zgubiona albo przekazana dalej karteczka? Unieważnij link i wydrukuj nową.
         </p>
       </header>
+      <OfflineSync client:load apiBase={view.apiBase} />
       <GuestLinksManager
         client:load
         apiBase={view.apiBase}

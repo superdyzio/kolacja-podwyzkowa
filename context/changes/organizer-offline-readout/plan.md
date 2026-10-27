@@ -387,18 +387,18 @@ The after-refresh guarantee: a data-free readout page and a minimal service work
 
 #### Automated
 
-- [x] 2.1 Tests pass (unit + integration on the local DB): `npm test`
-- [x] 2.2 Lint and type check pass: `npm run lint`, `npx astro check`
-- [x] 2.3 Production build succeeds: `npm run build`
-- [x] 2.4 HTTP smoke passes on a DB without an event: `npm run preview` + `npm run smoke` (then stop the server and `delete from public.event`)
+- [x] 2.1 Tests pass (unit + integration on the local DB): `npm test` — 16d5700
+- [x] 2.2 Lint and type check pass: `npm run lint`, `npx astro check` — 16d5700
+- [x] 2.3 Production build succeeds: `npm run build` — 16d5700
+- [x] 2.4 HTTP smoke passes on a DB without an event: `npm run preview` + `npm run smoke` (then stop the server and `delete from public.event`) — 16d5700
 
 ### Phase 3: Cache sync and the in-page offline readout
 
 #### Automated
 
-- [ ] 3.1 Lint, type check and tests pass: `npm run lint`, `npx astro check`, `npm test`
-- [ ] 3.2 Build succeeds: `npm run build`
-- [ ] 3.3 HTTP smoke passes: `npm run preview` + `npm run smoke` (then stop the server and `delete from public.event`)
+- [x] 3.1 Lint, type check and tests pass: `npm run lint`, `npx astro check`, `npm test`
+- [x] 3.2 Build succeeds: `npm run build`
+- [x] 3.3 HTTP smoke passes: `npm run preview` + `npm run smoke` (then stop the server and `delete from public.event`)
 
 ### Phase 4: Readout page, service worker, shell card and docs
 

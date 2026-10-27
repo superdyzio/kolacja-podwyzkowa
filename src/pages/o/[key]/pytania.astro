@@ -1,5 +1,6 @@
 ---
 import NoAccess from "@/components/NoAccess.astro";
+import { OfflineSync } from "@/components/offline/OfflineSync";
 import { QuestionManager } from "@/components/questions/QuestionManager";
 import Layout from "@/layouts/Layout.astro";
 import { accessFor, organizerPath } from "@/lib/access";
@@ -47,6 +48,7 @@ const view =
           Gość widzi tylko pytanie, które sam wylosuje. Listę widzisz tylko Ty.
         </p>
       </header>
+      <OfflineSync client:load apiBase={view.apiBase} />
       <QuestionManager client:load apiBase={view.apiBase} initial={view.list} aiInitial={view.aiBoard} />
     </main>
   </Layout>
