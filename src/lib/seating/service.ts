@@ -283,10 +283,23 @@ async function planVersion(db: DbClient): Promise<number | null> {
   return data ? Date.parse(data.updated_at) : null;
 }
 
-// The polling token of what the TV shows (latest snapshot id + plan version): two tiny queries, no seats.
-export async function getSeatingVersion(db: DbClient): Promise<string> {
+// What is published now, without reading it: the latest snapshot id, the plan version and their polling token
+// (two tiny queries, no seats). The TV and guest phones (S-05) poll against this.
+export interface PublishedVersion {
+  snapshotId: number | null;
+  planVersion: number | null;
+  version: string;
+}
+
+export async function getPublishedVersion(db: DbClient): Promise<PublishedVersion> {
   const [latest, plan] = await Promise.all([latestSnapshotRow(db), planVersion(db)]);
-  return seatingVersion(latest?.id ?? null, plan);
+  const snapshotId = latest?.id ?? null;
+  return { snapshotId, planVersion: plan, version: seatingVersion(snapshotId, plan) };
+}
+
+// The polling token of what the TV shows (latest snapshot id + plan version).
+export async function getSeatingVersion(db: DbClient): Promise<string> {
+  return (await getPublishedVersion(db)).version;
 }
 
 // The TV state: the latest snapshot as names on tables, plus the plan version for the image URL.

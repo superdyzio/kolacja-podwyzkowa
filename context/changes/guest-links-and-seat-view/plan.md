@@ -399,18 +399,18 @@ The guest's phone page with the polling seat card and the on-demand plan highlig
 
 #### Automated
 
-- [x] 1.1 Migration applies on the local DB: `npx supabase migration up`
-- [x] 1.2 Unit and integration tests pass: `npm test`
-- [x] 1.3 Lint passes: `npm run lint`
-- [x] 1.4 Type check passes: `npx astro check`
+- [x] 1.1 Migration applies on the local DB: `npx supabase migration up` — 2f0b5e0
+- [x] 1.2 Unit and integration tests pass: `npm test` — 2f0b5e0
+- [x] 1.3 Lint passes: `npm run lint` — 2f0b5e0
+- [x] 1.4 Type check passes: `npx astro check` — 2f0b5e0
 
 ### Phase 2: Guest link and guest state services
 
 #### Automated
 
-- [ ] 2.1 Unit and integration tests pass (incl. the QR decode round trip): `npm test`
-- [ ] 2.2 Lint passes: `npm run lint`
-- [ ] 2.3 Type check passes: `npx astro check`
+- [x] 2.1 Unit and integration tests pass (incl. the QR decode round trip): `npm test`
+- [x] 2.2 Lint passes: `npm run lint`
+- [x] 2.3 Type check passes: `npx astro check`
 
 ### Phase 3: Organizer links API, guest state API and HTTP smoke
 

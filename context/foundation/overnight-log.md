@@ -125,6 +125,9 @@ Dziennik decyzji, zależności i blokerów nocnego builda (zasady: `overnight-br
 
 - F-01 → `vitest@^5.0.5` (dev) → runner testów jednostkowych i integracyjnych (`npm test`); wspiera Vite 8 używany przez Astro 7, decyzja z briefu.
 - F-01 → usunięty `@supabase/ssr` → służył tylko do sesji logowania e-mail ze startera; dostęp do bazy idzie teraz przez `@supabase/supabase-js` z kluczem service role po stronie serwera.
+- S-05 → `qrcode@^1.5.4` → kodowanie osobistych linków gości do kodów QR na karteczkach (FR-011); używany wyłącznie w przeglądarce organizatora (macierz modułów → własna ścieżka SVG), nigdy na serwerze.
+- S-05 → `@types/qrcode@^1.5.6` (dev) → typy TypeScript dla `qrcode`.
+- S-05 → `jsqr@^1.4.0` (dev) → niezależny czytnik QR w teście jednostkowym: ścieżka SVG karteczki jest rasteryzowana i dekodowana z powrotem do linku („działający kod QR”, US-01 AC).
 
 ## Blokery
 
