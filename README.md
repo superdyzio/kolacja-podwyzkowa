@@ -31,6 +31,29 @@ Otwórz http://localhost:4321/, kliknij „Utwórz wydarzenie” i od razu dodaj
 | Gość        | `/g/<klucz>`  | osobisty link/QR (w kolejnych etapach)           |
 | Inne        | —             | strona „Brak dostępu” (HTTP 404), żadnych danych |
 
+## Tematy AI
+
+Goście i organizator generują temat do rozmowy od AI w wybranej kategorii. Gość ma najwyżej 5 tematów na wieczór, wszyscy razem (z organizatorem) 300; organizator nie ma osobnego limitu. Nieudana próba (np. przekroczony czas 9 s) nie zmniejsza limitu. Tematy nie są nigdzie zapisywane: widzi je tylko osoba, która je wygenerowała.
+
+Domyślnie działa atrapa AI (`AI_PROVIDER=mock` albo brak zmiennej): przykładowe polskie tematy, bez połączenia z siecią i bez kosztów. Tak działają dev, testy i `npm run smoke`.
+
+Żeby używać Claude:
+
+1. W konsoli Anthropic utwórz klucz API i ustaw limit wydatków.
+2. Dopisz do `.env` i `.dev.vars` (lokalnie; `npm run env:local` zostawia te linie):
+
+   ```bash
+   AI_PROVIDER=anthropic
+   ANTHROPIC_API_KEY=<klucz>
+   # AI_MODEL=claude-haiku-5-5   # opcjonalnie; inny model działa na swoich domyślnych ustawieniach
+   ```
+
+   Na Cloudflare: `npx wrangler secret put ANTHROPIC_API_KEY` (i `AI_PROVIDER`).
+
+3. Przebuduj (`npm run build`, bo build kopiuje `.dev.vars`) i wygeneruj jeden temat na `/o/<klucz>/pytania`. Panel „Temat od AI” pokazuje aktywnego dostawcę, a przy błędzie przyczynę (np. odrzucony klucz).
+
+Bez klucza przy `AI_PROVIDER=anthropic` każda próba od razu się nie udaje, a panel organizatora mówi dlaczego. Klucz jest sekretem serwera i nigdy nie trafia do przeglądarki ani do repozytorium. Testy nigdy nie łączą się z API Anthropic, a `npm run smoke` wymaga atrapy.
+
 ## Skrypty
 
 - `npm run dev`, `npm run build`, `npm run preview`: serwer deweloperski, build produkcyjny, podgląd buildu.

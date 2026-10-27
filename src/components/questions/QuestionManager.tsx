@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { ORGANIZER_DRAW_STORAGE_KEY } from "@/lib/questions/draw-memory";
 import { countQuestions } from "@/lib/questions/summary";
 import type {
+  AiTopicBoardDto,
   QuestionDto,
   QuestionListDto,
   QuestionPasteResultDto,
@@ -11,6 +12,7 @@ import type {
   QuestionSkipReason,
 } from "@/types";
 import { CategoryChips } from "./CategoryChips";
+import { OrganizerAiTopics } from "./OrganizerAiTopics";
 import { QuestionAddForm } from "./QuestionAddForm";
 import { QuestionDrawPanel } from "./QuestionDrawPanel";
 import { QuestionRow } from "./QuestionRow";
@@ -20,6 +22,8 @@ interface Props {
   // Organizer API base, e.g. "/api/o/<key>".
   apiBase: string;
   initial: QuestionListDto;
+  // The evening's AI topic usage and the provider (S-08).
+  aiInitial: AiTopicBoardDto;
 }
 
 const SKIP_REASONS: readonly QuestionSkipReason[] = ["duplicate", "repeated", "too-short", "too-long"];
@@ -55,9 +59,9 @@ function deleteQuestionPrompt(question: QuestionDto): string {
 }
 
 // The organizer's questions page island (S-07, US-03, FR-014, FR-015), phone-first, top to bottom: the organizer's own
-// draw (S-08 puts its AI topic panel right after it), adding/pasting, the starter base, and the list with a category
-// filter, in-place edit and delete. Guests never see this list: they only get the question they draw themselves.
-export function QuestionManager({ apiBase, initial }: Props) {
+// draw, the AI topic panel (S-08, #tematy-ai), adding/pasting, the starter base, and the list with a category filter,
+// in-place edit and delete. Guests never see this list: they only get the question they draw themselves.
+export function QuestionManager({ apiBase, initial, aiInitial }: Props) {
   const { list, pending, failure, send, dismissFailure } = useQuestionList(apiBase, initial);
   const [filter, setFilter] = useState<QuestionDto["category"] | null>(null);
 
@@ -71,6 +75,17 @@ export function QuestionManager({ apiBase, initial }: Props) {
           Losuj pytanie
         </h2>
         <QuestionDrawPanel drawUrl={`${apiBase}/questions/draw`} storageKey={ORGANIZER_DRAW_STORAGE_KEY} />
+      </section>
+
+      <section
+        id="tematy-ai"
+        aria-labelledby="ai-heading"
+        className="flex scroll-mt-4 flex-col gap-3 rounded-xl border p-4"
+      >
+        <h2 id="ai-heading" className="text-lg font-semibold">
+          Temat od AI
+        </h2>
+        <OrganizerAiTopics apiBase={apiBase} initial={aiInitial} />
       </section>
 
       {failure && (

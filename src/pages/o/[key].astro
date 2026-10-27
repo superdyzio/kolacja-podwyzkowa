@@ -2,6 +2,9 @@
 import NoAccess from "@/components/NoAccess.astro";
 import Layout from "@/layouts/Layout.astro";
 import { accessFor, organizerPath, tvPath } from "@/lib/access";
+import { getAiProviderStatus } from "@/lib/ai";
+import { formatAiTopicSummary, MAX_EVENT_TOPICS, MAX_GUEST_TOPICS } from "@/lib/ai-topics/limits";
+import { getAiTopicUsage } from "@/lib/ai-topics/service";
 import { getDb } from "@/lib/db";
 import { formatGuestLinksSummary, getGuestAccessEnabled } from "@/lib/guest-links";
 import { formatGuessSummary, getGuessBoard } from "@/lib/guesses";
@@ -18,9 +21,15 @@ if (!access) {
 
 const db = access ? getDb() : null;
 // One read of the seating board carries the guest list and the venue too.
-const [board, guestAccessEnabled, guessBoard, questionList] = db
-  ? await Promise.all([getSeatingBoard(db), getGuestAccessEnabled(db), getGuessBoard(db), getQuestionList(db)])
-  : [null, false, null, null];
+const [board, guestAccessEnabled, guessBoard, questionList, aiUsage] = db
+  ? await Promise.all([
+      getSeatingBoard(db),
+      getGuestAccessEnabled(db),
+      getGuessBoard(db),
+      getQuestionList(db),
+      getAiTopicUsage(db),
+    ])
+  : [null, false, null, null, null];
 const view = access
   ? {
       name: access.event.name,
@@ -40,12 +49,10 @@ const view = access
       guessesSummary: guessBoard ? formatGuessSummary(guessBoard) : null,
       questionsPath: `${organizerPath(access.event.organizerKey)}/pytania`,
       questionsSummary: questionList ? formatQuestionSummary(questionList.questions) : null,
+      aiTopicsPath: `${organizerPath(access.event.organizerKey)}/pytania#tematy-ai`,
+      aiTopicsSummary: aiUsage ? formatAiTopicSummary(aiUsage, getAiProviderStatus()) : null,
     }
   : null;
-
-const upcomingSections = [
-  { title: "Tematy AI", description: "Temat do rozmowy od AI w wybranej kategorii, z limitem na gościa." },
-];
 ---
 
 {view ? (
@@ -181,15 +188,21 @@ const upcomingSections = [
               {view.questionsSummary && <p class="text-sm font-medium">{view.questionsSummary}</p>}
             </a>
           </li>
-          {upcomingSections.map((section) => (
-            <li class="flex flex-col gap-2 rounded-xl border p-4">
+          <li>
+            <a
+              href={view.aiTopicsPath}
+              class="flex h-full flex-col gap-2 rounded-xl border p-4 transition-colors hover:bg-accent focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
+            >
               <div class="flex items-center justify-between gap-2">
-                <h3 class="font-semibold">{section.title}</h3>
-                <span class="rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">Wkrótce</span>
+                <h3 class="font-semibold">Tematy AI</h3>
+                <span class="rounded-full bg-primary px-2 py-0.5 text-xs text-primary-foreground">Otwórz</span>
               </div>
-              <p class="text-sm text-muted-foreground">{section.description}</p>
-            </li>
-          ))}
+              <p class="text-sm text-muted-foreground">
+                {`Temat do rozmowy od AI w wybranej kategorii; gość ma ${MAX_GUEST_TOPICS} na wieczór, wszyscy razem ${MAX_EVENT_TOPICS}.`}
+              </p>
+              {view.aiTopicsSummary && <p class="text-sm font-medium">{view.aiTopicsSummary}</p>}
+            </a>
+          </li>
         </ul>
       </section>
     </main>

@@ -1230,7 +1230,7 @@ check(
   shellWithLinks.status === 200 &&
     shellWithLinks.body.includes(`/o/${organizerKey}/linki`) &&
     shellWithLinks.body.includes("Dostęp gości: włączony · 2 linki") &&
-    countOf(shellWithLinks.body, "Wkrótce") === 1,
+    countOf(shellWithLinks.body, "Wkrótce") === 0,
   String(shellWithLinks.status),
 );
 
@@ -1623,7 +1623,7 @@ check(
   shellWithGuesses.status === 200 &&
     shellWithGuesses.body.includes(`/o/${organizerKey}/strzaly`) &&
     shellWithGuesses.body.includes("Przyjmowanie otwarte · strzały: 2 z 2 · ranking gotowy") &&
-    countOf(shellWithGuesses.body, "Wkrótce") === 1,
+    countOf(shellWithGuesses.body, "Wkrótce") === 0,
   String(shellWithGuesses.status),
 );
 
@@ -1928,7 +1928,7 @@ check(
       ` · kontrowersyjne ${finalCounts.kontrowersyjne} · generyczne ${finalCounts.generyczne} · refleksyjne ${finalCounts.refleksyjne}`,
     ) &&
     shellWithQuestions.body.includes("Tematy AI") &&
-    countOf(shellWithQuestions.body, "Wkrótce") === 1,
+    countOf(shellWithQuestions.body, "Wkrótce") === 0,
   String(shellWithQuestions.status),
 );
 
@@ -2166,6 +2166,40 @@ if (aiOnMock) {
       aniaPageAfterAi.body.includes("5 z 5") &&
       topicLeaks(aniaPageAfterAi.body).length === 0,
     String(aniaPageAfterAi.status),
+  );
+
+  // The organizer's AI panel on the questions page and the shell card (no „Wkrótce” card is left).
+  const aiPage = await request(`/o/${organizerKey}/pytania`);
+  check(
+    "questions page has the organizer's AI panel with usage and provider",
+    aiPage.status === 200 &&
+      aiPage.body.includes('id="tematy-ai"') &&
+      aiPage.body.includes("Temat od AI") &&
+      aiPage.body.includes("Wygeneruj temat z AI") &&
+      aiPage.body.includes("Wykorzystano 12 z 300 · nieudane: 2") &&
+      aiPage.body.includes("atrapa AI") &&
+      topicLeaks(aiPage.body).length === 0,
+    String(aiPage.status),
+  );
+  const shellWithAi = await request(`/o/${organizerKey}`);
+  check(
+    "organizer shell links to the AI panel with its summary",
+    shellWithAi.status === 200 &&
+      shellWithAi.body.includes(`/o/${organizerKey}/pytania#tematy-ai`) &&
+      shellWithAi.body.includes("Tematy AI: 12 z 300 · atrapa AI") &&
+      countOf(shellWithAi.body, "Wkrótce") === 0,
+    String(shellWithAi.status),
+  );
+}
+for (const [label, key] of [
+  ["<tv>", tvKey],
+  ["<guest>", aniaNewKey],
+]) {
+  const res = await request(`/o/${key}/pytania`);
+  check(
+    `questions page with the AI panel and a wrong key: ${label}`,
+    res.status === 404 && res.body === deniedBody && !res.body.includes("tematy-ai"),
+    String(res.status),
   );
 }
 
