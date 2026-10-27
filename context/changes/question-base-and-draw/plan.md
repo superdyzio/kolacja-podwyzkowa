@@ -459,9 +459,9 @@ The organizer's base management and own draw on one page, the shell card, and th
 
 #### Automated
 
-- [x] 5.1 Lint, type check and tests pass: `npm run lint`, `npx astro check`, `npm test`
-- [x] 5.2 Build succeeds: `npm run build`
-- [x] 5.3 HTTP smoke passes: `npm run preview` + `npm run smoke` (then stop the server and `delete from public.event`)
+- [x] 5.1 Lint, type check and tests pass: `npm run lint`, `npx astro check`, `npm test` — 57ac04a
+- [x] 5.2 Build succeeds: `npm run build` — 57ac04a
+- [x] 5.3 HTTP smoke passes: `npm run preview` + `npm run smoke` (then stop the server and `delete from public.event`) — 57ac04a
 
 #### Manual
 
