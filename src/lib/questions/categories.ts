@@ -3,8 +3,12 @@ import type { QuestionCategory } from "@/types";
 // Conversation categories (PRD FR-014..FR-016), pure. The values are stored as is in public.question.category and
 // name the AI-topic categories of S-08 too: import the list, labels and guard from here instead of repeating them.
 
-// Display order everywhere (chips, lists, the starter base).
-export const QUESTION_CATEGORIES: readonly QuestionCategory[] = ["kontrowersyjne", "generyczne", "refleksyjne"];
+// Display order everywhere (chips, lists, the starter base). A tuple, so `z.enum(QUESTION_CATEGORIES)` works.
+export const QUESTION_CATEGORIES = [
+  "kontrowersyjne",
+  "generyczne",
+  "refleksyjne",
+] as const satisfies readonly QuestionCategory[];
 
 export const QUESTION_CATEGORY_LABELS: Readonly<Record<QuestionCategory, string>> = {
   kontrowersyjne: "Kontrowersyjne",

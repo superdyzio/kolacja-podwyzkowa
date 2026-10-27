@@ -1627,6 +1627,268 @@ check(
   String(shellWithGuesses.status),
 );
 
+// 19. Question base and draw (S-07). The event was created with the starter base. The organizer pastes, edits, deletes
+// and reloads the starter base; the organizer and guests draw ONE question each (never the list); nothing is stored,
+// so nobody else sees a draw; the TV gets nothing. Guest access is on here.
+const questionsApi = `${api}/questions`;
+const guestDrawApi = (key) => `/api/g/${key}/questions/draw`;
+const QUESTION_CATEGORIES = ["kontrowersyjne", "generyczne", "refleksyjne"];
+const isQuestion = (question) =>
+  typeof question === "object" &&
+  question !== null &&
+  Object.keys(question).sort().join(",") === "category,id,text" &&
+  Number.isInteger(question.id) &&
+  QUESTION_CATEGORIES.includes(question.category) &&
+  typeof question.text === "string" &&
+  question.text.length >= 5;
+const inCategory = (questions, category) => questions.filter((question) => question.category === category);
+// A draw answer is exactly { question } with one question (or null) — never a list.
+const isDrawAnswer = (res, category) =>
+  res.status === 200 &&
+  Object.keys(res.data ?? {}).join(",") === "question" &&
+  isQuestion(res.data.question) &&
+  (category === null || res.data.question.category === category);
+
+const questionBase = await request(questionsApi);
+const baseQuestions = questionBase.data?.questions ?? [];
+check(
+  "question base: a new event starts with the starter base (~30 per category)",
+  questionBase.status === 200 &&
+    questionBase.cacheControl.includes("no-store") &&
+    baseQuestions.length >= 80 &&
+    QUESTION_CATEGORIES.every((category) => inCategory(baseQuestions, category).length >= 25) &&
+    questionBase.data.starterMissing === 0 &&
+    baseQuestions.every(isQuestion),
+  `${questionBase.status} ${baseQuestions.length}`,
+);
+if (baseQuestions.length === 0) finish();
+const starterCount = baseQuestions.length;
+const starterReflective = inCategory(baseQuestions, "refleksyjne");
+
+const starterAgain = await request(`${questionsApi}/starter`, { method: "POST" });
+check(
+  "loading the starter base again adds nothing",
+  starterAgain.status === 200 &&
+    starterAgain.data?.added === 0 &&
+    starterAgain.data.questions.length === starterCount &&
+    starterAgain.data.starterMissing === 0,
+  `${starterAgain.status} ${starterAgain.body.slice(0, 120)}`,
+);
+
+const [firstStarter] = baseQuestions;
+const starterDeleted = await request(`${questionsApi}/${firstStarter.id}`, { method: "DELETE" });
+const starterBack = await request(`${questionsApi}/starter`, { method: "POST" });
+check(
+  "a deleted starter question is missing until the starter base is loaded again",
+  starterDeleted.status === 200 &&
+    starterDeleted.data?.starterMissing === 1 &&
+    !starterDeleted.data.questions.some((question) => question.id === firstStarter.id) &&
+    starterBack.status === 200 &&
+    starterBack.data?.added === 1 &&
+    starterBack.data.starterMissing === 0 &&
+    starterBack.data.questions.some(
+      (question) => question.text === firstStarter.text && question.category === firstStarter.category,
+    ),
+  `${starterDeleted.status} ${starterBack.status} ${starterBack.body.slice(0, 120)}`,
+);
+
+// Paste into "generyczne": a marker and extra spaces, a blank line, a case variant of a starter question, a repeat
+// of the first line, a too short and a too long line.
+const [someGeneric] = inCategory(baseQuestions, "generyczne");
+const SMOKE_Q1 = "Pytanie smoke pierwsze?";
+const SMOKE_Q2 = "Pytanie smoke drugie?";
+const questionPaste = await request(questionsApi, {
+  method: "POST",
+  json: {
+    category: "generyczne",
+    text: [
+      `1.   ${SMOKE_Q1}  `,
+      "",
+      SMOKE_Q2,
+      someGeneric.text.toUpperCase(),
+      SMOKE_Q1.toLowerCase(),
+      "Abc?",
+      "x".repeat(301),
+      "",
+    ].join("\n"),
+  },
+});
+const skippedSummary = (questionPaste.data?.skipped ?? []).map((skip) => `${skip.line}:${skip.reason}`).join(",");
+const smokeQ1 = questionPaste.data?.questions?.find((question) => question.text === SMOKE_Q1);
+const smokeQ2 = questionPaste.data?.questions?.find((question) => question.text === SMOKE_Q2);
+check(
+  "paste adds the new questions to the chosen category and lists every skipped line",
+  questionPaste.status === 201 &&
+    questionPaste.data?.added === 2 &&
+    skippedSummary === "4:duplicate,5:repeated,6:too-short,7:too-long" &&
+    smokeQ1?.category === "generyczne" &&
+    smokeQ2?.category === "generyczne" &&
+    questionPaste.data.questions.length === starterCount + 2,
+  `${questionPaste.status} ${skippedSummary} ${questionPaste.body.slice(0, 160)}`,
+);
+if (!smokeQ1 || !smokeQ2) finish();
+
+for (const [name, json, message] of [
+  ["only blank lines", { category: "generyczne", text: " \n\n " }, "Wpisz co najmniej jedno pytanie."],
+  ["an unknown category", { category: "polityczne", text: "Pytanie smoke trzecie?" }, "Nieprawidłowe dane."],
+  ["an extra key", { category: "generyczne", text: "Pytanie smoke trzecie?", guestId: ola.id }, "Nieprawidłowe dane."],
+]) {
+  const res = await request(questionsApi, { method: "POST", json });
+  check(`paste with ${name}: 400`, res.status === 400 && res.data?.error === message, `${res.status} ${res.body}`);
+}
+
+const edited = await request(`${questionsApi}/${smokeQ1.id}`, {
+  method: "PATCH",
+  json: { text: "  Pytanie smoke   zmienione? ", category: "refleksyjne" },
+});
+check(
+  "editing a question changes its text (normalized) and category",
+  edited.status === 200 &&
+    edited.data?.questions?.some(
+      (question) =>
+        question.id === smokeQ1.id &&
+        question.text === "Pytanie smoke zmienione?" &&
+        question.category === "refleksyjne",
+    ),
+  `${edited.status} ${edited.body.slice(0, 160)}`,
+);
+for (const [name, path, json, status, message] of [
+  [
+    "to a text already in the base",
+    `${questionsApi}/${smokeQ1.id}`,
+    { text: someGeneric.text.toLowerCase() },
+    409,
+    "To pytanie już jest w bazie.",
+  ],
+  [
+    "to a too short text",
+    `${questionsApi}/${smokeQ1.id}`,
+    { text: "abc" },
+    400,
+    "Pytanie musi mieć co najmniej 5 znaków.",
+  ],
+  ["with nothing to change", `${questionsApi}/${smokeQ1.id}`, {}, 400, "Nieprawidłowe dane."],
+  ["of an unknown question", `${questionsApi}/999999999`, { category: "generyczne" }, 404, "Nie znaleziono pytania."],
+  ["of a malformed id", `${questionsApi}/abc`, { category: "generyczne" }, 404, "Nie znaleziono pytania."],
+]) {
+  const res = await request(path, { method: "PATCH", json });
+  check(`edit ${name}: ${status}`, res.status === status && res.data?.error === message, `${res.status} ${res.body}`);
+}
+const deleted = await request(`${questionsApi}/${smokeQ2.id}`, { method: "DELETE" });
+const deletedAgain = await request(`${questionsApi}/${smokeQ2.id}`, { method: "DELETE" });
+check(
+  "deleting a question removes it once",
+  deleted.status === 200 &&
+    !deleted.data?.questions?.some((question) => question.id === smokeQ2.id) &&
+    deletedAgain.status === 404 &&
+    deletedAgain.data?.error === "Nie znaleziono pytania.",
+  `${deleted.status} ${deletedAgain.status}`,
+);
+
+// The organizer draws for themself.
+const organizerDraw = await request(`${questionsApi}/draw`, { method: "POST", json: { category: "generyczne" } });
+check(
+  "organizer draw from a category: one question of it",
+  isDrawAnswer(organizerDraw, "generyczne"),
+  organizerDraw.body,
+);
+const organizerDrawAll = await request(`${questionsApi}/draw`, {
+  method: "POST",
+  json: { category: null, recent: [firstStarter.id] },
+});
+check("organizer draw from all categories: one question", isDrawAnswer(organizerDrawAll, null), organizerDrawAll.body);
+for (const [name, json] of [
+  ["an unknown category", { category: "polityczne" }],
+  ["no category key", { recent: [] }],
+  ["101 recent ids", { category: null, recent: Array.from({ length: 101 }, (_, index) => index + 1) }],
+  ["a non-positive recent id", { category: null, recent: [0] }],
+]) {
+  const res = await request(`${questionsApi}/draw`, { method: "POST", json });
+  check(`organizer draw with ${name}: 400`, res.status === 400, `${res.status} ${res.body}`);
+}
+
+// Guests draw one question per request, per category or from all; never the list.
+for (const category of [...QUESTION_CATEGORIES, null]) {
+  const res = await request(guestDrawApi(aniaNewKey), { method: "POST", json: { category } });
+  check(`guest draw (${category ?? "wszystkie"}): exactly one question`, isDrawAnswer(res, category), res.body);
+}
+const olaDraw = await request(guestDrawApi(olaKey), {
+  method: "POST",
+  json: { category: "kontrowersyjne", recent: [] },
+});
+check("another guest draws on her own phone", isDrawAnswer(olaDraw, "kontrowersyjne"), olaDraw.body);
+const guestDrawExtra = await request(guestDrawApi(aniaNewKey), {
+  method: "POST",
+  json: { category: "kontrowersyjne", guestId: ola.id },
+});
+check("guest draw naming another guest: 400", guestDrawExtra.status === 400, `${guestDrawExtra.status}`);
+const guestList = await request(`/api/g/${aniaNewKey}/questions`);
+check(
+  "a guest has no question list route",
+  guestList.status === 404 && !baseQuestions.some((question) => guestList.body.includes(question.text)),
+  String(guestList.status),
+);
+
+// Empty category: delete every "refleksyjne" question, draw → null, the starter base restores them.
+for (const question of inCategory(edited.data?.questions ?? [], "refleksyjne")) {
+  await request(`${questionsApi}/${question.id}`, { method: "DELETE" });
+}
+const emptyBase = await request(questionsApi);
+const emptyOrganizerDraw = await request(`${questionsApi}/draw`, { method: "POST", json: { category: "refleksyjne" } });
+const emptyGuestDraw = await request(guestDrawApi(aniaNewKey), { method: "POST", json: { category: "refleksyjne" } });
+check(
+  "an empty category draws no question",
+  inCategory(emptyBase.data?.questions ?? [], "refleksyjne").length === 0 &&
+    emptyOrganizerDraw.status === 200 &&
+    emptyOrganizerDraw.body === JSON.stringify({ question: null }) &&
+    emptyGuestDraw.status === 200 &&
+    emptyGuestDraw.body === JSON.stringify({ question: null }),
+  `${emptyOrganizerDraw.body} ${emptyGuestDraw.body}`,
+);
+const reflectiveBack = await request(`${questionsApi}/starter`, { method: "POST" });
+check(
+  "the starter base restores the deleted starter questions of the category",
+  reflectiveBack.status === 200 &&
+    reflectiveBack.data?.added === starterReflective.length &&
+    reflectiveBack.data.starterMissing === 0,
+  `${reflectiveBack.status} ${reflectiveBack.data?.added}`,
+);
+
+// Wrong roles: guests and the TV never reach the organizer question API; organizer and TV keys are not guest keys.
+for (const [label, key] of [
+  ["<tv>", tvKey],
+  ["<guest>", aniaNewKey],
+]) {
+  for (const [method, path, json] of [
+    ["GET", `/api/o/${key}/questions`],
+    ["POST", `/api/o/${key}/questions`, { category: "generyczne", text: "Pytanie od intruza?" }],
+    ["PATCH", `/api/o/${key}/questions/${smokeQ1.id}`, { text: "Pytanie od intruza?" }],
+    ["DELETE", `/api/o/${key}/questions/${firstStarter.id}`],
+    ["POST", `/api/o/${key}/questions/starter`],
+    ["POST", `/api/o/${key}/questions/draw`, { category: null }],
+  ]) {
+    const res = await request(path, { method, json });
+    check(
+      `question API with a wrong key: ${method} ${path.replace(key, label)}`,
+      noAccessJson(res),
+      `${res.status} ${res.body.slice(0, 120)}`,
+    );
+  }
+}
+for (const [label, key] of [
+  ["<organizer>", organizerKey],
+  ["<tv>", tvKey],
+]) {
+  const res = await request(guestDrawApi(key), { method: "POST", json: { category: null } });
+  check(`guest draw with a wrong key: ${label}`, noAccessJson(res), `${res.status} ${res.body}`);
+}
+const tvDraw = await request(`/api/tv/${tvKey}/questions/draw`, { method: "POST", json: { category: null } });
+check(
+  "the TV has no question route",
+  tvDraw.status === 404 && !baseQuestions.some((question) => tvDraw.body.includes(question.text)),
+  String(tvDraw.status),
+);
+
 const accessOff = await request(linksApi, { method: "PATCH", json: { enabled: false } });
 const offAgainPage = await request(`/g/${aniaNewKey}`);
 const offAgainState = await request(guestStateApi(aniaNewKey));
@@ -1641,5 +1903,7 @@ check(
 );
 const guessWithAccessOff = await request(guessApi(aniaNewKey), { method: "PUT", json: { amount: "1" } });
 check("guest guess with access off: JSON 404", noAccessJson(guessWithAccessOff), guessWithAccessOff.body);
+const drawWithAccessOff = await request(guestDrawApi(aniaNewKey), { method: "POST", json: { category: null } });
+check("guest question draw with access off: JSON 404", noAccessJson(drawWithAccessOff), drawWithAccessOff.body);
 
 finish();
