@@ -416,18 +416,18 @@ The guest's phone page with the polling seat card and the on-demand plan highlig
 
 #### Automated
 
-- [x] 3.1 Lint and type check pass: `npm run lint`, `npx astro check`
-- [x] 3.2 Tests pass: `npm test`
-- [x] 3.3 Production build succeeds: `npm run build`
-- [x] 3.4 HTTP smoke passes on a DB without an event: `npm run preview` + `npm run smoke` (then stop the server and `delete from public.event`)
+- [x] 3.1 Lint and type check pass: `npm run lint`, `npx astro check` — 52207a4
+- [x] 3.2 Tests pass: `npm test` — 52207a4
+- [x] 3.3 Production build succeeds: `npm run build` — 52207a4
+- [x] 3.4 HTTP smoke passes on a DB without an event: `npm run preview` + `npm run smoke` (then stop the server and `delete from public.event`) — 52207a4
 
 ### Phase 4: Organizer links page, card sheet and shell card
 
 #### Automated
 
-- [ ] 4.1 Lint, type check and tests pass: `npm run lint`, `npx astro check`, `npm test`
-- [ ] 4.2 Build succeeds and `qrcode` is not in the server bundle: `npm run build` then `grep -rl "qrcode" dist/server` finds nothing
-- [ ] 4.3 HTTP smoke passes: `npm run preview` + `npm run smoke` (then stop the server and `delete from public.event`)
+- [x] 4.1 Lint, type check and tests pass: `npm run lint`, `npx astro check`, `npm test`
+- [x] 4.2 Build succeeds and `qrcode` is not in the server bundle: `npm run build` then `grep -rl "qrcode" dist/server` finds nothing
+- [x] 4.3 HTTP smoke passes: `npm run preview` + `npm run smoke` (then stop the server and `delete from public.event`)
 
 #### Manual
 

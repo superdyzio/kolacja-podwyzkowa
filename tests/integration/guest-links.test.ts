@@ -1,7 +1,14 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { isWellFormedAccessKey } from "@/lib/access/keys";
 import { resolveAccess } from "@/lib/access/resolve";
-import { getGuestLinks, getGuestState, getGuestStateVersion, revokeGuestKey, setGuestAccess } from "@/lib/guest-links";
+import {
+  getGuestAccessEnabled,
+  getGuestLinks,
+  getGuestState,
+  getGuestStateVersion,
+  revokeGuestKey,
+  setGuestAccess,
+} from "@/lib/guest-links";
 import { updateGuest } from "@/lib/guests";
 import { publishSeating, seatGuest } from "@/lib/seating";
 import type { DbClient } from "@/lib/supabase-client";
@@ -86,8 +93,10 @@ describe.skipIf(!hasLocalDb)("guest link services", () => {
   it("turns guest access on and off", async () => {
     expect((await setGuestAccess(db, true)).enabled).toBe(true);
     expect(await readGuestAccessEnabled(db)).toBe(true);
+    expect(await getGuestAccessEnabled(db)).toBe(true);
     expect((await setGuestAccess(db, false)).enabled).toBe(false);
     expect(await readGuestAccessEnabled(db)).toBe(false);
+    expect(await getGuestAccessEnabled(db)).toBe(false);
   });
 
   it("revokes a link by issuing a new key; the old one stops working at once", async () => {

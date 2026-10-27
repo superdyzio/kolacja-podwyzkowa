@@ -11,6 +11,7 @@ export {
 } from "./state";
 export { formatGuestAccess, formatGuestLinksSummary, type GuestLinksSummary } from "./summary";
 export {
+  getGuestAccessEnabled,
   getGuestLinks,
   getGuestState,
   getGuestStateVersion,

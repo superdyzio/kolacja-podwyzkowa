@@ -4,6 +4,7 @@
 
 import { Buffer } from "node:buffer";
 import { randomBytes } from "node:crypto";
+import { URL } from "node:url";
 import { TextDecoder, TextEncoder } from "node:util";
 
 const BASE_URL = process.env.BASE_URL ?? "http://localhost:4321";
@@ -1157,6 +1158,81 @@ check(
 );
 
 // S-05 page checks (links page, card sheet, guest page) go here, while guest access is on.
+// Links page and card sheet (S-05): organizer only; links and QR placeholders carry the CURRENT keys, built from the
+// request origin; the server never draws the QR codes itself.
+const localBase = ["localhost", "127.0.0.1"].includes(new URL(BASE_URL).hostname);
+const aniaUrl = `${BASE_URL}/g/${aniaNewKey}`;
+const olaUrl = `${BASE_URL}/g/${olaKey}`;
+const countOf = (body, needle) => body.split(needle).length - 1;
+
+const linksPage = await request(`/o/${organizerKey}/linki`);
+check(
+  "links page lists every guest with the current personal link",
+  linksPage.status === 200 &&
+    linksPage.body.includes("Linki gości i karteczki") &&
+    linksPage.body.includes(GUEST_NAMES[0]) &&
+    linksPage.body.includes(GUEST_NAMES[2]) &&
+    linksPage.body.includes(aniaUrl) &&
+    linksPage.body.includes(olaUrl) &&
+    !linksPage.body.includes(aniaKey) &&
+    linksPage.body.includes("Wyłącz dostęp gości") &&
+    linksPage.cacheControl.includes("no-store"),
+  String(linksPage.status),
+);
+check(
+  "links page warns when its address only works on this computer",
+  linksPage.body.includes("Ten adres działa tylko na tym komputerze") === localBase,
+  `local ${localBase}`,
+);
+const cardsPage = await request(`/o/${organizerKey}/karteczki`);
+check(
+  "card sheet has a card per guest with the QR placeholder of the current link",
+  cardsPage.status === 200 &&
+    countOf(cardsPage.body, "data-guest-card") === 2 &&
+    cardsPage.body.includes(`data-qr="${aniaUrl}"`) &&
+    cardsPage.body.includes(`data-qr="${olaUrl}"`) &&
+    cardsPage.body.includes(GUEST_NAMES[0]) &&
+    cardsPage.body.includes(GUEST_NAMES[2]) &&
+    cardsPage.body.includes("Zeskanuj kod aparatem telefonu") &&
+    !cardsPage.body.includes(aniaKey) &&
+    !cardsPage.body.includes("data-qr-ready") &&
+    cardsPage.cacheControl.includes("no-store"),
+  String(cardsPage.status),
+);
+const oneCard = await request(`/o/${organizerKey}/karteczki?guest=${ola.id}`);
+check(
+  "card sheet prints one guest's card on request",
+  oneCard.status === 200 &&
+    countOf(oneCard.body, "data-guest-card") === 1 &&
+    oneCard.body.includes(`data-qr="${olaUrl}"`) &&
+    !oneCard.body.includes(GUEST_NAMES[0]),
+  String(oneCard.status),
+);
+const noCard = await request(`/o/${organizerKey}/karteczki?guest=999999999`);
+check(
+  "card sheet for an unknown guest shows no card",
+  noCard.status === 200 &&
+    countOf(noCard.body, "data-guest-card") === 0 &&
+    noCard.body.includes("Nie znaleziono tego gościa."),
+  String(noCard.status),
+);
+for (const path of [`/o/${tvKey}/linki`, `/o/${tvKey}/karteczki`, `/o/${aniaNewKey}/karteczki`]) {
+  const res = await request(path);
+  check(
+    `organizer link pages with a wrong key: ${path.replace(tvKey, "<tv>").replace(aniaNewKey, "<guest>")}`,
+    res.status === 404 && res.body === deniedBody && GUEST_NAMES.every((name) => !res.body.includes(name)),
+    String(res.status),
+  );
+}
+const shellWithLinks = await request(`/o/${organizerKey}`);
+check(
+  "organizer shell links to the links page with the access summary",
+  shellWithLinks.status === 200 &&
+    shellWithLinks.body.includes(`/o/${organizerKey}/linki`) &&
+    shellWithLinks.body.includes("Dostęp gości: włączony · 2 linki") &&
+    countOf(shellWithLinks.body, "Wkrótce") === 2,
+  String(shellWithLinks.status),
+);
 
 const accessOff = await request(linksApi, { method: "PATCH", json: { enabled: false } });
 const offAgainPage = await request(`/g/${aniaNewKey}`);

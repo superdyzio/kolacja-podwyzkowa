@@ -43,6 +43,15 @@ export async function getGuestLinks(db: DbClient): Promise<GuestLinksDto> {
   };
 }
 
+// Just the switch (the organizer shell card).
+export async function getGuestAccessEnabled(db: DbClient): Promise<boolean> {
+  const { data, error } = await db.from("event").select("guest_access_enabled").eq("id", EVENT_ID).maybeSingle();
+  if (error) {
+    fail("odczytać dostępu gości", error.message);
+  }
+  return data?.guest_access_enabled ?? false;
+}
+
 // Turns guest access on or off (FR-012); answers with the whole links list.
 export async function setGuestAccess(db: DbClient, enabled: boolean): Promise<GuestLinksDto> {
   const { error } = await db.from("event").update({ guest_access_enabled: enabled }).eq("id", EVENT_ID);
