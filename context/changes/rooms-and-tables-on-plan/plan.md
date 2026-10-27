@@ -388,18 +388,18 @@ Third migration. Locally `npx supabase migration up`; CI's `supabase start` appl
 
 #### Automated
 
-- [x] 1.1 Migration applies cleanly: `npx supabase migration up`
-- [x] 1.2 Unit + integration tests pass (integration not skipped): `npm test`
-- [x] 1.3 Lint passes: `npm run lint`
-- [x] 1.4 Type check passes: `npx astro check`
+- [x] 1.1 Migration applies cleanly: `npx supabase migration up` — 1771e73
+- [x] 1.2 Unit + integration tests pass (integration not skipped): `npm test` — 1771e73
+- [x] 1.3 Lint passes: `npm run lint` — 1771e73
+- [x] 1.4 Type check passes: `npx astro check` — 1771e73
 
 ### Phase 2: Venue services
 
 #### Automated
 
-- [ ] 2.1 Unit + integration tests pass (integration not skipped): `npm test`
-- [ ] 2.2 Lint passes: `npm run lint`
-- [ ] 2.3 Type check passes: `npx astro check`
+- [x] 2.1 Unit + integration tests pass (integration not skipped): `npm test`
+- [x] 2.2 Lint passes: `npm run lint`
+- [x] 2.3 Type check passes: `npx astro check`
 
 ### Phase 3: Organizer API, image routes and HTTP smoke
 

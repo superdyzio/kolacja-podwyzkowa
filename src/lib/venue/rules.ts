@@ -81,6 +81,58 @@ export function isValidFraction(value: number): boolean {
   return Number.isFinite(value) && value >= 0 && value <= 1;
 }
 
+// Everything that describes a table. x, y: the pin as fractions of the plan image (see pin.ts).
+export interface TableFields {
+  roomId: number;
+  name: string;
+  seatCount: number;
+  shape: TableShape;
+  x: number;
+  y: number;
+}
+
+export type TableFieldProblem =
+  { field: "name"; reason: VenueNameProblem } | { field: "seatCount" } | { field: "shape" } | { field: "position" };
+
+// Checks the fields that are present (a full set for a new table, a patch for an edit). Expects a normalized name.
+// The pin is all or nothing: x without y (or the other way round) is a position problem.
+export function validateTableFields(fields: Partial<TableFields>): TableFieldProblem | null {
+  if (fields.name !== undefined) {
+    const reason = validateTableName(fields.name);
+    if (reason) {
+      return { field: "name", reason };
+    }
+  }
+  if (fields.seatCount !== undefined && !isValidSeatCount(fields.seatCount)) {
+    return { field: "seatCount" };
+  }
+  if (fields.shape !== undefined && !isTableShape(fields.shape)) {
+    return { field: "shape" };
+  }
+  const hasX = fields.x !== undefined;
+  const hasY = fields.y !== undefined;
+  if (hasX !== hasY) {
+    return { field: "position" };
+  }
+  if (hasX && hasY && !(isValidFraction(fields.x ?? Number.NaN) && isValidFraction(fields.y ?? Number.NaN))) {
+    return { field: "position" };
+  }
+  return null;
+}
+
+export function describeTableFieldProblem(problem: TableFieldProblem): string {
+  switch (problem.field) {
+    case "name":
+      return describeTableNameProblem(problem.reason);
+    case "seatCount":
+      return SEAT_COUNT_MESSAGE;
+    case "shape":
+      return "Wybierz typ stolika: okrągły albo prostokątny.";
+    case "position":
+      return POSITION_MESSAGE;
+  }
+}
+
 // Clamps to [0, 1] and keeps 4 decimals (0.01% of the image is far below a click's precision).
 export function roundFraction(value: number): number {
   if (!Number.isFinite(value)) {

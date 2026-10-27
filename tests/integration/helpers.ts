@@ -78,6 +78,42 @@ export function testTag(): string {
   return Math.random().toString(36).slice(2, 8);
 }
 
+// Deletes only the given rooms (rows a test created itself); their tables go with them (ON DELETE CASCADE).
+export async function deleteTestRooms(db: DbClient, ids: readonly number[]): Promise<void> {
+  if (ids.length === 0) {
+    return;
+  }
+  const { error } = await db
+    .from("venue_room")
+    .delete()
+    .in("id", [...ids]);
+  if (error) {
+    throw new Error(`Nie udało się usunąć testowych sal: ${error.message}`);
+  }
+}
+
+// The venue plan is a singleton: a test may upload one only when none exists (it would overwrite real data).
+export async function planExists(db: DbClient): Promise<boolean> {
+  const { data, error } = await db.from("venue_plan").select("event_id").eq("event_id", EVENT_ID).maybeSingle();
+  if (error) {
+    throw new Error(`Nie udało się odczytać planu: ${error.message}`);
+  }
+  return data !== null;
+}
+
+export async function deleteTestPlan(db: DbClient): Promise<void> {
+  const { error } = await db.from("venue_plan").delete().eq("event_id", EVENT_ID);
+  if (error) {
+    throw new Error(`Nie udało się usunąć testowego planu: ${error.message}`);
+  }
+}
+
+// A valid 1×1 PNG (68 bytes).
+export const TINY_PNG = Uint8Array.from(
+  atob("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII="),
+  (char) => char.charCodeAt(0),
+);
+
 // Deletes only the given guests (rows a test created itself). Groups that drop below 2 members dissolve on their own.
 export async function deleteTestGuests(db: DbClient, ids: readonly number[]): Promise<void> {
   if (ids.length === 0) {

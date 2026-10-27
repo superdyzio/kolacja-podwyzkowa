@@ -5,6 +5,7 @@ import {
   TABLE_SHAPE_LABELS,
   compareTableNames,
   describeRoomNameProblem,
+  describeTableFieldProblem,
   describeTableNameProblem,
   isTableShape,
   isValidFraction,
@@ -13,6 +14,7 @@ import {
   normalizeVenueName,
   roundFraction,
   validateRoomName,
+  validateTableFields,
   validateTableName,
   venueNameKey,
 } from "./rules";
@@ -86,6 +88,38 @@ describe("pin fractions", () => {
     expect(roundFraction(-0.2)).toBe(0);
     expect(roundFraction(1.7)).toBe(1);
     expect(roundFraction(Number.NaN)).toBe(0.5);
+  });
+});
+
+describe("validateTableFields", () => {
+  const table = { roomId: 1, name: "Stolik 1", seatCount: 8, shape: "round" as const, x: 0.2, y: 0.7 };
+
+  it("accepts a complete table and partial edits", () => {
+    expect(validateTableFields(table)).toBeNull();
+    expect(validateTableFields({ seatCount: 2 })).toBeNull();
+    expect(validateTableFields({ x: 0, y: 1 })).toBeNull();
+    expect(validateTableFields({})).toBeNull();
+  });
+
+  it("reports the first problem with its field", () => {
+    expect(validateTableFields({ ...table, name: "" })).toEqual({ field: "name", reason: "empty" });
+    expect(validateTableFields({ ...table, seatCount: 21 })).toEqual({ field: "seatCount" });
+    expect(validateTableFields({ shape: "oval" as never })).toEqual({ field: "shape" });
+    expect(validateTableFields({ ...table, x: 1.1 })).toEqual({ field: "position" });
+    expect(validateTableFields({ ...table, y: Number.NaN })).toEqual({ field: "position" });
+  });
+
+  it("needs both pin coordinates together", () => {
+    expect(validateTableFields({ x: 0.5 })).toEqual({ field: "position" });
+    expect(validateTableFields({ y: 0.5 })).toEqual({ field: "position" });
+  });
+
+  it("describes problems in Polish", () => {
+    expect(describeTableFieldProblem({ field: "seatCount" })).toBe("Stolik ma od 2 do 20 miejsc.");
+    expect(describeTableFieldProblem({ field: "position" })).toBe("Kliknij na planie, gdzie stoi stolik.");
+    expect(describeTableFieldProblem({ field: "name", reason: "too-long" })).toBe(
+      "Nazwa stolika może mieć najwyżej 24 znaków.",
+    );
   });
 });
 
