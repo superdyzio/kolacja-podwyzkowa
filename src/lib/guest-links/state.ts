@@ -1,4 +1,4 @@
-import type { GuestSeatDto, GuestStateDto } from "@/types";
+import type { GuestGuessDto, GuestSeatDto, GuestStateDto } from "@/types";
 
 // What a guest's phone shows (S-05), pure: the polling token and the mapping of "latest snapshot + the guest's own
 // seat row in it" to the three states. The seat comes from the PUBLISHED snapshot (same truth as the TV); the name is
@@ -18,11 +18,12 @@ function nameHash(name: string): string {
   return hash.toString(36);
 }
 
-// The guest's polling token: the seating token ("<snapshot id>.<plan version>") plus the name hash. Opaque to
-// clients, compared for equality; at most ~35 characters. A later slice that adds live guest state (S-06) appends
-// its own part here.
-export function guestStateVersion(seatingVersion: string, name: string): string {
-  return `${seatingVersion}.${nameHash(name)}`;
+// The guest's polling token: the seating token ("<snapshot id>.<plan version>"), the name hash, then (S-06) the
+// guess intake flag (1 open / 0 closed) and the guest's own guess in grosze ("n" = none), so a close, a reopen or an
+// organizer's proxy entry reaches the phone through the same single poll. Opaque to clients, compared for equality;
+// at most ~50 characters (route limit 64). A later slice with more live guest state appends its own part here.
+export function guestStateVersion(seatingVersion: string, name: string, guess: GuestGuessDto): string {
+  return `${seatingVersion}.${nameHash(name)}.${guess.intakeOpen ? "1" : "0"}.${guess.amountGrosze ?? "n"}`;
 }
 
 export interface GuestStateInput {
@@ -34,17 +35,27 @@ export interface GuestStateInput {
   name: string;
   // The guest's seat in the latest snapshot, or null when they are not in it.
   seat: GuestSeatDto | null;
+  // The intake flag and the guest's own guess (S-06).
+  guess: GuestGuessDto;
 }
 
-export function toGuestState({ seatingVersion, snapshotId, planVersion, name, seat }: GuestStateInput): GuestStateDto {
-  const version = guestStateVersion(seatingVersion, name);
+export function toGuestState({
+  seatingVersion,
+  snapshotId,
+  planVersion,
+  name,
+  seat,
+  guess,
+}: GuestStateInput): GuestStateDto {
+  const version = guestStateVersion(seatingVersion, name, guess);
+  const own = { intakeOpen: guess.intakeOpen, amountGrosze: guess.amountGrosze };
   if (snapshotId === null) {
-    return { version, name, status: "unpublished", seat: null, planVersion };
+    return { version, name, status: "unpublished", seat: null, planVersion, guess: own };
   }
   if (!seat) {
-    return { version, name, status: "unseated", seat: null, planVersion };
+    return { version, name, status: "unseated", seat: null, planVersion, guess: own };
   }
-  return { version, name, status: "seated", seat, planVersion };
+  return { version, name, status: "seated", seat, planVersion, guess: own };
 }
 
 // One sentence for screen readers (announced when the seat changes).

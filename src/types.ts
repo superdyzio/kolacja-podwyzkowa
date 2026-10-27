@@ -205,13 +205,15 @@ export interface GuestSeatDto {
 export type GuestSeatStatus = "unpublished" | "unseated" | "seated";
 
 // What a guest's phone shows (S-05) and polls for. version is the opaque polling token; name is the guest's current
-// display name; planVersion is the plan image version (null before an upload). Nothing about other guests.
+// display name; planVersion is the plan image version (null before an upload); guess (S-06) is the intake flag and
+// the guest's OWN guess. Nothing about other guests, the correct amount or the ranking.
 export interface GuestStateDto {
   version: string;
   name: string;
   status: GuestSeatStatus;
   seat: GuestSeatDto | null;
   planVersion: number | null;
+  guess: GuestGuessDto;
 }
 
 // Guesses of the final raise amount (S-06). Every amount is an integer number of grosze (1 zł = 100), never a float.

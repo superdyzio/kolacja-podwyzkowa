@@ -415,18 +415,18 @@ The organizer's page for the evening's last act: proxy entries, who is missing, 
 
 #### Automated
 
-- [x] 1.1 Migration applies on the local DB: `npx supabase migration up`
-- [x] 1.2 Unit and integration tests pass: `npm test`
-- [x] 1.3 Lint passes: `npm run lint`
-- [x] 1.4 Type check passes: `npx astro check`
+- [x] 1.1 Migration applies on the local DB: `npx supabase migration up` — 56384d8
+- [x] 1.2 Unit and integration tests pass: `npm test` — 56384d8
+- [x] 1.3 Lint passes: `npm run lint` — 56384d8
+- [x] 1.4 Type check passes: `npx astro check` — 56384d8
 
 ### Phase 2: Guess services and the guest state extension
 
 #### Automated
 
-- [ ] 2.1 Unit and integration tests pass: `npm test`
-- [ ] 2.2 Lint passes: `npm run lint`
-- [ ] 2.3 Type check passes: `npx astro check`
+- [x] 2.1 Unit and integration tests pass: `npm test`
+- [x] 2.2 Lint passes: `npm run lint`
+- [x] 2.3 Type check passes: `npx astro check`
 
 ### Phase 3: Guess API routes and the HTTP guardrail smoke
 

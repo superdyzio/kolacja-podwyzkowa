@@ -14,3 +14,17 @@ export {
 } from "./amount";
 export { formatGuessSummary, toGuessBoard, type GuessBoardInput } from "./board";
 export { placesFromLast, rankGuesses, type RankableGuess, type ReadoutStep } from "./ranking";
+export {
+  GUESS_GUEST_NOT_FOUND_MESSAGE,
+  GUESS_INTAKE_CLOSED_MESSAGE,
+  deleteGuess,
+  getGuessBoard,
+  getGuestGuess,
+  saveGuessByOrganizer,
+  setCorrectAmount,
+  setGuessIntakeOpen,
+  submitGuestGuess,
+  type DeleteGuessResult,
+  type SaveGuessResult,
+  type SubmitGuestGuessResult,
+} from "./service";

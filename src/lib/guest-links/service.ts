@@ -1,5 +1,6 @@
 import { generateAccessKey } from "@/lib/access/keys";
 import { EVENT_ID } from "@/lib/event";
+import { getGuestGuess } from "@/lib/guesses/service";
 import { getPublishedVersion } from "@/lib/seating/service";
 import type { DbClient } from "@/lib/supabase-client";
 import { isTableShape } from "@/lib/venue/rules";
@@ -107,9 +108,10 @@ async function guestSeat(db: DbClient, snapshotId: number, guestId: number): Pro
   };
 }
 
-// What the guest's phone shows: their current name and their seat in the latest PUBLISHED arrangement.
+// What the guest's phone shows: their current name, their seat in the latest PUBLISHED arrangement, and (S-06) the
+// guess intake flag with their own guess.
 export async function getGuestState(db: DbClient, guest: { id: number; displayName: string }): Promise<GuestStateDto> {
-  const published = await getPublishedVersion(db);
+  const [published, guess] = await Promise.all([getPublishedVersion(db), getGuestGuess(db, guest.id)]);
   const seat = published.snapshotId === null ? null : await guestSeat(db, published.snapshotId, guest.id);
   return toGuestState({
     seatingVersion: published.version,
@@ -117,10 +119,13 @@ export async function getGuestState(db: DbClient, guest: { id: number; displayNa
     planVersion: published.planVersion,
     name: guest.displayName,
     seat,
+    guess,
   });
 }
 
-// The guest's polling token without reading any seat (the 204 path).
-export async function getGuestStateVersion(db: DbClient, name: string): Promise<string> {
-  return guestStateVersion((await getPublishedVersion(db)).version, name);
+// The guest's polling token without reading any seat (the 204 path): the published version and the own guess in
+// parallel, one round trip.
+export async function getGuestStateVersion(db: DbClient, guest: { id: number; displayName: string }): Promise<string> {
+  const [published, guess] = await Promise.all([getPublishedVersion(db), getGuestGuess(db, guest.id)]);
+  return guestStateVersion(published.version, guest.displayName, guess);
 }

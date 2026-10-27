@@ -164,15 +164,16 @@ describe.skipIf(!hasLocalDb)("guest link services", () => {
     const { t1, g1, n1 } = await setup();
     await seatGuest(db, g1, t1, 3);
     await publish();
-    const state = await getGuestState(db, { id: g1, displayName: n1 });
-    expect(await getGuestStateVersion(db, n1)).toBe(state.version);
+    const guest = { id: g1, displayName: n1 };
+    const state = await getGuestState(db, guest);
+    expect(await getGuestStateVersion(db, guest)).toBe(state.version);
 
     await seatGuest(db, g1, t1, 4);
-    expect(await getGuestStateVersion(db, n1)).toBe(state.version);
-    expect(await getGuestStateVersion(db, `${n1} K.`)).not.toBe(state.version);
+    expect(await getGuestStateVersion(db, guest)).toBe(state.version);
+    expect(await getGuestStateVersion(db, { ...guest, displayName: `${n1} K.` })).not.toBe(state.version);
 
     await publish();
-    expect(await getGuestStateVersion(db, n1)).not.toBe(state.version);
-    expect((await getGuestState(db, { id: g1, displayName: n1 })).version).toBe(await getGuestStateVersion(db, n1));
+    expect(await getGuestStateVersion(db, guest)).not.toBe(state.version);
+    expect((await getGuestState(db, guest)).version).toBe(await getGuestStateVersion(db, guest));
   });
 });
