@@ -1,10 +1,10 @@
 ---
 change_id: guest-links-and-seat-view
 title: Personal guest links with QR cards, guest access switch and the live seat view on the phone
-status: implemented
+status: archived
 created: 2026-10-27
 updated: 2026-10-27
-archived_at: null
+archived_at: 2026-10-27T02:32:39Z
 ---
 
 ## Notes
