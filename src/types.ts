@@ -154,6 +154,28 @@ export interface TvSeatingDto {
   tables: TvTableDto[];
 }
 
+// The organizer's view of the latest published arrangement (S-09 offline readout): names on seats with the room, no
+// ids. seats: seated guests only, in seat order.
+export interface PublishedTableDto {
+  name: string;
+  room: string;
+  shape: TableShape;
+  seatCount: number;
+  seats: TvSeatDto[];
+}
+
+// tables: by room name, then by table name (numeric-aware, Polish).
+export interface PublishedSeatingDto {
+  snapshotId: number;
+  publishedAt: string;
+  tables: PublishedTableDto[];
+}
+
+// GET /api/o/<key>/seating/published — null before the first publish.
+export interface PublishedSeatingResponseDto {
+  published: PublishedSeatingDto | null;
+}
+
 // One row of a drawn draft (or a restored snapshot) for the working arrangement: a non-pinned present guest on a seat.
 export interface DraftSeatDto {
   guestId: number;

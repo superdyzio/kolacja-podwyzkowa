@@ -29,6 +29,7 @@ export {
   seatingVersion,
   snapshotFingerprint,
   tableCardColumns,
+  toPublishedSeating,
   toTvSeating,
   type VenueSeatChange,
 } from "./published";

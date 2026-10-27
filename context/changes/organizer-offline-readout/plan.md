@@ -379,9 +379,9 @@ The after-refresh guarantee: a data-free readout page and a minimal service work
 
 #### Automated
 
-- [ ] 1.1 Unit tests pass: `npm test`
-- [ ] 1.2 Lint passes: `npm run lint`
-- [ ] 1.3 Type check passes: `npx astro check`
+- [x] 1.1 Unit tests pass: `npm test`
+- [x] 1.2 Lint passes: `npm run lint`
+- [x] 1.3 Type check passes: `npx astro check`
 
 ### Phase 2: Published seating API
 

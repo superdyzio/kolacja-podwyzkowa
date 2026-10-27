@@ -1,7 +1,15 @@
 import { pluralPl } from "@/lib/guests/summary";
 import { compareTableNames } from "@/lib/venue/rules";
 import { sideALength } from "@/lib/venue/seats";
-import type { SeatOccupantDto, SeatingSnapshot, TvSeatDto, TvSeatingDto, TvTableDto } from "@/types";
+import type {
+  PublishedSeatingDto,
+  PublishedTableDto,
+  SeatOccupantDto,
+  SeatingSnapshot,
+  TvSeatDto,
+  TvSeatingDto,
+  TvTableDto,
+} from "@/types";
 import { seatLabel, type SeatingInput } from "./rules";
 
 // The published side of seating (pure): is the latest snapshot still what a publish would write now, what the TV
@@ -119,6 +127,32 @@ export function toTvSeating(snapshot: SeatingSnapshot | null, planVersion: numbe
         .map((seat) => ({ seat: seat.seat, name: seat.guestName })),
     }));
   return { version, planVersion, publishedAt: snapshot.publishedAt, tables };
+}
+
+// The organizer's offline readout of a snapshot (S-09): every table with its room, seated names in seat order, no
+// ids. Tables by room name, then table name („Stolik 2” before „Stolik 10”), then copy order.
+export function toPublishedSeating(snapshot: SeatingSnapshot | null): PublishedSeatingDto | null {
+  if (!snapshot) {
+    return null;
+  }
+  const tables = [...snapshot.tables]
+    .sort(
+      (a, b) =>
+        compareTableNames(a.roomName, b.roomName) ||
+        compareTableNames(a.name, b.name) ||
+        a.snapshotTableId - b.snapshotTableId,
+    )
+    .map((table): PublishedTableDto => ({
+      name: table.name,
+      room: table.roomName,
+      shape: table.shape,
+      seatCount: table.seatCount,
+      seats: snapshot.seats
+        .filter((seat) => seat.snapshotTableId === table.snapshotTableId)
+        .sort((a, b) => a.seat - b.seat)
+        .map((seat) => ({ seat: seat.seat, name: seat.guestName })),
+    }));
+  return { snapshotId: snapshot.id, publishedAt: snapshot.publishedAt, tables };
 }
 
 const ROUND_SINGLE_COLUMN_LIMIT = 8;

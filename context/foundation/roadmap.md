@@ -49,7 +49,7 @@ Organizator co roku prowadzi kolację podwyżkową dla 35–40 przyjaciół i dz
 | S-06 | guesses-and-ranking         | goście oddają strzały, organizator zamyka przyjmowanie i czyta ranking od końca       | S-05                | US-04, FR-017, FR-018, FR-019, FR-020, NFR-001       | done        |
 | S-07 | question-base-and-draw      | organizator prowadzi bazę pytań, a każdy losuje pytanie z wybranej kategorii          | S-05                | US-03, FR-014, FR-015                                | done        |
 | S-08 | ai-topics-with-limits       | organizator i goście generują tematy AI w kategorii, z limitami                       | S-07                | US-03, FR-016, NFR-005, NFR-010                      | done        |
-| S-09 | organizer-offline-readout   | organizator bez sieci widzi ostatni rozkład i ranking zebranych strzałów              | S-04, S-06          | US-04, FR-020, NFR-004                               | planning |
+| S-09 | organizer-offline-readout   | organizator bez sieci widzi ostatni rozkład i ranking zebranych strzałów              | S-04, S-06          | US-04, FR-020, NFR-004                               | in-progress |
 
 ## Streams
 
@@ -200,7 +200,7 @@ Foundations below assume these are present and do NOT re-scaffold them.
 - **Blockers:** —
 - **Unknowns:** —
 - **Risk:** Odczyt po odświeżeniu bez sieci wymaga, żeby strona organizatora w ogóle się załadowała offline; zakres zawężony do odczytu.
-- **Status:** planning
+- **Status:** in-progress
 
 ## Backlog Handoff
 

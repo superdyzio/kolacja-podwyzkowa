@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { TvTableDto } from "@/types";
+import type { SeatingSnapshot, TvTableDto } from "@/types";
 import { guest, input, seat, snapshotOf, table } from "./fixtures.test-helpers";
 import {
   describeRemovedOccupants,
@@ -10,6 +10,7 @@ import {
   seatingVersion,
   snapshotFingerprint,
   tableCardColumns,
+  toPublishedSeating,
   toTvSeating,
 } from "./published";
 
@@ -174,5 +175,79 @@ describe("occupantsRemovedBy", () => {
     expect(describeRemovedOccupants(many, tableNames)).toMatch(
       /^Miejsce stracą: G1 \(Kominek, miejsce 1\), .* i 3 inne osoby\.$/,
     );
+  });
+});
+
+describe("toPublishedSeating", () => {
+  it("is null before the first publish", () => {
+    expect(toPublishedSeating(null)).toBeNull();
+  });
+
+  it("orders tables by room, then by table name (numbers by value), and seats by number", () => {
+    const snapshot: SeatingSnapshot = {
+      id: 7,
+      publishedAt: "2026-11-08T20:05:00.000Z",
+      tables: [
+        {
+          snapshotTableId: 3,
+          tableId: 3,
+          roomName: "Sala B",
+          name: "Stolik 1",
+          seatCount: 4,
+          shape: "round",
+          x: 0,
+          y: 0,
+        },
+        {
+          snapshotTableId: 1,
+          tableId: 1,
+          roomName: "Sala A",
+          name: "Stolik 10",
+          seatCount: 6,
+          shape: "round",
+          x: 0,
+          y: 0,
+        },
+        {
+          snapshotTableId: 2,
+          tableId: null,
+          roomName: "Sala A",
+          name: "Stolik 2",
+          seatCount: 6,
+          shape: "rectangular",
+          x: 0,
+          y: 0,
+        },
+      ],
+      seats: [
+        { snapshotTableId: 1, seat: 5, guestId: 1, guestName: "Ola" },
+        { snapshotTableId: 1, seat: 2, guestId: null, guestName: "Kuba" },
+        { snapshotTableId: 3, seat: 1, guestId: 3, guestName: "Ania" },
+      ],
+    };
+    expect(toPublishedSeating(snapshot)).toEqual({
+      snapshotId: 7,
+      publishedAt: "2026-11-08T20:05:00.000Z",
+      tables: [
+        { name: "Stolik 2", room: "Sala A", shape: "rectangular", seatCount: 6, seats: [] },
+        {
+          name: "Stolik 10",
+          room: "Sala A",
+          shape: "round",
+          seatCount: 6,
+          seats: [
+            { seat: 2, name: "Kuba" },
+            { seat: 5, name: "Ola" },
+          ],
+        },
+        { name: "Stolik 1", room: "Sala B", shape: "round", seatCount: 4, seats: [{ seat: 1, name: "Ania" }] },
+      ],
+    });
+  });
+
+  it("carries no ids, only names", () => {
+    const json = JSON.stringify(toPublishedSeating(snapshotOf(base)));
+    expect(json).not.toMatch(/tableId|guestId|snapshotTableId/);
+    expect(json).toContain("Ania");
   });
 });
