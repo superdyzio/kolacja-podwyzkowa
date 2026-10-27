@@ -30,6 +30,8 @@ function expectValidDraw(data: SeatingInput, history: readonly GuestPair[], resu
     throw new Error(`expected a draft, got ${JSON.stringify(result.problems)}`);
   }
   expect(validateDraft(data, result.seats)).toEqual([]);
+  // The rows go to POST /seating/draft as they are; its schema is strict (no extra keys).
+  expect(result.seats.every((row) => Object.keys(row).sort().join() === "guestId,seat,tableId")).toBe(true);
   expect(repeatedNeighbours(withDraft(data, result.seats), history)).toHaveLength(result.repeats);
   return result;
 }

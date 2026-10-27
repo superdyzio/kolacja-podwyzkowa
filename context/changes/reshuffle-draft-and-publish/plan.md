@@ -393,11 +393,11 @@ Fifth migration (function only, no tables). Locally `npx supabase migration up`;
 
 #### Automated
 
-- [x] 5.1 Lint passes: `npm run lint`
-- [x] 5.2 Type check passes: `npx astro check`
-- [x] 5.3 Tests pass: `npm test`
-- [x] 5.4 Build passes: `npm run build`
-- [x] 5.5 HTTP smoke passes against the production preview on a DB without an event
+- [x] 5.1 Lint passes: `npm run lint` — 0ca66e7
+- [x] 5.2 Type check passes: `npx astro check` — 0ca66e7
+- [x] 5.3 Tests pass: `npm test` — 0ca66e7
+- [x] 5.4 Build passes: `npm run build` — 0ca66e7
+- [x] 5.5 HTTP smoke passes against the production preview on a DB without an event — 0ca66e7
 
 #### Manual
 
