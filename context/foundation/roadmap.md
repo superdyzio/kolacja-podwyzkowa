@@ -44,7 +44,7 @@ Organizator co roku prowadzi kolację podwyżkową dla 35–40 przyjaciół i dz
 | S-01 | guest-list-and-groups       | organizator wkleja i edytuje listę gości, tworzy grupy i oznacza nieobecnych          | F-01                | US-01, FR-001, FR-002, FR-003                        | done     |
 | S-02 | rooms-and-tables-on-plan    | organizator wgrywa plan, nazywa sale i stawia pinezki stolików z miejscami i typem    | F-01                | US-01, FR-005, FR-006                                | done     |
 | S-03 | manual-seating-on-tv        | organizator sadza gości ręcznie, przypina miejsca, publikuje, a TV pokazuje imiona na planie | S-01, S-02          | US-01, FR-004, FR-007, FR-008, NFR-003, NFR-006      | done     |
-| S-04 | reshuffle-draft-and-publish | organizator losuje projekt rozkładu bez powtórek sąsiadów, poprawia go, publikuje i cofa | S-03                | US-02, FR-009, FR-010, NFR-007                       | in-progress |
+| S-04 | reshuffle-draft-and-publish | organizator losuje projekt rozkładu bez powtórek sąsiadów, poprawia go, publikuje i cofa | S-03                | US-02, FR-009, FR-010, NFR-007                       | done     |
 | S-05 | guest-links-and-seat-view   | gość otwiera osobisty link/QR i widzi swój stolik i miejsce, odświeżane na żywo       | S-03                | US-03, FR-011, FR-012, FR-013, NFR-003, NFR-008, NFR-009 | proposed |
 | S-06 | guesses-and-ranking         | goście oddają strzały, organizator zamyka przyjmowanie i czyta ranking od końca       | S-05                | US-04, FR-017, FR-018, FR-019, FR-020, NFR-001       | proposed |
 | S-07 | question-base-and-draw      | organizator prowadzi bazę pytań, a każdy losuje pytanie z wybranej kategorii          | S-05                | US-03, FR-014, FR-015                                | proposed |
@@ -138,7 +138,7 @@ Foundations below assume these are present and do NOT re-scaffold them.
 - **Blockers:** —
 - **Unknowns:** —
 - **Risk:** Najtrudniejsza reguła domenowa (sąsiedzi zależni od typu stolika, grupy na kolejnych miejscach, przypadki niewykonalne); musi mieć gęste testy jednostkowe.
-- **Status:** in-progress
+- **Status:** done
 
 ### S-05: Osobiste linki gości i widok miejsca
 
@@ -247,3 +247,4 @@ Foundations below assume these are present and do NOT re-scaffold them.
 - **S-01: organizator wkleja listę gości (jedna osoba na linię), edytuje i usuwa gości z wyświetlaną nazwą, tworzy i rozwiązuje grupy 2–5 osób oraz oznacza nieobecnych.** — Archived 2026-10-27 → `context/archive/2026-10-27-guest-list-and-groups/`. Lesson: —.
 - **S-02: organizator wgrywa zrzut planu, nazywa sale i stawia na planie pinezki stolików z nazwą, liczbą miejsc i typem (okrągły / prostokątny).** — Archived 2026-10-27 → `context/archive/2026-10-27-rooms-and-tables-on-plan/`. Lesson: —.
 - **S-03: organizator sadza gości na konkretnych miejscach, zamienia ich, przypina miejsca i publikuje rozkład, a widok TV pokazuje imiona przy stolikach na planie i sam się odświeża po publikacji.** — Archived 2026-10-27 → `context/archive/2026-10-27-manual-seating-on-tv/`. Lesson: —.
+- **S-04: organizator losuje projekt nowego rozkładu (grupy razem na kolejnych miejscach, przypięci na miejscach, nieobecni pominięci, jak najmniej powtórzonych sąsiadów), przegląda go, losuje ponownie lub poprawia ręcznie, publikuje na TV i telefony albo wraca do poprzedniego rozkładu.** — Archived 2026-10-27 → `context/archive/2026-10-27-reshuffle-draft-and-publish/`. Lesson: —.
