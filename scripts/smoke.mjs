@@ -2296,4 +2296,50 @@ for (const [path, island] of [
   );
 }
 
+// The readout page is the copy the organizer's service worker keeps: organizer only, never cached by HTTP, and its
+// HTML carries no saved data (guests, tables, amounts) — the island reads them from the browser's memory.
+const readoutPage = await request(`/o/${organizerKey}/odczyt`);
+const readoutLeaks = leaksIn(readoutPage.body, [ANIA_TIE, OLA_GUESS, CORRECT], [...GUEST_NAMES, TABLE_NAME, ROOM_NAME]);
+check(
+  "offline readout page renders without any saved data in its HTML",
+  readoutPage.status === 200 &&
+    readoutPage.cacheControl.includes("no-store") &&
+    readoutPage.body.includes("Odczyt bez sieci") &&
+    readoutPage.body.includes('component-export="OfflineReadoutPage"') &&
+    OFFLINE_NOTICE_TEXTS.every((text) => !readoutPage.body.includes(text)) &&
+    readoutLeaks.length === 0,
+  `${readoutPage.status} ${readoutLeaks.join(" | ")}`,
+);
+for (const [label, key] of [
+  ["<tv>", tvKey],
+  ["<guest>", aniaNewKey],
+]) {
+  const res = await request(`/o/${key}/odczyt`);
+  check(
+    `offline readout page with a wrong key: ${label}`,
+    res.status === 404 && res.body === deniedBody,
+    String(res.status),
+  );
+}
+const shellWithReadout = await request(`/o/${organizerKey}`);
+check(
+  "organizer shell links to the offline readout",
+  shellWithReadout.status === 200 &&
+    shellWithReadout.body.includes(`/o/${organizerKey}/odczyt`) &&
+    shellWithReadout.body.includes("Odczyt bez sieci"),
+  String(shellWithReadout.status),
+);
+const workerResponse = await fetch(`${BASE_URL}/organizer-sw.js`);
+const workerSource = await workerResponse.text();
+const workerType = workerResponse.headers.get("content-type") ?? "";
+check(
+  "organizer service worker is served as JavaScript and holds no keys",
+  workerResponse.status === 200 &&
+    workerType.includes("javascript") &&
+    workerSource.includes('addEventListener("fetch"') &&
+    !workerSource.includes(organizerKey) &&
+    !workerSource.includes(tvKey),
+  `${workerResponse.status} ${workerType}`,
+);
+
 finish();

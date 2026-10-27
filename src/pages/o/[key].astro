@@ -53,6 +53,7 @@ const view = access
       questionsSummary: questionList ? formatQuestionSummary(questionList.questions) : null,
       aiTopicsPath: `${organizerPath(access.event.organizerKey)}/pytania#tematy-ai`,
       aiTopicsSummary: aiUsage ? formatAiTopicSummary(aiUsage, getAiProviderStatus()) : null,
+      readoutPath: `${organizerPath(access.event.organizerKey)}/odczyt`,
     }
   : null;
 ---
@@ -204,6 +205,20 @@ const view = access
                 {`Temat do rozmowy od AI w wybranej kategorii; gość ma ${MAX_GUEST_TOPICS} na wieczór, wszyscy razem ${MAX_EVENT_TOPICS}.`}
               </p>
               {view.aiTopicsSummary && <p class="text-sm font-medium">{view.aiTopicsSummary}</p>}
+            </a>
+          </li>
+          <li>
+            <a
+              href={view.readoutPath}
+              class="flex h-full flex-col gap-2 rounded-xl border p-4 transition-colors hover:bg-accent focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
+            >
+              <div class="flex items-center justify-between gap-2">
+                <h3 class="font-semibold">Odczyt bez sieci</h3>
+                <span class="rounded-full bg-primary px-2 py-0.5 text-xs text-primary-foreground">Otwórz</span>
+              </div>
+              <p class="text-sm text-muted-foreground">
+                Ostatni opublikowany rozkład i ranking strzałów zapisane na tym urządzeniu — działa także bez internetu.
+              </p>
             </a>
           </li>
         </ul>

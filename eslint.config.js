@@ -77,6 +77,24 @@ const scriptsConfig = defineConfig({
   rules: { "no-console": "off" },
 });
 
+// Plain browser scripts served as they are (the organizer service worker, S-09): no types, no modules.
+const publicScriptsConfig = defineConfig({
+  files: ["public/**/*.js"],
+  extends: [tseslint.configs.disableTypeChecked],
+  languageOptions: {
+    sourceType: "script",
+    globals: {
+      self: true,
+      caches: true,
+      fetch: true,
+      Response: true,
+      URL: true,
+      setTimeout: true,
+      clearTimeout: true,
+    },
+  },
+});
+
 export default defineConfig(
   includeIgnoreFile(gitignorePath),
   baseConfig,
@@ -85,5 +103,6 @@ export default defineConfig(
   eslintPluginAstro.configs["flat/jsx-a11y-recommended"],
   astroConfig,
   scriptsConfig,
+  publicScriptsConfig,
   eslintPluginPrettier,
 );

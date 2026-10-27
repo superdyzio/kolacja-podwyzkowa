@@ -1,19 +1,24 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { readOfflineState } from "@/lib/offline/sync";
 import { clearOfflineCache, saveOfflineGuesses, saveOfflineSeating } from "./offline-cache-store";
+import { registerOrganizerWorker } from "./offline-worker";
 
 // Keeps the organizer's offline memory (S-09) fresh and says whether the server can be reached. A setTimeout chain,
 // one read at a time (8 s limit): at mount, every 30 s while the page is visible, every 5 s while offline, at once
 // when the page becomes visible or the browser reports "online"; the browser's "offline" event switches to offline
 // at once. A successful read saves both parts with the time of the read („Stan z …”); the app's denial forgets this
-// link's saved state.
+// link's saved state. It also registers the organizer's service worker (offline-worker.ts), which serves the saved
+// readout page when an organizer page cannot be loaded at all.
 
 const SYNC_MS = 30_000;
 const RETRY_MS = 5_000;
 const TIMEOUT_MS = 8_000;
 
+// "unknown" until the first read ends (the server render and hydration too).
+export type ConnectionStatus = "unknown" | "online" | "offline";
+
 export function useOfflineSync(apiBase: string) {
-  const [offline, setOffline] = useState(false);
+  const [status, setStatus] = useState<ConnectionStatus>("unknown");
   const syncRef = useRef<() => void>(() => undefined);
 
   useEffect(() => {
@@ -26,7 +31,7 @@ export function useOfflineSync(apiBase: string) {
 
     function markOffline(next: boolean) {
       isOffline = next;
-      setOffline(next);
+      setStatus(next ? "offline" : "online");
     }
 
     function schedule() {
@@ -92,6 +97,7 @@ export function useOfflineSync(apiBase: string) {
       schedule();
     }
 
+    registerOrganizerWorker(apiBase);
     syncRef.current = () => void sync();
     document.addEventListener("visibilitychange", onVisibilityChange);
     window.addEventListener("online", onOnline);
@@ -113,5 +119,5 @@ export function useOfflineSync(apiBase: string) {
     syncRef.current();
   }, []);
 
-  return { offline, syncNow };
+  return { status, offline: status === "offline", syncNow };
 }

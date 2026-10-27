@@ -396,17 +396,17 @@ The after-refresh guarantee: a data-free readout page and a minimal service work
 
 #### Automated
 
-- [x] 3.1 Lint, type check and tests pass: `npm run lint`, `npx astro check`, `npm test`
-- [x] 3.2 Build succeeds: `npm run build`
-- [x] 3.3 HTTP smoke passes: `npm run preview` + `npm run smoke` (then stop the server and `delete from public.event`)
+- [x] 3.1 Lint, type check and tests pass: `npm run lint`, `npx astro check`, `npm test` — 9188f0c
+- [x] 3.2 Build succeeds: `npm run build` — 9188f0c
+- [x] 3.3 HTTP smoke passes: `npm run preview` + `npm run smoke` (then stop the server and `delete from public.event`) — 9188f0c
 
 ### Phase 4: Readout page, service worker, shell card and docs
 
 #### Automated
 
-- [ ] 4.1 Lint, type check and tests pass (incl. `tests/sw/`): `npm run lint`, `npx astro check`, `npm test`
-- [ ] 4.2 Build succeeds and ships the worker: `npm run build` and `dist/client/organizer-sw.js` exists
-- [ ] 4.3 HTTP smoke passes: `npm run preview` + `npm run smoke` (then stop the server and `delete from public.event`)
+- [x] 4.1 Lint, type check and tests pass (incl. `tests/sw/`): `npm run lint`, `npx astro check`, `npm test`
+- [x] 4.2 Build succeeds and ships the worker: `npm run build` and `dist/client/organizer-sw.js` exists
+- [x] 4.3 HTTP smoke passes: `npm run preview` + `npm run smoke` (then stop the server and `delete from public.event`)
 
 #### Manual
 
