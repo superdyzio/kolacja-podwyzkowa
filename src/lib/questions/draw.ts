@@ -2,6 +2,10 @@
 // it drew lately (oldest first) and sends them along, so the same person does not get the same question again soon.
 // Nothing is stored on the server, so a draw stays visible only to whoever made it.
 
+// What the drawer sees when the draw finds nothing (the category, or the whole base, is empty).
+export const EMPTY_CATEGORY_MESSAGE = "W tej kategorii nie ma jeszcze pytań.";
+export const EMPTY_BASE_MESSAGE = "Baza pytań jest pusta.";
+
 // How many recently drawn ids a browser keeps and may send (also the zod cap of the draw routes).
 export const MAX_RECENT = 100;
 

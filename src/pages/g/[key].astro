@@ -1,6 +1,7 @@
 ---
 import NoAccess from "@/components/NoAccess.astro";
 import { GuestGuessView } from "@/components/guest/GuestGuessView";
+import { GuestQuestionDraw } from "@/components/guest/GuestQuestionDraw";
 import { GuestSeatView } from "@/components/guest/GuestSeatView";
 import Layout from "@/layouts/Layout.astro";
 import { accessFor, guestPath } from "@/lib/access";
@@ -11,11 +12,12 @@ import { getGuestState } from "@/lib/guest-links";
 // checked the key AND the guest-access switch (off, revoked or unknown → the same no-access page); this is the
 // second, role-specific check. GuestAccess carries no keys, and only this guest's own state reaches the HTML.
 //
-// Structure: <main> holds one <section> per feature, stacked: S-05's seat view, then S-06's guess. S-07 (question
-// draw) and S-08 (AI topic) add their own <section> below with an island from src/components/guest/ that receives
-// `apiBase` (/api/g/<key>) and talks to routes under src/pages/api/g/[key]/ (which start with guestApi(locals); the
-// guest is access.guest.id, never an id from the request). Islands that need the live state read it with
-// useGuestState (one shared poll per phone, src/components/hooks/guest-state-store.ts) instead of polling again.
+// Structure: <main> holds one <section> per feature, stacked: S-05's seat view, S-06's guess, then S-07's question
+// draw. S-08 (AI topic) adds its own <section> below the question draw, with an island from src/components/guest/ that
+// receives `apiBase` (/api/g/<key>) and talks to routes under src/pages/api/g/[key]/ (which start with
+// guestApi(locals); the guest is access.guest.id, never an id from the request). Islands that need the live state read
+// it with useGuestState (one shared poll per phone, src/components/hooks/guest-state-store.ts) instead of polling
+// again; category pickers reuse src/components/questions/CategoryChips.tsx.
 const access = accessFor(Astro.locals, "guest");
 const db = access ? getDb() : null;
 if (!access || !db) {
@@ -51,6 +53,13 @@ const view =
           Twój strzał
         </h2>
         <GuestGuessView client:load apiBase={view.apiBase} initial={view.initial} />
+      </section>
+
+      <section aria-labelledby="question-heading" class="flex flex-col gap-3">
+        <h2 id="question-heading" class="text-xl font-semibold">
+          Pytanie do rozmowy
+        </h2>
+        <GuestQuestionDraw client:load apiBase={view.apiBase} initial={view.initial} />
       </section>
     </main>
   </Layout>

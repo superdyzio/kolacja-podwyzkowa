@@ -1829,6 +1829,38 @@ check(
   String(guestList.status),
 );
 
+// Pages: the guest's phone has the draw section but no question from the base (a draw happens in the browser and
+// stays there); the TV shows no question either.
+const currentBase = (await request(questionsApi)).data?.questions ?? [];
+const escapeHtml = (text) =>
+  text.replaceAll("&", "&amp;").replaceAll('"', "&quot;").replaceAll("'", "&#39;").replaceAll("<", "&lt;");
+const questionLeaks = (body) =>
+  currentBase
+    .filter((question) => body.includes(question.text) || body.includes(escapeHtml(question.text)))
+    .map((question) => question.text);
+const phoneWithQuestions = await request(`/g/${aniaNewKey}`);
+check(
+  "guest page has the question draw section",
+  phoneWithQuestions.status === 200 &&
+    currentBase.length > 0 &&
+    phoneWithQuestions.body.includes("Pytanie do rozmowy") &&
+    phoneWithQuestions.body.includes("Wylosowane pytanie widzisz tylko Ty.") &&
+    phoneWithQuestions.body.includes("Losuj pytanie") &&
+    phoneWithQuestions.body.includes("GuestQuestionDraw"),
+  String(phoneWithQuestions.status),
+);
+check(
+  "guest page leaks no question from the base",
+  questionLeaks(phoneWithQuestions.body).length === 0,
+  questionLeaks(phoneWithQuestions.body).join(" | "),
+);
+const tvWithQuestions = await request(`/tv/${tvKey}`);
+check(
+  "TV page shows no question",
+  tvWithQuestions.status === 200 && questionLeaks(tvWithQuestions.body).length === 0,
+  `${tvWithQuestions.status} ${questionLeaks(tvWithQuestions.body).join(" | ")}`,
+);
+
 // Empty category: delete every "refleksyjne" question, draw → null, the starter base restores them.
 for (const question of inCategory(edited.data?.questions ?? [], "refleksyjne")) {
   await request(`${questionsApi}/${question.id}`, { method: "DELETE" });

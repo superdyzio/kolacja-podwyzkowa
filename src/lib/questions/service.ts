@@ -21,8 +21,6 @@ import {
 
 export const QUESTION_NOT_FOUND_MESSAGE = "Nie znaleziono pytania.";
 export const QUESTION_DUPLICATE_MESSAGE = "To pytanie już jest w bazie.";
-export const EMPTY_CATEGORY_MESSAGE = "W tej kategorii nie ma jeszcze pytań.";
-export const EMPTY_BASE_MESSAGE = "Baza pytań jest pusta.";
 
 const UNIQUE_VIOLATION = "23505";
 const COLUMNS = "id, category, text";

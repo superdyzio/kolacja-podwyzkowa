@@ -438,18 +438,18 @@ The organizer's base management and own draw on one page, the shell card, and th
 
 #### Automated
 
-- [x] 3.1 Lint and type check pass: `npm run lint`, `npx astro check`
-- [x] 3.2 Tests pass: `npm test`
-- [x] 3.3 Production build succeeds: `npm run build`
-- [x] 3.4 HTTP smoke passes on a DB without an event: `npm run preview` + `npm run smoke` (then stop the server and `delete from public.event`)
+- [x] 3.1 Lint and type check pass: `npm run lint`, `npx astro check` — d8ae4b0
+- [x] 3.2 Tests pass: `npm test` — d8ae4b0
+- [x] 3.3 Production build succeeds: `npm run build` — d8ae4b0
+- [x] 3.4 HTTP smoke passes on a DB without an event: `npm run preview` + `npm run smoke` (then stop the server and `delete from public.event`) — d8ae4b0
 
 ### Phase 4: Guest question section on the phone
 
 #### Automated
 
-- [ ] 4.1 Lint, type check and tests pass: `npm run lint`, `npx astro check`, `npm test`
-- [ ] 4.2 Build succeeds: `npm run build`
-- [ ] 4.3 HTTP smoke passes: `npm run preview` + `npm run smoke` (then stop the server and `delete from public.event`)
+- [x] 4.1 Lint, type check and tests pass: `npm run lint`, `npx astro check`, `npm test`
+- [x] 4.2 Build succeeds: `npm run build`
+- [x] 4.3 HTTP smoke passes: `npm run preview` + `npm run smoke` (then stop the server and `delete from public.event`)
 
 #### Manual
 
