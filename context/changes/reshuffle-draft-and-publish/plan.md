@@ -358,9 +358,9 @@ Fifth migration (function only, no tables). Locally `npx supabase migration up`;
 
 #### Automated
 
-- [ ] 1.1 Unit tests pass: `npm test`
-- [ ] 1.2 Lint passes: `npm run lint`
-- [ ] 1.3 Type check passes: `npx astro check`
+- [x] 1.1 Unit tests pass: `npm test`
+- [x] 1.2 Lint passes: `npm run lint`
+- [x] 1.3 Type check passes: `npx astro check`
 
 ### Phase 2: Solver with acceptance, property and performance tests (pure)
 

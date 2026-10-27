@@ -152,6 +152,20 @@ export interface TvSeatingDto {
   tables: TvTableDto[];
 }
 
+// One row of a drawn draft (or a restored snapshot) for the working arrangement: a non-pinned present guest on a seat.
+export interface DraftSeatDto {
+  guestId: number;
+  tableId: number;
+  seat: number;
+}
+
+// The neighbour history (S-04): how many arrangements were published and every pair of guest ids that sat next to
+// each other in any of them ([smaller, larger], sorted). Organizer only.
+export interface NeighbourHistoryDto {
+  snapshotCount: number;
+  pairs: [number, number][];
+}
+
 // Who sits where in the working arrangement, for the venue page's "who loses their seat" confirmations.
 export interface SeatOccupantDto {
   tableId: number;

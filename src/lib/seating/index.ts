@@ -33,6 +33,30 @@ export {
   type VenueSeatChange,
 } from "./published";
 export {
+  describeRepeat,
+  formatRepeatCount,
+  historyPairs,
+  neighbourPairs,
+  pairKey,
+  repeatedNeighbours,
+  type GuestPair,
+  type PairSeat,
+  type PairTable,
+  type RepeatedPair,
+} from "./neighbours";
+export {
+  DRAFT_STALE_MESSAGE,
+  SNAPSHOT_NOT_FOUND_MESSAGE,
+  describeDraftProblem,
+  describeRestore,
+  restoreSeats,
+  validateDraft,
+  type DraftProblem,
+  type DraftSeat,
+  type RestoreReason,
+  type RestoreResult,
+} from "./draft";
+export {
   getAssignments,
   getLatestSnapshot,
   getSeatOccupancy,
