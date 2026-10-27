@@ -57,6 +57,17 @@ export {
   type RestoreResult,
 } from "./draft";
 export {
+  DEFAULT_DRAW_BUDGET_MS,
+  DRAW_INFEASIBLE_MESSAGE,
+  createRandom,
+  describeDrawProblem,
+  drawSeating,
+  randomSeed,
+  type DrawOptions,
+  type DrawProblem,
+  type DrawResult,
+} from "./draw";
+export {
   getAssignments,
   getLatestSnapshot,
   getSeatOccupancy,
