@@ -49,7 +49,7 @@ Organizator co roku prowadzi kolację podwyżkową dla 35–40 przyjaciół i dz
 | S-06 | guesses-and-ranking         | goście oddają strzały, organizator zamyka przyjmowanie i czyta ranking od końca       | S-05                | US-04, FR-017, FR-018, FR-019, FR-020, NFR-001       | done        |
 | S-07 | question-base-and-draw      | organizator prowadzi bazę pytań, a każdy losuje pytanie z wybranej kategorii          | S-05                | US-03, FR-014, FR-015                                | done        |
 | S-08 | ai-topics-with-limits       | organizator i goście generują tematy AI w kategorii, z limitami                       | S-07                | US-03, FR-016, NFR-005, NFR-010                      | done        |
-| S-09 | organizer-offline-readout   | organizator bez sieci widzi ostatni rozkład i ranking zebranych strzałów              | S-04, S-06          | US-04, FR-020, NFR-004                               | in-progress |
+| S-09 | organizer-offline-readout   | organizator bez sieci widzi ostatni rozkład i ranking zebranych strzałów              | S-04, S-06          | US-04, FR-020, NFR-004                               | done        |
 
 ## Streams
 
@@ -200,7 +200,7 @@ Foundations below assume these are present and do NOT re-scaffold them.
 - **Blockers:** —
 - **Unknowns:** —
 - **Risk:** Odczyt po odświeżeniu bez sieci wymaga, żeby strona organizatora w ogóle się załadowała offline; zakres zawężony do odczytu.
-- **Status:** in-progress
+- **Status:** done
 
 ## Backlog Handoff
 
@@ -252,3 +252,4 @@ Foundations below assume these are present and do NOT re-scaffold them.
 - **S-06: gość wpisuje i zmienia swój strzał do zamknięcia; organizator wpisuje strzały za gości, widzi kto nie oddał, zamyka i otwiera przyjmowanie, wpisuje prawidłową kwotę i czyta ranking od ostatniego miejsca z remisami.** — Archived 2026-10-27 → `context/archive/2026-10-27-guesses-and-ranking/`. Lesson: —.
 - **S-07: organizator dodaje, edytuje, usuwa i hurtowo wkleja pytania z kategorią (baza startowa ok. 30 na kategorię gotowa), a organizator i goście losują pytanie z wybranej kategorii lub ze wszystkich, widoczne tylko dla losującego.** — Archived 2026-10-27 → `context/archive/2026-10-27-question-base-and-draw/`. Lesson: —.
 - **S-08: organizator i goście generują temat do rozmowy w wybranej kategorii; gość ma limit 5 na wieczór, łącznie 300; przy braku odpowiedzi widać komunikat, a nieudana próba nie zjada limitu.** — Archived 2026-10-27 → `context/archive/2026-10-27-ai-topics-with-limits/`. Lesson: —.
+- **S-09: organizator bez sieci widzi ostatni opublikowany rozkład i ranking strzałów zebranych przed awarią, także po odświeżeniu strony.** — Archived 2026-10-27 → `context/archive/2026-10-27-organizer-offline-readout/`. Lesson: —.

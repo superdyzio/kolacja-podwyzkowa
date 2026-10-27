@@ -1,10 +1,10 @@
 ---
 change_id: organizer-offline-readout
 title: Organizer reads the last published seating and the guess ranking without network
-status: implemented
+status: archived
 created: 2026-10-27
 updated: 2026-10-27
-archived_at: null
+archived_at: 2026-10-27T05:29:12Z
 ---
 
 ## Notes
