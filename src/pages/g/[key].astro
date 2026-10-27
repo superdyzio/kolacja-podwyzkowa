@@ -1,0 +1,50 @@
+---
+import NoAccess from "@/components/NoAccess.astro";
+import { GuestSeatView } from "@/components/guest/GuestSeatView";
+import Layout from "@/layouts/Layout.astro";
+import { accessFor, guestPath } from "@/lib/access";
+import { getDb } from "@/lib/db";
+import { getGuestState } from "@/lib/guest-links";
+
+// The guest's phone page (S-05, US-03, FR-013, NFR-003, NFR-008): mobile-first, Polish. The middleware has already
+// checked the key AND the guest-access switch (off, revoked or unknown → the same no-access page); this is the
+// second, role-specific check. GuestAccess carries no keys, and only this guest's own state reaches the HTML.
+//
+// Structure for later slices: <main> holds one <section> per feature, stacked. S-05's seat view is the first; S-06
+// (the guess), S-07 (question draw) and S-08 (AI topic) each add their own <section> below it with an island from
+// src/components/guest/ that receives `apiBase` (/api/g/<key>) and talks to routes under src/pages/api/g/[key]/
+// (which start with guestApi(locals); the guest is access.guest.id, never an id from the request).
+const access = accessFor(Astro.locals, "guest");
+const db = access ? getDb() : null;
+if (!access || !db) {
+  Astro.response.status = 404;
+}
+
+const view =
+  access && db
+    ? {
+        eventName: access.event.name,
+        apiBase: `/api${guestPath(Astro.params.key ?? "")}`,
+        initial: await getGuestState(db, access.guest),
+      }
+    : null;
+---
+
+{view ? (
+  <Layout title={view.eventName}>
+    <main class="mx-auto flex min-h-screen max-w-md flex-col gap-8 px-4 pt-6 pb-12">
+      <header>
+        <h1 class="text-sm font-medium tracking-wide text-muted-foreground uppercase">{view.eventName}</h1>
+      </header>
+
+      <section aria-labelledby="seat-heading" class="flex flex-col gap-3">
+        <h2 id="seat-heading" class="sr-only">
+          Twoje miejsce
+        </h2>
+        <GuestSeatView client:load apiBase={view.apiBase} initial={view.initial} />
+      </section>
+    </main>
+  </Layout>
+) : (
+  <NoAccess />
+)}

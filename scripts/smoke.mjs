@@ -1234,6 +1234,42 @@ check(
   String(shellWithLinks.status),
 );
 
+// Guest page (S-05): the guest's own seat on the phone, nothing else; the island polls /api/g/<key>.
+const phonePage = await request(`/g/${aniaNewKey}`);
+check(
+  "guest page shows her name, table, room and the live-refresh endpoint",
+  phonePage.status === 200 &&
+    phonePage.body.includes(GUEST_NAMES[0]) &&
+    phonePage.body.includes(TABLE_NAME) &&
+    phonePage.body.includes(ROOM_NAME) &&
+    phonePage.body.includes("Twój stolik") &&
+    phonePage.body.includes(`/api/g/${aniaNewKey}`) &&
+    phonePage.cacheControl.includes("no-store") &&
+    phonePage.referrerPolicy === "no-referrer",
+  String(phonePage.status),
+);
+const phonePageLeaks = [
+  organizerKey,
+  tvKey,
+  olaKey,
+  aniaKey,
+  GUEST_NAMES[2],
+  "guestId",
+  "tableId",
+  "snapshotId",
+  "access_key",
+  "isAbsent",
+  "&quot;id&quot;",
+  '"id"',
+].filter((secret) => phonePage.body.includes(secret));
+check("guest page leaks no keys, ids or other guests", phonePageLeaks.length === 0, phonePageLeaks.join(" "));
+const olaPage = await request(`/g/${olaKey}`);
+check(
+  "another guest's page shows only her own name",
+  olaPage.status === 200 && olaPage.body.includes(GUEST_NAMES[2]) && !olaPage.body.includes(GUEST_NAMES[0]),
+  String(olaPage.status),
+);
+
 const accessOff = await request(linksApi, { method: "PATCH", json: { enabled: false } });
 const offAgainPage = await request(`/g/${aniaNewKey}`);
 const offAgainState = await request(guestStateApi(aniaNewKey));

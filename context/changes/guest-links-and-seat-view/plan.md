@@ -425,9 +425,9 @@ The guest's phone page with the polling seat card and the on-demand plan highlig
 
 #### Automated
 
-- [x] 4.1 Lint, type check and tests pass: `npm run lint`, `npx astro check`, `npm test`
-- [x] 4.2 Build succeeds and `qrcode` is not in the server bundle: `npm run build` then `grep -rl "qrcode" dist/server` finds nothing
-- [x] 4.3 HTTP smoke passes: `npm run preview` + `npm run smoke` (then stop the server and `delete from public.event`)
+- [x] 4.1 Lint, type check and tests pass: `npm run lint`, `npx astro check`, `npm test` — f4cb694
+- [x] 4.2 Build succeeds and `qrcode` is not in the server bundle: `npm run build` then `grep -rl "qrcode" dist/server` finds nothing — f4cb694
+- [x] 4.3 HTTP smoke passes: `npm run preview` + `npm run smoke` (then stop the server and `delete from public.event`) — f4cb694
 
 #### Manual
 
@@ -437,9 +437,9 @@ The guest's phone page with the polling seat card and the on-demand plan highlig
 
 #### Automated
 
-- [ ] 5.1 Lint, type check and tests pass: `npm run lint`, `npx astro check`, `npm test`
-- [ ] 5.2 Build succeeds: `npm run build`
-- [ ] 5.3 HTTP smoke passes: `npm run preview` + `npm run smoke` (then stop the server and `delete from public.event`)
+- [x] 5.1 Lint, type check and tests pass: `npm run lint`, `npx astro check`, `npm test`
+- [x] 5.2 Build succeeds: `npm run build`
+- [x] 5.3 HTTP smoke passes: `npm run preview` + `npm run smoke` (then stop the server and `delete from public.event`)
 
 #### Manual
 
