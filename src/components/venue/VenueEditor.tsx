@@ -189,6 +189,8 @@ export function VenueEditor({ apiBase, initialVenue }: Props) {
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_20rem] lg:items-start">
           {venue.plan ? (
             <PlanCanvas
+              // A new upload (new version → new URL) remounts the canvas, clearing an earlier load error.
+              key={venue.plan.version}
               imageSrc={planImagePath(apiBase, venue.plan.version)}
               tables={venue.tables}
               roomNameById={roomNameById}
