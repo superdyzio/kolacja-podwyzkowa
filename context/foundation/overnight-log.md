@@ -96,6 +96,7 @@ Dziennik decyzji, zależności i blokerów nocnego builda (zasady: `overnight-br
 - 2026-10-27 — S-04 /10x-implement: fazy 1–5 jedna po drugiej bez pauz (tryb nocny); bramki „manual” odłożone do „Do sprawdzenia rano”; zamiast /10x-impl-review po fazie — przegląd recenzenta (advisor) na końcu; komunikat sporu przy przywracaniu „Rozsadzenie zmieniło się w międzyczasie — spróbuj jeszcze raz.” (409) (Recommended).
 - 2026-10-27 — S-04 statystyki tuż po publikacji: gdy roboczy rozkład = to, co na TV, panel nie liczy powtórek (każda para jest wtedy z definicji w historii), tylko pisze „Na TV jest ten rozkład. Wylosuj projekt, żeby zmienić sąsiadów.”; po każdej zmianie liczy na bieżąco (Recommended).
 - 2026-10-27 — S-04 przycisk losowania wyłączony, gdy nie ma stolików albo gości; losowanie i przywrócenie czyszczą wybór osoby (Recommended).
+- 2026-10-27 — S-04 /10x-archive: archiwizacja mimo 1 oczekującego punktu ręcznego (5.6, wpisany do „Do sprawdzenia rano”) i braku pliku impl-review (zamiast niego przegląd recenzenta); roadmapa S-04 → done (Recommended).
 
 ## Do sprawdzenia rano (Manual)
 
