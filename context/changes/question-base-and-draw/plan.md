@@ -417,10 +417,10 @@ The organizer's base management and own draw on one page, the shell card, and th
 
 #### Automated
 
-- [x] 1.1 Migration applies on the local DB: `npx supabase migration up`
-- [x] 1.2 Unit and integration tests pass: `npm test`
-- [x] 1.3 Lint passes: `npm run lint`
-- [x] 1.4 Type check passes: `npx astro check`
+- [x] 1.1 Migration applies on the local DB: `npx supabase migration up` — 23eec38
+- [x] 1.2 Unit and integration tests pass: `npm test` — 23eec38
+- [x] 1.3 Lint passes: `npm run lint` — 23eec38
+- [x] 1.4 Type check passes: `npx astro check` — 23eec38
 
 #### Manual
 
@@ -430,9 +430,9 @@ The organizer's base management and own draw on one page, the shell card, and th
 
 #### Automated
 
-- [ ] 2.1 Unit and integration tests pass: `npm test`
-- [ ] 2.2 Lint passes: `npm run lint`
-- [ ] 2.3 Type check passes: `npx astro check`
+- [x] 2.1 Unit and integration tests pass: `npm test`
+- [x] 2.2 Lint passes: `npm run lint`
+- [x] 2.3 Type check passes: `npx astro check`
 
 ### Phase 3: Question API routes and the HTTP access smoke
 

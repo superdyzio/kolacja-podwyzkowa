@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { generateAccessKey } from "@/lib/access/keys";
 import { AccessLookupError, decideAccess, resolveAccess } from "@/lib/access/resolve";
 import { createEvent, hasEvent, type CreateEventResult } from "@/lib/event";
+import { starterQuestionRows } from "@/lib/questions/seed";
 import { createServiceClient, type DbClient } from "@/lib/supabase-client";
 import { hasLocalDb, localDb, localDbEnv, readEvent, releaseEvent, type TestEvent } from "./helpers";
 
@@ -125,6 +126,22 @@ describe.skipIf(!hasLocalDb)("access matrix against the local DB", () => {
       expect(statuses).toEqual(["already-exists", "created"]);
       const created = raceOutcomes.find((outcome) => outcome.status === "created");
       expect(created).toEqual({ status: "created", organizerKey: event.organizerKey, tvKey: event.tvKey });
+    });
+
+    it("seeds the starter questions once, by the winner only (S-07)", async () => {
+      if (!raceOutcomes) {
+        return; // an event already existed before the tests; its question base is real data
+      }
+      const { count, error } = await db.from("question").select("id", { count: "exact", head: true });
+      expect(error).toBeNull();
+      expect(count).toBe(starterQuestionRows().length);
+    });
+
+    it("a refused creation adds no questions (S-07)", async () => {
+      const before = await db.from("question").select("id", { count: "exact", head: true });
+      expect(await createEvent(db)).toEqual({ status: "already-exists" });
+      const after = await db.from("question").select("id", { count: "exact", head: true });
+      expect(after.count).toBe(before.count);
     });
 
     it("refuses a second event and reveals no key", async () => {
