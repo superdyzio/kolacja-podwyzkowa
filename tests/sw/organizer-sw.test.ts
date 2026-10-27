@@ -68,6 +68,9 @@ class FakeCache {
     if (response.bodyUsed) {
       return Promise.reject(new TypeError("Response body is already used"));
     }
+    if (response.headers.get("vary") === "*") {
+      return Promise.reject(new TypeError("Vary: * cannot be cached"));
+    }
     this.entries.set(urlOf(request), response);
     return Promise.resolve();
   }
@@ -261,6 +264,29 @@ describe("organizer service worker: install and copy", () => {
     // Every file once (react.hhh.js is imported twice).
     expect(worker.fetched.filter((url) => url === asset("react.hhh.js"))).toHaveLength(1);
     expect(await text(cache.match(READOUT, { ignoreVary: true }))).toBe(READOUT_HTML);
+  });
+
+  it("stores the decoded readout page with its type only (no encoding, length or Vary of the server's answer)", async () => {
+    routes.set(
+      READOUT,
+      () =>
+        new Response(READOUT_HTML, {
+          status: 200,
+          headers: {
+            "Content-Type": "text/html; charset=utf-8",
+            "Content-Encoding": "br",
+            "Content-Length": "12",
+            Vary: "*",
+            "Cache-Control": "no-store",
+          },
+        }),
+    );
+    const worker = startWorker(caches, routes);
+    await worker.install();
+    const stored = caches.only(PREFIX).find(READOUT);
+    expect([...(stored?.headers.keys() ?? [])]).toEqual(["content-type"]);
+    expect(stored?.headers.get("content-type")).toBe("text/html; charset=utf-8");
+    expect(await text(worker.navigate(`${SCOPE}/strzaly`).response)).toBe(READOUT_HTML);
   });
 
   it("never serves a copy that is still being made", async () => {

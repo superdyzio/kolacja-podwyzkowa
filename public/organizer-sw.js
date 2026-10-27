@@ -127,8 +127,10 @@ async function copyReadout() {
   const cache = await caches.open(name);
   try {
     await storeAssets(cache, pageAssetUrls(html, pageUrl));
-    // The page goes in last: a copy without it is never served.
-    await cache.put(pageUrl, new Response(html, { status: 200, headers: response.headers }));
+    // The page goes in last: a copy without it is never served. Only its type is kept: the text is already decoded,
+    // so the server's Content-Encoding, Content-Length or Vary would not fit it.
+    const type = response.headers.get("content-type") || "text/html; charset=utf-8";
+    await cache.put(pageUrl, new Response(html, { status: 200, headers: { "Content-Type": type } }));
   } catch (error) {
     await caches.delete(name);
     throw error;
