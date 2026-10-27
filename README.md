@@ -62,6 +62,7 @@ Bez klucza przy `AI_PROVIDER=anthropic` każda próba od razu się nie udaje, a 
 - `npm run env:local`: zapisuje dane lokalnego Supabase do `.env` i `.dev.vars`.
 - `npm run links`: wypisuje link organizatora i adres TV z bazy.
 - `npm run smoke`: test HTTP macierzy dostępu na działającym serwerze (`BASE_URL`, domyślnie `http://localhost:4321`). Wymaga bazy bez wydarzenia. Build kopiuje `.dev.vars` do `dist/`, więc po zmianie `.dev.vars` przebuduj przed `npm run preview`.
+- `npm run demo`: wypełnia lokalną aplikację danymi demo do sprawdzeń ręcznych (40 gości, plan, 3 sale, 7 stolików, grupy 4/2/2, 1 nieobecny, 1 przypięty, opublikowany rozkład, 30 strzałów z remisem) przez API działającego serwera (`BASE_URL`) i wypisuje linki. Tworzy wydarzenie, gdy go nie ma; odmawia, gdy wydarzenie ma już gości, sale albo plan.
 
 ## CI
 

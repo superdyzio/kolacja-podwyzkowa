@@ -21,6 +21,7 @@ This file provides guidance to AI Agent when working with code in this repositor
 - `npm run env:local` — write `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY` for the local Supabase into `.env` and `.dev.vars`
 - `npm run links` — print the organizer and TV links of the event (recovery for a lost organizer link)
 - `npm run smoke` — dependency-free HTTP smoke test of the access matrix (`scripts/smoke.mjs`) against a running server, `BASE_URL` env (default `http://localhost:4321`); needs a DB without an event (it creates one)
+- `npm run demo` — fill the LOCAL app with demo data for manual checks (`scripts/demo.mjs`: 40 guests, generated plan PNG, 3 rooms, 7 tables, groups 4/2/2, 1 absent, 1 pinned, published seating, 30 guesses with a tie) through the HTTP API of a running server (`BASE_URL`), then print the links; creates the event if missing, refuses when it already has guests, rooms or a plan
 
 Pre-commit hooks: husky + lint-staged runs `eslint --fix` on `*.{ts,tsx,astro}` and `prettier --write` on `*.{json,css,md}`.
 
