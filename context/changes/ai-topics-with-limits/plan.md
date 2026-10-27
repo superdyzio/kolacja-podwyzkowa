@@ -469,19 +469,19 @@ The organizer's generator with the evening usage and the provider status on the 
 
 #### Automated
 
-- [x] 2.1 Env schema regenerated: `npx astro sync`
-- [x] 2.2 Unit and integration tests pass: `npm test`
-- [x] 2.3 Lint passes: `npm run lint`
-- [x] 2.4 Type check passes: `npx astro check`
+- [x] 2.1 Env schema regenerated: `npx astro sync` — 2c8664b
+- [x] 2.2 Unit and integration tests pass: `npm test` — 2c8664b
+- [x] 2.3 Lint passes: `npm run lint` — 2c8664b
+- [x] 2.4 Type check passes: `npx astro check` — 2c8664b
 
 ### Phase 3: AI topic API routes and the HTTP smoke
 
 #### Automated
 
-- [ ] 3.1 Lint and type check pass: `npm run lint`, `npx astro check`
-- [ ] 3.2 Tests pass: `npm test`
-- [ ] 3.3 Production build succeeds: `npm run build`
-- [ ] 3.4 HTTP smoke passes on a DB without an event: `npm run preview` + `npm run smoke` (then stop the server and `delete from public.event`)
+- [x] 3.1 Lint and type check pass: `npm run lint`, `npx astro check`
+- [x] 3.2 Tests pass: `npm test`
+- [x] 3.3 Production build succeeds: `npm run build`
+- [x] 3.4 HTTP smoke passes on a DB without an event: `npm run preview` + `npm run smoke` (then stop the server and `delete from public.event`)
 
 ### Phase 4: Guest AI topic section on the phone
 

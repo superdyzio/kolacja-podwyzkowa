@@ -19,9 +19,9 @@ function check(name, ok, detail = "") {
   if (!ok) failed++;
 }
 
-// `json` sends a JSON body; `rawBody` sends the string as is (with a JSON content type).
-async function request(path, { method = "GET", json, rawBody } = {}) {
-  const headers = { Origin: BASE_URL };
+// `json` sends a JSON body; `rawBody` sends the string as is (with a JSON content type); `extraHeaders` are added.
+async function request(path, { method = "GET", json, rawBody, extraHeaders = {} } = {}) {
+  const headers = { Origin: BASE_URL, ...extraHeaders };
   let body;
   if (json !== undefined || rawBody !== undefined) {
     headers["Content-Type"] = "application/json";
@@ -1967,6 +1967,209 @@ check(
   String(tvDraw.status),
 );
 
+// 20. AI conversation topics (S-08). Only the MOCK provider is ever asked here (no network, no cost): when the server
+// reports another provider, every generate check is skipped and one check fails. A guest gets at most 5 topics; a
+// failed attempt (header x-ai-mock: fail, honoured only by the mock) does not count; the organizer has no personal
+// limit; nothing is stored, so no page shows a topic; the TV gets nothing. Guest access is on here.
+const aiApi = `${api}/ai-topics`;
+const guestAiApi = (key) => `/api/g/${key}/ai-topics`;
+const AI_FAIL = { "x-ai-mock": "fail" };
+const keysOf = (value) =>
+  Object.keys(value ?? {})
+    .sort()
+    .join(",");
+const isTopic = (topic, category) =>
+  keysOf(topic) === "category,text" &&
+  QUESTION_CATEGORIES.includes(topic.category) &&
+  (category === null || topic.category === category) &&
+  typeof topic.text === "string" &&
+  topic.text.trim().length >= 5;
+const isQuota = (quota, remaining) =>
+  keysOf(quota) === "eventExhausted,limit,remaining,used" &&
+  quota.limit === 5 &&
+  quota.remaining === remaining &&
+  quota.used === 5 - remaining &&
+  quota.eventExhausted === false;
+const usageText = (used, failed) => JSON.stringify({ used, limit: 300, failed, guestLimit: 5 });
+const generatedTopics = [];
+const topicLeaks = (body) => generatedTopics.filter((text) => body.includes(text) || body.includes(escapeHtml(text)));
+
+const aiBoard = await request(aiApi);
+check(
+  "AI board: usage starts at zero, with the limits and the provider (never a key)",
+  aiBoard.status === 200 &&
+    aiBoard.cacheControl.includes("no-store") &&
+    keysOf(aiBoard.data) === "provider,usage" &&
+    JSON.stringify(aiBoard.data.usage) === usageText(0, 0) &&
+    keysOf(aiBoard.data.provider) === "kind,model,problem,ready",
+  aiBoard.body.slice(0, 200),
+);
+const aiOnMock = aiBoard.data?.provider?.kind === "mock" && aiBoard.data.provider.ready === true;
+check(
+  "AI provider is the mock (the smoke never makes a paid call; set AI_PROVIDER=mock)",
+  aiOnMock,
+  JSON.stringify(aiBoard.data?.provider),
+);
+
+if (aiOnMock) {
+  // Ania: one topic per category and one from all; every answer carries her quota.
+  let aniaRemaining = 5;
+  for (const category of [...QUESTION_CATEGORIES, null]) {
+    const res = await request(guestAiApi(aniaNewKey), { method: "POST", json: { category } });
+    aniaRemaining--;
+    check(
+      `guest AI topic (${category ?? "wszystkie"}): one topic, ${aniaRemaining} left`,
+      res.status === 200 &&
+        keysOf(res.data) === "quota,topic" &&
+        isTopic(res.data.topic, category) &&
+        isQuota(res.data.quota, aniaRemaining),
+      res.body.slice(0, 200),
+    );
+    if (typeof res.data?.topic?.text === "string") generatedTopics.push(res.data.topic.text);
+  }
+  for (const [name, json] of [
+    ["an extra key", { category: null, guestId: ola.id }],
+    ["an unknown category", { category: "polityczne" }],
+    ["no category key", {}],
+  ]) {
+    const res = await request(guestAiApi(aniaNewKey), { method: "POST", json });
+    check(
+      `guest AI topic with ${name}: 400`,
+      res.status === 400 && res.data?.error === "Nieprawidłowe dane.",
+      `${res.status} ${res.body}`,
+    );
+  }
+  const aiGet = await request(guestAiApi(aniaNewKey));
+  check(
+    "the guest AI route has no GET",
+    (aiGet.status === 404 || aiGet.status === 405) && topicLeaks(aiGet.body).length === 0,
+    String(aiGet.status),
+  );
+
+  // A failed attempt says so in Polish, points at the question draw and leaves the quota alone.
+  const aniaFail = await request(guestAiApi(aniaNewKey), {
+    method: "POST",
+    json: { category: "generyczne" },
+    extraHeaders: AI_FAIL,
+  });
+  check(
+    "a failed guest attempt: 503, Polish message, quota unchanged, no provider details",
+    aniaFail.status === 503 &&
+      keysOf(aniaFail.data) === "error,quota" &&
+      aniaFail.data.error.includes("nie zmniejszyła limitu") &&
+      aniaFail.data.error.includes("Losuj pytanie") &&
+      isQuota(aniaFail.data.quota, 1),
+    aniaFail.body,
+  );
+  const aniaFifth = await request(guestAiApi(aniaNewKey), { method: "POST", json: { category: "refleksyjne" } });
+  check(
+    "the failed attempt left the fifth topic available",
+    aniaFifth.status === 200 && isTopic(aniaFifth.data?.topic, "refleksyjne") && isQuota(aniaFifth.data.quota, 0),
+    aniaFifth.body.slice(0, 200),
+  );
+  if (typeof aniaFifth.data?.topic?.text === "string") generatedTopics.push(aniaFifth.data.topic.text);
+  const aniaSixth = await request(guestAiApi(aniaNewKey), { method: "POST", json: { category: null } });
+  check(
+    "the sixth topic is refused with a clear Polish message",
+    aniaSixth.status === 429 &&
+      keysOf(aniaSixth.data) === "error,quota" &&
+      aniaSixth.data.error.includes("5 z 5") &&
+      isQuota(aniaSixth.data.quota, 0),
+    aniaSixth.body,
+  );
+  const aniaSixthFailing = await request(guestAiApi(aniaNewKey), {
+    method: "POST",
+    json: { category: null },
+    extraHeaders: AI_FAIL,
+  });
+  check(
+    "at the limit even a failing attempt is refused before the AI is asked",
+    aniaSixthFailing.status === 429 && aniaSixthFailing.data?.error?.includes("5 z 5"),
+    aniaSixthFailing.body,
+  );
+
+  // Ola has her own 5.
+  const olaTopic = await request(guestAiApi(olaKey), { method: "POST", json: { category: "kontrowersyjne" } });
+  check(
+    "another guest has her own limit",
+    olaTopic.status === 200 && isTopic(olaTopic.data?.topic, "kontrowersyjne") && isQuota(olaTopic.data.quota, 4),
+    olaTopic.body.slice(0, 200),
+  );
+  if (typeof olaTopic.data?.topic?.text === "string") generatedTopics.push(olaTopic.data.topic.text);
+
+  // The organizer: no personal limit; a failure carries a hint about the cause.
+  let organizerTopics = 0;
+  let organizerUsage = null;
+  for (let index = 0; index < 6; index++) {
+    const category = index % 2 === 0 ? "refleksyjne" : null;
+    const res = await request(aiApi, { method: "POST", json: { category } });
+    if (res.status === 200 && keysOf(res.data) === "topic,usage" && isTopic(res.data.topic, category)) {
+      organizerTopics++;
+      generatedTopics.push(res.data.topic.text);
+    }
+    organizerUsage = res.data?.usage;
+  }
+  check(
+    "the organizer generates more than 5 topics",
+    organizerTopics === 6 && JSON.stringify(organizerUsage) === usageText(12, 1),
+    `${organizerTopics} ${JSON.stringify(organizerUsage)}`,
+  );
+  const organizerFail = await request(aiApi, { method: "POST", json: { category: null }, extraHeaders: AI_FAIL });
+  check(
+    "a failed organizer attempt: 503 with the reason for the organizer",
+    organizerFail.status === 503 &&
+      keysOf(organizerFail.data) === "error,hint,usage" &&
+      organizerFail.data.error.includes("nie zmniejszyła limitu") &&
+      typeof organizerFail.data.hint === "string" &&
+      organizerFail.data.hint.length > 0 &&
+      JSON.stringify(organizerFail.data.usage) === usageText(12, 2),
+    organizerFail.body,
+  );
+  const organizerExtra = await request(aiApi, { method: "POST", json: { category: null, guestId: ola.id } });
+  check("organizer AI topic with an extra key: 400", organizerExtra.status === 400, String(organizerExtra.status));
+  const aiBoardAfter = await request(aiApi);
+  check(
+    "AI board counts every success and every failure",
+    aiBoardAfter.status === 200 && JSON.stringify(aiBoardAfter.data?.usage) === usageText(12, 2),
+    aiBoardAfter.body.slice(0, 200),
+  );
+
+  // Nothing is stored: no page shows a generated topic, not even the phone that asked for it.
+  for (const [label, path] of [
+    ["TV page", `/tv/${tvKey}`],
+    ["the asking guest's page", `/g/${aniaNewKey}`],
+    ["another guest's page", `/g/${olaKey}`],
+    ["organizer shell", `/o/${organizerKey}`],
+  ]) {
+    const res = await request(path);
+    check(
+      `${label} shows no generated AI topic`,
+      res.status === 200 && generatedTopics.length === 12 && topicLeaks(res.body).length === 0,
+      `${res.status} ${topicLeaks(res.body).join(" | ")}`,
+    );
+  }
+}
+
+// Wrong roles: guests and the TV never reach the organizer AI API; organizer and TV keys are not guest keys.
+for (const [label, key] of [
+  ["<tv>", tvKey],
+  ["<guest>", aniaNewKey],
+]) {
+  for (const [method, json] of [["GET"], ["POST", { category: null }]]) {
+    const res = await request(`/api/o/${key}/ai-topics`, { method, json });
+    check(`AI API with a wrong key: ${method} /api/o/${label}/ai-topics`, noAccessJson(res), String(res.status));
+  }
+}
+for (const [label, key] of [
+  ["<organizer>", organizerKey],
+  ["<tv>", tvKey],
+]) {
+  const res = await request(guestAiApi(key), { method: "POST", json: { category: null } });
+  check(`guest AI topic with a wrong key: ${label}`, noAccessJson(res), `${res.status} ${res.body}`);
+}
+const tvAi = await request(`/api/tv/${tvKey}/ai-topics`, { method: "POST", json: { category: null } });
+check("the TV has no AI topic route", tvAi.status === 404 && topicLeaks(tvAi.body).length === 0, String(tvAi.status));
+
 const accessOff = await request(linksApi, { method: "PATCH", json: { enabled: false } });
 const offAgainPage = await request(`/g/${aniaNewKey}`);
 const offAgainState = await request(guestStateApi(aniaNewKey));
@@ -1983,5 +2186,7 @@ const guessWithAccessOff = await request(guessApi(aniaNewKey), { method: "PUT", 
 check("guest guess with access off: JSON 404", noAccessJson(guessWithAccessOff), guessWithAccessOff.body);
 const drawWithAccessOff = await request(guestDrawApi(aniaNewKey), { method: "POST", json: { category: null } });
 check("guest question draw with access off: JSON 404", noAccessJson(drawWithAccessOff), drawWithAccessOff.body);
+const aiWithAccessOff = await request(guestAiApi(aniaNewKey), { method: "POST", json: { category: null } });
+check("guest AI topic with access off: JSON 404", noAccessJson(aiWithAccessOff), aiWithAccessOff.body);
 
 finish();
