@@ -11,6 +11,8 @@ export default defineConfig(({ mode }) => ({
     include: ["src/**/*.test.ts", "tests/**/*.test.ts"],
     // Loads .env (SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY) so integration tests can reach the local DB.
     env: loadEnv(mode, process.cwd(), ""),
+    // Blocks every request to the Anthropic API: tests never make a paid AI call (S-08).
+    setupFiles: ["./tests/setup/no-ai-network.ts"],
     // Integration tests share the singleton event row; run files one after another.
     fileParallelism: false,
   },
