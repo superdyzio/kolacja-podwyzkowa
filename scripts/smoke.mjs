@@ -579,4 +579,217 @@ check(
   String(shellAfterVenue.status),
 );
 
+// 13. Seating (S-03): the working arrangement with pins and publishing; the TV sees only what was published.
+// Leftovers used here: guests Ania Smoke (present) and Ola Smoke (absent), table "Okno Smoke" (rectangular, 6 seats).
+const seatingApi = `${api}/seating`;
+const tvSeatingApi = `/api/tv/${tvKey}/seating`;
+const seatOf = (res, guestId) => res.data?.assignments?.find((assignment) => assignment.guestId === guestId);
+const tvSince = (version) => request(`${tvSeatingApi}?since=${encodeURIComponent(version ?? "")}`);
+const tvNames = (res) =>
+  (res.data?.tables ?? []).flatMap((table) => table.seats.map((seat) => `${table.name}#${seat.seat}=${seat.name}`));
+const leaksFromTv = (body) =>
+  [organizerKey, '"guestId"', '"id"', '"pinned"', '"isAbsent"', '"tableId"'].filter((secret) => body.includes(secret));
+
+const tvEmpty = await request(tvSeatingApi);
+check(
+  "TV seating before any publish has nothing",
+  tvEmpty.status === 200 &&
+    tvEmpty.data?.publishedAt === null &&
+    tvEmpty.data.tables.length === 0 &&
+    typeof tvEmpty.data.version === "string" &&
+    tvEmpty.cacheControl.includes("no-store"),
+  `${tvEmpty.status} ${tvEmpty.body}`,
+);
+const tvEmptySame = await tvSince(tvEmpty.data?.version);
+check(
+  "TV seating since the current version is 204",
+  tvEmptySame.status === 204 && tvEmptySame.body === "",
+  String(tvEmptySame.status),
+);
+
+const board = await request(seatingApi);
+check(
+  "seating board starts empty and unpublished",
+  board.status === 200 &&
+    board.data?.assignments?.length === 0 &&
+    board.data.published === null &&
+    board.data.upToDate === false &&
+    board.data.guestList?.guests?.length === 2 &&
+    board.data.venue?.tables?.length === 1,
+  `${board.status} ${board.body}`,
+);
+
+const seatAnia = await request(`${seatingApi}/guests/${ania.id}`, {
+  method: "PUT",
+  json: { tableId: oknoId, seat: 1 },
+});
+check(
+  "a guest is seated",
+  seatAnia.status === 200 && seatOf(seatAnia, ania.id)?.seat === 1,
+  `${seatAnia.status} ${seatAnia.body}`,
+);
+const seatOla = await request(`${seatingApi}/guests/${ola.id}`, { method: "PUT", json: { tableId: oknoId, seat: 4 } });
+check(
+  "an absent guest can be seated",
+  seatOla.status === 200 && seatOf(seatOla, ola.id)?.seat === 4,
+  `${seatOla.status}`,
+);
+const swapped = await request(`${seatingApi}/guests/${ania.id}`, { method: "PUT", json: { tableId: oknoId, seat: 4 } });
+check(
+  "two guests swap seats",
+  swapped.status === 200 && seatOf(swapped, ania.id)?.seat === 4 && seatOf(swapped, ola.id)?.seat === 1,
+  `${swapped.status} ${swapped.body}`,
+);
+const noSuchSeat = await request(`${seatingApi}/guests/${ania.id}`, {
+  method: "PUT",
+  json: { tableId: oknoId, seat: 7 },
+});
+check(
+  "a seat the table does not have is refused",
+  noSuchSeat.status === 400 && errorOf(noSuchSeat) === "Ten stolik nie ma miejsca nr 7.",
+  `${noSuchSeat.status} ${errorOf(noSuchSeat)}`,
+);
+const extraKey = await request(`${seatingApi}/guests/${ania.id}`, {
+  method: "PUT",
+  json: { tableId: oknoId, seat: 2, pinned: true },
+});
+check("unknown body keys are refused", extraKey.status === 400, `${extraKey.status} ${errorOf(extraKey)}`);
+const unknownSeatGuest = await request(`${seatingApi}/guests/999999999`, {
+  method: "PUT",
+  json: { tableId: oknoId, seat: 2 },
+});
+check(
+  "seating an unknown guest is not found",
+  unknownSeatGuest.status === 404 && errorOf(unknownSeatGuest) === "Nie znaleziono gościa.",
+  `${unknownSeatGuest.status} ${errorOf(unknownSeatGuest)}`,
+);
+const unknownSeatTable = await request(`${seatingApi}/guests/${ania.id}`, {
+  method: "PUT",
+  json: { tableId: 999999999, seat: 2 },
+});
+check(
+  "seating at an unknown table is not found",
+  unknownSeatTable.status === 404 && errorOf(unknownSeatTable) === "Nie znaleziono stolika.",
+  `${unknownSeatTable.status} ${errorOf(unknownSeatTable)}`,
+);
+
+const pinOla = await request(`${seatingApi}/guests/${ola.id}`, { method: "PATCH", json: { pinned: true } });
+check(
+  "a guest is pinned",
+  pinOla.status === 200 && seatOf(pinOla, ola.id)?.pinned === true,
+  `${pinOla.status} ${pinOla.body}`,
+);
+const movePinned = await request(`${seatingApi}/guests/${ola.id}`, {
+  method: "PUT",
+  json: { tableId: oknoId, seat: 2 },
+});
+check(
+  "a pinned guest cannot be moved",
+  movePinned.status === 409 && errorOf(movePinned).includes("Ola Smoke"),
+  `${movePinned.status} ${errorOf(movePinned)}`,
+);
+const displacePinned = await request(`${seatingApi}/guests/${ania.id}`, {
+  method: "PUT",
+  json: { tableId: oknoId, seat: 1 },
+});
+check(
+  "a pinned guest cannot be displaced",
+  displacePinned.status === 409 && errorOf(displacePinned).includes("Ola Smoke"),
+  `${displacePinned.status} ${errorOf(displacePinned)}`,
+);
+const unseatPinned = await request(`${seatingApi}/guests/${ola.id}`, { method: "DELETE" });
+check(
+  "a pinned guest cannot be unseated",
+  unseatPinned.status === 409,
+  `${unseatPinned.status} ${errorOf(unseatPinned)}`,
+);
+
+const published = await request(`${seatingApi}/publish`, { method: "POST" });
+check(
+  "publishing creates a snapshot and the board is up to date",
+  published.status === 201 &&
+    published.data?.upToDate === true &&
+    Number.isInteger(published.data?.published?.snapshotId),
+  `${published.status} ${published.body}`,
+);
+const publishedAgain = await request(`${seatingApi}/publish`, { method: "POST" });
+check(
+  "publishing again without changes creates nothing",
+  publishedAgain.status === 200 && publishedAgain.data?.published?.snapshotId === published.data?.published?.snapshotId,
+  `${publishedAgain.status}`,
+);
+
+const tvFirst = await request(tvSeatingApi);
+check(
+  "TV shows the published names (absent guests left out)",
+  tvFirst.status === 200 &&
+    tvFirst.data?.version !== tvEmpty.data?.version &&
+    typeof tvFirst.data?.publishedAt === "string" &&
+    JSON.stringify(tvNames(tvFirst)) === JSON.stringify([`${TABLE_NAME}#4=${GUEST_NAMES[0]}`]),
+  `${tvFirst.status} ${tvFirst.body}`,
+);
+check(
+  "TV seating leaks no ids, pins, absences or keys",
+  leaksFromTv(tvFirst.body).length === 0,
+  leaksFromTv(tvFirst.body).join(" "),
+);
+const tvFirstSame = await tvSince(tvFirst.data?.version);
+check("TV seating is 204 until the next publish", tvFirstSame.status === 204, String(tvFirstSame.status));
+
+const olaBack = await request(`${api}/guests/${ola.id}`, { method: "PATCH", json: { isAbsent: false } });
+const boardAfterAbsence = await request(seatingApi);
+const tvAfterAbsence = await tvSince(tvFirst.data?.version);
+check(
+  "marking a seated guest present is an unpublished change the TV does not see",
+  olaBack.status === 200 && boardAfterAbsence.data?.upToDate === false && tvAfterAbsence.status === 204,
+  `${olaBack.status} ${boardAfterAbsence.data?.upToDate} ${tvAfterAbsence.status}`,
+);
+const publishedSecond = await request(`${seatingApi}/publish`, { method: "POST" });
+const tvSecond = await tvSince(tvFirst.data?.version);
+check(
+  "after the next publish the TV shows both guests",
+  publishedSecond.status === 201 &&
+    tvSecond.status === 200 &&
+    JSON.stringify(tvNames(tvSecond)) ===
+      JSON.stringify([`${TABLE_NAME}#1=${GUEST_NAMES[2]}`, `${TABLE_NAME}#4=${GUEST_NAMES[0]}`]),
+  `${publishedSecond.status} ${tvSecond.status} ${tvSecond.body}`,
+);
+
+await request(`${seatingApi}/guests/${ola.id}`, { method: "PATCH", json: { pinned: false } });
+const unseatOla = await request(`${seatingApi}/guests/${ola.id}`, { method: "DELETE" });
+const tvAfterDraft = await tvSince(tvSecond.data?.version);
+check(
+  "an unpublished change never reaches the TV",
+  unseatOla.status === 200 &&
+    !seatOf(unseatOla, ola.id) &&
+    unseatOla.data?.upToDate === false &&
+    tvAfterDraft.status === 204,
+  `${unseatOla.status} ${tvAfterDraft.status}`,
+);
+
+for (const [method, path, json] of [
+  ["GET", `/api/o/${tvKey}/seating`],
+  ["PUT", `/api/o/${tvKey}/seating/guests/${ania.id}`, { tableId: oknoId, seat: 2 }],
+  ["PATCH", `/api/o/${tvKey}/seating/guests/${ania.id}`, { pinned: true }],
+  ["DELETE", `/api/o/${tvKey}/seating/guests/${ania.id}`],
+  ["POST", `/api/o/${tvKey}/seating/publish`],
+  ["GET", `/api/tv/${organizerKey}/seating`],
+]) {
+  const res = await request(path, { method, json });
+  check(
+    `seating API with the wrong key: ${method} ${path.replace(organizerKey, "<organizer>").replace(tvKey, "<tv>")}`,
+    res.status === 404 && res.body === JSON.stringify({ error: "Brak dostępu" }),
+    `${res.status} ${res.body}`,
+  );
+}
+const boardAfterWrongKeys = await request(seatingApi);
+check(
+  "wrong-key seating requests changed nothing",
+  seatOf(boardAfterWrongKeys, ania.id)?.seat === 4 &&
+    seatOf(boardAfterWrongKeys, ania.id)?.pinned === false &&
+    !seatOf(boardAfterWrongKeys, ola.id) &&
+    boardAfterWrongKeys.data?.published?.snapshotId === publishedSecond.data?.published?.snapshotId,
+  boardAfterWrongKeys.body,
+);
+
 finish();
