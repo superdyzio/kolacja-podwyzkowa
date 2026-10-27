@@ -70,3 +70,91 @@ export interface VenueDto {
   rooms: RoomDto[];
   tables: TableDto[];
 }
+
+export type SeatAssignmentRow = Tables["seat_assignment"]["Row"];
+export type SeatingSnapshotRow = Tables["seating_snapshot"]["Row"];
+export type SeatingSnapshotTableRow = Tables["seating_snapshot_table"]["Row"];
+export type SeatingSnapshotSeatRow = Tables["seating_snapshot_seat"]["Row"];
+
+// A guest's seat in the working arrangement (what the organizer edits). pinned: the guest is locked to this seat.
+export interface SeatAssignmentDto {
+  guestId: number;
+  tableId: number;
+  seat: number;
+  pinned: boolean;
+}
+
+// The latest published snapshot: its id is the published version.
+export interface PublicationDto {
+  snapshotId: number;
+  publishedAt: string;
+}
+
+// Everything the organizer seating page needs. upToDate: publishing now would not change what the TV shows.
+export interface SeatingBoardDto {
+  guestList: GuestListDto;
+  venue: VenueDto;
+  assignments: SeatAssignmentDto[];
+  published: PublicationDto | null;
+  upToDate: boolean;
+}
+
+// A venue table as it was when a snapshot was published (renders without the live venue). tableId is null once the
+// table has been deleted.
+export interface SnapshotTable {
+  snapshotTableId: number;
+  tableId: number | null;
+  roomName: string;
+  name: string;
+  seatCount: number;
+  shape: TableShape;
+  x: number;
+  y: number;
+}
+
+// A seated (present) guest in a snapshot, with the display name at publish time. guestId is null once deleted.
+export interface SnapshotSeat {
+  snapshotTableId: number;
+  seat: number;
+  guestId: number | null;
+  guestName: string;
+}
+
+// A published snapshot (server-side; the base for the TV, guest phones in S-05 and the history in S-04).
+export interface SeatingSnapshot {
+  id: number;
+  publishedAt: string;
+  tables: SnapshotTable[];
+  seats: SnapshotSeat[];
+}
+
+// What the TV may see: names on seats, no ids, pins, absences or keys.
+export interface TvSeatDto {
+  seat: number;
+  name: string;
+}
+
+export interface TvTableDto {
+  name: string;
+  shape: TableShape;
+  seatCount: number;
+  x: number;
+  y: number;
+  seats: TvSeatDto[];
+}
+
+// The TV state: the latest published snapshot plus the current plan image version. version is the opaque polling
+// token ("<snapshot id>.<plan version>"); publishedAt is null before the first publish.
+export interface TvSeatingDto {
+  version: string;
+  planVersion: number | null;
+  publishedAt: string | null;
+  tables: TvTableDto[];
+}
+
+// Who sits where in the working arrangement, for the venue page's "who loses their seat" confirmations.
+export interface SeatOccupantDto {
+  tableId: number;
+  seat: number;
+  guestName: string;
+}

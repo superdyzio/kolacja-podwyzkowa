@@ -47,6 +47,7 @@ export {
   sniffImageType,
 } from "./image";
 export {
+  areConsecutiveSeats,
   neighbours,
   oppositeSeat,
   seatPlace,

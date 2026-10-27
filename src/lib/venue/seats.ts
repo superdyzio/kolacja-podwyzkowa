@@ -82,3 +82,29 @@ export function neighbours(shape: TableShape, seatCount: number, seat: number): 
   const side = sideNeighbours(shape, seatCount, seat);
   return sortedUnique(opposite === null ? side : [...side, opposite], seat);
 }
+
+// True when the given seats form one block of people sitting next to each other: connected through side
+// neighbours (round tables wrap around; rectangular tables never cross sides and "opposite" does not count).
+// This is the "inseparable group sits on consecutive seats" rule: the S-03 warning and the S-04 draw share it.
+// No seats or a single seat → true.
+export function areConsecutiveSeats(shape: TableShape, seatCount: number, seats: readonly number[]): boolean {
+  const wanted = new Set(seats);
+  for (const seat of wanted) {
+    assertSeat(seatCount, seat);
+  }
+  const distinct = [...wanted];
+  if (distinct.length === 0) {
+    return true;
+  }
+  const reached = new Set([distinct[0]]);
+  const queue = [distinct[0]];
+  for (let next = queue.pop(); next !== undefined; next = queue.pop()) {
+    for (const other of sideNeighbours(shape, seatCount, next)) {
+      if (wanted.has(other) && !reached.has(other)) {
+        reached.add(other);
+        queue.push(other);
+      }
+    }
+  }
+  return reached.size === wanted.size;
+}

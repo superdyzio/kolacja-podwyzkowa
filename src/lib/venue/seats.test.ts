@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { neighbours, oppositeSeat, seatPlace, sideALength, sideNeighbours } from "./seats";
+import { areConsecutiveSeats, neighbours, oppositeSeat, seatPlace, sideALength, sideNeighbours } from "./seats";
 
 describe("round tables", () => {
   it("numbers seats clockwise with wrap-around neighbours", () => {
@@ -77,5 +77,33 @@ describe("seat range", () => {
   it.each([0, 9, 1.5])("rejects seat %d at a table for eight", (seat) => {
     expect(() => neighbours("round", 8, seat)).toThrow(RangeError);
     expect(() => neighbours("rectangular", 8, seat)).toThrow(RangeError);
+  });
+});
+
+describe("consecutive seats (inseparable groups)", () => {
+  it("treats no seats and a single seat as consecutive", () => {
+    expect(areConsecutiveSeats("round", 8, [])).toBe(true);
+    expect(areConsecutiveSeats("rectangular", 8, [3])).toBe(true);
+  });
+
+  it("wraps around a round table", () => {
+    expect(areConsecutiveSeats("round", 8, [8, 1, 2])).toBe(true);
+    expect(areConsecutiveSeats("round", 8, [1, 3])).toBe(false);
+    expect(areConsecutiveSeats("round", 2, [1, 2])).toBe(true);
+  });
+
+  it("never crosses the sides of a rectangular table", () => {
+    expect(areConsecutiveSeats("rectangular", 8, [4, 5])).toBe(false);
+    expect(areConsecutiveSeats("rectangular", 8, [1, 5])).toBe(false);
+    expect(areConsecutiveSeats("rectangular", 8, [5, 6, 7])).toBe(true);
+    expect(areConsecutiveSeats("rectangular", 2, [1, 2])).toBe(false);
+  });
+
+  it("counts repeated seats once", () => {
+    expect(areConsecutiveSeats("round", 8, [2, 3, 3])).toBe(true);
+  });
+
+  it("rejects seats that do not exist", () => {
+    expect(() => areConsecutiveSeats("round", 8, [9])).toThrow(RangeError);
   });
 });

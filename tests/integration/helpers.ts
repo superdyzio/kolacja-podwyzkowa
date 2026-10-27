@@ -127,3 +127,93 @@ export async function deleteTestGuests(db: DbClient, ids: readonly number[]): Pr
     throw new Error(`Nie udało się usunąć testowych gości: ${error.message}`);
   }
 }
+
+// Deletes only the given seating snapshots (ones a test published itself); their tables and seats go with them.
+export async function deleteTestSnapshots(db: DbClient, ids: readonly number[]): Promise<void> {
+  if (ids.length === 0) {
+    return;
+  }
+  const { error } = await db
+    .from("seating_snapshot")
+    .delete()
+    .in("id", [...ids]);
+  if (error) {
+    throw new Error(`Nie udało się usunąć testowych migawek: ${error.message}`);
+  }
+}
+
+export async function countSnapshots(db: DbClient): Promise<number> {
+  const { count, error } = await db.from("seating_snapshot").select("id", { count: "exact", head: true });
+  if (error) {
+    throw new Error(`Nie udało się policzyć migawek: ${error.message}`);
+  }
+  return count ?? 0;
+}
+
+// A room with tables and a few guests created for one test (tagged names); remove with cleanupTestSeating().
+export interface TestSeating {
+  roomId: number;
+  tableIds: number[];
+  guestIds: number[];
+  guestNames: string[];
+  tableNames: string[];
+}
+
+export async function createTestSeating(
+  db: DbClient,
+  tag: string,
+  tables: { seatCount: number; shape: "round" | "rectangular" }[],
+  guestCount: number,
+): Promise<TestSeating> {
+  const { data: room, error: roomError } = await db
+    .from("venue_room")
+    .insert({ name: `Sala ${tag}` })
+    .select("id")
+    .single();
+  if (roomError) {
+    throw new Error(roomError.message);
+  }
+  const tableNames = tables.map((_, index) => `T${index + 1} ${tag}`);
+  const { data: tableRows, error: tableError } = await db
+    .from("venue_table")
+    .insert(
+      tables.map((t, index) => ({
+        room_id: room.id,
+        name: tableNames[index] ?? "",
+        seat_count: t.seatCount,
+        shape: t.shape,
+        pos_x: 0.1 * (index + 1),
+        pos_y: 0.5,
+      })),
+    )
+    .select("id, name");
+  if (tableError) {
+    throw new Error(tableError.message);
+  }
+  const guestNames = Array.from({ length: guestCount }, (_, index) => `G${index + 1} ${tag}`);
+  const { data: guestRows, error: guestError } = await db
+    .from("guest")
+    .insert(guestNames.map((display_name) => ({ display_name })))
+    .select("id, display_name");
+  if (guestError) {
+    throw new Error(guestError.message);
+  }
+  const tableIdByName = new Map(tableRows.map((row) => [row.name, row.id]));
+  const guestIdByName = new Map(guestRows.map((row) => [row.display_name, row.id]));
+  return {
+    roomId: room.id,
+    tableIds: tableNames.map((name) => tableIdByName.get(name) ?? 0),
+    guestIds: guestNames.map((name) => guestIdByName.get(name) ?? 0),
+    guestNames,
+    tableNames,
+  };
+}
+
+// Removes what createTestSeating() made (seat rows go with their guests and tables).
+export async function cleanupTestSeating(db: DbClient, seating: TestSeating | null): Promise<void> {
+  if (!seating) {
+    return;
+  }
+  await deleteTestGuests(db, seating.guestIds);
+  await deleteTestRooms(db, [seating.roomId]);
+}

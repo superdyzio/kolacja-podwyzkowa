@@ -214,6 +214,175 @@ export interface Database {
           },
         ];
       };
+      seat_assignment: {
+        Row: {
+          guest_id: number;
+          event_id: number;
+          table_id: number;
+          seat: number;
+          is_pinned: boolean;
+        };
+        Insert: {
+          guest_id: number;
+          event_id?: number;
+          table_id: number;
+          seat: number;
+          is_pinned?: boolean;
+        };
+        Update: {
+          guest_id?: number;
+          event_id?: number;
+          table_id?: number;
+          seat?: number;
+          is_pinned?: boolean;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "seat_assignment_guest_id_fkey";
+            columns: ["guest_id"];
+            isOneToOne: true;
+            referencedRelation: "guest";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "seat_assignment_event_id_fkey";
+            columns: ["event_id"];
+            isOneToOne: false;
+            referencedRelation: "event";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "seat_assignment_table_id_fkey";
+            columns: ["table_id"];
+            isOneToOne: false;
+            referencedRelation: "venue_table";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      seating_snapshot: {
+        Row: {
+          id: number;
+          event_id: number;
+          published_at: string;
+        };
+        Insert: {
+          id?: never;
+          event_id?: number;
+          published_at?: string;
+        };
+        Update: {
+          id?: never;
+          event_id?: number;
+          published_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "seating_snapshot_event_id_fkey";
+            columns: ["event_id"];
+            isOneToOne: false;
+            referencedRelation: "event";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      seating_snapshot_table: {
+        Row: {
+          id: number;
+          snapshot_id: number;
+          table_id: number | null;
+          room_name: string;
+          name: string;
+          seat_count: number;
+          shape: string;
+          pos_x: number;
+          pos_y: number;
+        };
+        Insert: {
+          id?: never;
+          snapshot_id: number;
+          table_id?: number | null;
+          room_name: string;
+          name: string;
+          seat_count: number;
+          shape: string;
+          pos_x: number;
+          pos_y: number;
+        };
+        Update: {
+          id?: never;
+          snapshot_id?: number;
+          table_id?: number | null;
+          room_name?: string;
+          name?: string;
+          seat_count?: number;
+          shape?: string;
+          pos_x?: number;
+          pos_y?: number;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "seating_snapshot_table_snapshot_id_fkey";
+            columns: ["snapshot_id"];
+            isOneToOne: false;
+            referencedRelation: "seating_snapshot";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "seating_snapshot_table_table_id_fkey";
+            columns: ["table_id"];
+            isOneToOne: false;
+            referencedRelation: "venue_table";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      seating_snapshot_seat: {
+        Row: {
+          snapshot_id: number;
+          snapshot_table_id: number;
+          seat: number;
+          guest_id: number | null;
+          guest_name: string;
+        };
+        Insert: {
+          snapshot_id: number;
+          snapshot_table_id: number;
+          seat: number;
+          guest_id?: number | null;
+          guest_name: string;
+        };
+        Update: {
+          snapshot_id?: number;
+          snapshot_table_id?: number;
+          seat?: number;
+          guest_id?: number | null;
+          guest_name?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "seating_snapshot_seat_snapshot_id_fkey";
+            columns: ["snapshot_id"];
+            isOneToOne: false;
+            referencedRelation: "seating_snapshot";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "seating_snapshot_seat_snapshot_table_id_fkey";
+            columns: ["snapshot_table_id"];
+            isOneToOne: false;
+            referencedRelation: "seating_snapshot_table";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "seating_snapshot_seat_guest_id_fkey";
+            columns: ["guest_id"];
+            isOneToOne: false;
+            referencedRelation: "guest";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
     };
     Views: { [_ in never]: never };
     Functions: {
@@ -221,6 +390,17 @@ export interface Database {
       // Raises GROUP_SIZE, GUEST_NOT_FOUND or GUEST_ALREADY_GROUPED.
       create_guest_group: {
         Args: { p_guest_ids: number[] };
+        Returns: number;
+      };
+      // Seats a guest on (table, seat): move, swap or replace atomically. Raises GUEST_NOT_FOUND, TABLE_NOT_FOUND,
+      // SEAT_OUT_OF_RANGE, GUEST_PINNED or SEAT_PINNED.
+      seat_guest: {
+        Args: { p_guest_id: number; p_table_id: number; p_seat: number };
+        Returns: undefined;
+      };
+      // Freezes the working arrangement (present guests) and every table into a new snapshot; returns its id.
+      publish_seating: {
+        Args: never;
         Returns: number;
       };
     };
