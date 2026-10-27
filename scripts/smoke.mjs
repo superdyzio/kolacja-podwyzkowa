@@ -831,4 +831,22 @@ check(
   String(venuePageAfterSeating.status),
 );
 
+// 15. TV page (S-03): the latest PUBLISHED arrangement on the plan (Ola Smoke lost her seat after the last publish,
+// so seeing her proves the TV ignores working changes); nothing private in the HTML.
+const tvPage = await request(`/tv/${tvKey}`);
+check(
+  "TV page shows the published names on the plan",
+  tvPage.status === 200 &&
+    tvPage.body.includes(GUEST_NAMES[0]) &&
+    tvPage.body.includes(GUEST_NAMES[2]) &&
+    tvPage.body.includes(TABLE_NAME) &&
+    tvPage.body.includes(`/api/tv/${tvKey}`),
+  String(tvPage.status),
+);
+check("TV page is not cacheable", tvPage.cacheControl.includes("no-store"), tvPage.cacheControl);
+const tvPageLeaks = [organizerKey, "guestId", "pinned", "isAbsent", "tableId", "assignments"].filter((secret) =>
+  tvPage.body.includes(secret),
+);
+check("TV page leaks no organizer key, ids, pins or absences", tvPageLeaks.length === 0, tvPageLeaks.join(" "));
+
 finish();

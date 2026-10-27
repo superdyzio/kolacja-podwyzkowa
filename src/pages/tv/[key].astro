@@ -1,21 +1,35 @@
 ---
 import NoAccess from "@/components/NoAccess.astro";
+import { TvSeatingView } from "@/components/tv/TvSeatingView";
 import Layout from "@/layouts/Layout.astro";
-import { accessFor } from "@/lib/access";
+import { accessFor, tvPath } from "@/lib/access";
+import { getDb } from "@/lib/db";
+import { getTvSeating } from "@/lib/seating";
 
-// Read-only TV view (shell). TvAccess carries no keys, so nothing here can leak the organizer link.
-// The middleware has already checked the key; this is the second, role-specific check.
+// Read-only TV view (S-03, FR-008, NFR-003, NFR-006): the published seating on the venue plan, refreshed by polling.
+// TvAccess carries no keys, and only the TV state (names on tables, no ids) and the event name reach the HTML, so
+// nothing here can leak the organizer link or working data. The middleware has already checked the key (the one in
+// this URL); this is the second, role-specific check.
 const access = accessFor(Astro.locals, "tv");
-if (!access) {
+const db = access ? getDb() : null;
+if (!access || !db) {
   Astro.response.status = 404;
 }
+
+const view =
+  access && db
+    ? {
+        name: access.event.name,
+        apiBase: `/api${tvPath(Astro.params.key ?? "")}`,
+        initial: await getTvSeating(db),
+      }
+    : null;
 ---
 
-{access ? (
-  <Layout title={`${access.event.name} — TV`}>
-    <main class="flex min-h-screen flex-col items-center justify-center gap-[3vh] bg-neutral-950 p-[4vh] text-center text-white">
-      <h1 class="text-[7vh] leading-tight font-bold">{access.event.name}</h1>
-      <p class="text-[3.5vh] text-neutral-300">Rozsadzenie pojawi się tutaj po publikacji.</p>
+{view ? (
+  <Layout title={`${view.name} — TV`}>
+    <main class="fixed inset-0 overflow-hidden bg-neutral-950 text-white">
+      <TvSeatingView client:load apiBase={view.apiBase} initial={view.initial} eventName={view.name} />
     </main>
   </Layout>
 ) : (
