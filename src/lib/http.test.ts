@@ -1,6 +1,6 @@
 import { z } from "astro/zod";
 import { describe, expect, it } from "vitest";
-import { INVALID_DATA_MESSAGE, jsonError, jsonResponse, parseId, readJsonBody } from "./http";
+import { INVALID_DATA_MESSAGE, jsonError, jsonResponse, parseId, readBodyBytes, readJsonBody } from "./http";
 
 const schema = z.strictObject({ text: z.string() });
 
@@ -47,5 +47,76 @@ describe("parseId", () => {
 
   it.each([undefined, "", "0", "-1", "1.5", "1e3", "abc", "01", " 1", "99999999999999999"])("rejects %j", (param) => {
     expect(parseId(param)).toBeNull();
+  });
+});
+
+describe("readBodyBytes", () => {
+  const LIMIT = 10;
+
+  function put(body: BodyInit | null, headers: Record<string, string> = {}): Request {
+    return new Request("http://localhost/api/plan", { method: "PUT", body, headers });
+  }
+
+  // A body streamed in chunks, without a Content-Length.
+  function streamed(...chunks: number[][]): ReadableStream<Uint8Array> {
+    return new ReadableStream({
+      start(controller) {
+        for (const chunk of chunks) {
+          controller.enqueue(new Uint8Array(chunk));
+        }
+        controller.close();
+      },
+    });
+  }
+
+  function streamedPut(stream: ReadableStream<Uint8Array>): Request {
+    return new Request("http://localhost/api/plan", { method: "PUT", body: stream, duplex: "half" } as RequestInit);
+  }
+
+  it("reads a body under or at the limit", async () => {
+    expect(await readBodyBytes(put(new Uint8Array([1, 2, 3])), LIMIT)).toEqual({
+      status: "ok",
+      bytes: new Uint8Array([1, 2, 3]),
+    });
+    expect(await readBodyBytes(put(new Uint8Array(LIMIT).fill(7)), LIMIT)).toEqual({
+      status: "ok",
+      bytes: new Uint8Array(LIMIT).fill(7),
+    });
+  });
+
+  it("joins streamed chunks without a Content-Length", async () => {
+    expect(await readBodyBytes(streamedPut(streamed([1, 2], [3], [4, 5, 6])), LIMIT)).toEqual({
+      status: "ok",
+      bytes: new Uint8Array([1, 2, 3, 4, 5, 6]),
+    });
+  });
+
+  it("refuses a body over the limit", async () => {
+    expect(await readBodyBytes(put(new Uint8Array(LIMIT + 1)), LIMIT)).toEqual({ status: "too-large" });
+  });
+
+  it("stops reading a stream as soon as it passes the limit", async () => {
+    const stream = streamed([1, 2, 3, 4, 5, 6], [7, 8, 9, 10, 11], [12]);
+    expect(await readBodyBytes(streamedPut(stream), LIMIT)).toEqual({ status: "too-large" });
+  });
+
+  it("refuses a declared Content-Length over the limit without reading", async () => {
+    const request = put(new Uint8Array([1]), { "Content-Length": String(LIMIT + 1) });
+    if (request.headers.get("content-length") === null) {
+      // The runtime dropped the header (forbidden in some fetch implementations); nothing to check here.
+      return;
+    }
+    expect(await readBodyBytes(request, LIMIT)).toEqual({ status: "too-large" });
+    expect(request.bodyUsed).toBe(false);
+  });
+
+  it("does not trust a Content-Length that is too small", async () => {
+    const request = put(new Uint8Array(LIMIT + 5), { "Content-Length": "1" });
+    expect(await readBodyBytes(request, LIMIT)).toEqual({ status: "too-large" });
+  });
+
+  it("reports an empty body", async () => {
+    expect(await readBodyBytes(put(null), LIMIT)).toEqual({ status: "empty" });
+    expect(await readBodyBytes(put(new Uint8Array()), LIMIT)).toEqual({ status: "empty" });
   });
 });

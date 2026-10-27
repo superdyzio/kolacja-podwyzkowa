@@ -67,6 +67,12 @@ export function describeTableNameProblem(problem: VenueNameProblem): string {
 
 export const SEAT_COUNT_MESSAGE = `Stolik ma od ${MIN_SEATS} do ${MAX_SEATS} miejsc.`;
 export const POSITION_MESSAGE = "Kliknij na planie, gdzie stoi stolik.";
+export const ROOM_DUPLICATE_MESSAGE = "Sala o tej nazwie już jest.";
+export const ROOM_NOT_FOUND_MESSAGE = "Nie znaleziono sali.";
+export const ROOMS_LIMIT_MESSAGE = `Można mieć najwyżej ${MAX_ROOMS} sal.`;
+export const TABLE_DUPLICATE_MESSAGE = "Stolik o tej nazwie już jest.";
+export const TABLE_NOT_FOUND_MESSAGE = "Nie znaleziono stolika.";
+export const TABLES_LIMIT_MESSAGE = `Można mieć najwyżej ${MAX_TABLES} stolików.`;
 
 export function isValidSeatCount(count: number): boolean {
   return Number.isInteger(count) && count >= MIN_SEATS && count <= MAX_SEATS;

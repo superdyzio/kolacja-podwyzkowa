@@ -30,6 +30,49 @@ export async function readJsonBody<S extends z.ZodType>(request: Request, schema
   return { ok: true, data: parsed.data };
 }
 
+export type BodyBytesResult =
+  { status: "ok"; bytes: Uint8Array<ArrayBuffer> } | { status: "empty" } | { status: "too-large" };
+
+// Reads a raw upload (e.g. an image sent as the request body) without ever buffering more than `limit` bytes:
+// a declared Content-Length above the limit is refused before reading, and the stream is cancelled as soon as the
+// running total passes the limit (the header can be missing or wrong).
+export async function readBodyBytes(request: Request, limit: number): Promise<BodyBytesResult> {
+  const declared = Number(request.headers.get("content-length") ?? Number.NaN);
+  if (Number.isFinite(declared) && declared > limit) {
+    return { status: "too-large" };
+  }
+  if (!request.body) {
+    return { status: "empty" };
+  }
+
+  const reader = request.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) {
+      break;
+    }
+    total += value.byteLength;
+    if (total > limit) {
+      await reader.cancel();
+      return { status: "too-large" };
+    }
+    chunks.push(value);
+  }
+  if (total === 0) {
+    return { status: "empty" };
+  }
+
+  const bytes = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return { status: "ok", bytes };
+}
+
 const ID_PATTERN = /^[1-9][0-9]{0,15}$/;
 
 // A route id parameter as a positive safe integer, or null (→ the route answers "not found").
