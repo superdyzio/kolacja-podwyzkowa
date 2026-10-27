@@ -404,9 +404,9 @@ The after-refresh guarantee: a data-free readout page and a minimal service work
 
 #### Automated
 
-- [x] 4.1 Lint, type check and tests pass (incl. `tests/sw/`): `npm run lint`, `npx astro check`, `npm test`
-- [x] 4.2 Build succeeds and ships the worker: `npm run build` and `dist/client/organizer-sw.js` exists
-- [x] 4.3 HTTP smoke passes: `npm run preview` + `npm run smoke` (then stop the server and `delete from public.event`)
+- [x] 4.1 Lint, type check and tests pass (incl. `tests/sw/`): `npm run lint`, `npx astro check`, `npm test` — 467b99a
+- [x] 4.2 Build succeeds and ships the worker: `npm run build` and `dist/client/organizer-sw.js` exists — 467b99a
+- [x] 4.3 HTTP smoke passes: `npm run preview` + `npm run smoke` (then stop the server and `delete from public.event`) — 467b99a
 
 #### Manual
 
