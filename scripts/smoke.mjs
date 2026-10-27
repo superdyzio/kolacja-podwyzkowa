@@ -1270,6 +1270,287 @@ check(
   String(olaPage.status),
 );
 
+// 18. Guesses and the ranking (S-06): a guest saves and changes only their OWN guess while intake is open; the
+// organizer enters guesses for anyone (also after closing), closes and reopens intake, sets the correct amount and
+// gets the ranking. Guesses of others, the correct amount and the ranking never reach a guest or the TV.
+const guessesApi = `${api}/guesses`;
+const guessApi = (key) => `/api/g/${key}/guess`;
+const NBSP = "\u00a0";
+const boardGuest = (res, id) => res.data?.guests?.find((guest) => guest.id === id);
+const isMissingGuess = (res, id) => Boolean(res.data?.missing?.some((guest) => guest.id === id));
+const rankOf = (res, id) => res.data?.ranking?.entries?.find((entry) => entry.guestId === id);
+// Every way an amount could show up in a body: raw grosze, "7 777,77" (NBSP or space) and "7777,77".
+const amountForms = (grosze) => {
+  const whole = String(Math.floor(grosze / 100));
+  const fraction = String(grosze % 100).padStart(2, "0");
+  const grouped = (separator) => whole.replace(/\B(?=(\d{3})+(?!\d))/g, separator);
+  return [String(grosze), `${grouped(NBSP)},${fraction}`, `${grouped(" ")},${fraction}`, `${whole},${fraction}`];
+};
+// JSON without the opaque tokens and epoch-ms versions (digits there could look like an amount).
+const withoutVersions = (data) => JSON.stringify({ ...data, version: null, planVersion: null, publishedAt: null });
+const leaksIn = (body, amounts, words = []) =>
+  [...amounts.flatMap(amountForms), ...words].filter((needle) => body.includes(needle));
+// Ania 1 234,56 zł → later 2 222,23 zł; Ola 7 777,77 zł; the correct amount 5 000,00 zł.
+const ANIA_GUESS = 123456;
+const ANIA_TIE = 222223;
+const OLA_GUESS = 777777;
+const CORRECT = 500000;
+const SECRET_WORDS = ["ranking", "correctAmount", '"place"', "distance", "missing"];
+
+const board0 = await request(guessesApi);
+check(
+  "guesses board starts open, without a correct amount or ranking, everybody missing",
+  board0.status === 200 &&
+    board0.data?.intakeOpen === true &&
+    board0.data.correctAmountGrosze === null &&
+    board0.data.ranking === null &&
+    isMissingGuess(board0, ania.id) &&
+    isMissingGuess(board0, ola.id) &&
+    boardGuest(board0, ola.id)?.isAbsent === false &&
+    board0.cacheControl.includes("no-store"),
+  `${board0.status} ${board0.body}`,
+);
+
+const aniaGuess0 = await request(guestStateApi(aniaNewKey));
+check(
+  "guest state carries the intake flag and no guess yet",
+  aniaGuess0.status === 200 &&
+    aniaGuess0.data?.guess?.intakeOpen === true &&
+    aniaGuess0.data.guess.amountGrosze === null &&
+    Object.keys(aniaGuess0.data.guess).length === 2,
+  aniaGuess0.body,
+);
+const aniaSaved = await request(guessApi(aniaNewKey), { method: "PUT", json: { amount: "1 234,56 zł" } });
+check(
+  "guest saves her own guess in a Polish format and gets her new state",
+  aniaSaved.status === 200 &&
+    aniaSaved.data?.guess?.amountGrosze === ANIA_GUESS &&
+    aniaSaved.data.guess.intakeOpen === true &&
+    aniaSaved.data.name === GUEST_NAMES[0] &&
+    aniaSaved.data.version !== aniaGuess0.data?.version &&
+    aniaSaved.cacheControl.includes("no-store"),
+  `${aniaSaved.status} ${aniaSaved.body}`,
+);
+const aniaSinceOld = await guestSince(aniaNewKey, aniaGuess0.data?.version);
+const aniaSinceSaved = await guestSince(aniaNewKey, aniaSaved.data?.version);
+check(
+  "the saved guess changes the guest's polling version",
+  aniaSinceOld.status === 200 && aniaSinceOld.data?.guess?.amountGrosze === ANIA_GUESS && aniaSinceSaved.status === 204,
+  `${aniaSinceOld.status} ${aniaSinceSaved.status}`,
+);
+
+for (const [amount, message] of [
+  ["-5", "Kwota nie może być ujemna."],
+  ["abc", "Wpisz kwotę w złotych, np. 1500 albo 1499,99."],
+  ["1.500", "Wpisz kwotę w złotych, np. 1500 albo 1499,99."],
+  ["10000000,01", "Kwota może wynieść najwyżej 10 000 000 zł."],
+  ["", "Wpisz kwotę."],
+]) {
+  const res = await request(guessApi(aniaNewKey), { method: "PUT", json: { amount } });
+  check(`guest guess ${JSON.stringify(amount)} is refused`, res.status === 400 && errorOf(res) === message, res.body);
+}
+for (const json of [{ amount: "1", guestId: ola.id }, { amount: 100 }, {}]) {
+  const res = await request(guessApi(aniaNewKey), { method: "PUT", json });
+  check(
+    `guest guess body ${JSON.stringify(json)} is refused (no way to name another guest)`,
+    res.status === 400 && errorOf(res) === "Nieprawidłowe dane.",
+    `${res.status} ${res.body}`,
+  );
+}
+const boardAfterGuest = await request(guessesApi);
+check(
+  "organizer sees the guest's guess; nobody else got one",
+  boardGuest(boardAfterGuest, ania.id)?.amountGrosze === ANIA_GUESS &&
+    boardGuest(boardAfterGuest, ania.id)?.enteredBy === "guest" &&
+    !isMissingGuess(boardAfterGuest, ania.id) &&
+    isMissingGuess(boardAfterGuest, ola.id),
+  boardAfterGuest.body,
+);
+
+const olaProxy = await request(`${guessesApi}/${ola.id}`, { method: "PUT", json: { amount: "7777,77" } });
+check(
+  "organizer enters a guess for another guest",
+  olaProxy.status === 200 &&
+    boardGuest(olaProxy, ola.id)?.amountGrosze === OLA_GUESS &&
+    boardGuest(olaProxy, ola.id)?.enteredBy === "organizer" &&
+    !isMissingGuess(olaProxy, ola.id),
+  `${olaProxy.status} ${olaProxy.body}`,
+);
+const olaGuessState = await request(guestStateApi(olaKey));
+const aniaAfterOla = await guestSince(aniaNewKey, aniaSaved.data?.version);
+check(
+  "the proxy guess reaches only that guest's phone",
+  olaGuessState.data?.guess?.amountGrosze === OLA_GUESS && aniaAfterOla.status === 204,
+  `${olaGuessState.body} ${aniaAfterOla.status}`,
+);
+const aniaStateNow = await request(guestStateApi(aniaNewKey));
+const aniaLeaks = leaksIn(withoutVersions(aniaStateNow.data), [OLA_GUESS, CORRECT], [...SECRET_WORDS, GUEST_NAMES[2]]);
+const olaLeaks = leaksIn(withoutVersions(olaGuessState.data), [ANIA_GUESS], [...SECRET_WORDS, GUEST_NAMES[0]]);
+check(
+  "a guest's state shows nobody else's guess",
+  aniaStateNow.data?.guess?.amountGrosze === ANIA_GUESS && aniaLeaks.length === 0 && olaLeaks.length === 0,
+  [...aniaLeaks, ...olaLeaks].join(" | "),
+);
+
+const closed = await request(guessesApi, { method: "PATCH", json: { intakeOpen: false } });
+const aniaSeesClosed = await guestSince(aniaNewKey, aniaSaved.data?.version);
+check(
+  "closing intake reaches the guest's phone through the same poll",
+  closed.status === 200 &&
+    closed.data?.intakeOpen === false &&
+    aniaSeesClosed.status === 200 &&
+    aniaSeesClosed.data?.guess?.intakeOpen === false &&
+    aniaSeesClosed.data.guess.amountGrosze === ANIA_GUESS,
+  `${closed.status} ${aniaSeesClosed.status} ${aniaSeesClosed.body}`,
+);
+const lateGuess = await request(guessApi(aniaNewKey), { method: "PUT", json: { amount: "9999" } });
+const afterLate = await request(guestStateApi(aniaNewKey));
+check(
+  "after closing, the guest cannot change her guess",
+  lateGuess.status === 409 &&
+    errorOf(lateGuess) === "Przyjmowanie strzałów jest zamknięte." &&
+    afterLate.data?.guess?.amountGrosze === ANIA_GUESS,
+  `${lateGuess.status} ${lateGuess.body}`,
+);
+
+const correctSet = await request(guessesApi, { method: "PATCH", json: { correctAmount: "5 000,00 zł" } });
+check(
+  "the correct amount gives the ranking by distance",
+  correctSet.status === 200 &&
+    correctSet.data?.correctAmountGrosze === CORRECT &&
+    correctSet.data.ranking?.correctAmountGrosze === CORRECT &&
+    rankOf(correctSet, ola.id)?.place === 1 &&
+    rankOf(correctSet, ola.id)?.distanceGrosze === OLA_GUESS - CORRECT &&
+    rankOf(correctSet, ania.id)?.place === 2 &&
+    rankOf(correctSet, ania.id)?.differenceGrosze === ANIA_GUESS - CORRECT &&
+    rankOf(correctSet, ania.id)?.tied === false,
+  `${correctSet.status} ${correctSet.body}`,
+);
+const aniaTie = await request(`${guessesApi}/${ania.id}`, { method: "PUT", json: { amount: "2222,23" } });
+check(
+  "organizer corrects a guess after closing; equal distances share a place marked as a tie",
+  aniaTie.status === 200 &&
+    boardGuest(aniaTie, ania.id)?.amountGrosze === ANIA_TIE &&
+    boardGuest(aniaTie, ania.id)?.enteredBy === "organizer" &&
+    rankOf(aniaTie, ania.id)?.place === 1 &&
+    rankOf(aniaTie, ola.id)?.place === 1 &&
+    rankOf(aniaTie, ania.id)?.tied === true &&
+    rankOf(aniaTie, ola.id)?.tied === true,
+  `${aniaTie.status} ${aniaTie.body}`,
+);
+
+const aniaWithRanking = await request(guestStateApi(aniaNewKey));
+const olaWithRanking = await request(guestStateApi(olaKey));
+const rankingLeaks = [
+  ...leaksIn(withoutVersions(aniaWithRanking.data), [OLA_GUESS, CORRECT], SECRET_WORDS),
+  ...leaksIn(withoutVersions(olaWithRanking.data), [ANIA_TIE, CORRECT], SECRET_WORDS),
+];
+check(
+  "with a ranking in place, guests still see only their own guess",
+  aniaWithRanking.data?.guess?.amountGrosze === ANIA_TIE &&
+    olaWithRanking.data?.guess?.amountGrosze === OLA_GUESS &&
+    rankingLeaks.length === 0,
+  rankingLeaks.join(" | "),
+);
+const tvWithGuesses = await request(tvSeatingApi);
+const tvPageWithGuesses = await request(`/tv/${tvKey}`);
+const tvLeaks = [
+  ...leaksIn(
+    withoutVersions(tvWithGuesses.data),
+    [ANIA_TIE, OLA_GUESS, CORRECT, ANIA_GUESS],
+    [...SECRET_WORDS, "guess", "amount"],
+  ),
+  ...leaksIn(tvPageWithGuesses.body, [], ["7 777,77", "7777,77", "5 000,00", "2 222,23", "amountGrosze", "guess"]),
+];
+check(
+  "the TV shows no guesses, correct amount or ranking",
+  tvWithGuesses.status === 200 && tvPageWithGuesses.status === 200 && tvLeaks.length === 0,
+  tvLeaks.join(" | "),
+);
+
+for (const [json, message] of [
+  [{}, "Nieprawidłowe dane."],
+  [{ intakeOpen: "no" }, "Nieprawidłowe dane."],
+  [{ intakeOpen: true, extra: 1 }, "Nieprawidłowe dane."],
+  [{ correctAmount: "abc" }, "Wpisz kwotę w złotych, np. 1500 albo 1499,99."],
+  [{ correctAmount: "-1" }, "Kwota nie może być ujemna."],
+]) {
+  const res = await request(guessesApi, { method: "PATCH", json });
+  check(`guesses settings refuse ${JSON.stringify(json)}`, res.status === 400 && errorOf(res) === message, res.body);
+}
+for (const [path, method, json, status] of [
+  [`${guessesApi}/999999999`, "PUT", { amount: "1" }, 404],
+  [`${guessesApi}/abc`, "PUT", { amount: "1" }, 404],
+  [`${guessesApi}/999999999`, "DELETE", undefined, 404],
+  [`${guessesApi}/${ola.id}`, "PUT", { amount: "x" }, 400],
+  [`${guessesApi}/${ola.id}`, "PUT", { amount: "1", guestId: ania.id }, 400],
+]) {
+  const res = await request(path, { method, json });
+  check(
+    `organizer guess ${method} ${path.replace(guessesApi, "…/guesses")} → ${status}`,
+    res.status === status && (status !== 404 || errorOf(res) === "Nie znaleziono gościa."),
+    `${res.status} ${res.body}`,
+  );
+}
+const olaDeleted = await request(`${guessesApi}/${ola.id}`, { method: "DELETE" });
+check(
+  "organizer deletes a guess: the guest is missing again and out of the ranking",
+  olaDeleted.status === 200 &&
+    isMissingGuess(olaDeleted, ola.id) &&
+    rankOf(olaDeleted, ola.id) === undefined &&
+    rankOf(olaDeleted, ania.id)?.tied === false,
+  `${olaDeleted.status} ${olaDeleted.body}`,
+);
+await request(`${guessesApi}/${ola.id}`, { method: "PUT", json: { amount: "7777,77" } });
+
+for (const key of [tvKey, aniaNewKey]) {
+  for (const [path, method, json] of [
+    [`/api/o/${key}/guesses`, "GET", undefined],
+    [`/api/o/${key}/guesses`, "PATCH", { intakeOpen: true }],
+    [`/api/o/${key}/guesses/${ola.id}`, "PUT", { amount: "1" }],
+    [`/api/o/${key}/guesses/${ola.id}`, "DELETE", undefined],
+  ]) {
+    const res = await request(path, { method, json });
+    check(
+      `guesses API with a wrong key: ${method} ${path.replace(tvKey, "<tv>").replace(aniaNewKey, "<guest>")}`,
+      noAccessJson(res),
+      `${res.status} ${res.body}`,
+    );
+  }
+}
+for (const key of [organizerKey, tvKey]) {
+  const res = await request(guessApi(key), { method: "PUT", json: { amount: "1" } });
+  check(
+    `guest guess API with a wrong key: ${key === organizerKey ? "<organizer>" : "<tv>"}`,
+    noAccessJson(res),
+    `${res.status} ${res.body}`,
+  );
+}
+const guessesAfterWrongKeys = await request(guessesApi);
+check(
+  "wrong keys changed nothing",
+  guessesAfterWrongKeys.data?.intakeOpen === false &&
+    boardGuest(guessesAfterWrongKeys, ola.id)?.amountGrosze === OLA_GUESS &&
+    boardGuest(guessesAfterWrongKeys, ania.id)?.amountGrosze === ANIA_TIE,
+  guessesAfterWrongKeys.body,
+);
+
+const reopened = await request(guessesApi, { method: "PATCH", json: { intakeOpen: true } });
+const aniaAgain = await request(guessApi(aniaNewKey), { method: "PUT", json: { amount: "2222.23" } });
+const boardReopened = await request(guessesApi);
+check(
+  "after reopening, the guest can change her guess again",
+  reopened.status === 200 &&
+    reopened.data?.intakeOpen === true &&
+    aniaAgain.status === 200 &&
+    aniaAgain.data?.guess?.amountGrosze === ANIA_TIE &&
+    boardGuest(boardReopened, ania.id)?.enteredBy === "guest" &&
+    rankOf(boardReopened, ania.id)?.tied === true,
+  `${reopened.status} ${aniaAgain.status} ${aniaAgain.body}`,
+);
+// State for the page checks below: intake open, correct amount 5 000,00 zł, Ania 2 222,23 zł (her own) and
+// Ola 7 777,77 zł (entered by the organizer) tied on place 1.
+
 const accessOff = await request(linksApi, { method: "PATCH", json: { enabled: false } });
 const offAgainPage = await request(`/g/${aniaNewKey}`);
 const offAgainState = await request(guestStateApi(aniaNewKey));
@@ -1282,5 +1563,7 @@ check(
     noAccessJson(offAgainState),
   `${accessOff.status} ${offAgainPage.status} ${offAgainState.status}`,
 );
+const guessWithAccessOff = await request(guessApi(aniaNewKey), { method: "PUT", json: { amount: "1" } });
+check("guest guess with access off: JSON 404", noAccessJson(guessWithAccessOff), guessWithAccessOff.body);
 
 finish();

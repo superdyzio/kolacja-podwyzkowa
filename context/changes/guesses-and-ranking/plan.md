@@ -424,18 +424,18 @@ The organizer's page for the evening's last act: proxy entries, who is missing, 
 
 #### Automated
 
-- [x] 2.1 Unit and integration tests pass: `npm test`
-- [x] 2.2 Lint passes: `npm run lint`
-- [x] 2.3 Type check passes: `npx astro check`
+- [x] 2.1 Unit and integration tests pass: `npm test` — ef978d5
+- [x] 2.2 Lint passes: `npm run lint` — ef978d5
+- [x] 2.3 Type check passes: `npx astro check` — ef978d5
 
 ### Phase 3: Guess API routes and the HTTP guardrail smoke
 
 #### Automated
 
-- [ ] 3.1 Lint and type check pass: `npm run lint`, `npx astro check`
-- [ ] 3.2 Tests pass: `npm test`
-- [ ] 3.3 Production build succeeds: `npm run build`
-- [ ] 3.4 HTTP smoke passes on a DB without an event: `npm run preview` + `npm run smoke` (then stop the server and `delete from public.event`)
+- [x] 3.1 Lint and type check pass: `npm run lint`, `npx astro check`
+- [x] 3.2 Tests pass: `npm test`
+- [x] 3.3 Production build succeeds: `npm run build`
+- [x] 3.4 HTTP smoke passes on a DB without an event: `npm run preview` + `npm run smoke` (then stop the server and `delete from public.event`)
 
 ### Phase 4: Guest guess section on the phone (shared poll)
 
