@@ -42,7 +42,7 @@ Organizator co roku prowadzi kolację podwyżkową dla 35–40 przyjaciół i dz
 | ---- | --------------------------- | ------------------------------------------------------------------------------------ | ------------------- | ---------------------------------------------------- | -------- |
 | F-01 | link-access-foundation      | (foundation) wydarzenie z sekretnym linkiem organizatora i adresem TV; reszta bez dostępu; testy działają | —                   | NFR-009, Access Control                              | done     |
 | S-01 | guest-list-and-groups       | organizator wkleja i edytuje listę gości, tworzy grupy i oznacza nieobecnych          | F-01                | US-01, FR-001, FR-002, FR-003                        | done     |
-| S-02 | rooms-and-tables-on-plan    | organizator wgrywa plan, nazywa sale i stawia pinezki stolików z miejscami i typem    | F-01                | US-01, FR-005, FR-006                                | proposed |
+| S-02 | rooms-and-tables-on-plan    | organizator wgrywa plan, nazywa sale i stawia pinezki stolików z miejscami i typem    | F-01                | US-01, FR-005, FR-006                                | planning |
 | S-03 | manual-seating-on-tv        | organizator sadza gości ręcznie, przypina miejsca, publikuje, a TV pokazuje imiona na planie | S-01, S-02          | US-01, FR-004, FR-007, FR-008, NFR-003, NFR-006      | proposed |
 | S-04 | reshuffle-draft-and-publish | organizator losuje projekt rozkładu bez powtórek sąsiadów, poprawia go, publikuje i cofa | S-03                | US-02, FR-009, FR-010, NFR-007                       | proposed |
 | S-05 | guest-links-and-seat-view   | gość otwiera osobisty link/QR i widzi swój stolik i miejsce, odświeżane na żywo       | S-03                | US-03, FR-011, FR-012, FR-013, NFR-003, NFR-008, NFR-009 | proposed |
@@ -113,7 +113,7 @@ Foundations below assume these are present and do NOT re-scaffold them.
 - **Unknowns:**
   - Dokładny układ lokalu i zrzut planu (Open Question 1) — Owner: user. Block: no (apka elastyczna, do testów dane demo).
 - **Risk:** Pinezki na obrazie to najcięższa część UI przygotowań; trzymać prosty model (pozycja jako procent szerokości/wysokości obrazu).
-- **Status:** proposed
+- **Status:** planning
 
 ### S-03: Ręczne rozsadzenie i widok TV
 
