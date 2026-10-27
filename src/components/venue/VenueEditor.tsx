@@ -1,10 +1,16 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useVenue } from "@/components/hooks/useVenue";
 import { Button } from "@/components/ui/button";
+import {
+  describeRemovedOccupants,
+  occupancyAfter,
+  occupantsRemovedBy,
+  type VenueSeatChange,
+} from "@/lib/seating/published";
 import { planImagePath, type PinPosition } from "@/lib/venue/pin";
 import { nextTableName } from "@/lib/venue/rules";
 import { formatVenueSummary, summarizeVenue } from "@/lib/venue/summary";
-import type { VenueDto } from "@/types";
+import type { SeatOccupantDto, VenueDto } from "@/types";
 import { PlanCanvas } from "./PlanCanvas";
 import { PlanUpload } from "./PlanUpload";
 import { RoomsSection } from "./RoomsSection";
@@ -15,6 +21,8 @@ interface Props {
   // Organizer API base, e.g. "/api/o/<key>".
   apiBase: string;
   initialVenue: VenueDto;
+  // Who sits where in the working seating arrangement (structure edits that remove seats name them first).
+  initialOccupancy: SeatOccupantDto[];
 }
 
 // What a click on the plan does: idle → open "Nowy stolik" at that point; new → move the draft pin;
@@ -28,13 +36,15 @@ type Mode =
 const NO_ROOM_MESSAGE = "Najpierw dodaj salę — każdy stolik stoi w jakiejś sali.";
 
 // Organizer rooms-and-tables island (FR-005, FR-006): plan upload, rooms, tables pinned on the plan.
-export function VenueEditor({ apiBase, initialVenue }: Props) {
+export function VenueEditor({ apiBase, initialVenue, initialOccupancy }: Props) {
   const { venue, pending, failure, send, uploadPlan, showFailure, dismissFailure } = useVenue(apiBase, initialVenue);
+  const [occupancy, setOccupancy] = useState(initialOccupancy);
   const [mode, setMode] = useState<Mode>({ kind: "idle" });
   const [lastRoomId, setLastRoomId] = useState<number | null>(null);
   const panelRef = useRef<HTMLDivElement>(null);
 
   const roomNameById = useMemo(() => new Map(venue.rooms.map((room) => [room.id, room.name])), [venue.rooms]);
+  const tableNameById = useMemo(() => new Map(venue.tables.map((table) => [table.id, table.name])), [venue.tables]);
   const tableCountByRoom = useMemo(() => {
     const counts = new Map<number, number>();
     for (const table of venue.tables) {
@@ -81,6 +91,17 @@ export function VenueEditor({ apiBase, initialVenue }: Props) {
     }
   }, [formKey]);
 
+  // „\n\nMiejsce stracą: …” for a confirm question, or "" when nobody sits on the removed seats.
+  function seatLoss(change: VenueSeatChange): string {
+    const text = describeRemovedOccupants(occupantsRemovedBy(occupancy, change), tableNameById);
+    return text === "" ? "" : `\n\n${text}`;
+  }
+
+  // The DB unseats the same guests (cascade, seat-count trigger); the page follows without a reload.
+  function forgetSeats(change: VenueSeatChange) {
+    setOccupancy((current) => occupancyAfter(current, change));
+  }
+
   async function handlePlanClick(position: PinPosition) {
     if (current.kind === "move") {
       if (await send({ method: "PATCH", path: `/tables/${current.tableId}`, body: position })) {
@@ -96,12 +117,24 @@ export function VenueEditor({ apiBase, initialVenue }: Props) {
   }
 
   async function saveTable(values: TableFormValues): Promise<boolean> {
-    const saved =
-      current.kind === "new"
-        ? await send({ method: "POST", path: "/tables", body: { ...values, ...current.position } })
-        : current.kind === "edit"
-          ? await send({ method: "PATCH", path: `/tables/${current.tableId}`, body: values })
-          : false;
+    let saved = false;
+    if (current.kind === "new") {
+      saved = await send({ method: "POST", path: "/tables", body: { ...values, ...current.position } });
+    } else if (current.kind === "edit") {
+      // A lower seat count unseats whoever sits above it: ask first, naming them (nobody there → no question).
+      const change: VenueSeatChange = { kind: "seat-count", tableId: current.tableId, seatCount: values.seatCount };
+      const loss = seatLoss(change);
+      if (
+        loss !== "" &&
+        !window.confirm(`Zmniejszyć liczbę miejsc przy „${activeTable?.name ?? ""}” do ${values.seatCount}?${loss}`)
+      ) {
+        return false;
+      }
+      saved = await send({ method: "PATCH", path: `/tables/${current.tableId}`, body: values });
+      if (saved) {
+        forgetSeats(change);
+      }
+    }
     if (saved) {
       setLastRoomId(values.roomId);
       setMode({ kind: "idle" });
@@ -110,11 +143,30 @@ export function VenueEditor({ apiBase, initialVenue }: Props) {
   }
 
   async function deleteActiveTable() {
-    if (!activeTable || !window.confirm(`Usunąć stolik „${activeTable.name}”?`)) {
+    if (!activeTable) {
+      return;
+    }
+    const change: VenueSeatChange = { kind: "delete-table", tableId: activeTable.id };
+    if (!window.confirm(`Usunąć stolik „${activeTable.name}”?${seatLoss(change)}`)) {
       return;
     }
     if (await send({ method: "DELETE", path: `/tables/${activeTable.id}` })) {
+      forgetSeats(change);
       setMode({ kind: "idle" });
+    }
+  }
+
+  function roomChange(roomId: number): VenueSeatChange {
+    return {
+      kind: "delete-room",
+      tableIds: venue.tables.filter((table) => table.roomId === roomId).map((table) => table.id),
+    };
+  }
+
+  async function deleteRoom(roomId: number) {
+    const change = roomChange(roomId);
+    if (await send({ method: "DELETE", path: `/rooms/${roomId}` })) {
+      forgetSeats(change);
     }
   }
 
@@ -173,7 +225,8 @@ export function VenueEditor({ apiBase, initialVenue }: Props) {
           pending={pending}
           onAdd={(name) => send({ method: "POST", path: "/rooms", body: { name } })}
           onRename={(roomId, name) => send({ method: "PATCH", path: `/rooms/${roomId}`, body: { name } })}
-          onDelete={(roomId) => void send({ method: "DELETE", path: `/rooms/${roomId}` })}
+          seatLoss={(roomId) => seatLoss(roomChange(roomId))}
+          onDelete={(roomId) => void deleteRoom(roomId)}
         />
       </div>
 

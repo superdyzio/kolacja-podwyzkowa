@@ -434,21 +434,21 @@ Fourth migration. Locally `npx supabase migration up`; CI's `supabase start` app
 
 #### Automated
 
-- [x] 3.1 Unit tests pass: `npm test`
-- [x] 3.2 Lint passes: `npm run lint`
-- [x] 3.3 Type check passes: `npx astro check`
-- [x] 3.4 Build passes: `npm run build`
-- [x] 3.5 HTTP smoke passes against the production preview on a DB without an event
+- [x] 3.1 Unit tests pass: `npm test` — c20a843
+- [x] 3.2 Lint passes: `npm run lint` — c20a843
+- [x] 3.3 Type check passes: `npx astro check` — c20a843
+- [x] 3.4 Build passes: `npm run build` — c20a843
+- [x] 3.5 HTTP smoke passes against the production preview on a DB without an event — c20a843
 
 ### Phase 4: Organizer seating page, shell card and venue-page confirmations
 
 #### Automated
 
-- [ ] 4.1 Lint passes: `npm run lint`
-- [ ] 4.2 Type check passes: `npx astro check`
-- [ ] 4.3 Tests pass: `npm test`
-- [ ] 4.4 Build passes: `npm run build`
-- [ ] 4.5 HTTP smoke passes against the production preview on a DB without an event
+- [x] 4.1 Lint passes: `npm run lint`
+- [x] 4.2 Type check passes: `npx astro check`
+- [x] 4.3 Tests pass: `npm test`
+- [x] 4.4 Build passes: `npm run build`
+- [x] 4.5 HTTP smoke passes against the production preview on a DB without an event
 
 #### Manual
 

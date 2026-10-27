@@ -75,6 +75,7 @@ Dziennik decyzji, zależności i blokerów nocnego builda (zasady: `overnight-br
 - 2026-10-27 — S-03 organizator przy stole: bez flagi „to ja” — organizator sadza i przypina siebie jak każdego gościa (Recommended, mniejszy zakres).
 - 2026-10-27 — S-03 strona sal (kontrakt S-02): potwierdzenia usunięcia stolika, usunięcia sali i zmniejszenia liczby miejsc wymieniają gości, którzy stracą miejsce; ta sama czysta funkcja liczy komunikat i aktualizuje stan strony, a wyzwalacz w bazie jest źródłem prawdy (Recommended).
 - 2026-10-27 — S-03 /10x-plan, podział na fazy: 5 faz (schemat+reguły → serwisy → API+endpoint TV+smoke → strona organizatora+potwierdzenia na stronie sal → widok TV+dokumentacja), każda z automatycznym checkiem — „Looks good, proceed” (Recommended).
+- 2026-10-27 — S-03 /10x-implement faza 4: kliknięcie miejsca, którego nie da się użyć (przypięta osoba, pusty wybór), nie jest wyszarzonym przyciskiem, tylko pokazuje wyjaśnienie w komunikacie (dostępne z klawiatury i na telefonie, gdzie `title` nie działa); karta „Rozsadzenie” w panelu jest już linkiem, a zapowiedź „Wkrótce” zmieniła się na „Losowanie i cofnięcie” (S-04); panel czyta raz tablicę rozsadzenia zamiast osobno listy gości i lokalu (Recommended, mniej zapytań).
 
 ## Do sprawdzenia rano (Manual)
 
@@ -82,6 +83,7 @@ Dziennik decyzji, zależności i blokerów nocnego builda (zasady: `overnight-br
 - F-01 5.6 — pierwszy przebieg CI na GitHubie po pushu na `main` jest zielony (oba joby).
 - S-01 4.6 — na telefonie (~360 px) otwórz panel organizatora → „Goście i grupy” (`/o/<klucz>/goscie`): wklej 40 imion, zmień nazwę jednemu, usuń jednego, utwórz parę i grupę 3 osób, rozwiąż jedną, oznacz kogoś jako nieobecnego i z powrotem; układ i polskie teksty wyglądają dobrze, nic nie przewija się w poziomie.
 - S-02 4.6 — na laptopie otwórz panel organizatora → „Sale i stoliki” (`/o/<klucz>/sale`): wgraj prawdziwy zrzut planu (1–5 MB), dodaj 3 sale, klikając na planie postaw 7 stolików (różne typy i liczby miejsc), edytuj jeden, przestaw pinezkę jednego, usuń jeden, usuń salę ze stolikami (potwierdzenie podaje liczbę stolików), wymień plan (potwierdzenie, pinezki zostają); pinezki trafiają tam, gdzie kliknięto, także po zmianie szerokości okna; na telefonie (~360 px) strona czytelna, bez przewijania w poziomie; adres `/api/tv/<klucz TV>/plan/image` pokazuje plan.
+- S-03 4.6 — na laptopie z danymi demo (~40 gości, 7 stolików) otwórz panel → „Rozsadzenie” (`/o/<klucz>/rozsadzenie`): posadź wszystkich (wybierz osobę → kliknij miejsce), zamień dwie osoby, posadź kogoś bez miejsca na zajętym miejscu (komunikat podaje, kto stracił miejsce), przypnij siebie i spróbuj przesunąć się / zamienić z kimś (odmowa z jasnym komunikatem), odepnij; na stronie gości oznacz posadzoną osobę jako nieobecną (ostrzeżenie + „Są nieopublikowane zmiany”), rozdziel parę (ostrzeżenie), opublikuj (status „TV jest aktualny”); na `/o/<klucz>/sale` zmniejsz liczbę miejsc i usuń stolik — potwierdzenie wymienia gości; na telefonie (~360 px) strona używalna, bez przewijania w poziomie.
 
 ## Dodane zależności
 

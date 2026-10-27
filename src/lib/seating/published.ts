@@ -146,19 +146,27 @@ export type VenueSeatChange =
   | { kind: "delete-room"; tableIds: readonly number[] }
   | { kind: "seat-count"; tableId: number; seatCount: number };
 
+function losesSeat(occupant: SeatOccupantDto, change: VenueSeatChange): boolean {
+  switch (change.kind) {
+    case "delete-table":
+      return occupant.tableId === change.tableId;
+    case "delete-room":
+      return change.tableIds.includes(occupant.tableId);
+    case "seat-count":
+      return occupant.tableId === change.tableId && occupant.seat > change.seatCount;
+  }
+}
+
 // The occupants (pinned ones too) who lose their seat through `change`, by table and seat.
 export function occupantsRemovedBy(occupancy: readonly SeatOccupantDto[], change: VenueSeatChange): SeatOccupantDto[] {
-  const removed = occupancy.filter((occupant) => {
-    switch (change.kind) {
-      case "delete-table":
-        return occupant.tableId === change.tableId;
-      case "delete-room":
-        return change.tableIds.includes(occupant.tableId);
-      case "seat-count":
-        return occupant.tableId === change.tableId && occupant.seat > change.seatCount;
-    }
-  });
-  return removed.sort((a, b) => a.tableId - b.tableId || a.seat - b.seat);
+  return occupancy
+    .filter((occupant) => losesSeat(occupant, change))
+    .sort((a, b) => a.tableId - b.tableId || a.seat - b.seat);
+}
+
+// The occupancy once `change` has been saved (the venue page keeps it in step with the DB without reloading).
+export function occupancyAfter(occupancy: readonly SeatOccupantDto[], change: VenueSeatChange): SeatOccupantDto[] {
+  return occupancy.filter((occupant) => !losesSeat(occupant, change));
 }
 
 const LISTED_OCCUPANTS = 12;

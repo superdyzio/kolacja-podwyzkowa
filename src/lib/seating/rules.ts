@@ -168,6 +168,11 @@ export function summarizeSeating({ guestList, venue, assignments }: SeatingInput
   };
 }
 
+// „32 z 38 obecnych ma miejsce”
+export function formatSeatedCount(summary: SeatingSummary): string {
+  return `${summary.seatedPresent} z ${summary.present} obecnych ma miejsce`;
+}
+
 // „32 z 38 obecnych ma miejsce · opublikowano 27.10, 19:42” / „… · nieopublikowane zmiany” /
 // „… · jeszcze nie opublikowano”
 export function formatSeatingSummary(
@@ -181,5 +186,5 @@ export function formatSeatingSummary(
       : upToDate
         ? `opublikowano ${formatPublishedAt(published.publishedAt)}`
         : "nieopublikowane zmiany";
-  return `${summary.seatedPresent} z ${summary.present} obecnych ma miejsce · ${status}`;
+  return `${formatSeatedCount(summary)} · ${status}`;
 }

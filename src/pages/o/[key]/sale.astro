@@ -4,6 +4,7 @@ import { VenueEditor } from "@/components/venue/VenueEditor";
 import Layout from "@/layouts/Layout.astro";
 import { accessFor, organizerPath } from "@/lib/access";
 import { getDb } from "@/lib/db";
+import { getSeatOccupancy } from "@/lib/seating";
 import { getVenue } from "@/lib/venue";
 
 // Organizer rooms-and-tables page (S-02, FR-005, FR-006): venue plan, named rooms, tables pinned on the plan.
@@ -21,6 +22,8 @@ const view =
         panelPath: organizerPath(access.event.organizerKey),
         apiBase: `/api${organizerPath(access.event.organizerKey)}`,
         venue: await getVenue(db),
+        // Who sits where: deleting tables or lowering seat counts asks first, naming who loses a seat.
+        occupancy: await getSeatOccupancy(db),
       }
     : null;
 ---
@@ -41,7 +44,7 @@ const view =
           ma salę, nazwę, liczbę miejsc i typ; TV pokaże imiona gości przy tych pinezkach.
         </p>
       </header>
-      <VenueEditor client:load apiBase={view.apiBase} initialVenue={view.venue} />
+      <VenueEditor client:load apiBase={view.apiBase} initialVenue={view.venue} initialOccupancy={view.occupancy} />
     </main>
   </Layout>
 ) : (

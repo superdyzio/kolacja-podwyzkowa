@@ -11,6 +11,8 @@ interface Props {
   pending: boolean;
   onAdd: (name: string) => Promise<boolean>;
   onRename: (roomId: number, name: string) => Promise<boolean>;
+  // „\n\nMiejsce stracą: …” for the guests seated at the room's tables, or "".
+  seatLoss: (roomId: number) => string;
   onDelete: (roomId: number) => void;
 }
 
@@ -113,8 +115,9 @@ function RoomRow({
   );
 }
 
-// Named rooms of the venue (FR-005): add, rename, delete (with its tables, after a confirm naming their count).
-export function RoomsSection({ rooms, tableCountByRoom, pending, onAdd, onRename, onDelete }: Props) {
+// Named rooms of the venue (FR-005): add, rename, delete (with its tables, after a confirm naming their count and
+// the guests who lose their seats).
+export function RoomsSection({ rooms, tableCountByRoom, pending, onAdd, onRename, seatLoss, onDelete }: Props) {
   const inputId = useId();
   const [name, setName] = useState("");
 
@@ -142,7 +145,7 @@ export function RoomsSection({ rooms, tableCountByRoom, pending, onAdd, onRename
               pending={pending}
               onRename={(newName) => onRename(room.id, newName)}
               onDelete={() => {
-                if (window.confirm(deleteRoomQuestion(room, tableCountByRoom.get(room.id) ?? 0))) {
+                if (window.confirm(deleteRoomQuestion(room, tableCountByRoom.get(room.id) ?? 0) + seatLoss(room.id))) {
                   onDelete(room.id);
                 }
               }}

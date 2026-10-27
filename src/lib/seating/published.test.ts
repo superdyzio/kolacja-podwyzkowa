@@ -4,6 +4,7 @@ import { guest, input, seat, snapshotOf, table } from "./fixtures.test-helpers";
 import {
   describeRemovedOccupants,
   isUpToDate,
+  occupancyAfter,
   occupantsRemovedBy,
   publishableFingerprint,
   seatingVersion,
@@ -149,6 +150,13 @@ describe("occupantsRemovedBy", () => {
     expect(names(occupantsRemovedBy(occupancy, { kind: "seat-count", tableId: 1, seatCount: 6 }))).toEqual(["Kuba"]);
     expect(names(occupantsRemovedBy(occupancy, { kind: "seat-count", tableId: 1, seatCount: 7 }))).toEqual([]);
     expect(names(occupantsRemovedBy(occupancy, { kind: "seat-count", tableId: 1, seatCount: 20 }))).toEqual([]);
+  });
+
+  it("keeps everyone else once the change is saved", () => {
+    expect(names(occupancyAfter(occupancy, { kind: "delete-table", tableId: 1 }))).toEqual(["Ola"]);
+    expect(names(occupancyAfter(occupancy, { kind: "delete-room", tableIds: [2] }))).toEqual(["Kuba", "Ania"]);
+    expect(names(occupancyAfter(occupancy, { kind: "seat-count", tableId: 1, seatCount: 6 }))).toEqual(["Ania", "Ola"]);
+    expect(occupancyAfter(occupancy, { kind: "seat-count", tableId: 2, seatCount: 20 })).toEqual(occupancy);
   });
 
   it("describes who loses a seat", () => {

@@ -6,6 +6,7 @@ export {
   describeWarnings,
   formatNameList,
   formatPublishedAt,
+  formatSeatedCount,
   formatSeatingSummary,
   guestPinnedMessage,
   seatLabel,
@@ -22,6 +23,7 @@ export {
 export {
   describeRemovedOccupants,
   isUpToDate,
+  occupancyAfter,
   occupantsRemovedBy,
   publishableFingerprint,
   seatingVersion,

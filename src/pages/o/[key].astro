@@ -3,8 +3,9 @@ import NoAccess from "@/components/NoAccess.astro";
 import Layout from "@/layouts/Layout.astro";
 import { accessFor, organizerPath, tvPath } from "@/lib/access";
 import { getDb } from "@/lib/db";
-import { formatGuestSummary, getGuestList, summarizeGuestList } from "@/lib/guests";
-import { formatVenueSummary, getVenue, summarizeVenue } from "@/lib/venue";
+import { formatGuestSummary, summarizeGuestList } from "@/lib/guests";
+import { formatSeatingSummary, getSeatingBoard, summarizeSeating } from "@/lib/seating";
+import { formatVenueSummary, summarizeVenue } from "@/lib/venue";
 
 // Organizer view (shell). The middleware has already checked the key; this is the second, role-specific check.
 const access = accessFor(Astro.locals, "organizer");
@@ -13,20 +14,27 @@ if (!access) {
 }
 
 const db = access ? getDb() : null;
+// One read of the seating board carries the guest list and the venue too.
+const board = db ? await getSeatingBoard(db) : null;
 const view = access
   ? {
       name: access.event.name,
       organizerUrl: new URL(organizerPath(access.event.organizerKey), Astro.url).href,
       tvUrl: new URL(tvPath(access.event.tvKey), Astro.url).href,
       guestsPath: `${organizerPath(access.event.organizerKey)}/goscie`,
-      guestSummary: db ? formatGuestSummary(summarizeGuestList(await getGuestList(db))) : null,
+      guestSummary: board ? formatGuestSummary(summarizeGuestList(board.guestList)) : null,
       venuePath: `${organizerPath(access.event.organizerKey)}/sale`,
-      venueSummary: db ? formatVenueSummary(summarizeVenue(await getVenue(db))) : null,
+      venueSummary: board ? formatVenueSummary(summarizeVenue(board.venue)) : null,
+      seatingPath: `${organizerPath(access.event.organizerKey)}/rozsadzenie`,
+      seatingSummary: board ? formatSeatingSummary(summarizeSeating(board), board.published, board.upToDate) : null,
     }
   : null;
 
 const upcomingSections = [
-  { title: "Rozsadzenie", description: "Ręczne sadzanie, losowanie, publikacja na TV i cofnięcie." },
+  {
+    title: "Losowanie i cofnięcie",
+    description: "Losowanie rozsadzenia z przypiętymi miejscami i powrót do poprzedniego.",
+  },
   { title: "Linki gości i karteczki", description: "Osobiste linki, kody QR do druku i włącznik dostępu gości." },
   { title: "Pytania i tematy AI", description: "Baza pytań, losowanie pytań i tematy do rozmowy." },
   { title: "Strzały i ranking", description: "Strzały gości, zamknięcie przyjmowania i ranking od końca." },
@@ -106,6 +114,19 @@ const upcomingSections = [
               </div>
               <p class="text-sm text-muted-foreground">Plan lokalu, sale i stoliki z miejscami i typem.</p>
               {view.venueSummary && <p class="text-sm font-medium">{view.venueSummary}</p>}
+            </a>
+          </li>
+          <li>
+            <a
+              href={view.seatingPath}
+              class="flex h-full flex-col gap-2 rounded-xl border p-4 transition-colors hover:bg-accent focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
+            >
+              <div class="flex items-center justify-between gap-2">
+                <h3 class="font-semibold">Rozsadzenie</h3>
+                <span class="rounded-full bg-primary px-2 py-0.5 text-xs text-primary-foreground">Otwórz</span>
+              </div>
+              <p class="text-sm text-muted-foreground">Sadzanie gości na miejscach, przypinanie i publikacja na TV.</p>
+              {view.seatingSummary && <p class="text-sm font-medium">{view.seatingSummary}</p>}
             </a>
           </li>
           {upcomingSections.map((section) => (

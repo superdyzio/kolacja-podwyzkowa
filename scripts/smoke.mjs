@@ -792,4 +792,43 @@ check(
   boardAfterWrongKeys.body,
 );
 
+// 14. Seating page (S-03): organizer only, rendered with the board; the shell links to it with a summary; the venue
+// page gets who sits where (for its seat-loss confirmations).
+const seatingPage = await request(`/o/${organizerKey}/rozsadzenie`);
+check(
+  "seating page renders the board",
+  seatingPage.status === 200 &&
+    seatingPage.body.includes("Rozsadzenie") &&
+    seatingPage.body.includes("Opublikuj na TV") &&
+    seatingPage.body.includes(GUEST_NAMES[0]) &&
+    seatingPage.body.includes(TABLE_NAME),
+  String(seatingPage.status),
+);
+check("seating page is not cacheable", seatingPage.cacheControl.includes("no-store"), seatingPage.cacheControl);
+const tvSeatingPage = await request(`/o/${tvKey}/rozsadzenie`);
+check(
+  "seating page with the TV key: no access, no seating data",
+  tvSeatingPage.status === 404 &&
+    tvSeatingPage.body.includes(NO_ACCESS_TEXT) &&
+    GUEST_NAMES.every((name) => !tvSeatingPage.body.includes(name)) &&
+    !tvSeatingPage.body.includes(TABLE_NAME),
+  String(tvSeatingPage.status),
+);
+const shellAfterSeating = await request(`/o/${organizerKey}`);
+check(
+  "organizer shell links to the seating page with a summary",
+  shellAfterSeating.status === 200 &&
+    shellAfterSeating.body.includes(`/o/${organizerKey}/rozsadzenie`) &&
+    shellAfterSeating.body.includes("1 z 2 obecnych ma miejsce · nieopublikowane zmiany"),
+  String(shellAfterSeating.status),
+);
+const venuePageAfterSeating = await request(`/o/${organizerKey}/sale`);
+check(
+  "rooms-and-tables page still renders, with the seat occupancy",
+  venuePageAfterSeating.status === 200 &&
+    venuePageAfterSeating.body.includes(TABLE_NAME) &&
+    venuePageAfterSeating.body.includes(GUEST_NAMES[0]),
+  String(venuePageAfterSeating.status),
+);
+
 finish();
