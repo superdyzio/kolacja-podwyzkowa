@@ -415,11 +415,11 @@ Third migration. Locally `npx supabase migration up`; CI's `supabase start` appl
 
 #### Automated
 
-- [x] 4.1 Lint passes: `npm run lint`
-- [x] 4.2 Type check passes: `npx astro check`
-- [x] 4.3 Tests pass: `npm test`
-- [x] 4.4 Build passes: `npm run build`
-- [x] 4.5 HTTP smoke passes against the production preview on a DB without an event
+- [x] 4.1 Lint passes: `npm run lint` — eca5854
+- [x] 4.2 Type check passes: `npx astro check` — eca5854
+- [x] 4.3 Tests pass: `npm test` — eca5854
+- [x] 4.4 Build passes: `npm run build` — eca5854
+- [x] 4.5 HTTP smoke passes against the production preview on a DB without an event — eca5854
 
 #### Manual
 
