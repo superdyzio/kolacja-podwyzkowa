@@ -19,6 +19,10 @@ export interface Database {
           created_at: string;
           // S-05: guest links open nothing while false (default).
           guest_access_enabled: boolean;
+          // S-06: guests may save or change their guess only while true (default).
+          guess_intake_open: boolean;
+          // S-06: the correct raise amount in grosze, null until entered.
+          correct_amount_grosze: number | null;
         };
         Insert: {
           id?: number;
@@ -27,6 +31,8 @@ export interface Database {
           tv_key: string;
           created_at?: string;
           guest_access_enabled?: boolean;
+          guess_intake_open?: boolean;
+          correct_amount_grosze?: number | null;
         };
         Update: {
           id?: number;
@@ -35,6 +41,8 @@ export interface Database {
           tv_key?: string;
           created_at?: string;
           guest_access_enabled?: boolean;
+          guess_intake_open?: boolean;
+          correct_amount_grosze?: number | null;
         };
         Relationships: [];
       };
@@ -391,6 +399,46 @@ export interface Database {
           },
         ];
       };
+      // S-06: one guess of the final raise amount per guest, in integer grosze (0 … 1 000 000 000).
+      guess: {
+        Row: {
+          guest_id: number;
+          event_id: number;
+          amount_grosze: number;
+          entered_by: string;
+          updated_at: string;
+        };
+        Insert: {
+          guest_id: number;
+          event_id?: number;
+          amount_grosze: number;
+          entered_by?: string;
+          updated_at?: string;
+        };
+        Update: {
+          guest_id?: number;
+          event_id?: number;
+          amount_grosze?: number;
+          entered_by?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "guess_guest_id_fkey";
+            columns: ["guest_id"];
+            isOneToOne: true;
+            referencedRelation: "guest";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "guess_event_id_fkey";
+            columns: ["event_id"];
+            isOneToOne: false;
+            referencedRelation: "event";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
     };
     Views: { [_ in never]: never };
     Functions: {
@@ -415,6 +463,11 @@ export interface Database {
       // or restore). Constraint violations abort the whole call.
       replace_seating: {
         Args: { p_seats: Json };
+        Returns: undefined;
+      };
+      // S-06: saves or replaces a guest's own guess while intake is open. Raises GUEST_NOT_FOUND or INTAKE_CLOSED.
+      save_guest_guess: {
+        Args: { p_guest_id: number; p_amount_grosze: number };
         Returns: undefined;
       };
     };

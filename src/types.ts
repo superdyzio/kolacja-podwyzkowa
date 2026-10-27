@@ -213,3 +213,61 @@ export interface GuestStateDto {
   seat: GuestSeatDto | null;
   planVersion: number | null;
 }
+
+// Guesses of the final raise amount (S-06). Every amount is an integer number of grosze (1 zł = 100), never a float.
+
+// What a guest's phone may know about guesses: whether intake is open and the guest's OWN guess (null = none yet).
+// Nothing about other guests, the correct amount or the ranking.
+export interface GuestGuessDto {
+  intakeOpen: boolean;
+  amountGrosze: number | null;
+}
+
+// Who typed a guess in: the guest on their phone, or the organizer for them (proxy entry).
+export type GuessEnteredBy = "guest" | "organizer";
+
+// A guest on the organizer's guesses page with their guess (null = no guess yet).
+export interface GuessGuestDto {
+  id: number;
+  displayName: string;
+  isAbsent: boolean;
+  amountGrosze: number | null;
+  enteredBy: GuessEnteredBy | null;
+}
+
+// A guest who has not guessed yet (absent guests included, marked).
+export interface MissingGuessDto {
+  id: number;
+  displayName: string;
+  isAbsent: boolean;
+}
+
+// One ranked guess. place: competition ranking by distance (1, 2, 2, 4); tied: the place is shared.
+// differenceGrosze = guess − correct (negative: too low); distanceGrosze = |differenceGrosze|.
+export interface RankingEntryDto {
+  place: number;
+  tied: boolean;
+  guestId: number;
+  displayName: string;
+  isAbsent: boolean;
+  amountGrosze: number;
+  differenceGrosze: number;
+  distanceGrosze: number;
+}
+
+// The ranking (organizer only), self-contained so it renders without anything else (S-09 caches it for offline
+// reading). entries: best first (place ascending; inside a place by Polish name, then id).
+export interface GuessRankingDto {
+  correctAmountGrosze: number;
+  entries: RankingEntryDto[];
+}
+
+// The organizer's guesses page. guests: every guest in Polish alphabetical order; missing: guests without a guess;
+// ranking: null until the correct amount is entered.
+export interface GuessBoardDto {
+  intakeOpen: boolean;
+  correctAmountGrosze: number | null;
+  guests: GuessGuestDto[];
+  missing: MissingGuessDto[];
+  ranking: GuessRankingDto | null;
+}

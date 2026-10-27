@@ -245,3 +245,50 @@ export async function readGuestKeys(db: DbClient, ids: readonly number[]): Promi
   }
   return new Map(data.map((row) => [row.id, row.access_key]));
 }
+
+// The guess intake switch and the correct amount (S-06) are shared event state: tests read them first and put them
+// back afterwards.
+export interface GuessSettings {
+  intakeOpen: boolean;
+  correctAmountGrosze: number | null;
+}
+
+export async function readGuessSettings(db: DbClient): Promise<GuessSettings> {
+  const { data, error } = await db
+    .from("event")
+    .select("guess_intake_open, correct_amount_grosze")
+    .eq("id", EVENT_ID)
+    .single();
+  if (error) {
+    throw new Error(`Nie udało się odczytać ustawień strzałów: ${error.message}`);
+  }
+  return { intakeOpen: data.guess_intake_open, correctAmountGrosze: data.correct_amount_grosze };
+}
+
+export async function writeGuessSettings(db: DbClient, settings: GuessSettings): Promise<void> {
+  const { error } = await db
+    .from("event")
+    .update({ guess_intake_open: settings.intakeOpen, correct_amount_grosze: settings.correctAmountGrosze })
+    .eq("id", EVENT_ID);
+  if (error) {
+    throw new Error(`Nie udało się zmienić ustawień strzałów: ${error.message}`);
+  }
+}
+
+// Guests created for one test (tagged names, in this order); remove with deleteTestGuests().
+export async function createTestGuests(
+  db: DbClient,
+  tag: string,
+  count: number,
+): Promise<{ ids: number[]; names: string[] }> {
+  const names = Array.from({ length: count }, (_, index) => `G${index + 1} ${tag}`);
+  const { data, error } = await db
+    .from("guest")
+    .insert(names.map((display_name) => ({ display_name })))
+    .select("id, display_name");
+  if (error) {
+    throw new Error(error.message);
+  }
+  const idByName = new Map(data.map((row) => [row.display_name, row.id]));
+  return { ids: names.map((name) => idByName.get(name) ?? 0), names };
+}
