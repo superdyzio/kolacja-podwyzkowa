@@ -1,14 +1,11 @@
 import { useCallback, useState } from "react";
 import type { GuestListDto } from "@/types";
+import { NETWORK_FAILURE, readJson, toFailure, type ApiFailure } from "./api-failure";
 
 // Guest list state of the organizer page. Every change goes through the API, and the list is replaced with the one
 // the server returns, so the page never drifts from the database.
 
-export interface GuestListFailure {
-  message: string;
-  // Extra lines to show (e.g. the paste problems, one per line).
-  details: string[];
-}
+export type GuestListFailure = ApiFailure;
 
 export interface GuestListRequest {
   method: "POST" | "PATCH" | "DELETE";
@@ -17,38 +14,12 @@ export interface GuestListRequest {
   body?: unknown;
 }
 
-const NETWORK_FAILURE: GuestListFailure = {
-  message: "Brak połączenia z serwerem. Sprawdź sieć i spróbuj ponownie.",
-  details: [],
-};
-
 function isGuestList(data: unknown): data is GuestListDto {
   if (typeof data !== "object" || data === null) {
     return false;
   }
   const candidate = data as Partial<Record<keyof GuestListDto, unknown>>;
   return Array.isArray(candidate.guests) && Array.isArray(candidate.groups);
-}
-
-function toFailure(data: unknown): GuestListFailure {
-  if (typeof data === "object" && data !== null) {
-    const { error, problems } = data as { error?: unknown; problems?: unknown };
-    if (typeof error === "string") {
-      const details = Array.isArray(problems)
-        ? problems.filter((line): line is string => typeof line === "string")
-        : [];
-      return { message: error, details };
-    }
-  }
-  return { message: "Coś poszło nie tak. Spróbuj ponownie.", details: [] };
-}
-
-async function readJson(response: Response): Promise<unknown> {
-  try {
-    return (await response.json()) as unknown;
-  } catch {
-    return null;
-  }
 }
 
 export function useGuestList(apiBase: string, initialList: GuestListDto) {

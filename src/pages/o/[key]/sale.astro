@@ -1,0 +1,49 @@
+---
+import NoAccess from "@/components/NoAccess.astro";
+import { VenueEditor } from "@/components/venue/VenueEditor";
+import Layout from "@/layouts/Layout.astro";
+import { accessFor, organizerPath } from "@/lib/access";
+import { getDb } from "@/lib/db";
+import { getVenue } from "@/lib/venue";
+
+// Organizer rooms-and-tables page (S-02, FR-005, FR-006): venue plan, named rooms, tables pinned on the plan.
+// The middleware has already checked the key; this is the second, role-specific check.
+const access = accessFor(Astro.locals, "organizer");
+const db = access ? getDb() : null;
+if (!access || !db) {
+  Astro.response.status = 404;
+}
+
+const view =
+  access && db
+    ? {
+        name: access.event.name,
+        panelPath: organizerPath(access.event.organizerKey),
+        apiBase: `/api${organizerPath(access.event.organizerKey)}`,
+        venue: await getVenue(db),
+      }
+    : null;
+---
+
+{view ? (
+  <Layout title={`Sale i stoliki — ${view.name}`}>
+    <main class="mx-auto flex max-w-6xl flex-col gap-6 p-4 sm:p-8">
+      <header class="flex flex-col gap-2">
+        <a
+          href={view.panelPath}
+          class="self-start py-2 text-sm text-muted-foreground underline-offset-4 hover:underline"
+        >
+          ← Panel organizatora
+        </a>
+        <h1 class="text-3xl font-bold">Sale i stoliki</h1>
+        <p class="max-w-3xl text-sm text-muted-foreground">
+          Wgraj jeden zrzut planu całego lokalu, dodaj sale, a potem klikaj na planie, gdzie stoją stoliki. Każdy stolik
+          ma salę, nazwę, liczbę miejsc i typ; TV pokaże imiona gości przy tych pinezkach.
+        </p>
+      </header>
+      <VenueEditor client:load apiBase={view.apiBase} initialVenue={view.venue} />
+    </main>
+  </Layout>
+) : (
+  <NoAccess />
+)}

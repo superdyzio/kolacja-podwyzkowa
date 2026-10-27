@@ -4,6 +4,7 @@ import Layout from "@/layouts/Layout.astro";
 import { accessFor, organizerPath, tvPath } from "@/lib/access";
 import { getDb } from "@/lib/db";
 import { formatGuestSummary, getGuestList, summarizeGuestList } from "@/lib/guests";
+import { formatVenueSummary, getVenue, summarizeVenue } from "@/lib/venue";
 
 // Organizer view (shell). The middleware has already checked the key; this is the second, role-specific check.
 const access = accessFor(Astro.locals, "organizer");
@@ -19,11 +20,12 @@ const view = access
       tvUrl: new URL(tvPath(access.event.tvKey), Astro.url).href,
       guestsPath: `${organizerPath(access.event.organizerKey)}/goscie`,
       guestSummary: db ? formatGuestSummary(summarizeGuestList(await getGuestList(db))) : null,
+      venuePath: `${organizerPath(access.event.organizerKey)}/sale`,
+      venueSummary: db ? formatVenueSummary(summarizeVenue(await getVenue(db))) : null,
     }
   : null;
 
 const upcomingSections = [
-  { title: "Sale i stoliki", description: "Plan sal oraz stoliki z miejscami i typem." },
   { title: "Rozsadzenie", description: "Ręczne sadzanie, losowanie, publikacja na TV i cofnięcie." },
   { title: "Linki gości i karteczki", description: "Osobiste linki, kody QR do druku i włącznik dostępu gości." },
   { title: "Pytania i tematy AI", description: "Baza pytań, losowanie pytań i tematy do rozmowy." },
@@ -91,6 +93,19 @@ const upcomingSections = [
               </div>
               <p class="text-sm text-muted-foreground">Lista gości, nierozdzielne grupy i nieobecni.</p>
               {view.guestSummary && <p class="text-sm font-medium">{view.guestSummary}</p>}
+            </a>
+          </li>
+          <li>
+            <a
+              href={view.venuePath}
+              class="flex h-full flex-col gap-2 rounded-xl border p-4 transition-colors hover:bg-accent focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
+            >
+              <div class="flex items-center justify-between gap-2">
+                <h3 class="font-semibold">Sale i stoliki</h3>
+                <span class="rounded-full bg-primary px-2 py-0.5 text-xs text-primary-foreground">Otwórz</span>
+              </div>
+              <p class="text-sm text-muted-foreground">Plan lokalu, sale i stoliki z miejscami i typem.</p>
+              {view.venueSummary && <p class="text-sm font-medium">{view.venueSummary}</p>}
             </a>
           </li>
           {upcomingSections.map((section) => (

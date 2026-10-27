@@ -76,3 +76,4 @@ export {
   type TablePatch,
   type UpdateTableResult,
 } from "./service";
+export { formatVenueSummary, summarizeVenue, type VenueSummary } from "./summary";

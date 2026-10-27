@@ -549,4 +549,34 @@ check(
   venueAfter.body,
 );
 
+// 12. Rooms-and-tables page (S-02): organizer only, rendered with the venue; the shell links to it with a summary.
+const venuePage = await request(`/o/${organizerKey}/sale`);
+check(
+  "rooms-and-tables page renders the venue",
+  venuePage.status === 200 &&
+    venuePage.body.includes("Sale i stoliki") &&
+    venuePage.body.includes(ROOM_NAME) &&
+    venuePage.body.includes(TABLE_NAME) &&
+    venuePage.body.includes(`/api/o/${organizerKey}/plan/image?v=${venueAfter.data?.plan?.version}`),
+  String(venuePage.status),
+);
+check("rooms-and-tables page is not cacheable", venuePage.cacheControl.includes("no-store"), venuePage.cacheControl);
+const tvVenuePage = await request(`/o/${tvKey}/sale`);
+check(
+  "rooms-and-tables page with the TV key: no access, no venue data",
+  tvVenuePage.status === 404 &&
+    tvVenuePage.body.includes(NO_ACCESS_TEXT) &&
+    !tvVenuePage.body.includes(ROOM_NAME) &&
+    !tvVenuePage.body.includes(TABLE_NAME),
+  String(tvVenuePage.status),
+);
+const shellAfterVenue = await request(`/o/${organizerKey}`);
+check(
+  "organizer shell links to the rooms-and-tables page with a summary",
+  shellAfterVenue.status === 200 &&
+    shellAfterVenue.body.includes(`/o/${organizerKey}/sale`) &&
+    shellAfterVenue.body.includes("Plan wgrany · 1 sala · 1 stolik · 6 miejsc"),
+  String(shellAfterVenue.status),
+);
+
 finish();

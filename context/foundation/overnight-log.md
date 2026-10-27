@@ -56,12 +56,17 @@ Dziennik decyzji, zależności i blokerów nocnego builda (zasady: `overnight-br
 - 2026-10-27 — S-02 wymiana planu: pinezki zostają w tych samych ułamkach obrazu, potwierdzenie prosi o ich sprawdzenie (Recommended).
 - 2026-10-27 — S-02 testy: jednostkowe (reguły, rozpoznawanie obrazu, base64, numeracja miejsc, klik → ułamek, czytanie ciała z limitem, podsumowanie); integracyjne serwisów i odmowy anonimowego REST; przypadki zmieniające plan pomijane, gdy w bazie jest już prawdziwy plan (test nigdy nie nadpisuje danych użytkownika); obrazy testowe malutkie, a ładunek dokładnie 5 MB generowany w pamięci (nic nie commitowane); smoke API i tras obrazu (organizator/TV, 413/415, klucz TV → 404) (Recommended, rada recenzenta).
 - 2026-10-27 — S-02 /10x-plan, podział na fazy: 4 fazy (schemat+reguły → serwisy → API+trasy obrazu+smoke → strona+link), każda z automatycznym checkiem — „Looks good, proceed” (Recommended).
+- 2026-10-27 — S-02 /10x-implement: bramki ręczne między fazami, akceptacja treści commitów i „Next phase” → kontynuacja bez pauzy (nienadzorowany przebieg, jak w S-01); wiersz ręczny 4.6 zostawiony na rano.
+- 2026-10-27 — S-02 weryfikacja jednorazowa (nie w repo): wgranie i pobranie dokładnie 5 MB przez `npm run preview` (workerd) → bajt w bajt, PUT 328 ms, GET 84 ms; test integracyjny robi to samo przez serwis (ładunek generowany w pamięci).
+- 2026-10-27 — S-02 adaptacja planu: wspólne parsowanie błędów API wysp przeniesione z `useGuestList.ts` do `src/components/hooks/api-failure.ts` (używane przez `useGuestList` i `useVenue`); polskie komunikaty sal/stolików w `src/lib/venue/rules.ts` (pliki tras API eksportują tylko handlery); `smoke.mjs` importuje `Buffer`/`TextEncoder`/`TextDecoder` z modułów Node zamiast poszerzać globale ESLint.
+- 2026-10-27 — S-02 UI: plan i formularz stolika obok siebie od `lg` (na telefonie formularz pod planem, przewijany do widoku); klik w puste miejsce planu zawsze otwiera „Nowy stolik”, klik w pinezkę lub stolik na liście — edycję; aktywacja planu z klawiatury stawia pinezkę na środku (Recommended, plan).
 
 ## Do sprawdzenia rano (Manual)
 
 - F-01 4.6 — na pustej bazie otwórz `/`, kliknij „Utwórz wydarzenie”, dodaj link organizatora do zakładek, otwórz adres TV na drugim urządzeniu; polskie strony wyglądają dobrze na telefonie i TV.
 - F-01 5.6 — pierwszy przebieg CI na GitHubie po pushu na `main` jest zielony (oba joby).
 - S-01 4.6 — na telefonie (~360 px) otwórz panel organizatora → „Goście i grupy” (`/o/<klucz>/goscie`): wklej 40 imion, zmień nazwę jednemu, usuń jednego, utwórz parę i grupę 3 osób, rozwiąż jedną, oznacz kogoś jako nieobecnego i z powrotem; układ i polskie teksty wyglądają dobrze, nic nie przewija się w poziomie.
+- S-02 4.6 — na laptopie otwórz panel organizatora → „Sale i stoliki” (`/o/<klucz>/sale`): wgraj prawdziwy zrzut planu (1–5 MB), dodaj 3 sale, klikając na planie postaw 7 stolików (różne typy i liczby miejsc), edytuj jeden, przestaw pinezkę jednego, usuń jeden, usuń salę ze stolikami (potwierdzenie podaje liczbę stolików), wymień plan (potwierdzenie, pinezki zostają); pinezki trafiają tam, gdzie kliknięto, także po zmianie szerokości okna; na telefonie (~360 px) strona czytelna, bez przewijania w poziomie; adres `/api/tv/<klucz TV>/plan/image` pokazuje plan.
 
 ## Dodane zależności
 
