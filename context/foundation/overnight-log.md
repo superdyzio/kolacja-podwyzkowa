@@ -79,6 +79,7 @@ Dziennik decyzji, zależności i blokerów nocnego builda (zasady: `overnight-br
 - 2026-10-27 — S-03 /10x-implement faza 5: pozycje kart na TV są zapisywane bezpośrednio w DOM w efekcie układu (bez ponownego renderu), rozmiar okna przez `useSyncExternalStore`; gdy krawędź ekranu blokuje rozsunięcie kart wzdłuż jednej osi, algorytm próbuje drugiej (deterministycznie, stała liczba przebiegów) (Recommended).
 - 2026-10-27 — S-03 /10x-implement epilog: „2 wiersze Progress w toku (4.6, 5.6, ręczne)” → „Proceed to epilogue” (opcja „Pause” sprzeczna z nienadzorowanym przebiegiem), jak w F-01, S-01 i S-02.
 - 2026-10-27 — S-03 /10x-implement, końcowy przegląd: „Skip review” zamiast `/10x-impl-review`; w zamian przegląd recenzenta (advisor) po fazach 4–5 — bez problemów blokujących. Uwaga: układ kart TV po stronie przeglądarki (pomiar, rozsuwanie, odpytywanie) nie był uruchomiony w przeglądarce (bez Playwright) — smoke widzi tylko HTML z serwera; potwierdzi to dopiero ręczny wiersz 5.6.
+- 2026-10-27 — S-03 /10x-archive: ostrzeżenia „2 ręczne wiersze Progress w toku (4.6, 5.6)” i „brak impl-review” → „Continue archiving (Recommended)”; S-03 w roadmapie → done.
 
 ## Do sprawdzenia rano (Manual)
 

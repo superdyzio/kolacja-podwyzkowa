@@ -1,10 +1,10 @@
 ---
 change_id: manual-seating-on-tv
 title: Manual seating, pinned seats, publishing and the live TV plan with names
-status: implemented
+status: archived
 created: 2026-10-27
 updated: 2026-10-27
-archived_at: null
+archived_at: 2026-10-27T01:16:31Z
 ---
 
 ## Notes
