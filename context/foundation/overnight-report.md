@@ -13,6 +13,7 @@ Stan na 2026-10-27 rano, branch `overnight/build` (lokalny, niewypchnięty).
   - `npm run smoke` na produkcyjnym podglądzie i pustej bazie: 351/351 PASS.
 - AI działa wyłącznie na atrapie. Nie było żadnego płatnego wywołania ani klucza w repo.
 - Nic nie zostało wypchnięte, zmergowane ani wdrożone. Na to czekają Twoje decyzje (niżej).
+- Nowe `npm run demo` wypełnia lokalną aplikację danymi demo z briefu przez prawdziwe API HTTP: 40 gości, 3 sale, 7 stolików (45 miejsc), grupy 4/2/2, 1 przypięty, 1 nieobecny, opublikowany rozkład i 30 strzałów z remisem. Przebieg na podglądzie produkcyjnym zadziałał: 39 z 39 obecnych posadzonych, grupy obok siebie, TV pokazuje 39 imion, ranking z remisem. To jest przejście flow US-01, US-02 i US-04 od strony serwera.
 - Nie przeszedłem UI w prawdziwej przeglądarce (bez Playwright, zgodnie z poleceniem oszczędzania zasobów). Flow US-01..US-04 jest sprawdzony na poziomie tras HTTP i testów, a w przeglądarce sprawdza go Twoja poranna checklista.
 
 ## Co zrobione (slice → wymagania → commity)
@@ -30,6 +31,7 @@ Stan na 2026-10-27 rano, branch `overnight/build` (lokalny, niewypchnięty).
 | S-07 | question-base-and-draw | baza pytań (90 startowych), wklejka i edycja, losowanie w kategorii u gościa i organizatora (`/pytania`) | US-03, FR-014, FR-015 | 0839a98 … 485790f |
 | S-08 | ai-topics-with-limits | tematy AI w kategorii: limit 5 na gościa, 300 na wieczór; nieudane próby nie zjadają limitu; atrapa domyślnie, adapter Claude gotowy | US-03, FR-016, NFR-005, NFR-010 | b519d6e … 10ffe79 |
 | S-09 | organizer-offline-readout | ostatni rozkład i ranking zapisane u organizatora, odczyt bez sieci (komunikat w stronie + `/o/<klucz>/odczyt` przez service worker) | US-04, FR-020, NFR-004 | 2216f3c … 009173c |
+| — | dane demo | `npm run demo` (`scripts/demo.mjs`): dane z briefu „Dane startowe” na pustą bazę, tylko przez API działającego serwera; odmawia, gdy wydarzenie ma już dane albo baza nie jest lokalna | brief | 9750770 |
 
 Szczegóły każdej zmiany: `context/archive/2026-10-27-<change-id>/` (plan, brief, postęp). Wszystkie decyzje podjęte za Ciebie (opcja „Recommended”) są w `context/foundation/overnight-log.md` → „Decyzje”.
 
@@ -37,7 +39,7 @@ Szczegóły każdej zmiany: `context/archive/2026-10-27-<change-id>/` (plan, bri
 
 Blokerów w budowie nie było. Na Ciebie czekają decyzje, których nie wolno mi było podjąć:
 
-1. **Przegląd i merge** `overnight/build` → `main` oraz push. Branch ma 90 commitów ponad `main` i nie jest wypchnięty. Lokalny `main` jest 3 commity przed `origin/main`, też niewypchnięty.
+1. **Przegląd i merge** `overnight/build` → `main` oraz push. Branch ma 93 commity ponad `main` i nie jest wypchnięty. Lokalny `main` jest 3 commity przed `origin/main`, też niewypchnięty.
 2. **Wdrożenie** (Open Question 6): konto Cloudflare i hostowana baza Supabase, sekrety `SUPABASE_URL` i `SUPABASE_SERVICE_ROLE_KEY`, migracje na zdalnej bazie. Konfiguracja CI jest w `.github/workflows/ci.yml`. Deploy nie był uruchamiany.
 3. **Klucz AI** (Open Question 5): klucz Anthropic z limitem wydatków, potem `AI_PROVIDER=anthropic` i `ANTHROPIC_API_KEY` (opis w README i w checkliście S-08 5.5).
 4. **`npm audit`**: 14 podatności (11 high, 2 moderate, 1 low), w zależnościach produkcyjnych 13 (10 high). Bezpośrednie to tylko `wrangler` (high) i `astro` (low). `npm audit fix` nie był uruchamiany, bo zmienia zależności.
@@ -58,7 +60,9 @@ npm run dev                # http://localhost:4321
 npm run build && npm run preview
 npx astro preview stop     # zatrzymanie podglądu
 
-# 3. Na http://localhost:4321/ kliknij „Utwórz wydarzenie”, zapisz link organizatora w zakładkach
+# 3a. Dane demo (na działającym serwerze i pustej bazie): tworzy wydarzenie i wypisuje linki organizatora i TV
+npm run demo
+# 3b. albo ręcznie: na http://localhost:4321/ kliknij „Utwórz wydarzenie”, zapisz link organizatora w zakładkach
 npm run links              # wypisuje link organizatora i TV, gdy zginie
 
 # Testy
@@ -78,7 +82,7 @@ Telefony w tej samej sieci: `http://<IP laptopa>:4321`. Na zwykłym http w sieci
 
 ## Ręczna checklista na rano
 
-Pełne kroki są w `context/foundation/overnight-log.md` → „Do sprawdzenia rano (Manual)”. W skrócie, w kolejności przydatnej do sprawdzania:
+Pełne kroki są w `context/foundation/overnight-log.md` → „Do sprawdzenia rano (Manual)”. Tam, gdzie krok mówi „z danymi demo”, zacznij od pustej bazy i `npm run demo`. Dostęp gości jest wtedy wyłączony, przyjmowanie strzałów otwarte, a prawidłowa kwota nieustawiona. Pierwsze kroki F-01 i S-01/S-02 rób na pustej bazie, bez demo. W skrócie, w kolejności przydatnej do sprawdzania:
 
 - [ ] **S-07 1.5**: przejrzyj 90 pytań startowych w `context/foundation/question-seed.md` (Open Question 4); zmiany wprowadzaj w obu miejscach, czyli w tym pliku i w `src/lib/questions/seed.ts`.
 - [ ] **F-01 4.6**: utwórz wydarzenie na pustej bazie i otwórz TV na drugim urządzeniu.
@@ -126,4 +130,5 @@ S-06…S-09 nie dodały żadnych pakietów. AI idzie przez zwykły `fetch`, bez 
 - **Adapter Claude jest sprawdzony tylko na zaślepce sieci.** Nagłówek `anthropic-version: 2026-10-21` i model `claude-haiku-5-5` pochodzą z dokumentacji API, nie z prawdziwego wywołania (potwierdzi to S-08 5.5).
 - **Worker offline (S-09) działa tylko na https albo na localhost w buildzie produkcyjnym.** Na zwykłym http w sieci lokalu działa tylko komunikat w otwartej stronie.
 - **Wersja Node.** Lokalnie jest Node 24.15, a `.nvmrc` mówi 22.14. Wtyczki ESLint ostrzegają EBADENGINE (chcą ≥ 24.16), ale działają.
-- **Hook pre-commit (husky) nie jest podpięty w tym klonie.** Lint uruchamiałem ręcznie przed commitami. Po sklonowaniu na nowo `npm install` powinien go podpiąć.
+- **Hook pre-commit (husky) nie jest podpięty.** `package.json` nie ma skryptu `prepare`, więc `npm install` go nie włącza; lint uruchamiałem ręcznie przed każdym commitem. Włączysz go jednorazowo przez `npx husky`.
+- **`npm run demo` przy przerwanym przebiegu** podpowiada `npx supabase db reset`, który czyści całą lokalną bazę (tylko lokalną; skrypt odmawia pracy na nielokalnym `SUPABASE_URL`).
