@@ -29,6 +29,11 @@ const CONTROL_OR_SPACE_RUN = /[\p{Cc}\s]+/gu;
 // "- Ania", "* Ania", "• Ania", "– Ania", "1. Ania", "12) Ania" → "Ania". A marker must be followed by a space,
 // so names such as "2Pac" or "-Ania" stay untouched.
 const LIST_MARKER = /^(?:[-*•–—]|\d{1,3}[.)]) /u;
+
+// Drops one leading list marker from an already normalized line (also used by the question paste, S-07).
+export function stripListMarker(line: string): string {
+  return line.replace(LIST_MARKER, "");
+}
 const LINE_BREAK = /\r\n|\n|\r/;
 const PREVIEW_LENGTH = 50;
 
@@ -67,7 +72,7 @@ export function parseGuestList(text: string): ParsedGuestList {
 
   text.split(LINE_BREAK).forEach((rawLine, index) => {
     const line = index + 1;
-    const name = normalizeDisplayName(rawLine).replace(LIST_MARKER, "");
+    const name = stripListMarker(normalizeDisplayName(rawLine));
     const problem = validateDisplayName(name);
     if (problem === "empty") {
       return;

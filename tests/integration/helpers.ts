@@ -292,3 +292,17 @@ export async function createTestGuests(
   const idByName = new Map(data.map((row) => [row.display_name, row.id]));
   return { ids: names.map((name) => idByName.get(name) ?? 0), names };
 }
+
+// Deletes only the given questions (rows a test created itself, S-07); the event's real questions stay.
+export async function deleteTestQuestions(db: DbClient, ids: readonly number[]): Promise<void> {
+  if (ids.length === 0) {
+    return;
+  }
+  const { error } = await db
+    .from("question")
+    .delete()
+    .in("id", [...ids]);
+  if (error) {
+    throw new Error(`Nie udało się usunąć testowych pytań: ${error.message}`);
+  }
+}

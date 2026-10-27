@@ -439,6 +439,43 @@ export interface Database {
           },
         ];
       };
+      // S-07: conversation questions; category 'kontrowersyjne' | 'generyczne' | 'refleksyjne'; text_key = lower(text)
+      // (generated) is unique per event and the on_conflict target of idempotent inserts.
+      question: {
+        Row: {
+          id: number;
+          event_id: number;
+          category: string;
+          text: string;
+          text_key: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: never;
+          event_id?: number;
+          category: string;
+          text: string;
+          text_key?: never;
+          created_at?: string;
+        };
+        Update: {
+          id?: never;
+          event_id?: number;
+          category?: string;
+          text?: string;
+          text_key?: never;
+          created_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "question_event_id_fkey";
+            columns: ["event_id"];
+            isOneToOne: false;
+            referencedRelation: "event";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
     };
     Views: { [_ in never]: never };
     Functions: {

@@ -273,3 +273,50 @@ export interface GuessBoardDto {
   missing: MissingGuessDto[];
   ranking: GuessRankingDto | null;
 }
+
+// Conversation questions (S-07). The category values are stored as is and shared with S-08's AI topics
+// (src/lib/questions/categories.ts has the order, labels and the guard).
+export type QuestionCategory = "kontrowersyjne" | "generyczne" | "refleksyjne";
+
+export type QuestionRow = Tables["question"]["Row"];
+
+// One question as the organizer manages it, and the one question a draw returns (to whoever drew it only).
+export interface QuestionDto {
+  id: number;
+  category: QuestionCategory;
+  text: string;
+}
+
+// The organizer's question base: questions in category order, then by id; starterMissing = how many starter
+// questions are not in the base (the "Wczytaj bazę startową" button adds them).
+export interface QuestionListDto {
+  questions: QuestionDto[];
+  starterMissing: number;
+}
+
+// Why a pasted line was not added: duplicate = already in the base; repeated = an earlier line of the same paste;
+// too-short / too-long = outside 5–300 characters.
+export type QuestionSkipReason = "duplicate" | "repeated" | "too-short" | "too-long";
+
+// A skipped pasted line (1-based line number, counting blank lines; text normalized).
+export interface QuestionSkipDto {
+  line: number;
+  text: string;
+  reason: QuestionSkipReason;
+}
+
+// Answer to a paste: what was added (count) and what was skipped, plus the whole base.
+export interface QuestionPasteResultDto extends QuestionListDto {
+  added: number;
+  skipped: QuestionSkipDto[];
+}
+
+// Answer to "Wczytaj bazę startową": how many starter questions were added, plus the whole base.
+export interface StarterLoadResultDto extends QuestionListDto {
+  added: number;
+}
+
+// Answer to a draw: the drawn question, or null when the chosen category (or the whole base) is empty.
+export interface QuestionDrawDto {
+  question: QuestionDto | null;
+}
