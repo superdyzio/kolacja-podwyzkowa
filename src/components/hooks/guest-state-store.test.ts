@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from "vitest";
 import type { GuestStateDto } from "@/types";
 import { guestStateStore } from "./guest-state-store";
 
@@ -6,12 +6,22 @@ import { guestStateStore } from "./guest-state-store";
 // islands subscribe, pushed states win over older polls, 404 clears the state, and only a seat change raises
 // "Nowe miejsce!".
 
+const SEAT: NonNullable<GuestStateDto["seat"]> = {
+  table: "Okno",
+  room: "Sala",
+  seat: 1,
+  shape: "round",
+  seatCount: 6,
+  x: 0.5,
+  y: 0.5,
+};
+
 function state(overrides: Partial<GuestStateDto> = {}): GuestStateDto {
   return {
     version: "v1",
     name: "Ania",
     status: "seated",
-    seat: { table: "Okno", room: "Sala", seat: 1, shape: "round", seatCount: 6, x: 0.5, y: 0.5 },
+    seat: SEAT,
     planVersion: null,
     guess: { intakeOpen: true, amountGrosze: null },
     ...overrides,
@@ -19,7 +29,7 @@ function state(overrides: Partial<GuestStateDto> = {}): GuestStateDto {
 }
 
 let apiCounter = 0;
-let fetchMock: ReturnType<typeof vi.fn>;
+let fetchMock: Mock<(input: string) => Promise<Response>>;
 
 function answer(status: number, body?: unknown): Response {
   return body === undefined ? new Response(null, { status }) : Response.json(body, { status });
@@ -29,7 +39,7 @@ beforeEach(() => {
   vi.useFakeTimers();
   vi.stubGlobal("window", globalThis);
   vi.stubGlobal("document", { hidden: false, addEventListener: vi.fn(), removeEventListener: vi.fn() });
-  fetchMock = vi.fn(() => Promise.resolve(answer(204)));
+  fetchMock = vi.fn((_input: string) => Promise.resolve(answer(204)));
   vi.stubGlobal("fetch", fetchMock);
 });
 
@@ -52,7 +62,7 @@ describe("guest state store", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
     await vi.advanceTimersByTimeAsync(2_500);
     expect(fetchMock).toHaveBeenCalledTimes(2);
-    expect(String(fetchMock.mock.calls[0]?.[0])).toMatch(/\/state\?since=v1$/);
+    expect(fetchMock.mock.calls[0]?.[0]).toMatch(/\/state\?since=v1$/);
 
     stopSeat();
     await vi.advanceTimersByTimeAsync(2_500);
@@ -72,17 +82,19 @@ describe("guest state store", () => {
     const listener = vi.fn();
     store.subscribe(listener);
 
-    fetchMock.mockResolvedValueOnce(answer(200, state({ version: "v2", guess: { intakeOpen: false, amountGrosze: 5 } })));
+    fetchMock.mockResolvedValueOnce(
+      answer(200, state({ version: "v2", guess: { intakeOpen: false, amountGrosze: 5 } })),
+    );
     await vi.advanceTimersByTimeAsync(2_500);
     expect(store.getSnapshot().state?.guess).toEqual({ intakeOpen: false, amountGrosze: 5 });
     expect(store.getSnapshot().seatChanged).toBe(false);
     expect(listener).toHaveBeenCalled();
-    expect(String(fetchMock.mock.calls[0]?.[0])).toMatch(/since=v1$/);
+    expect(fetchMock.mock.calls[0]?.[0]).toMatch(/since=v1$/);
 
-    const moved = state({ version: "v3", seat: { ...state().seat!, seat: 4 } });
+    const moved = state({ version: "v3", seat: { ...SEAT, seat: 4 } });
     fetchMock.mockResolvedValueOnce(answer(200, moved));
     await vi.advanceTimersByTimeAsync(2_500);
-    expect(String(fetchMock.mock.calls[1]?.[0])).toMatch(/since=v2$/);
+    expect(fetchMock.mock.calls[1]?.[0]).toMatch(/since=v2$/);
     expect(store.getSnapshot().seatChanged).toBe(true);
     await vi.advanceTimersByTimeAsync(10_000);
     expect(store.getSnapshot().seatChanged).toBe(false);
@@ -108,7 +120,7 @@ describe("guest state store", () => {
     expect(store.getSnapshot().state?.guess.amountGrosze).toBe(149_999);
 
     await vi.advanceTimersByTimeAsync(2_500);
-    expect(String(fetchMock.mock.calls[1]?.[0])).toMatch(/since=saved$/);
+    expect(fetchMock.mock.calls[1]?.[0]).toMatch(/since=saved$/);
   });
 
   it("clears the state on 404 and keeps polling; goes offline after 3 failures", async () => {

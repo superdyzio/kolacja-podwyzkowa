@@ -1,0 +1,51 @@
+---
+import NoAccess from "@/components/NoAccess.astro";
+import { GuessManager } from "@/components/guesses/GuessManager";
+import Layout from "@/layouts/Layout.astro";
+import { accessFor, organizerPath } from "@/lib/access";
+import { getDb } from "@/lib/db";
+import { getGuessBoard } from "@/lib/guesses";
+
+// Organizer guesses page (S-06, FR-018..FR-020): intake, the correct amount, the ranking read from the last place, who
+// is missing and proxy entries. Organizer only — guesses of others and the ranking never reach guests or the TV. The
+// middleware has already checked the key; this is the second, role-specific check.
+const access = accessFor(Astro.locals, "organizer");
+const db = access ? getDb() : null;
+if (!access || !db) {
+  Astro.response.status = 404;
+}
+
+const view =
+  access && db
+    ? {
+        name: access.event.name,
+        panelPath: organizerPath(access.event.organizerKey),
+        apiBase: `/api${organizerPath(access.event.organizerKey)}`,
+        guestsPath: `${organizerPath(access.event.organizerKey)}/goscie`,
+        board: await getGuessBoard(db),
+      }
+    : null;
+---
+
+{view ? (
+  <Layout title={`Strzały i ranking — ${view.name}`}>
+    <main class="mx-auto flex max-w-3xl flex-col gap-6 p-4 sm:p-8">
+      <header class="flex flex-col gap-2">
+        <a
+          href={view.panelPath}
+          class="self-start py-2 text-sm text-muted-foreground underline-offset-4 hover:underline"
+        >
+          ← Panel organizatora
+        </a>
+        <h1 class="text-3xl font-bold">Strzały i ranking</h1>
+        <p class="text-sm text-muted-foreground">
+          Goście wpisują strzał podwyżki na swoich telefonach i widzą tylko własny. Zamknij przyjmowanie, wpisz
+          prawidłową kwotę i czytaj ranking od ostatniego miejsca.
+        </p>
+      </header>
+      <GuessManager client:load apiBase={view.apiBase} guestsPath={view.guestsPath} initial={view.board} />
+    </main>
+  </Layout>
+) : (
+  <NoAccess />
+)}

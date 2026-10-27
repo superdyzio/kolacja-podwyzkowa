@@ -441,9 +441,9 @@ The organizer's page for the evening's last act: proxy entries, who is missing, 
 
 #### Automated
 
-- [x] 4.1 Lint, type check and tests pass: `npm run lint`, `npx astro check`, `npm test`
-- [x] 4.2 Build succeeds: `npm run build`
-- [x] 4.3 HTTP smoke passes: `npm run preview` + `npm run smoke` (then stop the server and `delete from public.event`)
+- [x] 4.1 Lint, type check and tests pass: `npm run lint`, `npx astro check`, `npm test` — d6755de
+- [x] 4.2 Build succeeds: `npm run build` — d6755de
+- [x] 4.3 HTTP smoke passes: `npm run preview` + `npm run smoke` (then stop the server and `delete from public.event`) — d6755de
 
 #### Manual
 
@@ -453,9 +453,9 @@ The organizer's page for the evening's last act: proxy entries, who is missing, 
 
 #### Automated
 
-- [ ] 5.1 Lint, type check and tests pass: `npm run lint`, `npx astro check`, `npm test`
-- [ ] 5.2 Build succeeds: `npm run build`
-- [ ] 5.3 HTTP smoke passes: `npm run preview` + `npm run smoke` (then stop the server and `delete from public.event`)
+- [x] 5.1 Lint, type check and tests pass: `npm run lint`, `npx astro check`, `npm test`
+- [x] 5.2 Build succeeds: `npm run build`
+- [x] 5.3 HTTP smoke passes: `npm run preview` + `npm run smoke` (then stop the server and `delete from public.event`)
 
 #### Manual
 

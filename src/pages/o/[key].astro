@@ -4,6 +4,7 @@ import Layout from "@/layouts/Layout.astro";
 import { accessFor, organizerPath, tvPath } from "@/lib/access";
 import { getDb } from "@/lib/db";
 import { formatGuestLinksSummary, getGuestAccessEnabled } from "@/lib/guest-links";
+import { formatGuessSummary, getGuessBoard } from "@/lib/guesses";
 import { formatGuestSummary, summarizeGuestList } from "@/lib/guests";
 import { formatSeatingSummary, getSeatingBoard, summarizeSeating } from "@/lib/seating";
 import { formatVenueSummary, summarizeVenue } from "@/lib/venue";
@@ -16,9 +17,9 @@ if (!access) {
 
 const db = access ? getDb() : null;
 // One read of the seating board carries the guest list and the venue too.
-const [board, guestAccessEnabled] = db
-  ? await Promise.all([getSeatingBoard(db), getGuestAccessEnabled(db)])
-  : [null, false];
+const [board, guestAccessEnabled, guessBoard] = db
+  ? await Promise.all([getSeatingBoard(db), getGuestAccessEnabled(db), getGuessBoard(db)])
+  : [null, false, null];
 const view = access
   ? {
       name: access.event.name,
@@ -34,12 +35,13 @@ const view = access
       linksSummary: board
         ? formatGuestLinksSummary({ enabled: guestAccessEnabled, guestCount: board.guestList.guests.length })
         : null,
+      guessesPath: `${organizerPath(access.event.organizerKey)}/strzaly`,
+      guessesSummary: guessBoard ? formatGuessSummary(guessBoard) : null,
     }
   : null;
 
 const upcomingSections = [
   { title: "Pytania i tematy AI", description: "Baza pytań, losowanie pytań i tematy do rozmowy." },
-  { title: "Strzały i ranking", description: "Strzały gości, zamknięcie przyjmowania i ranking od końca." },
 ];
 ---
 
@@ -144,6 +146,21 @@ const upcomingSections = [
               </div>
               <p class="text-sm text-muted-foreground">Osobiste linki, kody QR do druku i włącznik dostępu gości.</p>
               {view.linksSummary && <p class="text-sm font-medium">{view.linksSummary}</p>}
+            </a>
+          </li>
+          <li>
+            <a
+              href={view.guessesPath}
+              class="flex h-full flex-col gap-2 rounded-xl border p-4 transition-colors hover:bg-accent focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
+            >
+              <div class="flex items-center justify-between gap-2">
+                <h3 class="font-semibold">Strzały i ranking</h3>
+                <span class="rounded-full bg-primary px-2 py-0.5 text-xs text-primary-foreground">Otwórz</span>
+              </div>
+              <p class="text-sm text-muted-foreground">
+                Strzały gości, zamknięcie przyjmowania, prawidłowa kwota i ranking od końca.
+              </p>
+              {view.guessesSummary && <p class="text-sm font-medium">{view.guessesSummary}</p>}
             </a>
           </li>
           {upcomingSections.map((section) => (

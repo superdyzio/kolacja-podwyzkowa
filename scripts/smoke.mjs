@@ -1230,7 +1230,7 @@ check(
   shellWithLinks.status === 200 &&
     shellWithLinks.body.includes(`/o/${organizerKey}/linki`) &&
     shellWithLinks.body.includes("Dostęp gości: włączony · 2 linki") &&
-    countOf(shellWithLinks.body, "Wkrótce") === 2,
+    countOf(shellWithLinks.body, "Wkrótce") === 1,
   String(shellWithLinks.status),
 );
 
@@ -1591,6 +1591,41 @@ check(
 
 // State for the page checks below: intake open, correct amount 5 000,00 zł, Ania 2 222,23 zł (her own) and
 // Ola 7 777,77 zł (entered by the organizer) tied on place 1.
+const guessesPage = await request(`/o/${organizerKey}/strzaly`);
+check(
+  "guesses page shows every guess, the tied ranking and the readout button",
+  guessesPage.status === 200 &&
+    guessesPage.body.includes("Strzały i ranking") &&
+    guessesPage.body.includes(GUEST_NAMES[0]) &&
+    guessesPage.body.includes(GUEST_NAMES[2]) &&
+    guessesPage.body.includes(`2${NBSP}222,23${NBSP}zł`) &&
+    guessesPage.body.includes(`7${NBSP}777,77${NBSP}zł`) &&
+    guessesPage.body.includes(`5${NBSP}000,00${NBSP}zł`) &&
+    guessesPage.body.includes("remis") &&
+    guessesPage.body.includes("Czytaj od końca") &&
+    guessesPage.body.includes("Zamknij przyjmowanie") &&
+    guessesPage.body.includes("GuessManager") &&
+    guessesPage.cacheControl.includes("no-store"),
+  String(guessesPage.status),
+);
+for (const key of [tvKey, aniaNewKey]) {
+  const res = await request(`/o/${key}/strzaly`);
+  const leaks = leaksIn(res.body, [ANIA_TIE, OLA_GUESS, CORRECT], GUEST_NAMES);
+  check(
+    `guesses page with a wrong key: ${key === tvKey ? "<tv>" : "<guest>"}`,
+    res.status === 404 && res.body === deniedBody && leaks.length === 0,
+    `${res.status} ${leaks.join(" | ")}`,
+  );
+}
+const shellWithGuesses = await request(`/o/${organizerKey}`);
+check(
+  "organizer shell links to the guesses page with its summary",
+  shellWithGuesses.status === 200 &&
+    shellWithGuesses.body.includes(`/o/${organizerKey}/strzaly`) &&
+    shellWithGuesses.body.includes("Przyjmowanie otwarte · strzały: 2 z 2 · ranking gotowy") &&
+    countOf(shellWithGuesses.body, "Wkrótce") === 1,
+  String(shellWithGuesses.status),
+);
 
 const accessOff = await request(linksApi, { method: "PATCH", json: { enabled: false } });
 const offAgainPage = await request(`/g/${aniaNewKey}`);
