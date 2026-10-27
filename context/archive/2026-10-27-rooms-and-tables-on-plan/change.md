@@ -1,10 +1,10 @@
 ---
 change_id: rooms-and-tables-on-plan
 title: Venue plan upload, named rooms and pinned tables with seats and type for the organizer
-status: implemented
+status: archived
 created: 2026-10-27
 updated: 2026-10-27
-archived_at: null
+archived_at: 2026-10-27T00:31:46Z
 ---
 
 ## Notes

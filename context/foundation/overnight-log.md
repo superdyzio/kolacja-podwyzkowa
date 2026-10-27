@@ -59,6 +59,9 @@ Dziennik decyzji, zależności i blokerów nocnego builda (zasady: `overnight-br
 - 2026-10-27 — S-02 /10x-implement: bramki ręczne między fazami, akceptacja treści commitów i „Next phase” → kontynuacja bez pauzy (nienadzorowany przebieg, jak w S-01); wiersz ręczny 4.6 zostawiony na rano.
 - 2026-10-27 — S-02 weryfikacja jednorazowa (nie w repo): wgranie i pobranie dokładnie 5 MB przez `npm run preview` (workerd) → bajt w bajt, PUT 328 ms, GET 84 ms; test integracyjny robi to samo przez serwis (ładunek generowany w pamięci).
 - 2026-10-27 — S-02 adaptacja planu: wspólne parsowanie błędów API wysp przeniesione z `useGuestList.ts` do `src/components/hooks/api-failure.ts` (używane przez `useGuestList` i `useVenue`); polskie komunikaty sal/stolików w `src/lib/venue/rules.ts` (pliki tras API eksportują tylko handlery); `smoke.mjs` importuje `Buffer`/`TextEncoder`/`TextDecoder` z modułów Node zamiast poszerzać globale ESLint.
+- 2026-10-27 — S-02 /10x-implement epilog: „1 wiersz Progress w toku (4.6, ręczny)” → „Proceed to epilogue” (opcja „Pause” sprzeczna z nienadzorowanym przebiegiem; 4.6 jest ręczny), jak w F-01 i S-01.
+- 2026-10-27 — S-02 /10x-implement, końcowy przegląd: „Skip review” zamiast `/10x-impl-review`; w zamian przegląd recenzenta (advisor) przed archiwizacją — znalazł jeden drobny błąd UI (błąd wczytania planu nie znikał po nowym wgraniu), poprawiony w osobnym commicie `fix`.
+- 2026-10-27 — S-02 /10x-archive: ostrzeżenia „1 ręczny wiersz Progress w toku (4.6)” i „brak impl-review” → „Continue archiving (Recommended)”; S-02 w roadmapie → done.
 - 2026-10-27 — S-02 UI: plan i formularz stolika obok siebie od `lg` (na telefonie formularz pod planem, przewijany do widoku); klik w puste miejsce planu zawsze otwiera „Nowy stolik”, klik w pinezkę lub stolik na liście — edycję; aktywacja planu z klawiatury stawia pinezkę na środku (Recommended, plan).
 
 ## Do sprawdzenia rano (Manual)
