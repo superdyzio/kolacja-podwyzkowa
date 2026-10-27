@@ -2004,6 +2004,16 @@ check(
     keysOf(aiBoard.data.provider) === "kind,model,problem,ready",
   aiBoard.body.slice(0, 200),
 );
+const olaPageBeforeAi = await request(`/g/${olaKey}`);
+check(
+  "guest page has the AI topic section with the full quota",
+  olaPageBeforeAi.status === 200 &&
+    olaPageBeforeAi.body.includes("Temat od AI") &&
+    olaPageBeforeAi.body.includes("GuestTopicView") &&
+    olaPageBeforeAi.body.includes("Zostało 5 z 5") &&
+    olaPageBeforeAi.body.includes("Temat widzisz tylko Ty."),
+  String(olaPageBeforeAi.status),
+);
 const aiOnMock = aiBoard.data?.provider?.kind === "mock" && aiBoard.data.provider.ready === true;
 check(
   "AI provider is the mock (the smoke never makes a paid call; set AI_PROVIDER=mock)",
@@ -2148,6 +2158,15 @@ if (aiOnMock) {
       `${res.status} ${topicLeaks(res.body).join(" | ")}`,
     );
   }
+  const aniaPageAfterAi = await request(`/g/${aniaNewKey}`);
+  check(
+    "the guest page renders the used-up quota",
+    aniaPageAfterAi.status === 200 &&
+      aniaPageAfterAi.body.includes("Zostało 0 z 5") &&
+      aniaPageAfterAi.body.includes("5 z 5") &&
+      topicLeaks(aniaPageAfterAi.body).length === 0,
+    String(aniaPageAfterAi.status),
+  );
 }
 
 // Wrong roles: guests and the TV never reach the organizer AI API; organizer and TV keys are not guest keys.
