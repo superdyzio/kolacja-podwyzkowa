@@ -374,20 +374,20 @@ Fifth migration (function only, no tables). Locally `npx supabase migration up`;
 
 #### Automated
 
-- [x] 3.1 Migration applies cleanly: `npx supabase migration up`
-- [x] 3.2 Unit + integration tests pass (integration not skipped): `npm test`
-- [x] 3.3 Lint passes: `npm run lint`
-- [x] 3.4 Type check passes: `npx astro check`
+- [x] 3.1 Migration applies cleanly: `npx supabase migration up` — ddc15ab
+- [x] 3.2 Unit + integration tests pass (integration not skipped): `npm test` — ddc15ab
+- [x] 3.3 Lint passes: `npm run lint` — ddc15ab
+- [x] 3.4 Type check passes: `npx astro check` — ddc15ab
 
 ### Phase 4: Organizer draw API and HTTP smoke
 
 #### Automated
 
-- [ ] 4.1 Unit tests pass: `npm test`
-- [ ] 4.2 Lint passes: `npm run lint`
-- [ ] 4.3 Type check passes: `npx astro check`
-- [ ] 4.4 Build passes: `npm run build`
-- [ ] 4.5 HTTP smoke passes against the production preview on a DB without an event
+- [x] 4.1 Unit tests pass: `npm test`
+- [x] 4.2 Lint passes: `npm run lint`
+- [x] 4.3 Type check passes: `npx astro check`
+- [x] 4.4 Build passes: `npm run build`
+- [x] 4.5 HTTP smoke passes against the production preview on a DB without an event
 
 ### Phase 5: Draw panel on the seating page, shell card and docs
 

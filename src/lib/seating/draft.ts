@@ -18,6 +18,7 @@ export type DraftSeat = DraftSeatDto;
 
 export const DRAFT_STALE_MESSAGE = "Rozsadzenie zmieniło się w międzyczasie — wylosuj jeszcze raz.";
 export const SNAPSHOT_NOT_FOUND_MESSAGE = "Nie znaleziono opublikowanego rozkładu.";
+export const SEATING_CHANGED_MESSAGE = "Rozsadzenie zmieniło się w międzyczasie — spróbuj jeszcze raz.";
 
 export type DraftProblem =
   | { kind: "unknown-guest"; guestId: number }

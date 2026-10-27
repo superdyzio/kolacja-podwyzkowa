@@ -46,6 +46,7 @@ export {
 } from "./neighbours";
 export {
   DRAFT_STALE_MESSAGE,
+  SEATING_CHANGED_MESSAGE,
   SNAPSHOT_NOT_FOUND_MESSAGE,
   describeDraftProblem,
   describeRestore,

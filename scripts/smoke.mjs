@@ -849,4 +849,102 @@ const tvPageLeaks = [organizerKey, "guestId", "pinned", "isAbsent", "tableId", "
 );
 check("TV page leaks no organizer key, ids, pins or absences", tvPageLeaks.length === 0, tvPageLeaks.join(" "));
 
+// 16. Draw, draft and restore (S-04). The draw itself runs in the browser; the server gives it the neighbour history,
+// re-checks the drawn draft and restores published arrangements. State here: Ania Smoke at seat 4 of "Okno Smoke"
+// (unpinned), Ola Smoke present and without a seat; the latest snapshot has Ola at seat 1 opposite Ania (neighbours).
+const isPair = (pair, a, b) => (pair[0] === a && pair[1] === b) || (pair[0] === b && pair[1] === a);
+const history = await request(`${seatingApi}/history`);
+check(
+  "neighbour history counts the snapshots and has the published neighbours",
+  history.status === 200 &&
+    history.data?.snapshotCount === 2 &&
+    history.data.pairs.some((pair) => isPair(pair, ania.id, ola.id)) &&
+    history.cacheControl.includes("no-store"),
+  `${history.status} ${history.body}`,
+);
+const boardBeforeDraft = await request(seatingApi);
+check(
+  "the board names the previous snapshot",
+  boardBeforeDraft.data?.previous?.snapshotId === published.data?.published?.snapshotId &&
+    boardBeforeDraft.data?.published?.snapshotId === publishedSecond.data?.published?.snapshotId,
+  boardBeforeDraft.body,
+);
+
+const draftMissing = await request(`${seatingApi}/draft`, {
+  method: "POST",
+  json: { seats: [{ guestId: ania.id, tableId: oknoId, seat: 1 }] },
+});
+const boardAfterBadDraft = await request(seatingApi);
+check(
+  "a draft without a present guest is refused with the reason and changes nothing",
+  draftMissing.status === 409 &&
+    errorOf(draftMissing) === "Rozsadzenie zmieniło się w międzyczasie — wylosuj jeszcze raz." &&
+    draftMissing.data?.problems?.includes(`Bez miejsca w projekcie: ${GUEST_NAMES[2]}.`) &&
+    seatOf(boardAfterBadDraft, ania.id)?.seat === 4 &&
+    !seatOf(boardAfterBadDraft, ola.id),
+  `${draftMissing.status} ${draftMissing.body}`,
+);
+const draftExtraKey = await request(`${seatingApi}/draft`, {
+  method: "POST",
+  json: { seats: [{ guestId: ania.id, tableId: oknoId, seat: 1, pinned: true }] },
+});
+check("draft with unknown keys is refused", draftExtraKey.status === 400, `${draftExtraKey.status}`);
+
+const draftSaved = await request(`${seatingApi}/draft`, {
+  method: "POST",
+  json: {
+    seats: [
+      { guestId: ania.id, tableId: oknoId, seat: 3 },
+      { guestId: ola.id, tableId: oknoId, seat: 1 },
+    ],
+  },
+});
+const tvAfterDrawDraft = await tvSince(tvSecond.data?.version);
+check(
+  "a valid draft becomes the working arrangement and the TV does not see it",
+  draftSaved.status === 200 &&
+    seatOf(draftSaved, ania.id)?.seat === 3 &&
+    seatOf(draftSaved, ola.id)?.seat === 1 &&
+    draftSaved.data?.upToDate === false &&
+    tvAfterDrawDraft.status === 204,
+  `${draftSaved.status} ${tvAfterDrawDraft.status} ${draftSaved.body}`,
+);
+
+const restoreUnknown = await request(`${seatingApi}/restore`, { method: "POST", json: { snapshotId: 999999999 } });
+check(
+  "restoring an unknown snapshot is not found",
+  restoreUnknown.status === 404 && errorOf(restoreUnknown) === "Nie znaleziono opublikowanego rozkładu.",
+  `${restoreUnknown.status} ${errorOf(restoreUnknown)}`,
+);
+const restoreBadBody = await request(`${seatingApi}/restore`, { method: "POST", json: { snapshotId: "1" } });
+check("restore with a bad body is refused", restoreBadBody.status === 400, `${restoreBadBody.status}`);
+const restored = await request(`${seatingApi}/restore`, {
+  method: "POST",
+  json: { snapshotId: publishedSecond.data?.published?.snapshotId },
+});
+const tvAfterRestore = await tvSince(tvSecond.data?.version);
+check(
+  "discarding the draft restores what the TV shows",
+  restored.status === 200 &&
+    restored.data?.notice?.startsWith("Przywrócono rozkład z ") &&
+    restored.data?.upToDate === true &&
+    seatOf(restored, ania.id)?.seat === 4 &&
+    seatOf(restored, ola.id)?.seat === 1 &&
+    tvAfterRestore.status === 204,
+  `${restored.status} ${restored.body}`,
+);
+
+for (const [method, path, json] of [
+  ["GET", `/api/o/${tvKey}/seating/history`],
+  ["POST", `/api/o/${tvKey}/seating/draft`, { seats: [] }],
+  ["POST", `/api/o/${tvKey}/seating/restore`, { snapshotId: published.data?.published?.snapshotId }],
+]) {
+  const res = await request(path, { method, json });
+  check(
+    `draw API with the TV key: ${method} ${path.replace(tvKey, "<tv>")}`,
+    res.status === 404 && res.body === JSON.stringify({ error: "Brak dostępu" }),
+    `${res.status} ${res.body}`,
+  );
+}
+
 finish();
