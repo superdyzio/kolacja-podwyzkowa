@@ -417,18 +417,18 @@ Fourth migration. Locally `npx supabase migration up`; CI's `supabase start` app
 
 #### Automated
 
-- [x] 1.1 Migration applies cleanly: `npx supabase migration up`
-- [x] 1.2 Unit + integration tests pass (integration not skipped): `npm test`
-- [x] 1.3 Lint passes: `npm run lint`
-- [x] 1.4 Type check passes: `npx astro check`
+- [x] 1.1 Migration applies cleanly: `npx supabase migration up` — d7a468e
+- [x] 1.2 Unit + integration tests pass (integration not skipped): `npm test` — d7a468e
+- [x] 1.3 Lint passes: `npm run lint` — d7a468e
+- [x] 1.4 Type check passes: `npx astro check` — d7a468e
 
 ### Phase 2: Seating services
 
 #### Automated
 
-- [ ] 2.1 Unit + integration tests pass (integration not skipped): `npm test`
-- [ ] 2.2 Lint passes: `npm run lint`
-- [ ] 2.3 Type check passes: `npx astro check`
+- [x] 2.1 Unit + integration tests pass (integration not skipped): `npm test`
+- [x] 2.2 Lint passes: `npm run lint`
+- [x] 2.3 Type check passes: `npx astro check`
 
 ### Phase 3: Organizer seating API, TV seating endpoint and HTTP smoke
 
