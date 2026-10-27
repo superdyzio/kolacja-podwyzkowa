@@ -217,3 +217,31 @@ export async function cleanupTestSeating(db: DbClient, seating: TestSeating | nu
   await deleteTestGuests(db, seating.guestIds);
   await deleteTestRooms(db, [seating.roomId]);
 }
+
+// The guest-access switch (S-05) is shared event state: tests read it first and put it back afterwards.
+export async function readGuestAccessEnabled(db: DbClient): Promise<boolean> {
+  const { data, error } = await db.from("event").select("guest_access_enabled").eq("id", EVENT_ID).single();
+  if (error) {
+    throw new Error(`Nie udało się odczytać przełącznika dostępu gości: ${error.message}`);
+  }
+  return data.guest_access_enabled;
+}
+
+export async function writeGuestAccessEnabled(db: DbClient, enabled: boolean): Promise<void> {
+  const { error } = await db.from("event").update({ guest_access_enabled: enabled }).eq("id", EVENT_ID);
+  if (error) {
+    throw new Error(`Nie udało się zmienić przełącznika dostępu gości: ${error.message}`);
+  }
+}
+
+// Personal link keys of the given guests (S-05), by guest id.
+export async function readGuestKeys(db: DbClient, ids: readonly number[]): Promise<Map<number, string>> {
+  const { data, error } = await db
+    .from("guest")
+    .select("id, access_key")
+    .in("id", [...ids]);
+  if (error) {
+    throw new Error(`Nie udało się odczytać kluczy gości: ${error.message}`);
+  }
+  return new Map(data.map((row) => [row.id, row.access_key]));
+}

@@ -94,7 +94,7 @@ describe.skipIf(!hasLocalDb)("access matrix against the local DB", () => {
       expect(await decideAccess(db, `/tv/${unknown}`)).toEqual({ kind: "denied", status: 404, isApi: false });
     });
 
-    it("denies every guest path until guest links exist (S-05)", async () => {
+    it("denies the organizer and TV keys on guest paths", async () => {
       for (const path of [`/g/${event.organizerKey}`, `/g/${event.tvKey}`, `/api/g/${event.organizerKey}`]) {
         expect((await decideAccess(db, path)).kind).toBe("denied");
       }

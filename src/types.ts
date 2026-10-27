@@ -174,3 +174,42 @@ export interface SeatOccupantDto {
   seat: number;
   guestName: string;
 }
+
+// One guest's personal link (S-05, organizer only): key opens /g/<key>.
+export interface GuestLinkDto {
+  id: number;
+  displayName: string;
+  key: string;
+}
+
+// The organizer's links page: the guest-access switch and every guest's link (Polish alphabetical order).
+export interface GuestLinksDto {
+  enabled: boolean;
+  guests: GuestLinkDto[];
+}
+
+// The guest's own seat in the latest PUBLISHED arrangement (from the snapshot, like the TV): table name, room name,
+// seat number, and the table's shape, seat count and pin (x, y fractions of the plan image). No ids.
+export interface GuestSeatDto {
+  table: string;
+  room: string;
+  seat: number;
+  shape: TableShape;
+  seatCount: number;
+  x: number;
+  y: number;
+}
+
+// unpublished: nothing published yet; unseated: no seat in the latest published arrangement (absent or not seated
+// when it was published); seated: `seat` is set.
+export type GuestSeatStatus = "unpublished" | "unseated" | "seated";
+
+// What a guest's phone shows (S-05) and polls for. version is the opaque polling token; name is the guest's current
+// display name; planVersion is the plan image version (null before an upload). Nothing about other guests.
+export interface GuestStateDto {
+  version: string;
+  name: string;
+  status: GuestSeatStatus;
+  seat: GuestSeatDto | null;
+  planVersion: number | null;
+}

@@ -3,8 +3,9 @@ import { isWellFormedAccessKey } from "./keys";
 import { parseAccessPath, type AccessRole } from "./paths";
 
 // Access matrix (PRD Access Control). The organizer access carries both keys so the organizer view can show the
-// links; the TV access carries no key at all, so nothing rendered for the TV can leak the organizer link.
-// Guest access arrives with S-05 (guest links); until then every /g/ path is denied.
+// links; the TV and guest accesses carry no key at all, so nothing rendered for them can leak another link.
+// A guest key opens /g/ paths only while the organizer's guest-access switch is on (S-05); switched off, revoked,
+// unknown and other roles' keys all get the same denial.
 
 export interface OrganizerAccess {
   role: "organizer";
@@ -16,7 +17,15 @@ export interface TvAccess {
   event: { id: number; name: string };
 }
 
-export type Access = OrganizerAccess | TvAccess;
+// The guest whose personal key is in the path. guest.id is THE identity for every guest action (S-06..S-08): never
+// take a guest id from the request.
+export interface GuestAccess {
+  role: "guest";
+  event: { id: number; name: string };
+  guest: { id: number; displayName: string };
+}
+
+export type Access = OrganizerAccess | TvAccess | GuestAccess;
 
 export type AccessDecision =
   { kind: "public" } | { kind: "granted"; access: Access } | { kind: "denied"; status: 404; isApi: boolean };
@@ -63,8 +72,25 @@ export async function resolveAccess(db: DbClient, role: AccessRole, key: string)
       }
       return { role: "tv", event: { id: data.id, name: data.name } };
     }
-    case "guest":
-      return null;
+    case "guest": {
+      // One round trip: the guest by key with the event's switch embedded (every guest poll pays this lookup).
+      const { data, error } = await db
+        .from("guest")
+        .select("id, display_name, event(id, name, guest_access_enabled)")
+        .eq("access_key", key)
+        .maybeSingle();
+      if (error) {
+        throw new AccessLookupError(error.message);
+      }
+      if (!data?.event.guest_access_enabled) {
+        return null;
+      }
+      return {
+        role: "guest",
+        event: { id: data.event.id, name: data.event.name },
+        guest: { id: data.id, displayName: data.display_name },
+      };
+    }
   }
 }
 

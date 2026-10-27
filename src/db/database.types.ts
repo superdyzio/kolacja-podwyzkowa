@@ -17,6 +17,8 @@ export interface Database {
           organizer_key: string;
           tv_key: string;
           created_at: string;
+          // S-05: guest links open nothing while false (default).
+          guest_access_enabled: boolean;
         };
         Insert: {
           id?: number;
@@ -24,6 +26,7 @@ export interface Database {
           organizer_key: string;
           tv_key: string;
           created_at?: string;
+          guest_access_enabled?: boolean;
         };
         Update: {
           id?: number;
@@ -31,6 +34,7 @@ export interface Database {
           organizer_key?: string;
           tv_key?: string;
           created_at?: string;
+          guest_access_enabled?: boolean;
         };
         Relationships: [];
       };
@@ -68,6 +72,8 @@ export interface Database {
           is_absent: boolean;
           group_id: number | null;
           created_at: string;
+          // S-05: personal link key (/g/<key>), 24 chars base64url; the DB default generates it.
+          access_key: string;
         };
         Insert: {
           id?: never;
@@ -76,6 +82,7 @@ export interface Database {
           is_absent?: boolean;
           group_id?: number | null;
           created_at?: string;
+          access_key?: string;
         };
         Update: {
           id?: never;
@@ -84,6 +91,7 @@ export interface Database {
           is_absent?: boolean;
           group_id?: number | null;
           created_at?: string;
+          access_key?: string;
         };
         Relationships: [
           {

@@ -7,6 +7,7 @@ export {
   resolveAccess,
   type Access,
   type AccessDecision,
+  type GuestAccess,
   type OrganizerAccess,
   type TvAccess,
 } from "./resolve";
