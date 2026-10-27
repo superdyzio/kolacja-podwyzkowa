@@ -1,10 +1,10 @@
 ---
 change_id: question-base-and-draw
 title: Question base with categories, starter questions and a private random draw
-status: implemented
+status: archived
 created: 2026-10-27
 updated: 2026-10-27
-archived_at: null
+archived_at: 2026-10-27T03:56:49Z
 ---
 
 ## Notes

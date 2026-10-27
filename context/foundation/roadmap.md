@@ -47,7 +47,7 @@ Organizator co roku prowadzi kolację podwyżkową dla 35–40 przyjaciół i dz
 | S-04 | reshuffle-draft-and-publish | organizator losuje projekt rozkładu bez powtórek sąsiadów, poprawia go, publikuje i cofa | S-03                | US-02, FR-009, FR-010, NFR-007                       | done     |
 | S-05 | guest-links-and-seat-view   | gość otwiera osobisty link/QR i widzi swój stolik i miejsce, odświeżane na żywo       | S-03                | US-03, FR-011, FR-012, FR-013, NFR-003, NFR-008, NFR-009 | done        |
 | S-06 | guesses-and-ranking         | goście oddają strzały, organizator zamyka przyjmowanie i czyta ranking od końca       | S-05                | US-04, FR-017, FR-018, FR-019, FR-020, NFR-001       | done        |
-| S-07 | question-base-and-draw      | organizator prowadzi bazę pytań, a każdy losuje pytanie z wybranej kategorii          | S-05                | US-03, FR-014, FR-015                                | in-progress |
+| S-07 | question-base-and-draw      | organizator prowadzi bazę pytań, a każdy losuje pytanie z wybranej kategorii          | S-05                | US-03, FR-014, FR-015                                | done        |
 | S-08 | ai-topics-with-limits       | organizator i goście generują tematy AI w kategorii, z limitami                       | S-07                | US-03, FR-016, NFR-005, NFR-010                      | proposed |
 | S-09 | organizer-offline-readout   | organizator bez sieci widzi ostatni rozkład i ranking zebranych strzałów              | S-04, S-06          | US-04, FR-020, NFR-004                               | proposed |
 
@@ -175,7 +175,7 @@ Foundations below assume these are present and do NOT re-scaffold them.
 - **Unknowns:**
   - Przegląd startowej bazy pytań (Open Question 4) — Owner: user. Block: no.
 - **Risk:** Niskie; baza startowa to treść, którą użytkownik musi przejrzeć przed kolacją.
-- **Status:** in-progress
+- **Status:** done
 
 ### S-08: Tematy AI z limitami
 
@@ -250,3 +250,4 @@ Foundations below assume these are present and do NOT re-scaffold them.
 - **S-04: organizator losuje projekt nowego rozkładu (grupy razem na kolejnych miejscach, przypięci na miejscach, nieobecni pominięci, jak najmniej powtórzonych sąsiadów), przegląda go, losuje ponownie lub poprawia ręcznie, publikuje na TV i telefony albo wraca do poprzedniego rozkładu.** — Archived 2026-10-27 → `context/archive/2026-10-27-reshuffle-draft-and-publish/`. Lesson: —.
 - **S-05: organizator drukuje karteczki z osobistymi kodami QR i kopiuje linki, włącza i wyłącza dostęp gości, unieważnia link; gość po otwarciu linku widzi swój stolik i miejsce, odświeżane na żywo.** — Archived 2026-10-27 → `context/archive/2026-10-27-guest-links-and-seat-view/`. Lesson: —.
 - **S-06: gość wpisuje i zmienia swój strzał do zamknięcia; organizator wpisuje strzały za gości, widzi kto nie oddał, zamyka i otwiera przyjmowanie, wpisuje prawidłową kwotę i czyta ranking od ostatniego miejsca z remisami.** — Archived 2026-10-27 → `context/archive/2026-10-27-guesses-and-ranking/`. Lesson: —.
+- **S-07: organizator dodaje, edytuje, usuwa i hurtowo wkleja pytania z kategorią (baza startowa ok. 30 na kategorię gotowa), a organizator i goście losują pytanie z wybranej kategorii lub ze wszystkich, widoczne tylko dla losującego.** — Archived 2026-10-27 → `context/archive/2026-10-27-question-base-and-draw/`. Lesson: —.
