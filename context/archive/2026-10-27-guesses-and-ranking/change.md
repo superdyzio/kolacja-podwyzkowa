@@ -1,10 +1,10 @@
 ---
 change_id: guesses-and-ranking
 title: Guests' guesses of the raise amount, intake control and the ranking read from the last place
-status: implemented
+status: archived
 created: 2026-10-27
 updated: 2026-10-27
-archived_at: null
+archived_at: 2026-10-27T03:14:28Z
 ---
 
 ## Notes

@@ -127,6 +127,8 @@ Dziennik decyzji, zależności i blokerów nocnego builda (zasady: `overnight-br
 - 2026-10-27 — S-06 /10x-plan, podział na fazy: 5 faz (schemat+typy+czysta domena → serwisy+stan gościa → API+smoke → sekcja gościa na wspólnym odpytywaniu → strona organizatora z trybem odczytu+karta+dokumentacja), każda z automatycznym checkiem — „Looks good, proceed” (Recommended).
 - 2026-10-27 — S-06 adaptacje implementacji: poller gościa przeniesiony do wspólnego magazynu `guest-state-store.ts` (jedno odpytywanie na telefon, `push` stanu z odpowiedzi zapisu; odpowiedzi odpytań sprzed zapisu ignorowane); pole kwoty organizatora jako wspólny `AmountForm` (prawidłowa kwota i strzały za gości); strona organizatora pokazuje „Brak połączenia…” po 3 nieudanych odświeżeniach (jak TV i telefon).
 - 2026-10-27 — S-06 hook husky nie działa w tym klonie (`core.hooksPath` nieustawione, więc `lint-staged` nie uruchamia się przy commitach); błędy lint w teście `guest-state-store.test.ts` z commita p4 (d6755de) poprawione w p5 — lint sprawdzany ręcznie przed każdym commitem. Konfiguracji hooków nie zmieniałem (decyzja dla właściciela).
+- 2026-10-27 — S-06 przegląd końcowy (recenzent zamiast pliku /10x-impl-review, jak w poprzednich slice'ach): bez blokerów; jedna poprawka — szkic pierwszego strzału gościa nie znika, gdy organizator w tym czasie wpisze strzał za niego (pisanie = edycja) (9809a86); lint, astro check, 507 testów, build i smoke (245 sprawdzeń) zielone.
+- 2026-10-27 — S-06 /10x-archive: archiwizacja mimo 2 oczekujących punktów ręcznych (4.4, 5.4, wpisane do „Do sprawdzenia rano”) i braku pliku impl-review (zamiast niego przegląd recenzenta); „Continue archiving (Recommended)”; roadmapa S-06 → done.
 
 ## Do sprawdzenia rano (Manual)
 
