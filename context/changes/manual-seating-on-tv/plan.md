@@ -458,11 +458,11 @@ Fourth migration. Locally `npx supabase migration up`; CI's `supabase start` app
 
 #### Automated
 
-- [x] 5.1 Unit tests pass (incl. `tv-layout.test.ts`): `npm test`
-- [x] 5.2 Lint passes: `npm run lint`
-- [x] 5.3 Type check passes: `npx astro check`
-- [x] 5.4 Build passes: `npm run build`
-- [x] 5.5 HTTP smoke passes against the production preview on a DB without an event
+- [x] 5.1 Unit tests pass (incl. `tv-layout.test.ts`): `npm test` — 9995d4c
+- [x] 5.2 Lint passes: `npm run lint` — 9995d4c
+- [x] 5.3 Type check passes: `npx astro check` — 9995d4c
+- [x] 5.4 Build passes: `npm run build` — 9995d4c
+- [x] 5.5 HTTP smoke passes against the production preview on a DB without an event — 9995d4c
 
 #### Manual
 

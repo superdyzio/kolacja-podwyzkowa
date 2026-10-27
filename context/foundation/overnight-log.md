@@ -77,6 +77,8 @@ Dziennik decyzji, zależności i blokerów nocnego builda (zasady: `overnight-br
 - 2026-10-27 — S-03 /10x-plan, podział na fazy: 5 faz (schemat+reguły → serwisy → API+endpoint TV+smoke → strona organizatora+potwierdzenia na stronie sal → widok TV+dokumentacja), każda z automatycznym checkiem — „Looks good, proceed” (Recommended).
 - 2026-10-27 — S-03 /10x-implement faza 4: kliknięcie miejsca, którego nie da się użyć (przypięta osoba, pusty wybór), nie jest wyszarzonym przyciskiem, tylko pokazuje wyjaśnienie w komunikacie (dostępne z klawiatury i na telefonie, gdzie `title` nie działa); karta „Rozsadzenie” w panelu jest już linkiem, a zapowiedź „Wkrótce” zmieniła się na „Losowanie i cofnięcie” (S-04); panel czyta raz tablicę rozsadzenia zamiast osobno listy gości i lokalu (Recommended, mniej zapytań).
 - 2026-10-27 — S-03 /10x-implement faza 5: pozycje kart na TV są zapisywane bezpośrednio w DOM w efekcie układu (bez ponownego renderu), rozmiar okna przez `useSyncExternalStore`; gdy krawędź ekranu blokuje rozsunięcie kart wzdłuż jednej osi, algorytm próbuje drugiej (deterministycznie, stała liczba przebiegów) (Recommended).
+- 2026-10-27 — S-03 /10x-implement epilog: „2 wiersze Progress w toku (4.6, 5.6, ręczne)” → „Proceed to epilogue” (opcja „Pause” sprzeczna z nienadzorowanym przebiegiem), jak w F-01, S-01 i S-02.
+- 2026-10-27 — S-03 /10x-implement, końcowy przegląd: „Skip review” zamiast `/10x-impl-review`; w zamian przegląd recenzenta (advisor) po fazach 4–5 — bez problemów blokujących. Uwaga: układ kart TV po stronie przeglądarki (pomiar, rozsuwanie, odpytywanie) nie był uruchomiony w przeglądarce (bez Playwright) — smoke widzi tylko HTML z serwera; potwierdzi to dopiero ręczny wiersz 5.6.
 
 ## Do sprawdzenia rano (Manual)
 
