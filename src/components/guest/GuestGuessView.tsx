@@ -133,6 +133,9 @@ export function GuestGuessView({ apiBase, initial }: Props) {
               aria-describedby={problem ? "guess-problem" : undefined}
               onChange={(event) => {
                 setDraft(event.target.value);
+                // Typing a first guess counts as editing: a guess the organizer enters meanwhile must not hide the
+                // form and lose the draft.
+                setEditing(true);
               }}
               className="h-14 pr-12 text-2xl md:text-2xl"
             />
