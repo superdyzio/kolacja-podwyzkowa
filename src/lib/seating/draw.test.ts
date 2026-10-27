@@ -7,6 +7,7 @@ import {
   createRandom,
   describeDrawProblem,
   drawSeating,
+  drawnMessage,
   type DrawOptions,
   type DrawResult,
 } from "./draw";
@@ -376,5 +377,12 @@ describe("drawSeating — performance (NFR-007: a draft for 60 guests in ≤ 3 s
     const drawn = expectValidDraw(data, history, result);
     expect(drawn.repeats).toBeGreaterThan(0);
     expect(elapsed).toBeLessThan(DEFAULT_DRAW_BUDGET_MS + 300);
+  });
+});
+
+describe("drawnMessage", () => {
+  it("names the repeat count", () => {
+    expect(drawnMessage(0)).toBe("Wylosowano projekt — 0 powtórzonych par sąsiadów. Przejrzyj, popraw i opublikuj.");
+    expect(drawnMessage(2)).toBe("Wylosowano projekt — 2 powtórzone pary sąsiadów. Przejrzyj, popraw i opublikuj.");
   });
 });

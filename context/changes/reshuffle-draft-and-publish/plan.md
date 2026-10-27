@@ -383,21 +383,21 @@ Fifth migration (function only, no tables). Locally `npx supabase migration up`;
 
 #### Automated
 
-- [x] 4.1 Unit tests pass: `npm test`
-- [x] 4.2 Lint passes: `npm run lint`
-- [x] 4.3 Type check passes: `npx astro check`
-- [x] 4.4 Build passes: `npm run build`
-- [x] 4.5 HTTP smoke passes against the production preview on a DB without an event
+- [x] 4.1 Unit tests pass: `npm test` — 453e841
+- [x] 4.2 Lint passes: `npm run lint` — 453e841
+- [x] 4.3 Type check passes: `npx astro check` — 453e841
+- [x] 4.4 Build passes: `npm run build` — 453e841
+- [x] 4.5 HTTP smoke passes against the production preview on a DB without an event — 453e841
 
 ### Phase 5: Draw panel on the seating page, shell card and docs
 
 #### Automated
 
-- [ ] 5.1 Lint passes: `npm run lint`
-- [ ] 5.2 Type check passes: `npx astro check`
-- [ ] 5.3 Tests pass: `npm test`
-- [ ] 5.4 Build passes: `npm run build`
-- [ ] 5.5 HTTP smoke passes against the production preview on a DB without an event
+- [x] 5.1 Lint passes: `npm run lint`
+- [x] 5.2 Type check passes: `npx astro check`
+- [x] 5.3 Tests pass: `npm test`
+- [x] 5.4 Build passes: `npm run build`
+- [x] 5.5 HTTP smoke passes against the production preview on a DB without an event
 
 #### Manual
 

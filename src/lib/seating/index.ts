@@ -34,6 +34,7 @@ export {
 } from "./published";
 export {
   describeRepeat,
+  formatHistoryCount,
   formatRepeatCount,
   historyPairs,
   neighbourPairs,
@@ -63,6 +64,7 @@ export {
   createRandom,
   describeDrawProblem,
   drawSeating,
+  drawnMessage,
   randomSeed,
   type DrawOptions,
   type DrawProblem,

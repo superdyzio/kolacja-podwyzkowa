@@ -166,6 +166,11 @@ export function formatRepeatCount(count: number): string {
   return `${count} ${pluralPl(count, "powtórzona para sąsiadów", "powtórzone pary sąsiadów", "powtórzonych par sąsiadów")}`;
 }
 
+// „Historia: 3 opublikowane rozkłady”
+export function formatHistoryCount(count: number): string {
+  return `Historia: ${count} ${pluralPl(count, "opublikowany rozkład", "opublikowane rozkłady", "opublikowanych rozkładów")}`;
+}
+
 // „Ania i Kuba (Okno)”
 export function describeRepeat(pair: RepeatedPair): string {
   return `${pair.names[0]} i ${pair.names[1]} (${pair.tableName})`;

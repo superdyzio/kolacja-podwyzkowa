@@ -31,10 +31,6 @@ const view = access
   : null;
 
 const upcomingSections = [
-  {
-    title: "Losowanie i cofnięcie",
-    description: "Losowanie rozsadzenia z przypiętymi miejscami i powrót do poprzedniego.",
-  },
   { title: "Linki gości i karteczki", description: "Osobiste linki, kody QR do druku i włącznik dostępu gości." },
   { title: "Pytania i tematy AI", description: "Baza pytań, losowanie pytań i tematy do rozmowy." },
   { title: "Strzały i ranking", description: "Strzały gości, zamknięcie przyjmowania i ranking od końca." },
@@ -125,7 +121,9 @@ const upcomingSections = [
                 <h3 class="font-semibold">Rozsadzenie</h3>
                 <span class="rounded-full bg-primary px-2 py-0.5 text-xs text-primary-foreground">Otwórz</span>
               </div>
-              <p class="text-sm text-muted-foreground">Sadzanie gości na miejscach, przypinanie i publikacja na TV.</p>
+              <p class="text-sm text-muted-foreground">
+                Losowanie bez powtórek sąsiadów, ręczne poprawki, publikacja na TV i powrót do poprzedniego.
+              </p>
               {view.seatingSummary && <p class="text-sm font-medium">{view.seatingSummary}</p>}
             </a>
           </li>

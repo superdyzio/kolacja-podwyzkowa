@@ -3,6 +3,7 @@ import type { SeatingSnapshot } from "@/types";
 import { guest, input, seat, snapshotOf, table } from "./fixtures.test-helpers";
 import {
   describeRepeat,
+  formatHistoryCount,
   formatRepeatCount,
   historyPairs,
   neighbourPairs,
@@ -160,5 +161,14 @@ describe("formatRepeatCount", () => {
     expect(formatRepeatCount(3)).toBe("3 powtórzone pary sąsiadów");
     expect(formatRepeatCount(5)).toBe("5 powtórzonych par sąsiadów");
     expect(formatRepeatCount(22)).toBe("22 powtórzone pary sąsiadów");
+  });
+});
+
+describe("formatHistoryCount", () => {
+  it("uses Polish plurals", () => {
+    expect(formatHistoryCount(0)).toBe("Historia: 0 opublikowanych rozkładów");
+    expect(formatHistoryCount(1)).toBe("Historia: 1 opublikowany rozkład");
+    expect(formatHistoryCount(3)).toBe("Historia: 3 opublikowane rozkłady");
+    expect(formatHistoryCount(12)).toBe("Historia: 12 opublikowanych rozkładów");
   });
 });

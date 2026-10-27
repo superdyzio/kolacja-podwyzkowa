@@ -2,9 +2,11 @@ import { useEffect, useMemo, useState } from "react";
 import { useSeatingBoard } from "@/components/hooks/useSeatingBoard";
 import { Button } from "@/components/ui/button";
 import { seatClick, seatingHint, type SeatOccupant, type SelectedGuest } from "@/lib/seating/board";
+import { repeatedNeighbours } from "@/lib/seating/neighbours";
 import { describeWarnings, seatLabel, seatingWarnings, summarizeSeating } from "@/lib/seating/rules";
 import { cn } from "@/lib/utils";
-import type { SeatingBoardDto } from "@/types";
+import type { NeighbourHistoryDto, SeatingBoardDto } from "@/types";
+import { DrawPanel } from "./DrawPanel";
 import { PublishBar } from "./PublishBar";
 import { SeatingWarnings } from "./SeatingWarnings";
 import { SelectedGuestBar } from "./SelectedGuestBar";
@@ -17,28 +19,38 @@ interface Props {
   // Organizer panel path, e.g. "/o/<key>" (links to the guest and venue pages).
   panelPath: string;
   initialBoard: SeatingBoardDto;
+  initialHistory: NeighbourHistoryDto;
 }
+
+const DRAW_CONFIRM = "Losowanie zastąpi nieopublikowane zmiany (przypięci zostają). Kontynuować?";
+const RESTORE_CONFIRM = "Przywrócenie zastąpi nieopublikowane zmiany. Kontynuować?";
 
 function seatKey(tableId: number, seat: number): string {
   return `${tableId}:${seat}`;
 }
 
-// Organizer seating island (FR-004, FR-007): choose a person, then a seat; pin, unpin and free seats; publish to
-// the TV. Warnings (split groups, absent guests with a seat) never block.
-export function SeatingEditor({ apiBase, panelPath, initialBoard }: Props) {
+// Organizer seating island (FR-004, FR-007, FR-009, FR-010): draw a draft, choose a person, then a seat; pin, unpin
+// and free seats; publish to the TV; discard changes or go back to the previous arrangement. Warnings (split groups,
+// absent guests with a seat) never block.
+export function SeatingEditor({ apiBase, panelPath, initialBoard, initialHistory }: Props) {
   const {
     board,
+    history,
+    origin,
     pending,
+    drawing,
     failure,
     notice,
     seat,
     unseat,
     setPinned,
     publish,
+    draw,
+    restore,
     showNotice,
     dismissFailure,
     dismissNotice,
-  } = useSeatingBoard(apiBase, initialBoard);
+  } = useSeatingBoard(apiBase, initialBoard, initialHistory);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const { guestList, venue, assignments } = board;
 
@@ -69,6 +81,12 @@ export function SeatingEditor({ apiBase, panelPath, initialBoard }: Props) {
     [guestList, venue, assignments],
   );
   const summary = summarizeSeating({ guestList, venue, assignments });
+  const repeats = useMemo(
+    () => repeatedNeighbours({ guestList, venue, assignments }, history.pairs),
+    [guestList, venue, assignments, history.pairs],
+  );
+  // Unpublished changes made by hand (or restored) would be lost; an untouched draw would not.
+  const replacesManualChanges = !board.upToDate && origin !== "draw";
 
   // A guest deleted meanwhile (another tab) is no longer selected.
   const selectedGuest = selectedId === null ? null : (guestById.get(selectedId) ?? null);
@@ -151,6 +169,22 @@ export function SeatingEditor({ apiBase, panelPath, initialBoard }: Props) {
     void publish();
   }
 
+  function handleDraw() {
+    if (replacesManualChanges && !window.confirm(DRAW_CONFIRM)) {
+      return;
+    }
+    setSelectedId(null);
+    void draw();
+  }
+
+  function handleRestore(snapshotId: number) {
+    if (replacesManualChanges && !window.confirm(RESTORE_CONFIRM)) {
+      return;
+    }
+    setSelectedId(null);
+    void restore(snapshotId);
+  }
+
   const unseated = guestList.guests
     .filter((guest) => !assignmentByGuest.has(guest.id))
     .map((guest) => ({ id: guest.id, name: guest.displayName, partners: partnersById.get(guest.id) ?? [], guest }));
@@ -166,6 +200,29 @@ export function SeatingEditor({ apiBase, panelPath, initialBoard }: Props) {
         summary={summary}
         pending={pending}
         onPublish={handlePublish}
+      />
+
+      <DrawPanel
+        repeats={repeats}
+        snapshotCount={history.snapshotCount}
+        published={board.published}
+        previous={board.previous}
+        upToDate={board.upToDate}
+        drawn={origin === "draw"}
+        canDraw={venue.tables.length > 0 && guestList.guests.length > 0}
+        pending={pending}
+        drawing={drawing}
+        onDraw={handleDraw}
+        onDiscard={() => {
+          if (board.published) {
+            handleRestore(board.published.snapshotId);
+          }
+        }}
+        onRestorePrevious={() => {
+          if (board.previous) {
+            handleRestore(board.previous.snapshotId);
+          }
+        }}
       />
 
       {failure && (

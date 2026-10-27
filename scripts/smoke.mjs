@@ -934,6 +934,24 @@ check(
   `${restored.status} ${restored.body}`,
 );
 
+const seatingPageWithDraw = await request(`/o/${organizerKey}/rozsadzenie`);
+check(
+  "seating page offers the draw",
+  seatingPageWithDraw.status === 200 &&
+    seatingPageWithDraw.body.includes("Losowanie") &&
+    seatingPageWithDraw.body.includes("Wylosuj projekt") &&
+    seatingPageWithDraw.body.includes("Historia: 2 opublikowane rozkłady"),
+  String(seatingPageWithDraw.status),
+);
+const shellWithDraw = await request(`/o/${organizerKey}`);
+check(
+  "organizer shell no longer lists the draw as coming soon",
+  shellWithDraw.status === 200 &&
+    !shellWithDraw.body.includes("Losowanie i cofnięcie") &&
+    shellWithDraw.body.includes("Losowanie bez powtórek sąsiadów"),
+  String(shellWithDraw.status),
+);
+
 for (const [method, path, json] of [
   ["GET", `/api/o/${tvKey}/seating/history`],
   ["POST", `/api/o/${tvKey}/seating/draft`, { seats: [] }],

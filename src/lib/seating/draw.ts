@@ -2,7 +2,7 @@ import { pluralPl } from "@/lib/guests/summary";
 import { neighbours, sideALength } from "@/lib/venue/seats";
 import type { TableShape } from "@/types";
 import type { DraftSeat } from "./draft";
-import type { GuestPair } from "./neighbours";
+import { formatRepeatCount, type GuestPair } from "./neighbours";
 import { formatNameList, type SeatingInput } from "./rules";
 
 // The draw (PRD FR-009, NFR-007): a draft of a new seating computed in the organizer's browser. Pure, no DB, no
@@ -25,6 +25,11 @@ import { formatNameList, type SeatingInput } from "./rules";
 
 export const DEFAULT_DRAW_BUDGET_MS = 1200;
 export const DRAW_INFEASIBLE_MESSAGE = "Nie da się wylosować rozkładu.";
+
+// Notice after a draw was saved as the working arrangement.
+export function drawnMessage(repeats: number): string {
+  return `Wylosowano projekt — ${formatRepeatCount(repeats)}. Przejrzyj, popraw i opublikuj.`;
+}
 
 export interface DrawOptions {
   // Uniform [0, 1) — inject createRandom(seed) for a reproducible draw.
