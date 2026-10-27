@@ -1548,6 +1548,47 @@ check(
     rankOf(boardReopened, ania.id)?.tied === true,
   `${reopened.status} ${aniaAgain.status} ${aniaAgain.body}`,
 );
+// Guest page (S-06): the "Twój strzał" section with her own guess, nothing about anyone else's or the ranking.
+const phoneWithGuess = await request(`/g/${aniaNewKey}`);
+const phoneGuessLeaks = leaksIn(
+  phoneWithGuess.body,
+  [],
+  [
+    `7${NBSP}777,77`,
+    "7 777,77",
+    "7777,77",
+    `5${NBSP}000,00`,
+    "5 000,00",
+    "correctAmount",
+    "ranking",
+    "distanceGrosze",
+    GUEST_NAMES[2],
+  ],
+);
+check(
+  "guest page shows her own guess in the guess section",
+  phoneWithGuess.status === 200 &&
+    phoneWithGuess.body.includes("Twój strzał") &&
+    phoneWithGuess.body.includes(`2${NBSP}222,23${NBSP}zł`) &&
+    phoneWithGuess.body.includes("GuestGuessView"),
+  String(phoneWithGuess.status),
+);
+check(
+  "guest page leaks no other guess, correct amount or ranking",
+  phoneGuessLeaks.length === 0,
+  phoneGuessLeaks.join(" | "),
+);
+const olaPhone = await request(`/g/${olaKey}`);
+check(
+  "another guest's page shows only her own guess",
+  olaPhone.status === 200 &&
+    olaPhone.body.includes(`7${NBSP}777,77${NBSP}zł`) &&
+    !olaPhone.body.includes("2 222,23") &&
+    !olaPhone.body.includes(`2${NBSP}222,23`) &&
+    !olaPhone.body.includes(GUEST_NAMES[0]),
+  String(olaPhone.status),
+);
+
 // State for the page checks below: intake open, correct amount 5 000,00 zł, Ania 2 222,23 zł (her own) and
 // Ola 7 777,77 zł (entered by the organizer) tied on place 1.
 
