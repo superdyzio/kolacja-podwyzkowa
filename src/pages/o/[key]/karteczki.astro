@@ -208,7 +208,10 @@ const view =
       background: #fff;
     }
 
+    /* 296 mm (not 297) still fits the grid (20 + 4 × 69 = 296 mm) and stops Chrome from spilling a blank page
+       between sheets when a sheet is exactly one page tall. */
     .card-sheet {
+      height: 296mm;
       margin: 0;
       box-shadow: none;
       break-after: page;
