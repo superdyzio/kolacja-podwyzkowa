@@ -102,6 +102,118 @@ export interface Database {
           },
         ];
       };
+      venue_plan: {
+        Row: {
+          event_id: number;
+          mime_type: string;
+          byte_size: number;
+          image_base64: string;
+          updated_at: string;
+        };
+        Insert: {
+          event_id?: number;
+          mime_type: string;
+          byte_size: number;
+          image_base64: string;
+          updated_at?: string;
+        };
+        Update: {
+          event_id?: number;
+          mime_type?: string;
+          byte_size?: number;
+          image_base64?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "venue_plan_event_id_fkey";
+            columns: ["event_id"];
+            isOneToOne: true;
+            referencedRelation: "event";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      venue_room: {
+        Row: {
+          id: number;
+          event_id: number;
+          name: string;
+          created_at: string;
+        };
+        Insert: {
+          id?: never;
+          event_id?: number;
+          name: string;
+          created_at?: string;
+        };
+        Update: {
+          id?: never;
+          event_id?: number;
+          name?: string;
+          created_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "venue_room_event_id_fkey";
+            columns: ["event_id"];
+            isOneToOne: false;
+            referencedRelation: "event";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      venue_table: {
+        Row: {
+          id: number;
+          event_id: number;
+          room_id: number;
+          name: string;
+          seat_count: number;
+          shape: string;
+          pos_x: number;
+          pos_y: number;
+          created_at: string;
+        };
+        Insert: {
+          id?: never;
+          event_id?: number;
+          room_id: number;
+          name: string;
+          seat_count: number;
+          shape: string;
+          pos_x: number;
+          pos_y: number;
+          created_at?: string;
+        };
+        Update: {
+          id?: never;
+          event_id?: number;
+          room_id?: number;
+          name?: string;
+          seat_count?: number;
+          shape?: string;
+          pos_x?: number;
+          pos_y?: number;
+          created_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "venue_table_event_id_fkey";
+            columns: ["event_id"];
+            isOneToOne: false;
+            referencedRelation: "event";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "venue_table_room_id_fkey";
+            columns: ["room_id"];
+            isOneToOne: false;
+            referencedRelation: "venue_room";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
     };
     Views: { [_ in never]: never };
     Functions: {
