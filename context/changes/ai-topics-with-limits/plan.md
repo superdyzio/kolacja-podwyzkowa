@@ -460,10 +460,10 @@ The organizer's generator with the evening usage and the provider status on the 
 
 #### Automated
 
-- [ ] 1.1 Migration applies on the local DB: `npx supabase migration up`
-- [ ] 1.2 Unit and integration tests pass: `npm test`
-- [ ] 1.3 Lint passes: `npm run lint`
-- [ ] 1.4 Type check passes: `npx astro check`
+- [x] 1.1 Migration applies on the local DB: `npx supabase migration up`
+- [x] 1.2 Unit and integration tests pass: `npm test`
+- [x] 1.3 Lint passes: `npm run lint`
+- [x] 1.4 Type check passes: `npx astro check`
 
 ### Phase 2: Providers, configuration and the generation service
 

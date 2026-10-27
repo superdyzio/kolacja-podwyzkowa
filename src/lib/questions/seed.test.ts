@@ -2,106 +2,12 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { QUESTION_CATEGORIES, QUESTION_CATEGORY_LABELS } from "./categories";
+import { deniedIn } from "./bounds";
 import { STARTER_QUESTIONS, starterQuestionRows } from "./seed";
 import { normalizeQuestionText, questionKey, validateQuestionText } from "./text";
 import type { QuestionCategory } from "@/types";
 
 const SEED_MD_PATH = fileURLToPath(new URL("../../../context/foundation/question-seed.md", import.meta.url));
-
-// Content bounds (shape-notes): no party politics, religion, health or personal jabs. Matched on whole lowercase
-// words (prefixes or exact words) and on phrases, so "porządek" never trips "rząd" and "bogaty" never trips "boga".
-const DENIED_WORD_PREFIXES = [
-  // party politics
-  "polity",
-  "partyj",
-  "partii",
-  "partia",
-  "rząd",
-  "podat",
-  "imigr",
-  "emigr",
-  "wybory",
-  "wyborach",
-  "wyborc",
-  "sejm",
-  "prezydent",
-  "premier",
-  "lewic",
-  "prawic",
-  // religion, the afterlife, fate, astrology
-  "religi",
-  "kości",
-  "modl",
-  "grzech",
-  "piekł",
-  "zaświat",
-  "przeznaczeni",
-  "horoskop",
-  "astrolog",
-  "zodiak",
-  // health, alcohol, diet and weight, sleep, burnout, therapy, aging and death
-  "zdrow",
-  "chor",
-  "lekarz",
-  "lekarst",
-  "terapi",
-  "psycholog",
-  "alkohol",
-  "wódk",
-  "piw",
-  "diet",
-  "odchudz",
-  "schud",
-  "bezsenn",
-  "wypalen",
-  "starze",
-  "starość",
-  "emeryt",
-  "śmier",
-  "umier",
-  "umrz",
-  "pogrzeb",
-  "zmarł",
-];
-const DENIED_WORDS = [
-  "bóg",
-  "boga",
-  "bogu",
-  "wiara",
-  "wiary",
-  "karma",
-  "karmy",
-  "ue",
-  "unia",
-  "unii",
-  "sen",
-  "snu",
-  "spać",
-  "wino",
-  "waga",
-  "wagi",
-  "wagę",
-  "kac",
-];
-const DENIED_PHRASES = [
-  "przy tym stole",
-  "przy stole",
-  "kto z nas",
-  "kto z was",
-  "ile zarabiasz",
-  "twoja pensja",
-  "twoje zarobki",
-  "twoja wypłata",
-];
-
-function deniedIn(text: string): string[] {
-  const lower = text.toLocaleLowerCase("pl");
-  const words = lower.match(/\p{L}+/gu) ?? [];
-  const hits = words.filter(
-    (word) => DENIED_WORDS.includes(word) || DENIED_WORD_PREFIXES.some((prefix) => word.startsWith(prefix)),
-  );
-  return [...hits, ...DENIED_PHRASES.filter((phrase) => lower.includes(phrase))];
-}
 
 // Loose markdown parse: "## <label> (n)" headings, numbered items "1. text" / "1) text".
 function parseSeedMarkdown(markdown: string): Partial<Record<QuestionCategory, string[]>> {
@@ -158,14 +64,6 @@ describe("starter question base", () => {
       .map(({ text }) => ({ text, hits: deniedIn(text) }))
       .filter(({ hits }) => hits.length > 0);
     expect(offending).toEqual([]);
-  });
-
-  it("the denylist itself catches what it should and spares lookalikes", () => {
-    expect(deniedIn("Czy rząd powinien…?")).toEqual(["rząd"]);
-    expect(deniedIn("Czy bogaty człowiek ma porządek?")).toEqual([]);
-    expect(deniedIn("Kto przy tym stole zarabia najwięcej?")).toContain("przy tym stole");
-    expect(deniedIn("Ile zarabiasz?")).toContain("ile zarabiasz");
-    expect(deniedIn("Czy powinno się zdrowo jeść?")).toEqual(["zdrowo"]);
   });
 
   it("lists rows category by category in list order", () => {

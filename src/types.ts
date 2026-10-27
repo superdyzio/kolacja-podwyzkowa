@@ -320,3 +320,55 @@ export interface StarterLoadResultDto extends QuestionListDto {
 export interface QuestionDrawDto {
   question: QuestionDto | null;
 }
+
+// AI conversation topics (S-08). A topic is shown only to whoever generated it; the server keeps only the attempt
+// (who, category, state), never the text.
+export interface AiTopicDto {
+  category: QuestionCategory;
+  text: string;
+}
+
+// A guest's own quota: used = succeeded + in-flight attempts; eventExhausted = the evening pool (300) is used up.
+export interface GuestAiQuotaDto {
+  limit: number;
+  used: number;
+  remaining: number;
+  eventExhausted: boolean;
+}
+
+// The evening's usage (organizer): used = succeeded + in-flight attempts of everyone; failed attempts never count.
+export interface AiTopicUsageDto {
+  used: number;
+  limit: number;
+  failed: number;
+  guestLimit: number;
+}
+
+export type AiProviderKind = "mock" | "anthropic";
+
+// Which AI answers (organizer only): kind null = AI_PROVIDER has an unknown value; ready false = every attempt fails
+// at once and `problem` says why (Polish, never the key).
+export interface AiProviderStatusDto {
+  kind: AiProviderKind | null;
+  model: string | null;
+  ready: boolean;
+  problem: string | null;
+}
+
+// GET /api/o/<key>/ai-topics.
+export interface AiTopicBoardDto {
+  usage: AiTopicUsageDto;
+  provider: AiProviderStatusDto;
+}
+
+// POST /api/g/<key>/ai-topics → 200. Error bodies are { error, quota }.
+export interface GuestAiTopicAnswerDto {
+  topic: AiTopicDto;
+  quota: GuestAiQuotaDto;
+}
+
+// POST /api/o/<key>/ai-topics → 200. Error bodies are { error, hint?, usage }.
+export interface OrganizerAiTopicAnswerDto {
+  topic: AiTopicDto;
+  usage: AiTopicUsageDto;
+}

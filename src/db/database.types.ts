@@ -476,6 +476,56 @@ export interface Database {
           },
         ];
       };
+      // S-08: one AI topic generation attempt; requester 'guest' | 'organizer', status 'pending' | 'succeeded' |
+      // 'failed'. The topic text is never stored.
+      ai_topic: {
+        Row: {
+          id: number;
+          event_id: number;
+          requester: string;
+          guest_id: number | null;
+          category: string;
+          status: string;
+          created_at: string;
+          finished_at: string | null;
+        };
+        Insert: {
+          id?: never;
+          event_id?: number;
+          requester: string;
+          guest_id?: number | null;
+          category: string;
+          status?: string;
+          created_at?: string;
+          finished_at?: string | null;
+        };
+        Update: {
+          id?: never;
+          event_id?: number;
+          requester?: string;
+          guest_id?: number | null;
+          category?: string;
+          status?: string;
+          created_at?: string;
+          finished_at?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "ai_topic_event_id_fkey";
+            columns: ["event_id"];
+            isOneToOne: false;
+            referencedRelation: "event";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "ai_topic_guest_id_fkey";
+            columns: ["guest_id"];
+            isOneToOne: false;
+            referencedRelation: "guest";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
     };
     Views: { [_ in never]: never };
     Functions: {
@@ -506,6 +556,23 @@ export interface Database {
       save_guest_guess: {
         Args: { p_guest_id: number; p_amount_grosze: number };
         Returns: undefined;
+      };
+      // S-08: admits one AI topic attempt (p_guest_id null = the organizer) and returns the pending row id. Raises
+      // EVENT_NOT_FOUND, GUEST_NOT_FOUND, GUEST_BUSY, GUEST_LIMIT or EVENT_LIMIT.
+      reserve_ai_topic: {
+        Args: {
+          p_event_id: number;
+          p_guest_id: number | null;
+          p_category: string;
+          p_guest_limit: number;
+          p_event_limit: number;
+        };
+        Returns: number;
+      };
+      // S-08: the evening's attempt counts (and one guest's when p_guest_id is given); stale pending = failed.
+      ai_topic_usage: {
+        Args: { p_event_id: number; p_guest_id?: number | null };
+        Returns: { event_used: number; event_failed: number; guest_used: number; guest_busy: boolean }[];
       };
     };
     Enums: { [_ in never]: never };

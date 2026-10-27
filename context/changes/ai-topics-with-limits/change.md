@@ -1,7 +1,7 @@
 ---
 change_id: ai-topics-with-limits
 title: AI conversation topics per category with per-guest and per-evening limits
-status: planned
+status: implementing
 created: 2026-10-27
 updated: 2026-10-27
 archived_at: null
