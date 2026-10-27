@@ -17,6 +17,7 @@ function isBoard(data: unknown): data is SeatingBoardDto {
     typeof candidate.venue === "object" &&
     Array.isArray(candidate.assignments) &&
     "published" in candidate &&
+    "previous" in candidate &&
     typeof candidate.upToDate === "boolean"
   );
 }
@@ -27,6 +28,7 @@ function pick(board: SeatingBoardDto): SeatingBoardDto {
     venue: board.venue,
     assignments: board.assignments,
     published: board.published,
+    previous: board.previous,
     upToDate: board.upToDate,
   };
 }

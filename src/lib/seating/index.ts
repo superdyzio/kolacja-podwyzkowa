@@ -70,6 +70,13 @@ export {
 export {
   getAssignments,
   getLatestSnapshot,
+  getNeighbourHistory,
+  replaceSeating,
+  restoreSnapshot,
+  saveDraft,
+  type ReplaceSeatingResult,
+  type RestoreSnapshotResult,
+  type SaveDraftResult,
   getSeatOccupancy,
   getSeatingBoard,
   getSeatingVersion,

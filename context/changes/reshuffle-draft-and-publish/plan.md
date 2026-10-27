@@ -366,18 +366,18 @@ Fifth migration (function only, no tables). Locally `npx supabase migration up`;
 
 #### Automated
 
-- [x] 2.1 Unit tests pass, incl. acceptance, property and performance tests: `npm test`
-- [x] 2.2 Lint passes: `npm run lint`
-- [x] 2.3 Type check passes: `npx astro check`
+- [x] 2.1 Unit tests pass, incl. acceptance, property and performance tests: `npm test` — a6d2e03
+- [x] 2.2 Lint passes: `npm run lint` — a6d2e03
+- [x] 2.3 Type check passes: `npx astro check` — a6d2e03
 
 ### Phase 3: Atomic draft write, services and integration tests
 
 #### Automated
 
-- [ ] 3.1 Migration applies cleanly: `npx supabase migration up`
-- [ ] 3.2 Unit + integration tests pass (integration not skipped): `npm test`
-- [ ] 3.3 Lint passes: `npm run lint`
-- [ ] 3.4 Type check passes: `npx astro check`
+- [x] 3.1 Migration applies cleanly: `npx supabase migration up`
+- [x] 3.2 Unit + integration tests pass (integration not skipped): `npm test`
+- [x] 3.3 Lint passes: `npm run lint`
+- [x] 3.4 Type check passes: `npx astro check`
 
 ### Phase 4: Organizer draw API and HTTP smoke
 

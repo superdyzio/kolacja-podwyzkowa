@@ -403,6 +403,12 @@ export interface Database {
         Args: never;
         Returns: number;
       };
+      // Replaces every non-pinned working seat with p_seats ([{ guest_id, table_id, seat }]) atomically (S-04 draft
+      // or restore). Constraint violations abort the whole call.
+      replace_seating: {
+        Args: { p_seats: Json };
+        Returns: undefined;
+      };
     };
     Enums: { [_ in never]: never };
     CompositeTypes: { [_ in never]: never };

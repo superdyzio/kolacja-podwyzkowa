@@ -91,11 +91,13 @@ export interface PublicationDto {
 }
 
 // Everything the organizer seating page needs. upToDate: publishing now would not change what the TV shows.
+// previous: the snapshot published before the latest one ("back to the previous arrangement", S-04), or null.
 export interface SeatingBoardDto {
   guestList: GuestListDto;
   venue: VenueDto;
   assignments: SeatAssignmentDto[];
   published: PublicationDto | null;
+  previous: PublicationDto | null;
   upToDate: boolean;
 }
 

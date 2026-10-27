@@ -4,6 +4,9 @@ import type { DbClient } from "@/lib/supabase-client";
 import { isTableShape } from "@/lib/venue/rules";
 import { getVenue } from "@/lib/venue/service";
 import type {
+  DraftSeatDto,
+  NeighbourHistoryDto,
+  PublicationDto,
   SeatAssignmentDto,
   SeatOccupantDto,
   SeatingBoardDto,
@@ -12,6 +15,8 @@ import type {
   SnapshotTable,
   TvSeatingDto,
 } from "@/types";
+import { describeDraftProblem, describeRestore, restoreSeats, validateDraft } from "./draft";
+import { neighbourPairs, type PairSeat, type PairTable } from "./neighbours";
 import { isUpToDate, seatingVersion, toTvSeating } from "./published";
 
 // The working seating arrangement, publishing and the published reads (PRD FR-004, FR-007, FR-008) for the
@@ -214,19 +219,40 @@ export async function getSnapshot(db: DbClient, id: number): Promise<SeatingSnap
   return data ? readSnapshot(db, data) : null;
 }
 
+// The snapshot published before the latest one (S-04 "back to the previous arrangement"), or null. Its own query,
+// so latestSnapshotRow (TV polling) stays a one-row read.
+async function previousSnapshotRow(db: DbClient): Promise<{ id: number; published_at: string } | null> {
+  const { data, error } = await db
+    .from("seating_snapshot")
+    .select("id, published_at")
+    .order("id", { ascending: false })
+    .range(1, 1)
+    .maybeSingle();
+  if (error) {
+    fail("odczytać publikacji", error.message);
+  }
+  return data;
+}
+
+function toPublication(row: { id: number; published_at: string } | null): PublicationDto | null {
+  return row ? { snapshotId: row.id, publishedAt: new Date(row.published_at).toISOString() } : null;
+}
+
 // Everything the organizer seating page shows, including whether the TV is up to date.
 export async function getSeatingBoard(db: DbClient): Promise<SeatingBoardDto> {
-  const [guestList, venue, assignments, latest] = await Promise.all([
+  const [guestList, venue, assignments, latest, previous] = await Promise.all([
     getGuestList(db),
     getVenue(db),
     getAssignments(db),
     getLatestSnapshot(db),
+    previousSnapshotRow(db),
   ]);
   return {
     guestList,
     venue,
     assignments,
     published: latest ? { snapshotId: latest.id, publishedAt: latest.publishedAt } : null,
+    previous: toPublication(previous),
     upToDate: isUpToDate(latest, { guestList, venue, assignments }),
   };
 }
@@ -281,4 +307,119 @@ export async function getSeatOccupancy(db: DbClient): Promise<SeatOccupantDto[]>
     seat: assignment.seat,
     guestName: nameById.get(assignment.guestId) ?? "?",
   }));
+}
+
+// Supabase error codes of constraint violations: unique (a guest or seat twice, a pinned collision), foreign key
+// (guest or table deleted meanwhile), check.
+const CONFLICT_CODES = new Set(["23505", "23503", "23514"]);
+const HISTORY_PAGE = 1000;
+
+export type ReplaceSeatingResult = { status: "replaced" } | { status: "conflict" };
+
+export type SaveDraftResult = { status: "saved" } | { status: "invalid"; problems: string[] } | { status: "conflict" };
+
+export type RestoreSnapshotResult =
+  { status: "restored"; notice: string } | { status: "not-found" } | { status: "conflict" };
+
+// The neighbour history (S-04): every pair of guests who sat next to each other in any published snapshot, from the
+// snapshot's own table geometry. Reads every snapshot table and seat in pages (PostgREST caps a response at
+// max_rows = 1000 rows, silently).
+export async function getNeighbourHistory(db: DbClient): Promise<NeighbourHistoryDto> {
+  const { count, error: countError } = await db.from("seating_snapshot").select("id", { count: "exact", head: true });
+  if (countError) {
+    fail("odczytać historii", countError.message);
+  }
+
+  const tables: PairTable[] = [];
+  for (let from = 0; ; from += HISTORY_PAGE) {
+    const { data, error } = await db
+      .from("seating_snapshot_table")
+      .select("id, shape, seat_count")
+      .order("id")
+      .range(from, from + HISTORY_PAGE - 1);
+    if (error) {
+      fail("odczytać historii", error.message);
+    }
+    for (const row of data) {
+      if (isTableShape(row.shape)) {
+        tables.push({ key: row.id, shape: row.shape, seatCount: row.seat_count });
+      }
+    }
+    if (data.length < HISTORY_PAGE) {
+      break;
+    }
+  }
+
+  const seats: PairSeat[] = [];
+  for (let from = 0; ; from += HISTORY_PAGE) {
+    const { data, error } = await db
+      .from("seating_snapshot_seat")
+      .select("snapshot_table_id, seat, guest_id")
+      .not("guest_id", "is", null)
+      .order("snapshot_table_id")
+      .order("seat")
+      .range(from, from + HISTORY_PAGE - 1);
+    if (error) {
+      fail("odczytać historii", error.message);
+    }
+    for (const row of data) {
+      seats.push({ tableKey: row.snapshot_table_id, seat: row.seat, guestId: row.guest_id });
+    }
+    if (data.length < HISTORY_PAGE) {
+      break;
+    }
+  }
+
+  // Snapshot table ids are unique across snapshots, so all tables can be paired at once.
+  return {
+    snapshotCount: count ?? 0,
+    pairs: neighbourPairs(tables, seats).map(([a, b]) => [a, b]),
+  };
+}
+
+// Replaces every non-pinned working row with `seats` in one transaction (replace_seating()). A constraint violation
+// means the data changed since the rows were computed: nothing is written.
+export async function replaceSeating(db: DbClient, seats: readonly DraftSeatDto[]): Promise<ReplaceSeatingResult> {
+  const { error } = await db.rpc("replace_seating", {
+    p_seats: seats.map((row) => ({ guest_id: row.guestId, table_id: row.tableId, seat: row.seat })),
+  });
+  if (!error) {
+    return { status: "replaced" };
+  }
+  if (CONFLICT_CODES.has(error.code) || error.message === "SEAT_OUT_OF_RANGE") {
+    return { status: "conflict" };
+  }
+  fail("zapisać projektu rozsadzenia", error.message);
+}
+
+// Saves a drawn draft as the working arrangement (FR-009) after re-checking the hard rules against the current data
+// (validateDraft). The TV keeps the latest snapshot until the organizer publishes.
+export async function saveDraft(db: DbClient, seats: readonly DraftSeatDto[]): Promise<SaveDraftResult> {
+  const [guestList, venue, assignments] = await Promise.all([getGuestList(db), getVenue(db), getAssignments(db)]);
+  const problems = validateDraft({ guestList, venue, assignments }, seats);
+  if (problems.length > 0) {
+    return { status: "invalid", problems: problems.map(describeDraftProblem) };
+  }
+  const written = await replaceSeating(db, seats);
+  return written.status === "replaced" ? { status: "saved" } : written;
+}
+
+// Puts a published snapshot back into the working arrangement (FR-010 "back to the previous arrangement", or
+// discarding a draft): restoreSeats() rules, pinned rows kept; the organizer publishes it afterwards.
+export async function restoreSnapshot(db: DbClient, snapshotId: number): Promise<RestoreSnapshotResult> {
+  const [snapshot, guestList, venue, assignments] = await Promise.all([
+    getSnapshot(db, snapshotId),
+    getGuestList(db),
+    getVenue(db),
+    getAssignments(db),
+  ]);
+  if (!snapshot) {
+    return { status: "not-found" };
+  }
+  const { seats, unseated } = restoreSeats(snapshot, { guestList, venue, assignments });
+  const written = await replaceSeating(db, seats);
+  if (written.status === "conflict") {
+    return written;
+  }
+  return { status: "restored", notice: describeRestore(snapshot.publishedAt, unseated) };
 }
