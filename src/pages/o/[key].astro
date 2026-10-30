@@ -1,6 +1,7 @@
 ---
 import NoAccess from "@/components/NoAccess.astro";
 import { OfflineSync } from "@/components/offline/OfflineSync";
+import { ResetPanel } from "@/components/reset/ResetPanel";
 import Layout from "@/layouts/Layout.astro";
 import { accessFor, organizerPath, tvPath } from "@/lib/access";
 import { getAiProviderStatus } from "@/lib/ai";
@@ -222,6 +223,20 @@ const view = access
             </a>
           </li>
         </ul>
+      </section>
+
+      <section
+        aria-labelledby="reset-heading"
+        class="flex flex-col gap-3 rounded-xl border border-destructive/40 p-4 sm:p-6"
+      >
+        <h2 id="reset-heading" class="text-xl font-semibold">
+          Reset danych
+        </h2>
+        <p class="text-sm text-muted-foreground">
+          Czyści wybrane dane jednym kliknięciem, np. po próbie generalnej: strzały, licznik tematów AI, rozsadzenie,
+          gości, plan lokalu, pytania albo linki gości. Link organizatora i adres TV zostają bez zmian.
+        </p>
+        <ResetPanel client:load apiBase={view.apiBase} />
       </section>
     </main>
   </Layout>

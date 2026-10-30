@@ -2374,6 +2374,20 @@ const isSummary = (data, lines) =>
   data.summary.length === lines &&
   data.summary.every((line) => typeof line === "string" && line.length > 0);
 
+const shellWithReset = await request(`/o/${organizerKey}`);
+const tvPageWithoutReset = await request(`/tv/${tvKey}`);
+check(
+  "organizer shell ends with the „Reset danych” card; the TV page has none",
+  shellWithReset.status === 200 &&
+    shellWithReset.body.includes("Reset danych") &&
+    shellWithReset.body.includes('component-export="ResetPanel"') &&
+    shellWithReset.body.indexOf("Reset danych") > shellWithReset.body.indexOf("Odczyt bez sieci") &&
+    tvPageWithoutReset.status === 200 &&
+    !tvPageWithoutReset.body.includes("Reset danych") &&
+    !tvPageWithoutReset.body.includes("ResetPanel"),
+  `${shellWithReset.status} ${tvPageWithoutReset.status}`,
+);
+
 for (const [label, key] of [
   ["<tv>", tvKey],
   ["<guest>", aniaNewKey],

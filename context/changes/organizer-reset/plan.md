@@ -317,8 +317,8 @@ Additive migration (two functions). Editing it after `migration up` requires re-
 
 #### Automated
 
-- [x] 3.1 Lint passes: `npm run lint`
-- [x] 3.2 Type check passes: `npx astro check`
+- [x] 3.1 Lint passes: `npm run lint` — ef7bd8d
+- [x] 3.2 Type check passes: `npx astro check` — ef7bd8d
 - [ ] 3.3 Build succeeds: `npm run build`
 - [ ] 3.4 Smoke passes on an empty DB: `npm run smoke` (in the Phase 5 final verification)
 
@@ -326,9 +326,9 @@ Additive migration (two functions). Editing it after `migration up` requires re-
 
 #### Automated
 
-- [ ] 4.1 Unit tests pass: `npm test`
-- [ ] 4.2 Lint passes: `npm run lint`
-- [ ] 4.3 Type check passes: `npx astro check`
+- [x] 4.1 Unit tests pass: `npm test`
+- [x] 4.2 Lint passes: `npm run lint`
+- [x] 4.3 Type check passes: `npx astro check`
 - [ ] 4.4 Build succeeds: `npm run build`
 
 #### Manual
