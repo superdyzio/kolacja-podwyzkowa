@@ -1249,6 +1249,36 @@ check(
     noCard.body.includes("Nie znaleziono tego gościa."),
   String(noCard.status),
 );
+// Behind a TLS proxy (AWS Lambda: Function URL → Lambda Web Adapter → this server over plain http) the request
+// carries X-Forwarded-Proto: https; Astro trusts it (security.allowedDomains), so printed links and QR codes are https
+// and Astro's origin check compares the browser's https Origin with an https URL.
+const PROXY_HOST = "kolacja.example";
+const PROXY_ORIGIN = `https://${PROXY_HOST}`;
+const viaProxy = { "X-Forwarded-Proto": "https", "X-Forwarded-Host": PROXY_HOST, Origin: PROXY_ORIGIN };
+const proxiedLinks = await request(`/o/${organizerKey}/linki`, { extraHeaders: viaProxy });
+const proxiedCards = await request(`/o/${organizerKey}/karteczki`, { extraHeaders: viaProxy });
+check(
+  "behind a TLS proxy the links page and the cards carry https links of the public host",
+  proxiedLinks.status === 200 &&
+    proxiedLinks.body.includes(`${PROXY_ORIGIN}/g/${aniaNewKey}`) &&
+    !proxiedLinks.body.includes(aniaUrl) &&
+    !proxiedLinks.body.includes("Ten adres działa tylko na tym komputerze") &&
+    proxiedCards.status === 200 &&
+    proxiedCards.body.includes(`data-qr="${PROXY_ORIGIN}/g/${aniaNewKey}"`),
+  `${proxiedLinks.status} ${proxiedCards.status}`,
+);
+// A body-less POST (like „Opublikuj”) from the proxied https page passes the origin check (404 = the key guard
+// answered), while a foreign Origin is still refused (403). The garbage key changes nothing.
+const proxiedPost = await request("/api/o/garbage/seating/publish", { method: "POST", extraHeaders: viaProxy });
+const foreignPost = await request("/api/o/garbage/seating/publish", {
+  method: "POST",
+  extraHeaders: { ...viaProxy, Origin: "https://evil.example" },
+});
+check(
+  "behind a TLS proxy a same-origin POST passes the origin check and a foreign one is refused",
+  noAccessJson(proxiedPost) && foreignPost.status === 403,
+  `${proxiedPost.status} ${foreignPost.status}`,
+);
 for (const path of [`/o/${tvKey}/linki`, `/o/${tvKey}/karteczki`, `/o/${aniaNewKey}/karteczki`]) {
   const res = await request(path);
   check(

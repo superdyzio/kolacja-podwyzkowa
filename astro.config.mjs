@@ -36,6 +36,14 @@ export default defineConfig({
   session: false,
   // No image optimisation (the venue plan is served as uploaded), so no native `sharp` in the server bundle.
   image: { service: passthroughImageService() },
+  security: {
+    // Trust X-Forwarded-Proto: https (and X-Forwarded-Host) from the proxy in front of the server. On AWS Lambda the
+    // Function URL terminates TLS and the Lambda Web Adapter forwards to http://127.0.0.1:8080 with the original Host
+    // and X-Forwarded-Proto: https, so Astro.url (guest links, QR cards) and Astro's origin check (CSRF guard for
+    // body-less POST/DELETE) see the public https URL. Locally nothing sends these headers and Astro.url stays as
+    // requested (http://localhost:4321, http://<LAN IP>:4321). The Host header itself is used as sent either way.
+    allowedDomains: [{ protocol: "https" }],
+  },
   env: {
     schema: {
       SUPABASE_URL: envField.string({ context: "server", access: "secret", optional: true }),
