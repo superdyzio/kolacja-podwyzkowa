@@ -574,6 +574,19 @@ export interface Database {
         Args: { p_event_id: number; p_guest_id?: number | null };
         Returns: { event_used: number; event_failed: number; guest_used: number; guest_busy: boolean }[];
       };
+      // organizer-reset: what a reset would remove (counts and flags as a JSON object, see ResetCountsDto). Raises
+      // EVENT_NOT_FOUND.
+      reset_counts: {
+        Args: { p_event_id: number };
+        Returns: Json;
+      };
+      // organizer-reset: wipes the chosen parts (implied ones added) in one transaction; returns
+      // { parts, before, questionsAdded, guestKeysReplaced }. Raises NO_PARTS, UNKNOWN_PART, NO_STARTER_QUESTIONS or
+      // EVENT_NOT_FOUND.
+      reset_event: {
+        Args: { p_event_id: number; p_parts: string[]; p_starter_questions: Json };
+        Returns: Json;
+      };
     };
     Enums: { [_ in never]: never };
     CompositeTypes: { [_ in never]: never };

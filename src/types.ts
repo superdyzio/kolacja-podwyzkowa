@@ -394,3 +394,44 @@ export interface OrganizerAiTopicAnswerDto {
   topic: AiTopicDto;
   usage: AiTopicUsageDto;
 }
+
+// Organizer reset („Reset danych”). Part ids in canonical order (src/lib/reset/parts.ts has the labels, texts and
+// implications: guests ⇒ guesses, aiUsage, seating; venue ⇒ seating).
+export type ResetPart = "guesses" | "aiUsage" | "seating" | "guests" | "venue" | "questions" | "guestLinks";
+
+// What a reset would remove (and the flags it would change), read in one query (DB function reset_counts).
+export interface ResetCountsDto {
+  guesses: number;
+  correctAmountSet: boolean;
+  intakeOpen: boolean;
+  // Every attempt row; aiUsed = the evening's used topics (succeeded + in flight).
+  aiAttempts: number;
+  aiUsed: number;
+  // Working seats (pinned ones included) and published snapshots.
+  seats: number;
+  pinned: number;
+  snapshots: number;
+  guests: number;
+  groups: number;
+  plan: boolean;
+  rooms: number;
+  tables: number;
+  questions: number;
+  guestAccessEnabled: boolean;
+}
+
+// GET /api/o/<key>/reset: fresh counts for the modal; starterQuestions = how many the questions part puts back.
+export interface ResetPreviewDto {
+  counts: ResetCountsDto;
+  starterQuestions: number;
+}
+
+// POST /api/o/<key>/reset → 200: the parts really reset (implied ones added, canonical order), the counts read inside
+// the reset transaction before anything was removed, and the Polish summary lines.
+export interface ResetResultDto {
+  parts: ResetPart[];
+  before: ResetCountsDto;
+  questionsAdded: number;
+  guestKeysReplaced: number;
+  summary: string[];
+}

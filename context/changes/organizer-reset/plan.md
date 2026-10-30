@@ -299,11 +299,11 @@ Additive migration (two functions). Editing it after `migration up` requires re-
 
 #### Automated
 
-- [ ] 1.1 Migration applies to the local DB: `npx supabase migration up`
-- [ ] 1.2 Functions behave on the demo data inside a rolled-back transaction and browser roles lack EXECUTE
-- [ ] 1.3 Unit tests pass: `npm test`
-- [ ] 1.4 Lint passes: `npm run lint`
-- [ ] 1.5 Type check passes: `npx astro check`
+- [x] 1.1 Migration applies to the local DB: `npx supabase migration up`
+- [x] 1.2 Functions behave on the demo data inside a rolled-back transaction and browser roles lack EXECUTE
+- [x] 1.3 Unit tests pass: `npm test`
+- [x] 1.4 Lint passes: `npm run lint`
+- [x] 1.5 Type check passes: `npx astro check`
 
 ### Phase 2: Service and integration tests
 
