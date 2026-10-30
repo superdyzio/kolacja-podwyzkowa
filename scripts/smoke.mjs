@@ -1251,23 +1251,30 @@ check(
 );
 // Behind a TLS proxy (AWS Lambda: Function URL → Lambda Web Adapter → this server over plain http) the request
 // carries X-Forwarded-Proto: https; Astro trusts it (security.allowedDomains), so printed links and QR codes are https
-// and Astro's origin check compares the browser's https Origin with an https URL.
+// and Astro's origin check compares the browser's https Origin with an https URL. Against a local http server the
+// proxy is simulated with headers; against a deployment (https BASE_URL) the real proxy is in front, the checks above
+// already saw https links, and only the origin check is repeated.
+const behindTls = new URL(BASE_URL).protocol === "https:";
 const PROXY_HOST = "kolacja.example";
 const PROXY_ORIGIN = `https://${PROXY_HOST}`;
-const viaProxy = { "X-Forwarded-Proto": "https", "X-Forwarded-Host": PROXY_HOST, Origin: PROXY_ORIGIN };
-const proxiedLinks = await request(`/o/${organizerKey}/linki`, { extraHeaders: viaProxy });
-const proxiedCards = await request(`/o/${organizerKey}/karteczki`, { extraHeaders: viaProxy });
-check(
-  "behind a TLS proxy the links page and the cards carry https links of the public host",
-  proxiedLinks.status === 200 &&
-    proxiedLinks.body.includes(`${PROXY_ORIGIN}/g/${aniaNewKey}`) &&
-    !proxiedLinks.body.includes(aniaUrl) &&
-    !proxiedLinks.body.includes("Ten adres działa tylko na tym komputerze") &&
-    proxiedCards.status === 200 &&
-    proxiedCards.body.includes(`data-qr="${PROXY_ORIGIN}/g/${aniaNewKey}"`),
-  `${proxiedLinks.status} ${proxiedCards.status}`,
-);
-// A body-less POST (like „Opublikuj”) from the proxied https page passes the origin check (404 = the key guard
+const viaProxy = behindTls
+  ? {}
+  : { "X-Forwarded-Proto": "https", "X-Forwarded-Host": PROXY_HOST, Origin: PROXY_ORIGIN };
+if (!behindTls) {
+  const proxiedLinks = await request(`/o/${organizerKey}/linki`, { extraHeaders: viaProxy });
+  const proxiedCards = await request(`/o/${organizerKey}/karteczki`, { extraHeaders: viaProxy });
+  check(
+    "behind a TLS proxy the links page and the cards carry https links of the public host",
+    proxiedLinks.status === 200 &&
+      proxiedLinks.body.includes(`${PROXY_ORIGIN}/g/${aniaNewKey}`) &&
+      !proxiedLinks.body.includes(aniaUrl) &&
+      !proxiedLinks.body.includes("Ten adres działa tylko na tym komputerze") &&
+      proxiedCards.status === 200 &&
+      proxiedCards.body.includes(`data-qr="${PROXY_ORIGIN}/g/${aniaNewKey}"`),
+    `${proxiedLinks.status} ${proxiedCards.status}`,
+  );
+}
+// A body-less POST (like „Opublikuj”) from the (proxied) https page passes the origin check (404 = the key guard
 // answered), while a foreign Origin is still refused (403). The garbage key changes nothing.
 const proxiedPost = await request("/api/o/garbage/seating/publish", { method: "POST", extraHeaders: viaProxy });
 const foreignPost = await request("/api/o/garbage/seating/publish", {
