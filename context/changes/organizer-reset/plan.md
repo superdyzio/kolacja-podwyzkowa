@@ -321,8 +321,8 @@ Additive migration (two functions). Editing it after `migration up` requires re-
 
 - [x] 3.1 Lint passes: `npm run lint` — ef7bd8d
 - [x] 3.2 Type check passes: `npx astro check` — ef7bd8d
-- [ ] 3.3 Build succeeds: `npm run build`
-- [ ] 3.4 Smoke passes on an empty DB: `npm run smoke` (in the Phase 5 final verification)
+- [x] 3.3 Build succeeds: `npm run build` — ba4b4c9
+- [x] 3.4 Smoke passes on an empty DB: `npm run smoke` (in the Phase 5 final verification) — ba4b4c9
 
 ### Phase 4: Reset modal on the organizer shell
 
@@ -331,7 +331,7 @@ Additive migration (two functions). Editing it after `migration up` requires re-
 - [x] 4.1 Unit tests pass: `npm test` — 802e3a1
 - [x] 4.2 Lint passes: `npm run lint` — 802e3a1
 - [x] 4.3 Type check passes: `npx astro check` — 802e3a1
-- [ ] 4.4 Build succeeds: `npm run build`
+- [x] 4.4 Build succeeds: `npm run build` — ba4b4c9
 
 #### Manual
 
@@ -341,9 +341,9 @@ Additive migration (two functions). Editing it after `migration up` requires re-
 
 #### Automated
 
-- [ ] 5.1 Full test suite passes with the destructive reset tests running: `npm test`
-- [ ] 5.2 Lint passes: `npm run lint`
-- [ ] 5.3 Type check passes: `npx astro check`
-- [ ] 5.4 Build succeeds: `npm run build`
-- [ ] 5.5 Smoke passes against the preview on an empty DB: `npm run smoke`
-- [ ] 5.6 End-to-end reset on demo data over HTTP (subset, then all parts)
+- [x] 5.1 Full test suite passes with the destructive reset tests running: `npm test` — ba4b4c9
+- [x] 5.2 Lint passes: `npm run lint` — ba4b4c9
+- [x] 5.3 Type check passes: `npx astro check` — ba4b4c9
+- [x] 5.4 Build succeeds: `npm run build` — ba4b4c9
+- [x] 5.5 Smoke passes against the preview on an empty DB: `npm run smoke` — ba4b4c9
+- [x] 5.6 End-to-end reset on demo data over HTTP (subset, then all parts) — ba4b4c9
