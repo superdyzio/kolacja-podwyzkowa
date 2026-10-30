@@ -115,8 +115,11 @@ export function GuestGuessView({ apiBase, initial }: Props) {
       ) : formOpen ? (
         <form className="flex flex-col gap-3" noValidate onSubmit={(event) => void save(event)}>
           <label htmlFor="guess-amount" className="text-lg font-medium">
-            Ile będzie kosztować cała kolacja? Wpisz swój strzał w złotych.
+            Ile kosztowała cała kolacja? Wpisz swój strzał w złotych.
           </label>
+          <p id="guess-hint" className="text-muted-foreground -mt-2 text-sm">
+            Liczymy cały rachunek razem z napiwkiem.
+          </p>
           <div className="relative">
             <Input
               id="guess-amount"
@@ -130,7 +133,7 @@ export function GuestGuessView({ apiBase, initial }: Props) {
               autoFocus={amountGrosze !== null}
               value={draft}
               aria-invalid={problem !== null}
-              aria-describedby={problem ? "guess-problem" : undefined}
+              aria-describedby={problem ? "guess-hint guess-problem" : "guess-hint"}
               onChange={(event) => {
                 setDraft(event.target.value);
                 // Typing a first guess counts as editing: a guess the organizer enters meanwhile must not hide the
