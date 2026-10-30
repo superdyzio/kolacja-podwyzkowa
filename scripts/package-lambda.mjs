@@ -168,6 +168,7 @@ async function smokeUnpacked(dir) {
     env: { PATH: process.env.PATH, AI_PROVIDER: "mock", PORT: String(port), HOST: "127.0.0.1" },
     stdio: ["ignore", "ignore", "pipe"],
   });
+  process.on("exit", () => server.kill());
   let stderr = "";
   server.stderr.on("data", (chunk) => (stderr += chunk));
   try {
@@ -218,17 +219,21 @@ execFileSync("zip", ["-q", "-r", "-X", ZIP, "."], { cwd: STAGE, stdio: "inherit"
 const zipBytes = statSync(ZIP).size;
 if (zipBytes >= MAX_ZIP_BYTES) fail(`zip ma ${zipBytes} B — limit bezpośredniego wgrania to ${MAX_ZIP_BYTES} B`);
 
+// Unpacked read-only, like /var/task on Lambda (a runtime write next to the server fails here too); removed on every
+// way out — fail() exits the process, so a `finally` would not run.
 const unpacked = mkdtempSync(path.join(tmpdir(), "kolacja-lambda-"));
-try {
-  execFileSync("unzip", ["-q", ZIP, "-d", unpacked]);
-  checkPackage(unpacked);
-  const moduleCount = await smokeUnpacked(unpacked);
-  const megabytes = (bytes) => (bytes / 1024 / 1024).toFixed(1);
-  console.log(`
+process.on("exit", () => {
+  spawnSync("chmod", ["-R", "u+w", unpacked]);
+  rmSync(unpacked, { recursive: true, force: true });
+});
+execFileSync("unzip", ["-q", ZIP, "-d", unpacked]);
+execFileSync("chmod", ["-R", "a-w", unpacked]);
+checkPackage(unpacked);
+const moduleCount = await smokeUnpacked(unpacked);
+const megabytes = (bytes) => (bytes / 1024 / 1024).toFixed(1);
+console.log(`
 Gotowe: ${path.relative(ROOT, ZIP)} — ${megabytes(zipBytes)} MB (po rozpakowaniu ${megabytes(staged.totalBytes)} MB, \
 ${staged.fileCount} plików, moduły natywne: ${staged.nativeCount}).
-Sprawdzone: brak plików env i sekretów, ${moduleCount} modułów serwera ładuje się bez node_modules, run.sh odpowiada.
+Sprawdzone: brak plików env i sekretów, ${moduleCount} modułów serwera ładuje się bez node_modules z katalogu tylko do
+odczytu, run.sh odpowiada.
 Wdrożenie: AWS_REGION=<region> npm run deploy:aws`);
-} finally {
-  rmSync(unpacked, { recursive: true, force: true });
-}
