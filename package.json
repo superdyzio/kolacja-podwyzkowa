@@ -15,7 +15,8 @@
     "env:local": "node scripts/local-env.mjs",
     "links": "node --env-file-if-exists=.env scripts/links.mjs",
     "smoke": "node scripts/smoke.mjs",
-    "demo": "node --env-file-if-exists=.env scripts/demo.mjs"
+    "demo": "node --env-file-if-exists=.env scripts/demo.mjs",
+    "package:lambda": "node scripts/package-lambda.mjs"
   },
   "dependencies": {
     "@astrojs/check": "^0.9.10",
