@@ -115,7 +115,7 @@ export function GuestGuessView({ apiBase, initial }: Props) {
       ) : formOpen ? (
         <form className="flex flex-col gap-3" noValidate onSubmit={(event) => void save(event)}>
           <label htmlFor="guess-amount" className="text-lg font-medium">
-            Ile wyniesie podwyżka? Wpisz swój strzał w złotych.
+            Ile będzie kosztować cała kolacja? Wpisz swój strzał w złotych.
           </label>
           <div className="relative">
             <Input

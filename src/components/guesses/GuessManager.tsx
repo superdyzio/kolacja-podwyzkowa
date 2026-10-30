@@ -120,7 +120,7 @@ export function GuessManager({ apiBase, guestsPath, initial }: Props) {
         </h2>
         {showCorrectForm ? (
           <AmountForm
-            label="Ile wyniosła podwyżka?"
+            label="Ile kosztowała cała kolacja?"
             initialGrosze={board.correctAmountGrosze}
             submitLabel="Zapisz prawidłową kwotę"
             pending={pending}

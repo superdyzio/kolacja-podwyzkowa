@@ -136,7 +136,7 @@ Flow wieczoru według użytkownika: wpisanie gości → wgranie zrzutu powierzch
   > Socratic: Counter-argument considered: "Koszt i abuse: 40 gości może zalewać AI zapytaniami." Resolution: limit 5 tematów na gościa i łączny limit na wieczór (NFR-005); osobiste linki uniemożliwiają obejście limitu zmianą tożsamości.
 
 ### Strzały kwoty
-- FR-017: Gość can wpisać swój strzał kwoty w złotych z groszami (≥ 0) i zmieniać go do zamknięcia przyjmowania; widzi tylko własny strzał. Priority: must-have
+- FR-017: Gość can wpisać swój strzał kwoty (ile kosztowała cała kolacja) w złotych z groszami (≥ 0) i zmieniać go do zamknięcia przyjmowania; widzi tylko własny strzał. Priority: must-have
   > Socratic: Counter-argument considered: "Gość może wpisać strzał za kogoś innego." Resolution: strzał jest przypisany do osobistego linku; nikt nie wybiera tożsamości z listy.
 - FR-018: Organizator can wpisać lub poprawić strzał za dowolnego gościa i zobaczyć, kto jeszcze nie oddał strzału. Priority: must-have
 - FR-019: Organizator can zamknąć przyjmowanie strzałów i otworzyć je ponownie. Priority: must-have
