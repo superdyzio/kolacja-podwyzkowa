@@ -2342,4 +2342,197 @@ check(
   `${workerResponse.status} ${workerType}`,
 );
 
+// 22. Organizer reset („Reset danych”). Organizer only; one POST resets the chosen parts (implied ones added) in one
+// transaction and answers with the Polish summary. Here: a subset first (guesses + AI usage), then the guest links,
+// then everything — the organizer and TV links keep working, the event is empty except the 90 starter questions.
+const resetApi = `${api}/reset`;
+const RESET_PARTS = ["guesses", "aiUsage", "seating", "guests", "venue", "questions", "guestLinks"];
+const COUNT_KEYS = [
+  "guesses",
+  "correctAmountSet",
+  "intakeOpen",
+  "aiAttempts",
+  "aiUsed",
+  "seats",
+  "pinned",
+  "snapshots",
+  "guests",
+  "groups",
+  "plan",
+  "rooms",
+  "tables",
+  "questions",
+  "guestAccessEnabled",
+]
+  .sort()
+  .join(",");
+// Flat objects compared regardless of key order.
+const sameFlat = (a, b) =>
+  JSON.stringify(Object.entries(a ?? {}).sort()) === JSON.stringify(Object.entries(b ?? {}).sort());
+const isSummary = (data, lines) =>
+  Array.isArray(data?.summary) &&
+  data.summary.length === lines &&
+  data.summary.every((line) => typeof line === "string" && line.length > 0);
+
+for (const [label, key] of [
+  ["<tv>", tvKey],
+  ["<guest>", aniaNewKey],
+]) {
+  for (const method of ["GET", "POST"]) {
+    const res = await request(
+      `/api/o/${key}/reset`,
+      method === "POST" ? { method, json: { parts: [...RESET_PARTS] } } : {},
+    );
+    check(`reset API with a wrong key: ${method} ${label}`, noAccessJson(res), `${res.status} ${res.body}`);
+  }
+}
+
+const resetPreview = await request(resetApi);
+const previewCounts = resetPreview.data?.counts;
+check(
+  "reset preview: fresh counts of everything a reset would remove",
+  resetPreview.status === 200 &&
+    resetPreview.cacheControl.includes("no-store") &&
+    keysOf(resetPreview.data) === "counts,starterQuestions" &&
+    keysOf(previewCounts) === COUNT_KEYS &&
+    resetPreview.data.starterQuestions === 90 &&
+    previewCounts.guests > 0 &&
+    previewCounts.tables > 0 &&
+    previewCounts.snapshots > 0 &&
+    previewCounts.guesses > 0 &&
+    previewCounts.correctAmountSet === true &&
+    previewCounts.aiAttempts > 0 &&
+    previewCounts.plan === true &&
+    !resetPreview.body.includes(organizerKey) &&
+    !resetPreview.body.includes(tvKey),
+  `${resetPreview.status} ${resetPreview.body}`,
+);
+
+for (const [label, options] of [
+  ["a body without parts", { json: {} }],
+  ["an empty list", { json: { parts: [] } }],
+  ["an unknown part", { json: { parts: ["event"] } }],
+  ["an extra key", { json: { parts: ["guesses"], organizerKey } }],
+  ["malformed JSON", { rawBody: "{" }],
+]) {
+  const res = await request(resetApi, { method: "POST", ...options });
+  check(`reset refuses ${label}: 400`, res.status === 400 && errorOf(res) === "Nieprawidłowe dane.", res.body);
+}
+const previewAfterRefusals = await request(resetApi);
+check(
+  "refused resets change nothing",
+  previewAfterRefusals.status === 200 && previewAfterRefusals.body === resetPreview.body,
+  previewAfterRefusals.body,
+);
+
+const subsetReset = await request(resetApi, { method: "POST", json: { parts: ["aiUsage", "guesses"] } });
+const guessesAfterSubset = await request(guessesApi);
+const aiAfterSubset = await request(aiApi);
+const guestsAfterSubset = await request(`${api}/guests`);
+const venueAfterSubset = await request(`${api}/venue`);
+check(
+  "reset of guesses + AI usage clears exactly those",
+  subsetReset.status === 200 &&
+    JSON.stringify(subsetReset.data?.parts) === JSON.stringify(["guesses", "aiUsage"]) &&
+    sameFlat(subsetReset.data.before, previewCounts) &&
+    isSummary(subsetReset.data, 2) &&
+    guessesAfterSubset.data?.intakeOpen === true &&
+    guessesAfterSubset.data.correctAmountGrosze === null &&
+    guessesAfterSubset.data.ranking === null &&
+    guessesAfterSubset.data.guests.every((guest) => guest.amountGrosze === null) &&
+    JSON.stringify(aiAfterSubset.data?.usage) === usageText(0, 0) &&
+    guestsAfterSubset.data?.guests?.length === previewCounts.guests &&
+    venueAfterSubset.data?.tables?.length === previewCounts.tables,
+  `${subsetReset.status} ${subsetReset.body}`,
+);
+
+await request(linksApi, { method: "PATCH", json: { enabled: true } });
+const aniaBeforeLinksReset = await request(guestStateApi(aniaNewKey));
+const linksReset = await request(resetApi, { method: "POST", json: { parts: ["guestLinks"] } });
+const linksAfterReset = await request(linksApi);
+const aniaAfterLinksReset = await request(guestStateApi(aniaNewKey));
+check(
+  "reset of guest links: a new key for every guest, guest access off, the old link dead",
+  aniaBeforeLinksReset.status === 200 &&
+    linksReset.status === 200 &&
+    linksReset.data?.guestKeysReplaced === previewCounts.guests &&
+    isSummary(linksReset.data, 1) &&
+    linksAfterReset.data?.enabled === false &&
+    linksAfterReset.data.guests.length === previewCounts.guests &&
+    linksAfterReset.data.guests.every((guest) => isKey(guest.key) && guest.key !== aniaNewKey) &&
+    noAccessJson(aniaAfterLinksReset),
+  `${aniaBeforeLinksReset.status} ${linksReset.status} ${aniaAfterLinksReset.status}`,
+);
+
+const tvBeforeFullReset = await request(tvSeatingApi);
+const fullReset = await request(resetApi, { method: "POST", json: { parts: [...RESET_PARTS] } });
+check(
+  "reset of everything answers with every part and its summary",
+  fullReset.status === 200 &&
+    JSON.stringify(fullReset.data?.parts) === JSON.stringify(RESET_PARTS) &&
+    fullReset.data.questionsAdded === 90 &&
+    isSummary(fullReset.data, RESET_PARTS.length) &&
+    !fullReset.body.includes(organizerKey) &&
+    !fullReset.body.includes(tvKey),
+  `${fullReset.status} ${fullReset.body}`,
+);
+const guestsAfterReset = await request(`${api}/guests`);
+const venueAfterReset = await request(`${api}/venue`);
+const tvAfterReset = await request(tvSeatingApi);
+const publishedAfterReset = await request(`${seatingApi}/published`);
+const questionsAfterReset = await request(questionsApi);
+const guessesAfterReset = await request(guessesApi);
+const linksAfterFullReset = await request(linksApi);
+const previewAfterReset = await request(resetApi);
+check(
+  "after resetting everything: no guests, venue, seating or guesses",
+  guestsAfterReset.data?.guests?.length === 0 &&
+    guestsAfterReset.data.groups.length === 0 &&
+    venueAfterReset.body === JSON.stringify({ plan: null, rooms: [], tables: [] }) &&
+    tvAfterReset.status === 200 &&
+    tvAfterReset.data?.publishedAt === null &&
+    tvAfterReset.data.tables.length === 0 &&
+    tvAfterReset.data.version !== tvBeforeFullReset.data?.version &&
+    publishedAfterReset.body === JSON.stringify({ published: null }) &&
+    guessesAfterReset.data?.guests?.length === 0 &&
+    guessesAfterReset.data.intakeOpen === true &&
+    guessesAfterReset.data.correctAmountGrosze === null &&
+    linksAfterFullReset.data?.enabled === false,
+  `${guestsAfterReset.body} ${venueAfterReset.body} ${tvAfterReset.body}`,
+);
+check(
+  "after resetting everything: exactly the 90 starter questions",
+  questionsAfterReset.data?.questions?.length === 90 && questionsAfterReset.data.starterMissing === 0,
+  `${questionsAfterReset.data?.questions?.length} ${questionsAfterReset.data?.starterMissing}`,
+);
+check(
+  "after resetting everything: the preview counts nothing but the starter questions",
+  previewAfterReset.status === 200 &&
+    sameFlat(previewAfterReset.data?.counts, {
+      guesses: 0,
+      correctAmountSet: false,
+      intakeOpen: true,
+      aiAttempts: 0,
+      aiUsed: 0,
+      seats: 0,
+      pinned: 0,
+      snapshots: 0,
+      guests: 0,
+      groups: 0,
+      plan: false,
+      rooms: 0,
+      tables: 0,
+      questions: 90,
+      guestAccessEnabled: false,
+    }),
+  previewAfterReset.body,
+);
+const shellAfterReset = await request(`/o/${organizerKey}`);
+const tvPageAfterReset = await request(`/tv/${tvKey}`);
+check(
+  "after resetting everything: the organizer and TV links still open",
+  shellAfterReset.status === 200 && tvPageAfterReset.status === 200,
+  `${shellAfterReset.status} ${tvPageAfterReset.status}`,
+);
+
 finish();

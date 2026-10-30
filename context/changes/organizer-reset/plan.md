@@ -309,16 +309,16 @@ Additive migration (two functions). Editing it after `migration up` requires re-
 
 #### Automated
 
-- [x] 2.1 Tests pass: `npm test`
-- [x] 2.2 Lint passes: `npm run lint`
-- [x] 2.3 Type check passes: `npx astro check`
+- [x] 2.1 Tests pass: `npm test` — 6a2fd30
+- [x] 2.2 Lint passes: `npm run lint` — 6a2fd30
+- [x] 2.3 Type check passes: `npx astro check` — 6a2fd30
 
 ### Phase 3: API route and smoke
 
 #### Automated
 
-- [ ] 3.1 Lint passes: `npm run lint`
-- [ ] 3.2 Type check passes: `npx astro check`
+- [x] 3.1 Lint passes: `npm run lint`
+- [x] 3.2 Type check passes: `npx astro check`
 - [ ] 3.3 Build succeeds: `npm run build`
 - [ ] 3.4 Smoke passes on an empty DB: `npm run smoke` (in the Phase 5 final verification)
 

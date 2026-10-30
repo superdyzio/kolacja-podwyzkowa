@@ -194,6 +194,7 @@ Dziennik decyzji, zależności i blokerów nocnego builda (zasady: `overnight-br
 - 2026-10-30 — reset — modal jako natywny `<dialog>` (`showModal`: górna warstwa, tło nieaktywne, Esc = `cancel`), natywne checkboxy, istniejący `Button`; bez nowych zależności (Recommended).
 - 2026-10-30 — reset — testy: czyste reguły jednostkowo; integracyjne niszczące przypadki tylko na wydarzeniu utworzonym przez sam test (`createdByTest`), liczby i odmowa dla `anon`/`authenticated` zawsze; smoke HTTP kończy się sekcją resetu (klucz TV/gościa → 404, 400 dla złych ciał, podzbiór, potem wszystko) (Recommended).
 - 2026-10-30 — reset — /10x-plan, podział na fazy: 5 faz (schemat+czyste reguły → serwis+testy integracyjne → API+smoke → modal w panelu → dokumentacja+weryfikacja końcowa), każda z automatycznym checkiem — „Looks good, proceed” (Recommended).
+- 2026-10-30 — reset — /10x-implement fazy 3–4: `npm run build` odłożony do weryfikacji końcowej (po `npx astro preview stop`) — build podmienia `dist/`, z którego korzysta działający podgląd użytkownika, a build do innego katalogu skopiowałby `.dev.vars` z prawdziwym kluczem; w fazach sprawdzane lint, `astro check` i testy.
 
 ## Do sprawdzenia rano (Manual)
 
