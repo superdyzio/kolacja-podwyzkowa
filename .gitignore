@@ -16,6 +16,8 @@ pnpm-debug.log*
 # environment variables
 .env
 .env.production
+# production secrets for the AWS deploy (Supabase + AI keys); never commit
+.env.aws
 
 # cloudflare
 .dev.vars
