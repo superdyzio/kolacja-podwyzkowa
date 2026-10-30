@@ -12,7 +12,7 @@ interface Props {
 const REPLACE_QUESTION =
   "Wymienić plan? Pinezki stolików zostaną w tych samych miejscach obrazu — sprawdź je po wymianie planu.";
 
-// Upload or replace the venue plan screenshot (FR-005): PNG, JPEG or WebP, at most 5 MB.
+// Upload or replace the venue plan screenshot (FR-005): PNG, JPEG or WebP, at most 4 MB.
 export function PlanUpload({ hasPlan, hasTables, pending, onUpload }: Props) {
   const inputId = useId();
   const inputRef = useRef<HTMLInputElement>(null);
@@ -34,7 +34,7 @@ export function PlanUpload({ hasPlan, hasTables, pending, onUpload }: Props) {
         {hasPlan ? "Plan lokalu" : "Wgraj plan lokalu"}
       </h2>
       <p className="text-muted-foreground text-sm">
-        Jeden zrzut ekranu z planem całego lokalu, na którym zaznaczysz stoliki. PNG, JPEG albo WebP, najwyżej 5 MB.
+        Jeden zrzut ekranu z planem całego lokalu, na którym zaznaczysz stoliki. PNG, JPEG albo WebP, najwyżej 4 MB.
       </p>
       <div>
         <label

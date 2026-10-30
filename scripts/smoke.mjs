@@ -347,7 +347,7 @@ check(
 const TINY_PNG = new Uint8Array(
   Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=", "base64"),
 );
-const MAX_PLAN_BYTES = 5 * 1024 * 1024;
+const MAX_PLAN_BYTES = 4 * 1024 * 1024;
 const ROOM_NAME = "Sala Główna Smoke";
 const TABLE_NAME = "Okno Smoke";
 const tableNamed = (res, name) => res.data?.tables?.find((table) => table.name === name);
@@ -407,8 +407,8 @@ const oversized = new Uint8Array(MAX_PLAN_BYTES + 1);
 oversized.set(TINY_PNG.subarray(0, 8));
 const tooLarge = await requestBytes(`${api}/plan`, { method: "PUT", body: oversized, contentType: "image/png" });
 check(
-  "a plan over 5 MB is refused",
-  tooLarge.status === 413 && tooLarge.data?.error === "Plik jest za duży — najwyżej 5 MB.",
+  "a plan over 4 MB is refused",
+  tooLarge.status === 413 && tooLarge.data?.error === "Plik jest za duży — najwyżej 4 MB.",
   `${tooLarge.status} ${JSON.stringify(tooLarge.data)}`,
 );
 const emptyUpload = await requestBytes(`${api}/plan`, {

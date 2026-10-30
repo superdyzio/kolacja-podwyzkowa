@@ -72,9 +72,18 @@ describe("base64 codec", () => {
   });
 });
 
+describe("MAX_PLAN_BYTES", () => {
+  it("fits a base64-encoded plan into the 6 MB AWS Lambda payload with room for the headers", () => {
+    const lambdaPayloadLimit = 6 * 1024 * 1024;
+    const base64Length = Math.ceil(MAX_PLAN_BYTES / 3) * 4;
+    expect(MAX_PLAN_BYTES).toBe(4_194_304);
+    expect(lambdaPayloadLimit - base64Length).toBeGreaterThan(512 * 1024);
+  });
+});
+
 describe("formatMegabytes", () => {
   it("uses a Polish decimal comma", () => {
-    expect(formatMegabytes(MAX_PLAN_BYTES)).toBe("5 MB");
+    expect(formatMegabytes(MAX_PLAN_BYTES)).toBe("4 MB");
     expect(formatMegabytes(4.25 * 1024 * 1024)).toBe("4,3 MB");
   });
 });

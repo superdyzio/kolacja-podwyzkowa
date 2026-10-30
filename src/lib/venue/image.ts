@@ -7,11 +7,14 @@ import type { PlanImageType } from "@/types";
 // routes serve exactly that type (with `nosniff`), so an HTML or SVG file can never be served from our origin.
 // The image is stored as padded base64 without line breaks (see the venue migration).
 
-export const MAX_PLAN_BYTES = 5 * 1024 * 1024;
+// 4 MiB: on AWS Lambda a Function URL carries a binary body base64-encoded inside the 6 MB (6 291 456 B) invocation
+// payload, both for the upload and for the image answer; 4 MiB is 5 592 408 base64 characters, leaving room for the
+// headers. The database allows up to 5 MiB (venue migration), so the app limit is the stricter one.
+export const MAX_PLAN_BYTES = 4 * 1024 * 1024;
 
 export const PLAN_IMAGE_TYPES = ["image/png", "image/jpeg", "image/webp"] as const satisfies readonly PlanImageType[];
 
-export const PLAN_TOO_LARGE_MESSAGE = "Plik jest za duży — najwyżej 5 MB.";
+export const PLAN_TOO_LARGE_MESSAGE = "Plik jest za duży — najwyżej 4 MB.";
 export const PLAN_UNSUPPORTED_MESSAGE = "Wgraj obraz PNG, JPEG albo WebP.";
 export const PLAN_EMPTY_MESSAGE = "Wybierz plik z planem.";
 

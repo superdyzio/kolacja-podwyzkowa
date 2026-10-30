@@ -13,7 +13,7 @@ import {
 export const prerender = false;
 
 // PUT <image bytes>: upload or replace the venue plan (FR-005). The body is the file itself (any Content-Type);
-// the server reads at most 5 MB and decides the type from the magic bytes. Tables and their pins stay as they are.
+// the server reads at most 4 MB and decides the type from the magic bytes. Tables and their pins stay as they are.
 export const PUT: APIRoute = async ({ locals, request }) => {
   const api = organizerApi(locals);
   if (api instanceof Response) {

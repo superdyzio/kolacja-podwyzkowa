@@ -311,7 +311,7 @@ describe.skipIf(!hasLocalDb)("venue service", () => {
       });
     });
 
-    it("stores exactly 5 MB byte for byte and keeps the image out of the venue answer", async ({ skip }) => {
+    it("stores exactly 4 MB byte for byte and keeps the image out of the venue answer", async ({ skip }) => {
       if (planWasPresent) {
         skip();
       }
@@ -322,7 +322,7 @@ describe.skipIf(!hasLocalDb)("venue service", () => {
       expect(JSON.stringify(await getVenue(db)).length).toBeLessThan(20_000);
     });
 
-    it("refuses more than 5 MB and anything that is not PNG, JPEG or WebP", async ({ skip }) => {
+    it("refuses more than 4 MB and anything that is not PNG, JPEG or WebP", async ({ skip }) => {
       if (planWasPresent) {
         skip();
       }
