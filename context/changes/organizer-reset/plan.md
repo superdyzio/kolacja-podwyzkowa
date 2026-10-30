@@ -71,6 +71,7 @@ The migration with both functions, their types, the shared DTOs and the pure `sr
 **Intent**: Add the read-only counts function and the atomic reset function, closed to browser roles.
 
 **Contract**:
+
 - `public.reset_counts(p_event_id smallint) returns jsonb` (plpgsql, `stable`, `set search_path = ''`): raises `EVENT_NOT_FOUND`; returns `{ guesses, correctAmountSet, intakeOpen, aiAttempts, aiUsed, seats, pinned, snapshots, guests, groups, plan, rooms, tables, questions, guestAccessEnabled }` (integers / booleans; `aiUsed` = `event_used` of `public.ai_topic_usage(p_event_id)`).
 - `public.reset_event(p_event_id smallint, p_parts text[], p_starter_questions jsonb) returns jsonb` (plpgsql, `set search_path = ''`):
   - raises `NO_PARTS` (null/empty), `UNKNOWN_PART` (any id outside `guesses, aiUsage, seating, guests, venue, questions, guestLinks`), `EVENT_NOT_FOUND`, `NO_STARTER_QUESTIONS` (questions chosen, argument null/empty array);
@@ -95,6 +96,7 @@ The migration with both functions, their types, the shared DTOs and the pure `sr
 **Intent**: Everything the route and the island share without DB access: ids, Polish labels and descriptions, implications, selection, count lines, result summary, request/answer schemas.
 
 **Contract**:
+
 - `parts.ts`: `RESET_PARTS` (canonical order: guesses, aiUsage, seating, guests, venue, questions, guestLinks), `isResetPart`, `RESET_PART_LABELS` („Strzały”, „Licznik tematów AI”, „Rozsadzenie i historia”, „Goście i grupy”, „Plan, sale i stoliki”, „Pytania”, „Linki gości”), `RESET_PART_DESCRIPTIONS` (one line each; guestLinks says printed cards stop working, questions says the starter base is restored), `RESET_IMPLIES`, `expandResetParts(parts) → ResetPart[]` (closure, canonical order, deduped), `requiredBy(part, explicit) → ResetPart[]`, `toggleResetPart(explicit, part)` (no-op for a part locked by another explicit choice), `selectAllResetParts()`.
 - `summary.ts`: `describeResetCount(part, counts, starterQuestions) → string` („nic do usunięcia” when empty), `GUEST_LINKS_WITH_GUESTS_NOTE` (shown on guestLinks while guests is selected), `describeResetResult({ parts, before, questionsAdded, guestKeysReplaced }) → string[]` (one line per expanded part; guestLinks with 0 keys says only „dostęp gości wyłączony”), using `pluralPl` from `@/lib/guests/summary`.
 - `api.ts` (zod from `astro/zod`): `ResetRequestBody = z.strictObject({ parts: z.array(enum).min(1).max(7) })`, `ResetCountsSchema`, `ResetEventAnswerSchema` (validate RPC JSON in the service).
@@ -326,9 +328,9 @@ Additive migration (two functions). Editing it after `migration up` requires re-
 
 #### Automated
 
-- [x] 4.1 Unit tests pass: `npm test`
-- [x] 4.2 Lint passes: `npm run lint`
-- [x] 4.3 Type check passes: `npx astro check`
+- [x] 4.1 Unit tests pass: `npm test` — 802e3a1
+- [x] 4.2 Lint passes: `npm run lint` — 802e3a1
+- [x] 4.3 Type check passes: `npx astro check` — 802e3a1
 - [ ] 4.4 Build succeeds: `npm run build`
 
 #### Manual

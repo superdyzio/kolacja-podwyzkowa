@@ -31,6 +31,10 @@ Otwórz http://localhost:4321/, kliknij „Utwórz wydarzenie” i od razu dodaj
 | Gość        | `/g/<klucz>`  | osobisty link/QR (w kolejnych etapach)           |
 | Inne        | —             | strona „Brak dostępu” (HTTP 404), żadnych danych |
 
+## Reset danych
+
+Na dole panelu organizatora jest karta „Reset danych”. „Resetuj…” otwiera okno z listą rzeczy do wyczyszczenia, każda z opisem i aktualną liczbą: strzały (z prawidłową kwotą), licznik tematów AI, rozsadzenie z historią publikacji, goście i grupy, plan z salami i stolikami, pytania (wraca baza startowa) oraz linki gości (nowe linki, dostęp gości wyłączony — wydrukowane karteczki przestają działać). Goście pociągają za sobą strzały, licznik AI i rozsadzenie, a plan — rozsadzenie. Jedno kliknięcie „Resetuj zaznaczone” czyści wszystko naraz (jedna transakcja w bazie). Link organizatora i adres TV się nie zmieniają, więc np. po próbie generalnej wystarczy zresetować wszystko i od nowa wgrać dane (także `npm run demo`).
+
 ## Tematy AI
 
 Goście i organizator generują temat do rozmowy od AI w wybranej kategorii. Gość ma najwyżej 5 tematów na wieczór, wszyscy razem (z organizatorem) 300; organizator nie ma osobnego limitu. Nieudana próba (np. przekroczony czas 9 s) nie zmniejsza limitu. Tematy nie są nigdzie zapisywane: widzi je tylko osoba, która je wygenerowała.

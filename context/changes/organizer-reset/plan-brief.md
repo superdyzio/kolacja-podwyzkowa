@@ -16,17 +16,17 @@ The modal shows each part with a description and a fresh count, implied parts au
 
 ## Key Decisions Made
 
-| Decision | Choice | Why (1 sentence) |
-| --- | --- | --- |
-| Atomicity | One SQL function `reset_event`; starter questions passed as `jsonb` from `starterQuestionRows()` | Whole reset in one transaction with the 90 texts single-sourced. |
-| Deleting | `DELETE … WHERE event_id` only, never `TRUNCATE … RESTART IDENTITY` | Snapshot ids keep growing, so TV/phone polling tokens never repeat. |
-| Locks | advisory 3003 → 3008 → event row `FOR UPDATE`, then deletes | Matches every existing writer's first lock; in-flight guest saves finish first. |
-| Implications | guests ⇒ guesses, AI usage, seating; venue ⇒ seating; expanded in TS and SQL | Never leave orphaned state (e.g. a seating with no guests). |
-| guestLinks with guests | Still selectable; only turns guest access off, summary says so | Graceful, no „0 keys replaced” noise. |
-| Counts | Fresh `GET /reset` when the modal opens; summary from counts read inside the reset transaction | Exact numbers even if something changed meanwhile. |
-| After success | Summary in the modal, `clearOfflineCache`, reload on close | Never shows pre-reset data offline; simple refresh. |
-| Dialog | Native `<dialog>` + native checkboxes + existing `Button` | No new dependency; Esc/focus handled by the browser. |
-| Tests | Destructive integration cases only on a test-created event; smoke section 22 | Real data is never touched by tests. |
+| Decision               | Choice                                                                                           | Why (1 sentence)                                                                |
+| ---------------------- | ------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------- |
+| Atomicity              | One SQL function `reset_event`; starter questions passed as `jsonb` from `starterQuestionRows()` | Whole reset in one transaction with the 90 texts single-sourced.                |
+| Deleting               | `DELETE … WHERE event_id` only, never `TRUNCATE … RESTART IDENTITY`                              | Snapshot ids keep growing, so TV/phone polling tokens never repeat.             |
+| Locks                  | advisory 3003 → 3008 → event row `FOR UPDATE`, then deletes                                      | Matches every existing writer's first lock; in-flight guest saves finish first. |
+| Implications           | guests ⇒ guesses, AI usage, seating; venue ⇒ seating; expanded in TS and SQL                     | Never leave orphaned state (e.g. a seating with no guests).                     |
+| guestLinks with guests | Still selectable; only turns guest access off, summary says so                                   | Graceful, no „0 keys replaced” noise.                                           |
+| Counts                 | Fresh `GET /reset` when the modal opens; summary from counts read inside the reset transaction   | Exact numbers even if something changed meanwhile.                              |
+| After success          | Summary in the modal, `clearOfflineCache`, reload on close                                       | Never shows pre-reset data offline; simple refresh.                             |
+| Dialog                 | Native `<dialog>` + native checkboxes + existing `Button`                                        | No new dependency; Esc/focus handled by the browser.                            |
+| Tests                  | Destructive integration cases only on a test-created event; smoke section 22                     | Real data is never touched by tests.                                            |
 
 ## Scope
 
@@ -40,13 +40,13 @@ Island → `GET /api/o/<key>/reset` → `reset_counts` (one RPC). Island → `PO
 
 ## Phases at a Glance
 
-| Phase | What it delivers | Key risk |
-| --- | --- | --- |
-| 1. Schema and pure rules | Migration, types, `src/lib/reset/` pure module + unit tests | SQL edge cases (qualified `gen_random_bytes`, safeupdate) — checked in a rolled-back psql transaction |
-| 2. Service and integration tests | `service.ts`, `reset.test.ts` | Destructive cases skip while demo data exists (run in Phase 5) |
-| 3. API route and smoke | `/api/o/<key>/reset`, smoke section 22 | Smoke only runs on an empty DB (Phase 5) |
-| 4. Reset modal on the shell | `ResetPanel`, `useEventReset`, shell card | Dialog focus/Esc while pending; wrapping at 360 px |
-| 5. Docs and final verification | CLAUDE.md, README, full sequence, user state restored | Must restore the real AI provider and leave preview running |
+| Phase                            | What it delivers                                            | Key risk                                                                                              |
+| -------------------------------- | ----------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| 1. Schema and pure rules         | Migration, types, `src/lib/reset/` pure module + unit tests | SQL edge cases (qualified `gen_random_bytes`, safeupdate) — checked in a rolled-back psql transaction |
+| 2. Service and integration tests | `service.ts`, `reset.test.ts`                               | Destructive cases skip while demo data exists (run in Phase 5)                                        |
+| 3. API route and smoke           | `/api/o/<key>/reset`, smoke section 22                      | Smoke only runs on an empty DB (Phase 5)                                                              |
+| 4. Reset modal on the shell      | `ResetPanel`, `useEventReset`, shell card                   | Dialog focus/Esc while pending; wrapping at 360 px                                                    |
+| 5. Docs and final verification   | CLAUDE.md, README, full sequence, user state restored       | Must restore the real AI provider and leave preview running                                           |
 
 **Prerequisites:** local Supabase running (db/rest/kong), demo data present until Phase 5.
 **Estimated effort:** one session, 5 phases.
