@@ -38,7 +38,7 @@ jobs:
       # Supabase CLI comes from devDependencies (version pinned by package-lock.json), same as local development.
       - name: Start local Supabase (database, REST and gateway only)
         run: npx supabase start -x gotrue,realtime,storage-api,imgproxy,studio,postgres-meta,mailpit,edge-runtime,logflare,vector,supavisor
-      - name: Write local Supabase credentials to .env and .dev.vars
+      - name: Write local Supabase credentials to .env
         run: npm run env:local
       - name: Unit and DB integration tests
         run: npm test

@@ -6,7 +6,7 @@ Dokumentacja produktu (PRD, roadmapa, stack) jest w `context/foundation/`.
 
 ## Stack
 
-Astro 7 (SSR) + React 19 + TypeScript + Tailwind 4 + shadcn/ui, Supabase (Postgres), Cloudflare Workers, Vitest.
+Astro 7 (SSR) + React 19 + TypeScript + Tailwind 4 + shadcn/ui, Supabase (Postgres), serwer Node (`@astrojs/node`) na AWS Lambda, Vitest.
 
 ## Uruchomienie lokalne
 
@@ -16,7 +16,7 @@ Wymagania: Node.js 22 (`.nvmrc`) i Docker.
 npm install
 npx supabase start -x gotrue,realtime,storage-api,imgproxy,studio,postgres-meta,mailpit,edge-runtime,logflare,vector,supavisor
 npx supabase migration up
-npm run env:local   # zapisuje SUPABASE_URL i SUPABASE_SERVICE_ROLE_KEY do .env i .dev.vars
+npm run env:local   # zapisuje SUPABASE_URL i SUPABASE_SERVICE_ROLE_KEY do .env
 npm run dev
 ```
 
@@ -44,7 +44,7 @@ Domyślnie działa atrapa AI (`AI_PROVIDER=mock` albo brak zmiennej): przykłado
 Żeby używać Claude:
 
 1. W konsoli Anthropic utwórz klucz API i ustaw limit wydatków.
-2. Dopisz do `.env` i `.dev.vars` (lokalnie; `npm run env:local` zostawia te linie):
+2. Dopisz do `.env` (lokalnie; `npm run env:local` zostawia te linie):
 
    ```bash
    AI_PROVIDER=anthropic
@@ -52,9 +52,9 @@ Domyślnie działa atrapa AI (`AI_PROVIDER=mock` albo brak zmiennej): przykłado
    # AI_MODEL=claude-haiku-5-5   # opcjonalnie; inny model działa na swoich domyślnych ustawieniach
    ```
 
-   Na Cloudflare: `npx wrangler secret put ANTHROPIC_API_KEY` (i `AI_PROVIDER`).
+   Na AWS: te same zmienne w `.env.aws` (patrz „Wdrożenie na AWS”).
 
-3. Przebuduj (`npm run build`, bo build kopiuje `.dev.vars`) i wygeneruj jeden temat na `/o/<klucz>/pytania`. Panel „Temat od AI” pokazuje aktywnego dostawcę, a przy błędzie przyczynę (np. odrzucony klucz).
+3. Uruchom ponownie podgląd (`npx astro preview stop`, potem `npm run preview`; build nie jest potrzebny, sekrety są czytane przy starcie serwera) i wygeneruj jeden temat na `/o/<klucz>/pytania`. Panel „Temat od AI” pokazuje aktywnego dostawcę, a przy błędzie przyczynę (np. odrzucony klucz).
 
 Bez klucza przy `AI_PROVIDER=anthropic` każda próba od razu się nie udaje, a panel organizatora mówi dlaczego. Klucz jest sekretem serwera i nigdy nie trafia do przeglądarki ani do repozytorium. Testy nigdy nie łączą się z API Anthropic, a `npm run smoke` wymaga atrapy.
 
@@ -63,9 +63,9 @@ Bez klucza przy `AI_PROVIDER=anthropic` każda próba od razu się nie udaje, a 
 - `npm run dev`, `npm run build`, `npm run preview`: serwer deweloperski, build produkcyjny, podgląd buildu.
 - `npm test`: testy jednostkowe i integracyjne. Integracyjne działają tylko z lokalnym Supabase (`SUPABASE_URL` na `127.0.0.1`), inaczej są pomijane.
 - `npm run lint`, `npx astro check`: lint i sprawdzanie typów.
-- `npm run env:local`: zapisuje dane lokalnego Supabase do `.env` i `.dev.vars`.
+- `npm run env:local`: zapisuje dane lokalnego Supabase do `.env` (jedyny plik ze zmiennymi; stary `.dev.vars` z czasów Cloudflare nie jest już używany).
 - `npm run links`: wypisuje link organizatora i adres TV z bazy.
-- `npm run smoke`: test HTTP macierzy dostępu na działającym serwerze (`BASE_URL`, domyślnie `http://localhost:4321`). Wymaga bazy bez wydarzenia. Build kopiuje `.dev.vars` do `dist/`, więc po zmianie `.dev.vars` przebuduj przed `npm run preview`.
+- `npm run smoke`: test HTTP macierzy dostępu na działającym serwerze (`BASE_URL`, domyślnie `http://localhost:4321`). Wymaga bazy bez wydarzenia. `npm run preview` czyta `.env` przy starcie, więc po zmianie `.env` uruchom podgląd ponownie.
 - `npm run demo`: wypełnia lokalną aplikację danymi demo do sprawdzeń ręcznych (40 gości, plan, 3 sale, 7 stolików, grupy 4/2/2, 1 nieobecny, 1 przypięty, opublikowany rozkład, 30 strzałów z remisem) przez API działającego serwera (`BASE_URL`) i wypisuje linki. Tworzy wydarzenie, gdy go nie ma; odmawia, gdy wydarzenie ma już gości, sale albo plan.
 
 ## CI
@@ -77,4 +77,4 @@ GitHub Actions (`.github/workflows/ci.yml`) na gałęzi `main`:
 
 ## Deploy
 
-Cloudflare Workers (`npx wrangler deploy`) wymaga konta właściciela. Sekrety `SUPABASE_URL` i `SUPABASE_SERVICE_ROLE_KEY` ustawia się przez `npx wrangler secret put`. Klucz service role omija RLS, więc nigdy nie trafia do przeglądarki ani do repozytorium.
+AWS Lambda za adresem Function URL (AWS Lambda Web Adapter przed serwerem Node) i hostowany Supabase. Klucz service role omija RLS, więc nigdy nie trafia do przeglądarki ani do repozytorium.

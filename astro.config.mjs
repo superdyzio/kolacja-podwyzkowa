@@ -1,19 +1,41 @@
 // @ts-check
-import { defineConfig, envField } from "astro/config";
+import { defineConfig, envField, passthroughImageService } from "astro/config";
 
 import react from "@astrojs/react";
 import sitemap from "@astrojs/sitemap";
 import tailwindcss from "@tailwindcss/vite";
-import cloudflare from "@astrojs/cloudflare";
+import node from "@astrojs/node";
+
+// Production builds bundle every server dependency into dist/server, so the AWS Lambda package carries no
+// node_modules (scripts/package-lambda.mjs fails when anything is left unbundled). Dev keeps Vite's defaults.
+function bundleServerDependencies() {
+  /** @type {import("astro").AstroIntegration} */
+  const integration = {
+    name: "bundle-server-dependencies",
+    hooks: {
+      "astro:config:setup": ({ command, updateConfig }) => {
+        if (command === "build") {
+          updateConfig({ vite: { ssr: { noExternal: true } } });
+        }
+      },
+    },
+  };
+  return integration;
+}
 
 // https://astro.build/config
 export default defineConfig({
   output: "server",
-  integrations: [react(), sitemap()],
+  integrations: [react(), sitemap(), bundleServerDependencies()],
   vite: {
     plugins: [tailwindcss()],
   },
-  adapter: cloudflare(),
+  // Node standalone server: `npm run preview` locally, AWS Lambda (Lambda Web Adapter in front) in production.
+  adapter: node({ mode: "standalone" }),
+  // The app keeps no sessions; the adapter's default filesystem session store would point at a build-time path.
+  session: false,
+  // No image optimisation (the venue plan is served as uploaded), so no native `sharp` in the server bundle.
+  image: { service: passthroughImageService() },
   env: {
     schema: {
       SUPABASE_URL: envField.string({ context: "server", access: "secret", optional: true }),

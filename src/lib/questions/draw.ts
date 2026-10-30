@@ -44,7 +44,7 @@ export function pushRecent(recent: readonly number[], id: number): number[] {
   return [...recent.filter((other) => other !== id), id].slice(-MAX_RECENT);
 }
 
-// Uniform [0, 1) from the platform CSPRNG (Workers, Node and browsers all have Web Crypto).
+// Uniform [0, 1) from the platform CSPRNG (Node and browsers both have Web Crypto).
 export function secureRandom(): number {
   const [value = 0] = crypto.getRandomValues(new Uint32Array(1));
   return value / 2 ** 32;

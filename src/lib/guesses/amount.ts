@@ -1,6 +1,6 @@
 // Money for the raise-amount guesses (S-06, FR-017, FR-020), pure. Amounts are integer grosze end to end
 // (1 zł = 100 gr): parsing is string and integer math only (never parseFloat × 100), and formatting is hand-rolled so
-// the server (workerd), the tests (Node) and every phone print exactly the same text — Intl's pl-PL format does not
+// the server, the tests and every phone print exactly the same text — Intl's pl-PL format does not
 // group 4-digit numbers ("1500") and its separators depend on the runtime's ICU data.
 
 // 10 000 000,00 zł — far above any raise, low enough to catch a slipped finger (and to fit a Postgres integer).

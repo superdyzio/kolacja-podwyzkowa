@@ -1,6 +1,6 @@
 // Access keys identify a role (organizer, TV, guest) through the URL path. They must be unguessable (NFR-009),
 // so they come from a CSPRNG and carry ACCESS_KEY_BYTES * 8 = 144 bits of entropy.
-// Web Crypto + btoa work the same in Node and in the Cloudflare workerd runtime (no Buffer).
+// Web Crypto + btoa work the same on the server (Node) and in browsers (no Buffer).
 
 export const ACCESS_KEY_BYTES = 18;
 export const ACCESS_KEY_LENGTH = 24; // 18 bytes in base64url, no padding

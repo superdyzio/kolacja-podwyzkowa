@@ -1,7 +1,7 @@
 import type { PlanImageType } from "@/types";
 
 // What the server accepts as the venue plan (PRD FR-005) and how the bytes are stored. Pure functions only (no
-// dependency, no `astro:*`); they run in Workers, Node and browsers.
+// dependency, no `astro:*`); they run in Node and browsers.
 //
 // The type is decided by the file's magic bytes, never by the client's Content-Type or file name, and the image
 // routes serve exactly that type (with `nosniff`), so an HTML or SVG file can never be served from our origin.

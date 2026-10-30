@@ -198,6 +198,9 @@ Dziennik decyzji, zależności i blokerów nocnego builda (zasady: `overnight-br
 - 2026-10-30 — reset — weryfikacja końcowa: podgląd zatrzymany, `AI_PROVIDER=mock` (tylko ta linia w `.env` i `.dev.vars`), baza wyczyszczona; `npm test` 763/763 (testy niszczące resetu też), lint, `astro check`, build, smoke 370 PASS; reset przez HTTP na danych demo (podzbiór strzały + licznik AI, potem wszystko) zgodny z oczekiwaniami; potem świeże dane demo (NOWE linki), `AI_PROVIDER=anthropic` z powrotem, build i podgląd zostawiony włączony (dostawca anthropic gotowy, bez żadnego wywołania AI).
 - 2026-10-30 — reset — /10x-implement: bramki ręczne między fazami i akceptacja treści commitów → kontynuacja bez pauzy (nienadzorowany przebieg); epilog „1 wiersz Progress w toku (4.5, ręczny)” → „Proceed to epilogue” (jak w poprzednich slice’ach); końcowy `/10x-impl-review` pominięty („Skip review”), zamiast niego przegląd recenzenta (advisor).
 - 2026-10-30 — reset — /10x-archive: ostrzeżenia „1 ręczny wiersz Progress w toku (4.5)” i „brak impl-review” → „Continue archiving (Recommended)”; zmiana przeniesiona do `context/archive/2026-10-30-organizer-reset/`; w roadmapie nie ma pozycji o tym Change ID (roadmapa bez zmian).
+- 2026-10-30 — aws — adapter: `@astrojs/node` w trybie `standalone` zamiast `@astrojs/cloudflare` (decyzja użytkownika: AWS Lambda + Function URL + Lambda Web Adapter); `session: false` (adapter włączyłby sesje w pliku pod ścieżką z czasu builda, aplikacja ich nie używa), `image.service = passthroughImageService()` (bez natywnego `sharp`), `vite.ssr.noExternal: true` tylko przy `astro build` (mała integracja `bundleServerDependencies`; `astro dev` bez zmian) — `dist/server` nie potrzebuje `node_modules` (Recommended).
+- 2026-10-30 — aws — zmienne: `.env` jedynym plikiem; `npm run env:local` pisze tylko `.env` (pozostałe linie zostają), `.dev.vars` zostaje na dysku nieużywany (gitignore, zawiera prawdziwy klucz — nie kasuję); `npm run preview` = `node --env-file-if-exists=.env … astro preview`, bo adapter Node czyta sekrety z `process.env` w czasie działania, a `astro preview` nie wczytuje `.env`; sekrety nigdy nie są wklejane do builda (sprawdzone: 0 wystąpień wartości z `.env` w `dist`) (Recommended).
+- 2026-10-30 — aws — usunięcie `@astrojs/cloudflare` i `wrangler` przez `npm uninstall --package-lock-only` (package.json + lock), a `npm prune` dopiero po zatrzymaniu podglądu użytkownika — działający podgląd workerd korzysta z plików w `node_modules`; `wrangler.jsonc` i `public/.assetsignore` usunięte, `.dev.vars`/`.wrangler/` dalej w `.gitignore`; `tsconfig` wyklucza `dist-lambda` (`astro check` padał z braku pamięci na zbudowanym JS) (Recommended).
 
 ## Do sprawdzenia rano (Manual)
 
@@ -230,6 +233,8 @@ Dziennik decyzji, zależności i blokerów nocnego builda (zasady: `overnight-br
 - S-05 → `qrcode@^1.5.4` → kodowanie osobistych linków gości do kodów QR na karteczkach (FR-011); używany wyłącznie w przeglądarce organizatora (macierz modułów → własna ścieżka SVG), nigdy na serwerze.
 - S-05 → `@types/qrcode@^1.5.6` (dev) → typy TypeScript dla `qrcode`.
 - S-05 → `jsqr@^1.4.0` (dev) → niezależny czytnik QR w teście jednostkowym: ścieżka SVG karteczki jest rasteryzowana i dekodowana z powrotem do linku („działający kod QR”, US-01 AC).
+- aws-lambda → `@astrojs/node@^11.1.9` → adapter serwera Node (tryb standalone) dla AWS Lambda za Lambda Web Adapter; zgoda użytkownika 2026-10-30.
+- aws-lambda → usunięte `@astrojs/cloudflare` i `wrangler` (dev) → aplikacja nie działa już na Cloudflare Workers; usuwa też bezpośrednie znalezisko HIGH z `npm audit` (zostają tylko pośrednie: vite, zod, undici itd.).
 
 ## Blokery
 

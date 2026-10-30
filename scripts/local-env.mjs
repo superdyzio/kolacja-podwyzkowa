@@ -1,5 +1,6 @@
-// Writes SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY for the LOCAL Supabase (Docker) into .env and .dev.vars,
-// keeping every other line of those files. Usage: npm run env:local
+// Writes SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY for the LOCAL Supabase (Docker) into .env, keeping every other
+// line of it (e.g. AI_PROVIDER, ANTHROPIC_API_KEY). .env is the only env file: `npm run dev` reads it through Vite,
+// `npm run preview` and the scripts through `node --env-file-if-exists=.env`. Usage: npm run env:local
 //
 // `supabase status -o env` prints no API keys when the auth service (gotrue) is not running, which is how this
 // project runs Supabase locally. So: take SERVICE_ROLE_KEY from the status output when present, otherwise sign a
@@ -14,7 +15,7 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 
 const DEFAULT_API_URL = "http://127.0.0.1:54321";
 const DEFAULT_LOCAL_JWT_SECRET = "super-secret-jwt-token-with-at-least-32-characters-long";
-const ENV_FILES = [".env", ".dev.vars"];
+const ENV_FILE = ".env";
 
 function readSupabaseStatus() {
   try {
@@ -84,7 +85,5 @@ if (!serviceRoleKey) {
   process.exit(1);
 }
 
-for (const file of ENV_FILES) {
-  upsertEnvFile(file, { SUPABASE_URL: apiUrl, SUPABASE_SERVICE_ROLE_KEY: serviceRoleKey });
-}
-console.log(`Zapisano SUPABASE_URL=${apiUrl} i SUPABASE_SERVICE_ROLE_KEY do ${ENV_FILES.join(" i ")}.`);
+upsertEnvFile(ENV_FILE, { SUPABASE_URL: apiUrl, SUPABASE_SERVICE_ROLE_KEY: serviceRoleKey });
+console.log(`Zapisano SUPABASE_URL=${apiUrl} i SUPABASE_SERVICE_ROLE_KEY do ${ENV_FILE}.`);

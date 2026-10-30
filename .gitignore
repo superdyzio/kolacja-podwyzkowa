@@ -1,5 +1,7 @@
 # build output
 dist/
+# AWS Lambda package (npm run package:lambda)
+dist-lambda/
 
 # generated types
 .astro/
@@ -19,7 +21,7 @@ pnpm-debug.log*
 # production secrets for the AWS deploy (Supabase + AI keys); never commit
 .env.aws
 
-# cloudflare
+# legacy Cloudflare files (the app ran on Workers before AWS Lambda); may still hold secrets locally
 .dev.vars
 .wrangler/
 

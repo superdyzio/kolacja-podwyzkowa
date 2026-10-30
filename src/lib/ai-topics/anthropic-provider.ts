@@ -30,7 +30,8 @@ interface ErrorResponse {
   error?: { type?: unknown };
 }
 
-// Workers throw "Illegal invocation" when a stored global fetch is called as a method, so the default is a wrapper.
+// Some runtimes (e.g. Cloudflare Workers) throw "Illegal invocation" when a stored global fetch is called as a method,
+// so the default is a wrapper.
 const defaultFetch: FetchLike = (input, init) => fetch(input, init);
 
 // Haiku 5.5 (the default) thinks unless told not to, and thinking counts toward max_tokens and the 9 s budget: a
