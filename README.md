@@ -66,6 +66,8 @@ Bez klucza przy `AI_PROVIDER=anthropic` każda próba od razu się nie udaje, a 
 - `npm run env:local`: zapisuje dane lokalnego Supabase do `.env` (jedyny plik ze zmiennymi; stary `.dev.vars` z czasów Cloudflare nie jest już używany).
 - `npm run links`: wypisuje link organizatora i adres TV z bazy.
 - `npm run smoke`: test HTTP macierzy dostępu na działającym serwerze (`BASE_URL`, domyślnie `http://localhost:4321`). Wymaga bazy bez wydarzenia. `npm run preview` czyta `.env` przy starcie, więc po zmianie `.env` uruchom podgląd ponownie.
+- `npm run package:lambda`: build do `dist-lambda/build` (nie rusza `dist/` podglądu) i paczka `dist-lambda/function.zip` dla AWS Lambda, ze sprawdzeniem (bez plików env i sekretów, bez modułów natywnych, zip < 50 MB, rozpakowany zip startuje poza repozytorium).
+- `npm run deploy:aws`: wdrożenie na AWS Lambda (patrz niżej); `-- --dry-run` tylko wypisuje plan.
 - `npm run demo`: wypełnia lokalną aplikację danymi demo do sprawdzeń ręcznych (40 gości, plan, 3 sale, 7 stolików, grupy 4/2/2, 1 nieobecny, 1 przypięty, opublikowany rozkład, 30 strzałów z remisem) przez API działającego serwera (`BASE_URL`) i wypisuje linki. Tworzy wydarzenie, gdy go nie ma; odmawia, gdy wydarzenie ma już gości, sale albo plan.
 
 ## CI
@@ -75,6 +77,51 @@ GitHub Actions (`.github/workflows/ci.yml`) na gałęzi `main`:
 - `ci`: lint, `astro check`, `npm test` (bez testów bazy) i build.
 - `smoke`: lokalny Supabase, `npm test` z testami bazy, build, podgląd produkcyjny i `npm run smoke`.
 
-## Deploy
+CI niczego nie wdraża i nie ma dostępu do AWS: wdrożenie uruchamiasz sam (`npm run deploy:aws`).
 
-AWS Lambda za adresem Function URL (AWS Lambda Web Adapter przed serwerem Node) i hostowany Supabase. Klucz service role omija RLS, więc nigdy nie trafia do przeglądarki ani do repozytorium.
+## Wdrożenie na AWS
+
+Aplikacja działa jako jedna funkcja AWS Lambda (arm64, Node.js 24, 1024 MB, 15 s) pod stałym adresem Function URL (`https://<id>.lambda-url.<region>.on.aws/`, bez logowania — dostęp dają klucze w linkach). Warstwa AWS Lambda Web Adapter (v1.1.0, wersja warstwy 30) przekazuje żądania do serwera Node z paczki. Baza to hostowany projekt Supabase (plan Free). Tylko darmowe usługi: bez API Gateway, CloudFront, S3, ECR i VPC. Klucz service role omija RLS, więc nigdy nie trafia do przeglądarki ani do repozytorium.
+
+### Przygotowanie (raz)
+
+1. AWS CLI v2 (aktualne — skrypt używa `--invoked-via-function-url`) i logowanie: `aws login --profile mikusia` (inny profil: zmienna `AWS_PROFILE`).
+2. Projekt Supabase (Free) w **tym samym regionie**, w którym ma działać Lambda (np. Frankfurt = `eu-central-1`); inny region to wolniejsze zapytania przy każdym odświeżeniu telefonów.
+3. Schemat bazy (sam, ze swojego komputera): `npx supabase login`, `npx supabase link --project-ref <ref projektu>`, `npx supabase db push`.
+4. Plik `.env.aws` w katalogu projektu (jest w `.gitignore`; dane z panelu Supabase → Project Settings → API):
+
+   ```bash
+   SUPABASE_URL=https://<ref projektu>.supabase.co
+   SUPABASE_SERVICE_ROLE_KEY=<klucz service_role>
+   AI_PROVIDER=mock
+   # ANTHROPIC_API_KEY=<klucz>          # wymagany przy AI_PROVIDER=anthropic
+   # AI_MODEL=claude-haiku-5-5          # opcjonalnie
+   ```
+
+   Skrypt przyjmuje tylko te nazwy i odmawia lokalnego albo nie-https `SUPABASE_URL`.
+
+### Wdrożenie
+
+```bash
+AWS_REGION=eu-central-1 npm run deploy:aws -- --dry-run   # sam plan komend aws, nic nie wywołuje
+AWS_REGION=eu-central-1 npm run deploy:aws
+```
+
+`AWS_REGION` jest wymagany (bez wartości domyślnej). Skrypt buduje paczkę (`npm run package:lambda`), a potem tworzy brakujące albo aktualizuje istniejące: rolę IAM `kolacja-podwyzkowa-lambda` (tylko logi), funkcję `kolacja-podwyzkowa`, Function URL z publicznym dostępem i grupę logów `/aws/lambda/kolacja-podwyzkowa` (7 dni). Niczego nie usuwa, więc adres się nie zmienia i wydrukowane karteczki QR działają po każdym kolejnym wdrożeniu. Sekrety idą do AWS przez plik tymczasowy (0600, usuwany) i nie są wypisywane. Na końcu skrypt podaje adres i sprawdza, czy odpowiada.
+
+### Pierwsze uruchomienie
+
+1. Pierwsze wdrożenie na `AI_PROVIDER=mock` (pusta baza).
+2. Smoke na prawdziwym adresie: `BASE_URL=https://<id>.lambda-url.<region>.on.aws npm run smoke` (bez `/` na końcu; tworzy wydarzenie testowe i odmawia na prawdziwym AI).
+3. Wyczyść dane smoke: Supabase → SQL Editor → `delete from public.event;` (reszta usuwa się kaskadowo).
+4. AI: w `.env.aws` ustaw `AI_PROVIDER=anthropic` i `ANTHROPIC_API_KEY` (z limitem wydatków w konsoli Anthropic) i wdroż ponownie tą samą komendą.
+5. Otwórz adres, „Utwórz wydarzenie”, link organizatora do zakładek. Linki gości i karteczki drukuj z tego adresu (są `https://`).
+
+### Koszty i limity
+
+- Darmowy próg Lambdy (1 mln żądań i 400 000 GB-s miesięcznie) z zapasem wystarcza na wieczór: 40 telefonów odpytujących co 2,5 s to ok. 16 żądań/s, czyli ok. 60 tys. na godzinę. Mimo to ustaw alert budżetu: Billing → Budgets → „Zero spend budget” (albo 1 USD).
+- Współbieżność: każda instancja Lambdy obsługuje jedno żądanie naraz. Sprawdź limit konta: `aws lambda get-account-settings --profile mikusia --region <region>` (`AccountLimit.ConcurrentExecutions`). Nowe konta mają czasem tylko 10 — wtedy przed imprezą poproś o więcej w Service Quotas.
+- Plan sali: najwyżej 4 MB (Function URL koduje plik w base64 w ładunku ≤ 6 MB).
+- Po dłuższej przerwie pierwsze żądanie startuje funkcję (ok. 1 s). Otwórz TV i panel organizatora przed przyjściem gości.
+- Supabase Free usypia projekt po tygodniu bez ruchu — kilka dni przed imprezą otwórz aplikację (albo wznów projekt w panelu).
+- Logi: CloudWatch, grupa `/aws/lambda/kolacja-podwyzkowa`. Wersja warstwy Lambda Web Adapter jest przypięta w `scripts/lib/aws-deploy.mjs`.

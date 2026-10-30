@@ -160,10 +160,10 @@ Identity is an unguessable key in the URL path (PRD Access Control, NFR-009): or
 
 ### Environment
 
-- Node.js v22.14.0 (see `.nvmrc`)
+- Node.js v22.14.0 locally and in CI (see `.nvmrc`); Lambda runs `nodejs24.x`
 - Env vars: `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, and for AI topics `AI_PROVIDER` (`mock` default | `anthropic`), `ANTHROPIC_API_KEY`, `AI_MODEL` (default `claude-haiku-5-5`) — all server-only secrets in the `astro.config.mjs` env schema. Locally: `npm run env:local` writes the `SUPABASE_*` lines of `.env` (gitignored, the only env file; a leftover `.dev.vars` from the Cloudflare days is unused) and keeps the other lines. Dev, tests and the smoke run on the mock AI provider.
 - Local Supabase (Docker), database + REST + gateway only: `npx supabase start -x gotrue,realtime,storage-api,imgproxy,studio,postgres-meta,mailpit,edge-runtime,logflare,vector,supavisor`, then `npx supabase migration up`. `supabase status` prints no API keys in this mode, which is why `env:local` exists.
-- Deploy target: AWS Lambda behind a Function URL (the AWS Lambda Web Adapter layer in front of the Node standalone server) with a hosted Supabase project.
+- Deploy (decided by the user on 2026-10-30; README „Wdrożenie na AWS”): one AWS Lambda function `kolacja-podwyzkowa` (arm64, `nodejs24.x`, 1024 MB, 15 s, handler `run.sh`) behind a Function URL (auth NONE; the link keys do access control), with the AWS Lambda Web Adapter layer v1.1.0 (`arn:aws:lambda:<region>:753240598075:layer:LambdaAdapterLayerArm64:30`, `AWS_LAMBDA_EXEC_WRAPPER=/opt/bootstrap`, readiness check `/favicon.png`) forwarding to the Node server on port 8080; a hosted Supabase Free project in the same region. Free tier only: no API Gateway, CloudFront, S3, ECR, VPC/NAT. `npm run package:lambda` builds the zip, `AWS_REGION=<region> npm run deploy:aws` (only the user runs it; `.env.aws` holds `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `AI_PROVIDER`, optional `ANTHROPIC_API_KEY`, `AI_MODEL`) creates or updates everything in place and never deletes — a new function or URL would change the address printed on the QR cards. Lambda limits that shape the code: 6 MB request/response payload with base64 for binary bodies (plan ≤ 4 MB), 15 s timeout (AI calls stop at 9 s), one request per instance at a time, `/var/task` read-only (no sessions, nothing written at runtime).
 
 ## CI
 
@@ -171,3 +171,4 @@ GitHub Actions workflow (`.github/workflows/ci.yml`) on every push and PR to `ma
 
 - `ci` — lint, `astro check`, `npm test` (DB integration tests skip) and build. Optional repository secrets `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`.
 - `smoke` — local Supabase (CLI from devDependencies), `npm run env:local`, `npm test` with DB tests, build, production preview and `npm run smoke`.
+- No deploy job and no AWS credentials in CI: deploys are run by the user (`npm run deploy:aws`).
