@@ -1,10 +1,10 @@
 ---
 change_id: organizer-reset
 title: Organizer resets chosen parts of the event data from one modal in one click
-status: implemented
+status: archived
 created: 2026-10-30
 updated: 2026-10-30
-archived_at: null
+archived_at: 2026-10-30T21:05:05Z
 ---
 
 ## Notes
