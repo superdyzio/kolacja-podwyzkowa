@@ -261,6 +261,7 @@ describe.skipIf(!hasLocalDb)("AI topic schema", () => {
           { p_event_id: EVENT_ID, p_guest_id: null, p_category: "generyczne", p_guest_limit: 5, p_event_limit: 300 },
         ],
         ["ai_topic_usage", { p_event_id: EVENT_ID }],
+        ["ai_topic_tokens", { p_event_id: EVENT_ID }],
       ] as const) {
         const call = await fetch(`${restUrl}/rpc/${name}`, {
           method: "POST",

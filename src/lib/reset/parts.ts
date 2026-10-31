@@ -38,7 +38,7 @@ function topics(count: number): string {
 // One line per part under its label in the modal.
 export const RESET_PART_DESCRIPTIONS: Readonly<Record<ResetPart, string>> = {
   guesses: "Usuwa wszystkie strzały i prawidłową kwotę, otwiera przyjmowanie strzałów.",
-  aiUsage: `Zeruje licznik: każdy gość znów ma ${topics(MAX_GUEST_TOPICS)}, cały wieczór ${MAX_EVENT_TOPICS}.`,
+  aiUsage: `Zeruje licznik: każdy gość znów ma ${topics(MAX_GUEST_TOPICS)}, cały wieczór ${MAX_EVENT_TOPICS}. Szacunek kosztu AI też liczy się od nowa.`,
   seating:
     "Usuwa rozsadzenie (z przypięciami) i wszystkie publikacje: TV nic nie pokazuje, historia sąsiadów zaczyna się od zera.",
   guests: "Usuwa wszystkich gości i grupy, a razem z nimi strzały, licznik tematów AI i rozsadzenie.",

@@ -2,12 +2,24 @@ import type { AiProviderKind, QuestionCategory } from "@/types";
 import { AI_PROVIDER_TIMEOUT_MS } from "./limits";
 
 // The contract every AI topic provider fulfils (S-08): the mock (default) and Claude over the Anthropic Messages API.
-// A provider returns the raw text; sanitizing, the content check and the limits are the service's job. Every failure
-// is an AiProviderError with a kind the service and the organizer's hint understand.
+// A provider returns the raw text and the tokens it was billed for; sanitizing, the content check and the limits are
+// the service's job. Every failure is an AiProviderError with a kind the service and the organizer's hint understand.
 
 export interface AiTopicRequest {
   category: QuestionCategory;
   theme: string;
+}
+
+// The provider's own token counts for one answer (what it bills); feeds the organizer's cost estimate.
+export interface AiTokenUsage {
+  inputTokens: number;
+  outputTokens: number;
+}
+
+export interface AiGeneration {
+  text: string;
+  // null = nothing billed (the mock).
+  usage: AiTokenUsage | null;
 }
 
 export interface AiGenerateOptions {
@@ -22,32 +34,44 @@ export interface AiTopicProvider {
   // False when the configuration cannot work (no key, unknown AI_PROVIDER): the service fails such an attempt before
   // it reserves anything, and generate() rejects "not-configured" without network.
   readonly ready: boolean;
-  generate(request: AiTopicRequest, options: AiGenerateOptions): Promise<string>;
+  generate(request: AiTopicRequest, options: AiGenerateOptions): Promise<AiGeneration>;
 }
 
-export type AiFailureKind =
-  | "not-configured"
-  | "timeout"
-  | "network"
-  | "auth"
-  | "bad-request"
-  | "rate-limit"
-  | "overloaded"
-  | "unavailable"
-  | "refusal"
-  | "truncated"
-  | "empty"
-  | "off-limits";
+export const AI_FAILURE_KINDS = [
+  "not-configured",
+  "timeout",
+  "network",
+  "auth",
+  "no-credits",
+  "bad-request",
+  "rate-limit",
+  "overloaded",
+  "unavailable",
+  "refusal",
+  "truncated",
+  "empty",
+  "off-limits",
+] as const;
+
+export type AiFailureKind = (typeof AI_FAILURE_KINDS)[number];
+
+// A failure kind read back from the DB (ai_topic.failure_kind).
+export function isAiFailureKind(value: string): value is AiFailureKind {
+  return (AI_FAILURE_KINDS as readonly string[]).includes(value);
+}
 
 export class AiProviderError extends Error {
   readonly kind: AiFailureKind;
   readonly status: number | undefined;
+  // Tokens billed although the answer is unusable (refusal, cut-off, empty); null when nothing was billed.
+  readonly usage: AiTokenUsage | null;
 
-  constructor(kind: AiFailureKind, status?: number, message?: string) {
+  constructor(kind: AiFailureKind, status?: number, message?: string, usage: AiTokenUsage | null = null) {
     super(message ?? (status === undefined ? `AI: ${kind}` : `AI: ${kind} (HTTP ${String(status)})`));
     this.name = "AiProviderError";
     this.kind = kind;
     this.status = status;
+    this.usage = usage;
   }
 }
 
@@ -66,6 +90,8 @@ export function describeFailureForOrganizer(kind: AiFailureKind, status?: number
       return "Brak połączenia z dostawcą AI.";
     case "auth":
       return `${withStatus("Klucz API odrzucony", status)} — sprawdź ANTHROPIC_API_KEY.`;
+    case "no-credits":
+      return `${withStatus("Skończyły się kredyty API Anthropic albo zadziałał limit wydatków", status)} — doładuj je w konsoli: platform.claude.com → Billing.`;
     case "bad-request":
       return `${withStatus("Model niedostępny lub złe parametry", status)} — sprawdź AI_MODEL.`;
     case "rate-limit":

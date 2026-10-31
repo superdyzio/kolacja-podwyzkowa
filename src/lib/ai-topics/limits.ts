@@ -1,4 +1,5 @@
 import type { AiProviderStatusDto, AiTopicUsageDto, GuestAiQuotaDto } from "@/types";
+import { formatUsd, type AiSpend } from "./cost";
 
 // Limits and texts of AI conversation topics (S-08, PRD NFR-005), pure. The numbers are passed to the DB function
 // reserve_ai_topic(), which enforces them atomically; the texts are what guests and the organizer read.
@@ -42,12 +43,34 @@ export function toGuestQuota(
   };
 }
 
+// What the organizer's usage adds to the counts: the billed tokens, the estimate and the latest failure.
+export interface AiUsageExtras extends AiSpend {
+  lastFailureHint: string | null;
+}
+
+export const NO_USAGE_EXTRAS: AiUsageExtras = {
+  inputTokens: 0,
+  outputTokens: 0,
+  costNanoUsd: 0,
+  lastFailureHint: null,
+};
+
 export function toUsage(
   row: AiTopicUsageRow,
+  extras: AiUsageExtras = NO_USAGE_EXTRAS,
   eventLimit = MAX_EVENT_TOPICS,
   guestLimit = MAX_GUEST_TOPICS,
 ): AiTopicUsageDto {
-  return { used: row.event_used, limit: eventLimit, failed: row.event_failed, guestLimit };
+  return {
+    used: row.event_used,
+    limit: eventLimit,
+    failed: row.event_failed,
+    guestLimit,
+    inputTokens: extras.inputTokens,
+    outputTokens: extras.outputTokens,
+    costNanoUsd: extras.costNanoUsd,
+    lastFailureHint: extras.lastFailureHint,
+  };
 }
 
 // „Zostało 3 z 5” — the guest's remaining topics.
@@ -72,7 +95,15 @@ export function formatProvider(provider: AiProviderStatusDto): string {
   return provider.model ? `Claude (${provider.model})` : "Claude";
 }
 
-// The shell card: „Tematy AI: 12 z 300 · atrapa AI”.
+// The shell card: „Tematy AI: 12 z 300 · atrapa AI”, with the estimate once tokens were billed („· ≈ 0,0012 USD”)
+// and a warning while the latest attempt failed.
 export function formatAiTopicSummary(usage: AiTopicUsageDto, provider: AiProviderStatusDto): string {
-  return `Tematy AI: ${usage.used} z ${usage.limit} · ${formatProvider(provider)}`;
+  const parts = [`Tematy AI: ${usage.used} z ${usage.limit}`, formatProvider(provider)];
+  if (usage.costNanoUsd !== null && usage.inputTokens + usage.outputTokens > 0) {
+    parts.push(`≈\u00a0${formatUsd(usage.costNanoUsd)}`);
+  }
+  if (usage.lastFailureHint !== null) {
+    parts.push("ostatnia próba nieudana");
+  }
+  return parts.join(" · ");
 }

@@ -62,10 +62,26 @@ describe("AI topic answers", () => {
   });
 
   it("reads the evening's usage from any answer", () => {
-    const usage = { used: 12, limit: 300, failed: 2, guestLimit: 5 };
+    const usage = {
+      used: 12,
+      limit: 300,
+      failed: 2,
+      guestLimit: 5,
+      inputTokens: 9000,
+      outputTokens: 1500,
+      costNanoUsd: 1_650_000,
+      lastFailureHint: null,
+    };
     expect(parseUsage({ usage, provider: {} })).toEqual(usage);
     expect(parseUsage({ error: "x", hint: "y", usage })).toEqual(usage);
+    const unpriced = { ...usage, costNanoUsd: null, lastFailureHint: "Dostawca AI niedostępny." };
+    expect(parseUsage({ usage: unpriced })).toEqual(unpriced);
     expect(parseUsage({ usage: { ...usage, failed: 1.5 } })).toBeNull();
+    expect(parseUsage({ usage: { ...usage, inputTokens: -1 } })).toBeNull();
+    expect(parseUsage({ usage: { ...usage, costNanoUsd: "0,01" } })).toBeNull();
+    expect(parseUsage({ usage: { ...usage, lastFailureHint: 5 } })).toBeNull();
+    const { inputTokens: _dropped, ...withoutTokens } = usage;
+    expect(parseUsage({ usage: withoutTokens })).toBeNull();
     expect(parseUsage("x")).toBeNull();
   });
 });

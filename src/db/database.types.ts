@@ -477,7 +477,8 @@ export interface Database {
         ];
       };
       // S-08: one AI topic generation attempt; requester 'guest' | 'organizer', status 'pending' | 'succeeded' |
-      // 'failed'. The topic text is never stored.
+      // 'failed'. The topic text is never stored. ai-spend: model and billed tokens (null when nothing was billed),
+      // failure_kind (AiFailureKind) and http_status of a failed attempt.
       ai_topic: {
         Row: {
           id: number;
@@ -488,6 +489,11 @@ export interface Database {
           status: string;
           created_at: string;
           finished_at: string | null;
+          model: string | null;
+          input_tokens: number | null;
+          output_tokens: number | null;
+          failure_kind: string | null;
+          http_status: number | null;
         };
         Insert: {
           id?: never;
@@ -498,6 +504,11 @@ export interface Database {
           status?: string;
           created_at?: string;
           finished_at?: string | null;
+          model?: string | null;
+          input_tokens?: number | null;
+          output_tokens?: number | null;
+          failure_kind?: string | null;
+          http_status?: number | null;
         };
         Update: {
           id?: never;
@@ -508,6 +519,11 @@ export interface Database {
           status?: string;
           created_at?: string;
           finished_at?: string | null;
+          model?: string | null;
+          input_tokens?: number | null;
+          output_tokens?: number | null;
+          failure_kind?: string | null;
+          http_status?: number | null;
         };
         Relationships: [
           {
@@ -573,6 +589,11 @@ export interface Database {
       ai_topic_usage: {
         Args: { p_event_id: number; p_guest_id?: number | null };
         Returns: { event_used: number; event_failed: number; guest_used: number; guest_busy: boolean }[];
+      };
+      // ai-spend: billed AI topic tokens of the evening per model (model null = no model recorded).
+      ai_topic_tokens: {
+        Args: { p_event_id: number };
+        Returns: { model: string | null; input_tokens: number; output_tokens: number }[];
       };
       // organizer-reset: what a reset would remove (counts and flags as a JSON object, see ResetCountsDto). Raises
       // EVENT_NOT_FOUND.

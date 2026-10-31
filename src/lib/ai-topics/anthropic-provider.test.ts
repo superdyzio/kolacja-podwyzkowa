@@ -16,9 +16,11 @@ function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 }
 
-function message(content: unknown[], stopReason = "end_turn"): Response {
-  return json({ id: "msg_test", type: "message", role: "assistant", content, stop_reason: stopReason });
+function message(content: unknown[], stopReason = "end_turn", usage?: unknown): Response {
+  return json({ id: "msg_test", type: "message", role: "assistant", content, stop_reason: stopReason, usage });
 }
+
+const USAGE = { input_tokens: 312, output_tokens: 41, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 };
 
 function stub(response: Response | (() => Promise<Response>)) {
   return vi.fn<FetchLike>(() => (typeof response === "function" ? response() : Promise.resolve(response)));
@@ -62,7 +64,10 @@ describe("Anthropic AI provider", () => {
     const provider = createAnthropicProvider({ apiKey: KEY, model: "claude-haiku-5-5", fetch });
     expect(provider).toMatchObject({ kind: "anthropic", model: "claude-haiku-5-5", ready: true });
     const controller = new AbortController();
-    await expect(provider.generate(request, { signal: controller.signal })).resolves.toBe("Czy warto?");
+    await expect(provider.generate(request, { signal: controller.signal })).resolves.toEqual({
+      text: "Czy warto?",
+      usage: null,
+    });
 
     expect(fetch).toHaveBeenCalledTimes(1);
     const [url, init] = firstCall(fetch);
@@ -108,7 +113,31 @@ describe("Anthropic AI provider", () => {
       ]),
     );
     const provider = createAnthropicProvider({ apiKey: KEY, model: "claude-haiku-5-5", fetch });
-    await expect(provider.generate(request, live())).resolves.toBe("Pierwsza część.\nCzy się zgadzasz?");
+    await expect(provider.generate(request, live())).resolves.toMatchObject({
+      text: "Pierwsza część.\nCzy się zgadzasz?",
+    });
+  });
+
+  it("reports the billed tokens of the answer", async () => {
+    const fetch = stub(message([{ type: "text", text: "Czy warto?" }], "end_turn", USAGE));
+    const provider = createAnthropicProvider({ apiKey: KEY, model: "claude-haiku-5-5", fetch });
+    await expect(provider.generate(request, live())).resolves.toEqual({
+      text: "Czy warto?",
+      usage: { inputTokens: 312, outputTokens: 41 },
+    });
+    for (const odd of [
+      {},
+      { input_tokens: 10 },
+      { input_tokens: -1, output_tokens: 2 },
+      { input_tokens: "10", output_tokens: 2 },
+    ]) {
+      const oddFetch = stub(message([{ type: "text", text: "Czy?" }], "end_turn", odd));
+      const result = await createAnthropicProvider({ apiKey: KEY, model: "m", fetch: oddFetch }).generate(
+        request,
+        live(),
+      );
+      expect(result.usage).toBeNull();
+    }
   });
 
   it("maps HTTP errors to failure kinds and keeps the status", async () => {
@@ -138,6 +167,38 @@ describe("Anthropic AI provider", () => {
     expect(failure).toMatchObject({ kind: "unavailable", status: 502 });
   });
 
+  it("recognizes an empty credit balance or a spend limit", async () => {
+    const cases: [number, unknown][] = [
+      [402, { type: "error", error: { type: "billing_error", message: "Billing issue." } }],
+      [
+        400,
+        {
+          type: "error",
+          error: {
+            type: "invalid_request_error",
+            message: "Your credit balance is too low to access the Anthropic API. Please go to Plans & Billing.",
+          },
+        },
+      ],
+      [400, { type: "error", error: { type: "invalid_request_error", message: "You have reached your spend limit." } }],
+      [402, "not json"],
+    ];
+    for (const [status, body] of cases) {
+      const response = typeof body === "string" ? new Response(body, { status }) : json(body, status);
+      const provider = createAnthropicProvider({ apiKey: KEY, model: "claude-haiku-5-5", fetch: stub(response) });
+      const failure = await failureOf(provider.generate(request, live()));
+      expect(failure).toMatchObject({ kind: "no-credits", status });
+      expect(failure.usage).toBeNull();
+    }
+    // Any other 400 is still a bad request.
+    const other = json(
+      { type: "error", error: { type: "invalid_request_error", message: "max_tokens: too big" } },
+      400,
+    );
+    const provider = createAnthropicProvider({ apiKey: KEY, model: "claude-haiku-5-5", fetch: stub(other) });
+    expect(await failureOf(provider.generate(request, live()))).toMatchObject({ kind: "bad-request", status: 400 });
+  });
+
   it("treats refusals, cut-off and empty answers as failures", async () => {
     const cases: [Response, string][] = [
       [message([{ type: "text", text: "Nie mogę." }], "refusal"), "refusal"],
@@ -150,6 +211,21 @@ describe("Anthropic AI provider", () => {
     for (const [response, kind] of cases) {
       const provider = createAnthropicProvider({ apiKey: KEY, model: "claude-haiku-5-5", fetch: stub(response) });
       expect((await failureOf(provider.generate(request, live()))).kind).toBe(kind);
+    }
+  });
+
+  it("keeps the billed tokens of an unusable answer", async () => {
+    const cases: [Response, string][] = [
+      [message([{ type: "text", text: "Nie mogę." }], "refusal", USAGE), "refusal"],
+      [message([{ type: "text", text: "Czy" }], "max_tokens", USAGE), "truncated"],
+      [message([{ type: "text", text: "  " }], "end_turn", USAGE), "empty"],
+      [message([{ type: "text", text: "Czy?" }], "pause_turn", USAGE), "unavailable"],
+    ];
+    for (const [response, kind] of cases) {
+      const provider = createAnthropicProvider({ apiKey: KEY, model: "claude-haiku-5-5", fetch: stub(response) });
+      const failure = await failureOf(provider.generate(request, live()));
+      expect(failure.kind).toBe(kind);
+      expect(failure.usage).toEqual({ inputTokens: 312, outputTokens: 41 });
     }
   });
 
@@ -182,7 +258,9 @@ describe("Anthropic AI provider", () => {
   it("ignores the mock's failure switch and still asks the API", async () => {
     const fetch = stub(message([{ type: "text", text: "Czy warto?" }]));
     const provider = createAnthropicProvider({ apiKey: KEY, model: "claude-haiku-5-5", fetch });
-    await expect(provider.generate(request, { ...live(), simulateFailure: true })).resolves.toBe("Czy warto?");
+    await expect(provider.generate(request, { ...live(), simulateFailure: true })).resolves.toMatchObject({
+      text: "Czy warto?",
+    });
     expect(fetch).toHaveBeenCalledTimes(1);
   });
 });

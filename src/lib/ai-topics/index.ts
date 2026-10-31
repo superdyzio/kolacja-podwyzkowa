@@ -17,6 +17,15 @@ export {
   type AiProviderDeps,
 } from "./config";
 export {
+  estimateSpend,
+  formatSpend,
+  formatTokens,
+  formatUsd,
+  MODEL_PRICES,
+  type AiSpend,
+  type ModelTokens,
+} from "./cost";
+export {
   AI_CLIENT_TIMEOUT_MS,
   AI_PROVIDER_TIMEOUT_MS,
   BUSY_MESSAGE,
@@ -29,19 +38,25 @@ export {
   GUEST_LIMIT_MESSAGE,
   MAX_EVENT_TOPICS,
   MAX_GUEST_TOPICS,
+  NO_USAGE_EXTRAS,
   STALE_PENDING_SECONDS,
   toGuestQuota,
   toUsage,
   type AiTopicUsageRow,
+  type AiUsageExtras,
 } from "./limits";
 export { createMockProvider, mockFailureRequested, MOCK_FAILURE_HEADER, MOCK_FAILURE_VALUE } from "./mock-provider";
 export { MOCK_TOPICS } from "./mock-topics";
 export { AI_CATEGORY_DESCRIPTIONS, AI_TOPIC_SYSTEM_PROMPT, buildTopicPrompt, pickCategory, pickTheme } from "./prompt";
 export {
+  AI_FAILURE_KINDS,
   AiProviderError,
   describeFailureForOrganizer,
+  isAiFailureKind,
   type AiFailureKind,
   type AiGenerateOptions,
+  type AiGeneration,
+  type AiTokenUsage,
   type AiTopicProvider,
   type AiTopicRequest,
 } from "./provider";

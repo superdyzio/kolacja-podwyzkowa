@@ -59,11 +59,20 @@ export function parseUsage(data: unknown): AiTopicUsageDto | null {
   if (!usage) {
     return null;
   }
-  const { used, limit, failed, guestLimit } = usage;
-  if (!isCount(used) || !isCount(limit) || !isCount(failed) || !isCount(guestLimit)) {
+  const { used, limit, failed, guestLimit, inputTokens, outputTokens, costNanoUsd, lastFailureHint } = usage;
+  if (
+    !isCount(used) ||
+    !isCount(limit) ||
+    !isCount(failed) ||
+    !isCount(guestLimit) ||
+    !isCount(inputTokens) ||
+    !isCount(outputTokens) ||
+    (costNanoUsd !== null && !isCount(costNanoUsd)) ||
+    (lastFailureHint !== null && typeof lastFailureHint !== "string")
+  ) {
     return null;
   }
-  return { used, limit, failed, guestLimit };
+  return { used, limit, failed, guestLimit, inputTokens, outputTokens, costNanoUsd, lastFailureHint };
 }
 
 export function parseTopicMemory(raw: string | null): TopicMemory {

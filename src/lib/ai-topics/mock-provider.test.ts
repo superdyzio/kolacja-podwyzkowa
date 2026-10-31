@@ -18,11 +18,15 @@ describe("mock AI provider", () => {
   it("answers a topic of the requested category", async () => {
     const provider = createMockProvider({ delayMs: () => 0, random: () => 0 });
     expect(provider).toMatchObject({ kind: "mock", model: null, ready: true });
-    await expect(provider.generate(request, live())).resolves.toBe(MOCK_TOPICS.refleksyjne[0]);
+    await expect(provider.generate(request, live())).resolves.toEqual({
+      text: MOCK_TOPICS.refleksyjne[0],
+      usage: null,
+    });
     const last = createMockProvider({ delayMs: () => 0, random: () => 0.999_999 });
-    await expect(last.generate({ ...request, category: "generyczne" }, live())).resolves.toBe(
-      MOCK_TOPICS.generyczne.at(-1),
-    );
+    await expect(last.generate({ ...request, category: "generyczne" }, live())).resolves.toEqual({
+      text: MOCK_TOPICS.generyczne.at(-1),
+      usage: null,
+    });
   });
 
   it("fails when told to", async () => {
@@ -59,7 +63,7 @@ describe("mock AI provider", () => {
     expect(done).toBe(false);
     await vi.advanceTimersByTimeAsync(1200);
     expect(done).toBe(true);
-    await expect(pending).resolves.toBe(MOCK_TOPICS.refleksyjne[0]);
+    await expect(pending).resolves.toEqual({ text: MOCK_TOPICS.refleksyjne[0], usage: null });
   });
 
   it("honours the failure header only for the mock", () => {

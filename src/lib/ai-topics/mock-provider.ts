@@ -1,7 +1,7 @@
 import { MOCK_TOPICS } from "./mock-topics";
 import { AiProviderError, type AiTopicProvider } from "./provider";
 
-// The default AI provider (S-08): a random catalog topic after a short delay, no network, no cost. Used in dev, tests,
+// The default AI provider (S-08): a random catalog topic after a short delay, no network, no cost (usage null). Used in dev, tests,
 // the smoke and the overnight build. It honours the abort signal like a real call and can be told to fail.
 
 export interface MockProviderOptions {
@@ -51,7 +51,7 @@ export function createMockProvider(options: MockProviderOptions = {}): AiTopicPr
       }
       const topics = MOCK_TOPICS[request.category];
       const index = Math.min(Math.floor(random() * topics.length), topics.length - 1);
-      return topics[index] ?? "";
+      return { text: topics[index] ?? "", usage: null };
     },
   };
 }

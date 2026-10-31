@@ -358,12 +358,20 @@ export interface GuestAiQuotaDto {
   eventExhausted: boolean;
 }
 
-// The evening's usage (organizer): used = succeeded + in-flight attempts of everyone; failed attempts never count.
+// The evening's usage (organizer only): used = succeeded + in-flight attempts of everyone; failed attempts never count.
+// Tokens = what the provider billed this evening (since the last „Licznik tematów AI” reset), successes and failures
+// after an answer alike; costNanoUsd = an estimate at list prices in nano-dollars (null when a model has no price in
+// the app) — never the account balance. lastFailureHint = why the latest finished attempt failed (Polish, the same
+// text as the organizer's own failure hint), null when it succeeded or there is none.
 export interface AiTopicUsageDto {
   used: number;
   limit: number;
   failed: number;
   guestLimit: number;
+  inputTokens: number;
+  outputTokens: number;
+  costNanoUsd: number | null;
+  lastFailureHint: string | null;
 }
 
 export type AiProviderKind = "mock" | "anthropic";

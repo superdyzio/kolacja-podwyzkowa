@@ -32,7 +32,9 @@ describe("reset parts", () => {
   it("warns that printed cards stop working and that the AI quota starts again", () => {
     expect(RESET_PART_DESCRIPTIONS.guestLinks).toContain("karteczki");
     expect(RESET_PART_DESCRIPTIONS.guestLinks).toContain("przestają działać");
-    expect(RESET_PART_DESCRIPTIONS.aiUsage).toBe("Zeruje licznik: każdy gość znów ma 5 tematów, cały wieczór 300.");
+    expect(RESET_PART_DESCRIPTIONS.aiUsage).toBe(
+      "Zeruje licznik: każdy gość znów ma 5 tematów, cały wieczór 300. Szacunek kosztu AI też liczy się od nowa.",
+    );
   });
 
   it("recognizes part ids only", () => {

@@ -1,20 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { AiProviderError, describeFailureForOrganizer, isAbortError, type AiFailureKind } from "./provider";
+import {
+  AI_FAILURE_KINDS,
+  AiProviderError,
+  describeFailureForOrganizer,
+  isAbortError,
+  isAiFailureKind,
+} from "./provider";
 
-const KINDS: AiFailureKind[] = [
-  "not-configured",
-  "timeout",
-  "network",
-  "auth",
-  "bad-request",
-  "rate-limit",
-  "overloaded",
-  "unavailable",
-  "refusal",
-  "truncated",
-  "empty",
-  "off-limits",
-];
+const KINDS = AI_FAILURE_KINDS;
 
 describe("AI provider failures", () => {
   it("keeps the kind and the HTTP status", () => {
@@ -24,6 +17,18 @@ describe("AI provider failures", () => {
     expect(error.status).toBe(401);
     expect(error.message).toContain("401");
     expect(new AiProviderError("timeout").status).toBeUndefined();
+    expect(new AiProviderError("timeout").usage).toBeNull();
+    const usage = { inputTokens: 300, outputTokens: 12 };
+    expect(new AiProviderError("refusal", undefined, undefined, usage).usage).toEqual(usage);
+  });
+
+  it("recognizes a stored failure kind", () => {
+    for (const kind of KINDS) {
+      expect(isAiFailureKind(kind)).toBe(true);
+    }
+    expect(isAiFailureKind("no-credits")).toBe(true);
+    expect(isAiFailureKind("something-new")).toBe(false);
+    expect(isAiFailureKind("")).toBe(false);
   });
 
   it("explains every kind to the organizer in Polish", () => {
@@ -40,6 +45,9 @@ describe("AI provider failures", () => {
     expect(describeFailureForOrganizer("rate-limit", 429)).toBe("Limit zapytań u dostawcy (HTTP 429).");
     expect(describeFailureForOrganizer("overloaded", 529)).toBe("Dostawca przeciążony (HTTP 529).");
     expect(describeFailureForOrganizer("not-configured")).toContain("AI_PROVIDER=mock");
+    expect(describeFailureForOrganizer("no-credits", 400)).toBe(
+      "Skończyły się kredyty API Anthropic albo zadziałał limit wydatków (HTTP 400) — doładuj je w konsoli: platform.claude.com → Billing.",
+    );
   });
 
   it("recognizes aborts", () => {

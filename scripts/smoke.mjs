@@ -2060,7 +2060,19 @@ const isQuota = (quota, remaining) =>
   quota.remaining === remaining &&
   quota.used === 5 - remaining &&
   quota.eventExhausted === false;
-const usageText = (used, failed) => JSON.stringify({ used, limit: 300, failed, guestLimit: 5 });
+// The mock bills nothing: no tokens, an estimate of 0. lastFailureHint = why the latest finished attempt failed.
+const MOCK_FAILURE_HINT = "Dostawca AI niedostępny.";
+const usageText = (used, failed, lastFailureHint = null) =>
+  JSON.stringify({
+    used,
+    limit: 300,
+    failed,
+    guestLimit: 5,
+    inputTokens: 0,
+    outputTokens: 0,
+    costNanoUsd: 0,
+    lastFailureHint,
+  });
 const generatedTopics = [];
 const topicLeaks = (body) => generatedTopics.filter((text) => body.includes(text) || body.includes(escapeHtml(text)));
 
@@ -2202,7 +2214,7 @@ if (aiOnMock) {
       organizerFail.data.error.includes("nie zmniejszyła limitu") &&
       typeof organizerFail.data.hint === "string" &&
       organizerFail.data.hint.length > 0 &&
-      JSON.stringify(organizerFail.data.usage) === usageText(12, 2),
+      JSON.stringify(organizerFail.data.usage) === usageText(12, 2, MOCK_FAILURE_HINT),
     organizerFail.body,
   );
   const organizerExtra = await request(aiApi, { method: "POST", json: { category: null, guestId: ola.id } });
@@ -2210,7 +2222,7 @@ if (aiOnMock) {
   const aiBoardAfter = await request(aiApi);
   check(
     "AI board counts every success and every failure",
-    aiBoardAfter.status === 200 && JSON.stringify(aiBoardAfter.data?.usage) === usageText(12, 2),
+    aiBoardAfter.status === 200 && JSON.stringify(aiBoardAfter.data?.usage) === usageText(12, 2, MOCK_FAILURE_HINT),
     aiBoardAfter.body.slice(0, 200),
   );
 
@@ -2234,6 +2246,9 @@ if (aiOnMock) {
     aniaPageAfterAi.status === 200 &&
       aniaPageAfterAi.body.includes("Zostało 0 z 5") &&
       aniaPageAfterAi.body.includes("5 z 5") &&
+      // Costs and the organizer's failure hints never reach a guest.
+      !aniaPageAfterAi.body.includes("Koszt AI") &&
+      !aniaPageAfterAi.body.includes(MOCK_FAILURE_HINT) &&
       topicLeaks(aniaPageAfterAi.body).length === 0,
     String(aniaPageAfterAi.status),
   );
@@ -2248,6 +2263,10 @@ if (aiOnMock) {
       aiPage.body.includes("Wygeneruj temat z AI") &&
       aiPage.body.includes("Wykorzystano 12 z 300 · nieudane: 2") &&
       aiPage.body.includes("atrapa AI") &&
+      aiPage.body.includes("Ostatnia próba (np. gościa) się nie udała") &&
+      aiPage.body.includes(MOCK_FAILURE_HINT) &&
+      // The mock bills nothing, so no cost line.
+      !aiPage.body.includes("Koszt AI") &&
       topicLeaks(aiPage.body).length === 0,
     String(aiPage.status),
   );
@@ -2256,7 +2275,7 @@ if (aiOnMock) {
     "organizer shell links to the AI panel with its summary",
     shellWithAi.status === 200 &&
       shellWithAi.body.includes(`/o/${organizerKey}/pytania#tematy-ai`) &&
-      shellWithAi.body.includes("Tematy AI: 12 z 300 · atrapa AI") &&
+      shellWithAi.body.includes("Tematy AI: 12 z 300 · atrapa AI · ostatnia próba nieudana") &&
       countOf(shellWithAi.body, "Wkrótce") === 0,
     String(shellWithAi.status),
   );

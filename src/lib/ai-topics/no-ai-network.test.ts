@@ -28,7 +28,7 @@ describe("AI network guard", () => {
     const provider = createAnthropicProvider({ apiKey: "test-key-not-real", model: "claude-haiku-5-5" });
     await expect(
       provider.generate({ category: "generyczne", theme: "podróże" }, { signal: new AbortController().signal }),
-    ).resolves.toBe("Czy warto?");
+    ).resolves.toEqual({ text: "Czy warto?", usage: null });
     expect(global).toHaveBeenCalledTimes(1);
   });
 });
