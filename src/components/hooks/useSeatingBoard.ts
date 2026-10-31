@@ -18,7 +18,7 @@ import { NETWORK_FAILURE, readJson, toFailure, type ApiFailure } from "./api-fai
 // The draw (S-04) runs here, in the organizer's browser: fresh board + neighbour history in, a draft out, which the
 // server re-checks and saves as the working arrangement. Nothing reaches the TV until „Opublikuj na TV”.
 
-function isBoard(data: unknown): data is SeatingBoardDto {
+export function isBoard(data: unknown): data is SeatingBoardDto {
   if (typeof data !== "object" || data === null) {
     return false;
   }
@@ -102,9 +102,9 @@ export function useSeatingBoard(apiBase: string, initialBoard: SeatingBoardDto, 
           return { board: next, status: response.status, data };
         }
         setFailure(toFailure(data));
-        // The board may be stale (changed in another tab, a guest or table deleted meanwhile): reload it so the
-        // next try starts from the truth.
-        if (response.status === 404 || response.status === 409) {
+        // The board may be stale (changed in another tab, a guest or table deleted meanwhile, a table with fewer
+        // seats now): reload it so the next try starts from the truth.
+        if (response.status === 400 || response.status === 404 || response.status === 409) {
           const fresh = await fetch(`${apiBase}/seating`).then(readJson, () => null);
           if (isBoard(fresh)) {
             setBoard(pick(fresh));

@@ -45,6 +45,9 @@ describe("AI cost estimate", () => {
     expect(formatUsd(1_650_000)).toBe(`0,0017${NBSP}USD`);
     expect(formatUsd(80_000_000)).toBe(`0,0800${NBSP}USD`);
     expect(formatUsd(1_234_567_890)).toBe(`1,23${NBSP}USD`);
+    // Just below a dollar but rounding to one: two decimals, not „1,0000”.
+    expect(formatUsd(999_949_999)).toBe(`0,9999${NBSP}USD`);
+    expect(formatUsd(999_960_000)).toBe(`1,00${NBSP}USD`);
   });
 
   it("formats tokens with the Polish plural", () => {

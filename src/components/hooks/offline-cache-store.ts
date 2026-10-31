@@ -31,7 +31,21 @@ export function saveOfflineSeating(apiBase: string, published: PublishedSeatingD
   seatingStore.write(OFFLINE_SEATING_STORAGE_KEY, offlineEntry(apiBase, published, savedAt));
 }
 
-export function saveOfflineGuesses(apiBase: string, board: GuessBoardDto, savedAt: string) {
+// When this page last saved the guesses part (ms), so a read that started before it cannot overwrite a fresher board.
+let guessesSavedAtMs = 0;
+
+// readStartedAtMs: when the request that brought the board started (default now = a board just confirmed); a board
+// from a read that started before the last save is older than what is saved and is dropped.
+export function saveOfflineGuesses(
+  apiBase: string,
+  board: GuessBoardDto,
+  savedAt: string,
+  readStartedAtMs: number = Date.now(),
+) {
+  if (readStartedAtMs < guessesSavedAtMs) {
+    return;
+  }
+  guessesSavedAtMs = Date.now();
   guessesStore.write(OFFLINE_GUESSES_STORAGE_KEY, offlineEntry(apiBase, board, savedAt));
 }
 

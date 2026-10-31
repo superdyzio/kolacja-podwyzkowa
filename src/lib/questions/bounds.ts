@@ -25,7 +25,8 @@ export const DENIED_WORD_PREFIXES = [
   "prawic",
   // religion, the afterlife, fate, astrology
   "religi",
-  "kości",
+  "kościo",
+  "kościel",
   "modl",
   "grzech",
   "piekł",
@@ -57,6 +58,21 @@ export const DENIED_WORD_PREFIXES = [
   "umrz",
   "pogrzeb",
   "zmarł",
+];
+// Harmless words that start with a denied prefix (a film premiere, Croatia, a cellar…): every false hit is a billed AI
+// attempt thrown away.
+export const ALLOWED_WORD_PREFIXES = [
+  "premiera",
+  "premiery",
+  "premierę",
+  "premierą",
+  "premierze",
+  "premierow",
+  "piwnic",
+  "piwoni",
+  "chorwac",
+  "choreograf",
+  "chorągi",
 ];
 export const DENIED_WORDS = [
   "bóg",
@@ -94,7 +110,10 @@ export function deniedIn(text: string): string[] {
   const lower = text.toLocaleLowerCase("pl");
   const words = lower.match(/\p{L}+/gu) ?? [];
   const hits = words.filter(
-    (word) => DENIED_WORDS.includes(word) || DENIED_WORD_PREFIXES.some((prefix) => word.startsWith(prefix)),
+    (word) =>
+      DENIED_WORDS.includes(word) ||
+      (DENIED_WORD_PREFIXES.some((prefix) => word.startsWith(prefix)) &&
+        !ALLOWED_WORD_PREFIXES.some((prefix) => word.startsWith(prefix))),
   );
   return [...hits, ...DENIED_PHRASES.filter((phrase) => lower.includes(phrase))];
 }

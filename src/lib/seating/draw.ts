@@ -272,7 +272,9 @@ export function drawSeating(input: SeatingInput, history: readonly GuestPair[], 
             )
           : [];
       if (around.length === 0) {
-        problems.push({ kind: "pinned-group-split", names });
+        // Several pinned members that no block joins are split; one pinned member at a table without a block of
+        // the group's size leaves no room for the rest.
+        problems.push({ kind: pinnedSeats.size > 1 ? "pinned-group-split" : "pinned-group-no-room", names });
         continue;
       }
       candidates = around.filter((block) => block.every((seat) => pinnedSeats.has(seat) || !fixed[seat]));

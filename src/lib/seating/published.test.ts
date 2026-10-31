@@ -5,6 +5,7 @@ import {
   describeRemovedOccupants,
   isUpToDate,
   occupancyAfter,
+  occupancyOf,
   occupantsRemovedBy,
   publishableFingerprint,
   seatingVersion,
@@ -158,6 +159,13 @@ describe("occupantsRemovedBy", () => {
     expect(names(occupancyAfter(occupancy, { kind: "delete-room", tableIds: [2] }))).toEqual(["Kuba", "Ania"]);
     expect(names(occupancyAfter(occupancy, { kind: "seat-count", tableId: 1, seatCount: 6 }))).toEqual(["Ania", "Ola"]);
     expect(occupancyAfter(occupancy, { kind: "seat-count", tableId: 2, seatCount: 20 })).toEqual(occupancy);
+  });
+
+  it("reads who sits where from a seating board", () => {
+    expect(occupancyOf(base)).toEqual([
+      { tableId: 1, seat: 1, guestName: "Ania" },
+      { tableId: 2, seat: 4, guestName: "Kuba" },
+    ]);
   });
 
   it("describes who loses a seat", () => {

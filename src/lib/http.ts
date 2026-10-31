@@ -15,11 +15,20 @@ export function jsonError(status: number, message: string, extra: Record<string,
 
 export type BodyResult<T> = { ok: true; data: T } | { ok: false; response: Response };
 
-// Reads a JSON body and validates it; malformed JSON and schema failures both answer 400 "Nieprawidłowe dane."
+// The largest JSON body any route reads: a 100 000-character question paste, every character escaped, fits.
+export const MAX_JSON_BODY_BYTES = 1_048_576;
+export const TOO_LARGE_MESSAGE = "Za dużo danych naraz.";
+
+// Reads a JSON body (never buffering more than MAX_JSON_BODY_BYTES) and validates it; malformed JSON and schema
+// failures both answer 400 "Nieprawidłowe dane.", a larger body 413.
 export async function readJsonBody<S extends z.ZodType>(request: Request, schema: S): Promise<BodyResult<z.output<S>>> {
+  const body = await readBodyBytes(request, MAX_JSON_BODY_BYTES);
+  if (body.status === "too-large") {
+    return { ok: false, response: jsonError(413, TOO_LARGE_MESSAGE) };
+  }
   let raw: unknown;
   try {
-    raw = await request.json();
+    raw = JSON.parse(body.status === "ok" ? new TextDecoder().decode(body.bytes) : "");
   } catch {
     return { ok: false, response: jsonError(400, INVALID_DATA_MESSAGE) };
   }

@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { isBoard } from "@/components/hooks/useSeatingBoard";
 import { useVenue } from "@/components/hooks/useVenue";
 import { Button } from "@/components/ui/button";
 import {
   describeRemovedOccupants,
   occupancyAfter,
+  occupancyOf,
   occupantsRemovedBy,
   type VenueSeatChange,
 } from "@/lib/seating/published";
@@ -82,6 +84,31 @@ export function VenueEditor({ apiBase, initialVenue, initialOccupancy }: Props) 
       window.removeEventListener("keydown", onKeyDown);
     };
   }, [current.kind]);
+
+  // The arrangement may have changed in another tab (/rozsadzenie): re-read who sits where whenever the page comes
+  // back into view, so the seat-loss confirmations name the right people. A failed read keeps what is known.
+  useEffect(() => {
+    async function refreshOccupancy() {
+      if (document.hidden) {
+        return;
+      }
+      try {
+        const board: unknown = await fetch(`${apiBase}/seating`).then((response) => response.json());
+        if (isBoard(board)) {
+          setOccupancy(occupancyOf(board));
+        }
+      } catch {
+        // Offline or the key revoked: the next return to the page tries again.
+      }
+    }
+    function onVisibilityChange() {
+      void refreshOccupancy();
+    }
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    };
+  }, [apiBase]);
 
   // On narrow screens the form sits under the plan: bring it into view when it opens.
   const formKey = current.kind === "edit" ? `edit-${current.tableId}` : current.kind;

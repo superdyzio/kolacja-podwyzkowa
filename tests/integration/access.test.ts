@@ -108,12 +108,9 @@ describe.skipIf(!hasLocalDb)("access matrix against the local DB", () => {
       expect(await decideAccess(db, "/api/event")).toEqual({ kind: "public" });
     });
 
-    it("denies keyed paths when the DB is not configured", async () => {
-      expect(await decideAccess(null, `/o/${event.organizerKey}`)).toEqual({
-        kind: "denied",
-        status: 404,
-        isApi: false,
-      });
+    it("fails keyed paths (→ 500, never the 404 denial) when the DB is not configured", async () => {
+      await expect(decideAccess(null, `/o/${event.organizerKey}`)).rejects.toThrow(AccessLookupError);
+      expect(await decideAccess(null, "/")).toEqual({ kind: "public" });
     });
   });
 

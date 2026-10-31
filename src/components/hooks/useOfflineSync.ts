@@ -50,6 +50,7 @@ export function useOfflineSync(apiBase: string) {
       window.clearTimeout(timer);
       const current = new AbortController();
       controller = current;
+      const startedAtMs = Date.now();
       const timeout = window.setTimeout(() => {
         current.abort();
       }, TIMEOUT_MS);
@@ -61,7 +62,8 @@ export function useOfflineSync(apiBase: string) {
         if (result.status === "ok") {
           const savedAt = new Date().toISOString();
           saveOfflineSeating(apiBase, result.published, savedAt);
-          saveOfflineGuesses(apiBase, result.board, savedAt);
+          // The guesses page saves every board it confirms; one saved while this read ran is fresher.
+          saveOfflineGuesses(apiBase, result.board, savedAt, startedAtMs);
           markOffline(false);
         } else if (result.status === "gone") {
           clearOfflineCache(apiBase);

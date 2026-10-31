@@ -198,6 +198,16 @@ export function occupantsRemovedBy(occupancy: readonly SeatOccupantDto[], change
     .sort((a, b) => a.tableId - b.tableId || a.seat - b.seat);
 }
 
+// Who sits where according to a seating board (the venue page re-reads it when it comes back into view).
+export function occupancyOf({ guestList, assignments }: Pick<SeatingInput, "guestList" | "assignments">) {
+  const nameById = new Map(guestList.guests.map((guest) => [guest.id, guest.displayName]));
+  return assignments.map((assignment): SeatOccupantDto => ({
+    tableId: assignment.tableId,
+    seat: assignment.seat,
+    guestName: nameById.get(assignment.guestId) ?? "?",
+  }));
+}
+
 // The occupancy once `change` has been saved (the venue page keeps it in step with the DB without reloading).
 export function occupancyAfter(occupancy: readonly SeatOccupantDto[], change: VenueSeatChange): SeatOccupantDto[] {
   return occupancy.filter((occupant) => !losesSeat(occupant, change));

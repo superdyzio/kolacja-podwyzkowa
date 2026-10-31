@@ -103,6 +103,10 @@ export async function seatGuest(
     case "SEAT_PINNED":
       return { status: "seat-pinned", occupantName: await occupantName(db, tableId, seat) };
     default:
+      // The guest or the table deleted in another tab between the function's check and its insert.
+      if (error.code === "23503") {
+        return error.details.includes("guest_id") ? { status: "guest-not-found" } : { status: "table-not-found" };
+      }
       fail("posadzić gościa", error.message);
   }
 }

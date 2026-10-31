@@ -1,6 +1,15 @@
 import { z } from "astro/zod";
 import { describe, expect, it } from "vitest";
-import { INVALID_DATA_MESSAGE, jsonError, jsonResponse, parseId, readBodyBytes, readJsonBody } from "./http";
+import {
+  INVALID_DATA_MESSAGE,
+  jsonError,
+  jsonResponse,
+  MAX_JSON_BODY_BYTES,
+  parseId,
+  readBodyBytes,
+  readJsonBody,
+  TOO_LARGE_MESSAGE,
+} from "./http";
 
 const schema = z.strictObject({ text: z.string() });
 
@@ -21,6 +30,19 @@ describe("readJsonBody", () => {
     }
     expect(result.response.status).toBe(400);
     expect(await result.response.json()).toEqual({ error: INVALID_DATA_MESSAGE });
+  });
+
+  it("reads Polish text and refuses a body over the limit with 413", async () => {
+    expect(await readJsonBody(post('{"text":"Zażółć gęślą jaźń"}'), schema)).toEqual({
+      ok: true,
+      data: { text: "Zażółć gęślą jaźń" },
+    });
+    const result = await readJsonBody(post(JSON.stringify({ text: "a".repeat(MAX_JSON_BODY_BYTES) })), schema);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.response.status).toBe(413);
+      expect(await result.response.json()).toEqual({ error: TOO_LARGE_MESSAGE });
+    }
   });
 });
 

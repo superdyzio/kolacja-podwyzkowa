@@ -70,7 +70,8 @@ export function formatUsd(nanoUsd: number): string {
     return `<${NBSP}0,0001${NBSP}USD`;
   }
   // Integer rounding (half up) instead of toFixed, which rounds the binary float (0.00165 → „0,0016”).
-  const decimals = nanoUsd < NANO_USD_PER_USD ? 4 : 2;
+  // Anything that rounds to a whole dollar at 4 decimals (≥ 0,99995) already counts as a dollar: „1,00”, not „1,0000”.
+  const decimals = nanoUsd < NANO_USD_PER_USD - 50_000 ? 4 : 2;
   const scale = 10 ** decimals;
   const units = Math.round((nanoUsd * scale) / NANO_USD_PER_USD);
   const fraction = String(units % scale).padStart(decimals, "0");

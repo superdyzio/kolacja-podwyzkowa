@@ -199,6 +199,18 @@ describe("drawSeating — infeasible", () => {
     ]);
   });
 
+  it("says there is no room, not a split, when one pinned member's table has no block of the group's size", () => {
+    const data = input(
+      [guest(1, "Ania", { groupId: 10 }), guest(2, "Kuba", { groupId: 10 }), guest(3, "Ola", { groupId: 10 })],
+      [table(1, "Dwójka", 2), table(2, "Okno", 8)],
+      [seat(1, 1, 1, true)],
+      [{ id: 10, memberIds: [1, 2, 3] }],
+    );
+    expect(problemsOf(drawSeating(data, [], seeded(1)))).toEqual([
+      { kind: "pinned-group-no-room", names: ["Ania", "Kuba", "Ola"] },
+    ]);
+  });
+
   it("names a pinned member whose neighbouring seats are pinned by other people", () => {
     const data = input(
       [guest(1, "Ania", { groupId: 10 }), guest(2, "Kuba", { groupId: 10 }), guest(3, "Ola"), guest(4, "Ewa")],

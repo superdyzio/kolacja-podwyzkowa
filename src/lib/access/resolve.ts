@@ -101,10 +101,12 @@ export async function decideAccess(db: DbClient | null, pathname: string): Promi
   if (!path) {
     return { kind: "public" };
   }
-  const denied: AccessDecision = { kind: "denied", status: 404, isApi: path.isApi };
+  // No DB configured is a server fault (→ 500), not „brak dostępu”: the organizer's offline copy (organizer-sw.js)
+  // treats the denial as a revoked key and forgets itself.
   if (!db) {
-    return denied;
+    throw new AccessLookupError("baza danych nie jest skonfigurowana");
   }
+  const denied: AccessDecision = { kind: "denied", status: 404, isApi: path.isApi };
   const access = await resolveAccess(db, path.role, path.key);
   return access ? { kind: "granted", access } : denied;
 }

@@ -58,6 +58,12 @@ export async function resetEvent(db: DbClient, parts: readonly ResetPart[]): Pro
   if (!answer.success) {
     fail("zresetować danych", "nieoczekiwana odpowiedź bazy");
   }
-  await hideTvSpotlight(db);
+  // Best effort: the reset is already committed, so a failure here must not answer as if it had not happened.
+  try {
+    await hideTvSpotlight(db);
+  } catch (spotlightError) {
+    // eslint-disable-next-line no-console -- the only trace of it (Lambda logs); the reset itself is done
+    console.error("Nie udało się zdjąć treści z ekranu TV po resecie:", spotlightError);
+  }
   return { status: "reset", result: { ...answer.data, summary: describeResetResult(answer.data) } };
 }

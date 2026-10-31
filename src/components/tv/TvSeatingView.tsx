@@ -52,7 +52,10 @@ export function TvSeatingView({ apiBase, initial, eventName }: Props) {
   const seatedNames = useMemo(() => tv.tables.flatMap((table) => table.seats.map((seat) => seat.name)), [tv.tables]);
   const viewportKey = useSyncExternalStore(subscribeToResize, windowSize, noWindow);
   const viewport = useMemo(() => parseSize(viewportKey), [viewportKey]);
-  const [natural, setNatural] = useState<Size | null>(null);
+  // The natural size of the plan image, tagged with its plan version: a replaced plan (maybe another aspect ratio)
+  // waits for its own size instead of being stretched to the old one while it downloads.
+  const [loaded, setLoaded] = useState<{ version: number; size: Size } | null>(null);
+  const natural = loaded !== null && loaded.version === tv.planVersion ? loaded.size : null;
   const cards = useRef(new Map<string, HTMLDivElement>());
 
   const hasPlan = tv.planVersion !== null;
@@ -63,9 +66,14 @@ export function TvSeatingView({ apiBase, initial, eventName }: Props) {
 
   // The image may finish loading before the page is interactive (no onLoad then): read it when it mounts, too.
   function readNatural(img: HTMLImageElement | null) {
-    if (img?.complete && img.naturalWidth > 0) {
-      const next = { width: img.naturalWidth, height: img.naturalHeight };
-      setNatural((previous) => (previous?.width === next.width && previous.height === next.height ? previous : next));
+    const version = tv.planVersion;
+    if (version !== null && img?.complete && img.naturalWidth > 0) {
+      const size = { width: img.naturalWidth, height: img.naturalHeight };
+      setLoaded((previous) =>
+        previous?.version === version && previous.size.width === size.width && previous.size.height === size.height
+          ? previous
+          : { version, size },
+      );
     }
   }
 
@@ -113,6 +121,7 @@ export function TvSeatingView({ apiBase, initial, eventName }: Props) {
             />
           ) : (
             <img
+              key={tv.planVersion}
               ref={readNatural}
               src={planImagePath(apiBase, tv.planVersion)}
               alt="Plan lokalu"
