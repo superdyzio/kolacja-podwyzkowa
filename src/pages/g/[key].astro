@@ -1,0 +1,79 @@
+---
+import NoAccess from "@/components/NoAccess.astro";
+import { GuestGuessView } from "@/components/guest/GuestGuessView";
+import { GuestQuestionDraw } from "@/components/guest/GuestQuestionDraw";
+import { GuestSeatView } from "@/components/guest/GuestSeatView";
+import { GuestTopicView } from "@/components/guest/GuestTopicView";
+import Layout from "@/layouts/Layout.astro";
+import { accessFor, guestPath } from "@/lib/access";
+import { getGuestAiQuota } from "@/lib/ai-topics/service";
+import { getDb } from "@/lib/db";
+import { getGuestState } from "@/lib/guest-links";
+
+// The guest's phone page (S-05, US-03, FR-013, NFR-003, NFR-008): mobile-first, Polish. The middleware has already
+// checked the key AND the guest-access switch (off, revoked or unknown → the same no-access page); this is the
+// second, role-specific check. GuestAccess carries no keys, and only this guest's own state reaches the HTML.
+//
+// Structure: <main> holds one <section> per feature, stacked: S-05's seat view, S-06's guess, S-07's question draw,
+// then S-08's AI topic. Each section's island lives in src/components/guest/, receives `apiBase` (/api/g/<key>) and
+// talks to routes under src/pages/api/g/[key]/ (which start with guestApi(locals); the guest is access.guest.id, never
+// an id from the request). Islands that need the live state read it with useGuestState (one shared poll per phone,
+// src/components/hooks/guest-state-store.ts) instead of polling again; category pickers reuse
+// src/components/questions/CategoryChips.tsx. The AI quota is not in the poll: it is rendered here and refreshed by
+// every generate answer; the topics themselves are never stored, so they never appear in this HTML.
+const access = accessFor(Astro.locals, "guest");
+const db = access ? getDb() : null;
+if (!access || !db) {
+  Astro.response.status = 404;
+}
+
+const view =
+  access && db
+    ? {
+        eventName: access.event.name,
+        apiBase: `/api${guestPath(Astro.params.key ?? "")}`,
+        initial: await getGuestState(db, access.guest),
+        initialQuota: await getGuestAiQuota(db, access.guest.id),
+      }
+    : null;
+---
+
+{view ? (
+  <Layout title={view.eventName}>
+    <main class="mx-auto flex min-h-screen max-w-md flex-col gap-8 px-4 pt-6 pb-12">
+      <header>
+        <h1 class="text-sm font-medium tracking-wide text-muted-foreground uppercase">{view.eventName}</h1>
+      </header>
+
+      <section aria-labelledby="seat-heading" class="flex flex-col gap-3">
+        <h2 id="seat-heading" class="sr-only">
+          Twoje miejsce
+        </h2>
+        <GuestSeatView client:load apiBase={view.apiBase} initial={view.initial} />
+      </section>
+
+      <section aria-labelledby="guess-heading" class="flex flex-col gap-3">
+        <h2 id="guess-heading" class="text-xl font-semibold">
+          Twój strzał
+        </h2>
+        <GuestGuessView client:load apiBase={view.apiBase} initial={view.initial} />
+      </section>
+
+      <section aria-labelledby="question-heading" class="flex flex-col gap-3">
+        <h2 id="question-heading" class="text-xl font-semibold">
+          Pytanie do rozmowy
+        </h2>
+        <GuestQuestionDraw client:load apiBase={view.apiBase} initial={view.initial} />
+      </section>
+
+      <section aria-labelledby="topic-heading" class="flex flex-col gap-3">
+        <h2 id="topic-heading" class="text-xl font-semibold">
+          Temat od AI
+        </h2>
+        <GuestTopicView client:load apiBase={view.apiBase} initial={view.initial} initialQuota={view.initialQuota} />
+      </section>
+    </main>
+  </Layout>
+) : (
+  <NoAccess />
+)}

@@ -1,0 +1,233 @@
+---
+import NoAccess from "@/components/NoAccess.astro";
+import Layout from "@/layouts/Layout.astro";
+import { accessFor, organizerPath } from "@/lib/access";
+import { getDb } from "@/lib/db";
+import { LOCAL_ORIGIN_WARNING, getGuestLinks, guestUrl, isLocalOrigin } from "@/lib/guest-links";
+import { parseId } from "@/lib/http";
+
+// Card sheet (S-05, FR-011, US-01 AC): A4 pages of 2 × 4 personal cards — display name, QR code of the personal link,
+// a short instruction and the link as text. `?guest=<id>` prints one guest's card (e.g. after a revoke). The server
+// renders the cards with empty `data-qr` placeholders; the client script fills in the QR codes (never the server:
+// CPU budget). Links come from this request's origin. The middleware has already checked the key; this is the
+// second, role-specific check.
+const CARDS_PER_PAGE = 8;
+
+const access = accessFor(Astro.locals, "organizer");
+const db = access ? getDb() : null;
+if (!access || !db) {
+  Astro.response.status = 404;
+}
+
+const guestParam = Astro.url.searchParams.get("guest");
+const onlyGuestId = guestParam === null ? null : parseId(guestParam);
+
+const view =
+  access && db
+    ? await (async () => {
+        const links = await getGuestLinks(db);
+        const cards = links.guests
+          .filter((guest) => guestParam === null || guest.id === onlyGuestId)
+          .map((guest) => ({ id: guest.id, name: guest.displayName, url: guestUrl(Astro.url.origin, guest.key) }));
+        const pages = Array.from({ length: Math.ceil(cards.length / CARDS_PER_PAGE) }, (_, index) =>
+          cards.slice(index * CARDS_PER_PAGE, (index + 1) * CARDS_PER_PAGE),
+        );
+        return {
+          name: access.event.name,
+          linksPath: `${organizerPath(access.event.organizerKey)}/linki`,
+          enabled: links.enabled,
+          localOrigin: isLocalOrigin(Astro.url.origin),
+          single: guestParam !== null,
+          cards,
+          pages,
+        };
+      })()
+    : null;
+---
+
+{view ? (
+  <Layout title={`Karteczki gości — ${view.name}`}>
+    <main class="flex flex-col gap-6 p-4 sm:p-8 print:p-0">
+      <header class="mx-auto flex w-full max-w-3xl flex-col gap-3 print:hidden">
+        <a
+          href={view.linksPath}
+          class="self-start py-2 text-sm text-muted-foreground underline-offset-4 hover:underline"
+        >
+          ← Linki gości
+        </a>
+        <h1 class="text-3xl font-bold">{view.single ? "Karteczka gościa" : "Karteczki gości"}</h1>
+        <p class="text-sm text-muted-foreground">
+          A4, 8 karteczek na stronie, linie cięcia przerywane. W oknie drukowania wybierz skalę 100% i wyłącz „Nagłówki
+          i stopki”.
+        </p>
+        {!view.enabled && (
+          <p class="rounded-lg border border-amber-500/60 bg-amber-50 p-3 text-sm text-amber-900">
+            Dostęp gości jest wyłączony: kody zadziałają dopiero, gdy włączysz go na stronie linków.
+          </p>
+        )}
+        {view.localOrigin && (
+          <p role="note" class="rounded-lg border border-amber-500/60 bg-amber-50 p-3 text-sm text-amber-900">
+            <strong>Uwaga:</strong> {LOCAL_ORIGIN_WARNING}
+          </p>
+        )}
+        {view.cards.length > 0 ? (
+          <button
+            type="button"
+            data-print
+            class="h-11 self-start rounded-md bg-primary px-6 text-sm font-medium text-primary-foreground hover:bg-primary/90 focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
+          >
+            Drukuj
+          </button>
+        ) : (
+          <p class="text-sm">
+            {view.single ? "Nie znaleziono tego gościa." : "Nie ma jeszcze gości."}{" "}
+            <a class="underline" href={view.linksPath}>
+              Wróć do linków
+            </a>
+            .
+          </p>
+        )}
+      </header>
+
+      <div class="overflow-x-auto print:overflow-visible">
+        {view.pages.map((page) => (
+          <section class="card-sheet" aria-label="Strona karteczek">
+            {page.map((card) => (
+              <article class="card" data-guest-card>
+                <div class="card-qr" data-qr={card.url} role="img" aria-label={`Kod QR: ${card.name}`}></div>
+                <div class="card-text">
+                  <p class="card-event">{view.name}</p>
+                  <h2 class="card-name">{card.name}</h2>
+                  <p class="card-hint">Zeskanuj kod aparatem telefonu, żeby zobaczyć swój stolik i miejsce.</p>
+                  <p class="card-hint">To Twój osobisty link — nie przekazuj go dalej.</p>
+                  <p class="card-url">{card.url}</p>
+                </div>
+              </article>
+            ))}
+          </section>
+        ))}
+      </div>
+    </main>
+  </Layout>
+) : (
+  <NoAccess />
+)}
+
+<style is:global>
+  /* A4 sheet: 210 × 297 mm, 10 mm inner margin, 2 × 4 cards of 95 × 69 mm with dashed cut lines. The page margin is
+     0 so browsers have no room for headers/footers (they would print this page's URL, i.e. the organizer link). */
+  @page {
+    size: A4;
+    margin: 0;
+  }
+
+  .card-sheet {
+    box-sizing: border-box;
+    width: 210mm;
+    height: 297mm;
+    padding: 10mm;
+    margin: 0 auto 8mm;
+    display: grid;
+    grid-template-columns: repeat(2, 95mm);
+    grid-template-rows: repeat(4, 69mm);
+    align-content: start;
+    background: #fff;
+    color: #000;
+    box-shadow: 0 1px 6px rgb(0 0 0 / 0.25);
+  }
+
+  .card {
+    box-sizing: border-box;
+    display: flex;
+    align-items: center;
+    gap: 4mm;
+    padding: 4mm;
+    border: 0.3mm dashed #888;
+    overflow: hidden;
+    break-inside: avoid;
+  }
+
+  .card-qr {
+    flex: none;
+    width: 42mm;
+    height: 42mm;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 8pt;
+    text-align: center;
+  }
+
+  .card-qr svg {
+    display: block;
+    width: 100%;
+    height: 100%;
+  }
+
+  .card-text {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 1.5mm;
+  }
+
+  .card-event {
+    margin: 0;
+    font-size: 7pt;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: #444;
+  }
+
+  .card-name {
+    margin: 0;
+    font-size: 15pt;
+    font-weight: 700;
+    line-height: 1.15;
+    overflow-wrap: anywhere;
+  }
+
+  .card-hint {
+    margin: 0;
+    font-size: 7.5pt;
+    line-height: 1.3;
+  }
+
+  .card-url {
+    margin: 0;
+    font-family: ui-monospace, monospace;
+    font-size: 5.5pt;
+    line-height: 1.25;
+    overflow-wrap: anywhere;
+    color: #333;
+  }
+
+  @media print {
+    html,
+    body {
+      background: #fff;
+    }
+
+    /* 296 mm (not 297) still fits the grid (20 + 4 × 69 = 296 mm) and stops Chrome from spilling a blank page
+       between sheets when a sheet is exactly one page tall. */
+    .card-sheet {
+      height: 296mm;
+      margin: 0;
+      box-shadow: none;
+      break-after: page;
+    }
+
+    .card-sheet:last-child {
+      break-after: auto;
+    }
+  }
+</style>
+
+<script>
+  import { fillQrCodes } from "@/components/guest-links/qr-cards";
+
+  fillQrCodes(document);
+  document.querySelector("[data-print]")?.addEventListener("click", () => {
+    window.print();
+  });
+</script>

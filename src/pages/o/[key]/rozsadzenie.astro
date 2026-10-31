@@ -1,0 +1,58 @@
+---
+import NoAccess from "@/components/NoAccess.astro";
+import { SeatingEditor } from "@/components/seating/SeatingEditor";
+import Layout from "@/layouts/Layout.astro";
+import { accessFor, organizerPath } from "@/lib/access";
+import { getDb } from "@/lib/db";
+import { getNeighbourHistory, getSeatingBoard } from "@/lib/seating";
+
+// Organizer seating page (S-03/S-04, FR-004, FR-007, FR-009, FR-010): draw a draft, seat guests on concrete seats,
+// swap, pin, publish to the TV, go back to the previous arrangement.
+// The middleware has already checked the key; this is the second, role-specific check.
+const access = accessFor(Astro.locals, "organizer");
+const db = access ? getDb() : null;
+if (!access || !db) {
+  Astro.response.status = 404;
+}
+
+const view =
+  access && db
+    ? {
+        name: access.event.name,
+        panelPath: organizerPath(access.event.organizerKey),
+        apiBase: `/api${organizerPath(access.event.organizerKey)}`,
+        board: await getSeatingBoard(db),
+        history: await getNeighbourHistory(db),
+      }
+    : null;
+---
+
+{view ? (
+  <Layout title={`Rozsadzenie — ${view.name}`}>
+    <main class="mx-auto flex max-w-6xl flex-col gap-6 p-4 sm:p-8">
+      <header class="flex flex-col gap-2">
+        <a
+          href={view.panelPath}
+          class="self-start py-2 text-sm text-muted-foreground underline-offset-4 hover:underline"
+        >
+          ← Panel organizatora
+        </a>
+        <h1 class="text-3xl font-bold">Rozsadzenie</h1>
+        <p class="max-w-3xl text-sm text-muted-foreground">
+          Wylosuj projekt, przejrzyj go i popraw ręcznie — TV pokaże go dopiero po publikacji. Wybierz osobę, potem
+          kliknij miejsce — zajęte miejsce oznacza zamianę. Przypięte osoby zostają na swoich miejscach także przy
+          losowaniu.
+        </p>
+      </header>
+      <SeatingEditor
+        client:load
+        apiBase={view.apiBase}
+        panelPath={view.panelPath}
+        initialBoard={view.board}
+        initialHistory={view.history}
+      />
+    </main>
+  </Layout>
+) : (
+  <NoAccess />
+)}

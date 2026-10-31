@@ -1,0 +1,245 @@
+---
+import NoAccess from "@/components/NoAccess.astro";
+import { OfflineSync } from "@/components/offline/OfflineSync";
+import { ResetPanel } from "@/components/reset/ResetPanel";
+import Layout from "@/layouts/Layout.astro";
+import { accessFor, organizerPath, tvPath } from "@/lib/access";
+import { getAiProviderStatus } from "@/lib/ai";
+import { formatAiTopicSummary, MAX_EVENT_TOPICS, MAX_GUEST_TOPICS } from "@/lib/ai-topics/limits";
+import { getAiTopicUsage } from "@/lib/ai-topics/service";
+import { getDb } from "@/lib/db";
+import { formatGuestLinksSummary, getGuestAccessEnabled } from "@/lib/guest-links";
+import { formatGuessSummary, getGuessBoard } from "@/lib/guesses";
+import { formatGuestSummary, summarizeGuestList } from "@/lib/guests";
+import { formatQuestionSummary, getQuestionList } from "@/lib/questions";
+import { formatSeatingSummary, getSeatingBoard, summarizeSeating } from "@/lib/seating";
+import { formatVenueSummary, summarizeVenue } from "@/lib/venue";
+
+// Organizer view (shell). The middleware has already checked the key; this is the second, role-specific check.
+const access = accessFor(Astro.locals, "organizer");
+if (!access) {
+  Astro.response.status = 404;
+}
+
+const db = access ? getDb() : null;
+// One read of the seating board carries the guest list and the venue too.
+const [board, guestAccessEnabled, guessBoard, questionList, aiUsage] = db
+  ? await Promise.all([
+      getSeatingBoard(db),
+      getGuestAccessEnabled(db),
+      getGuessBoard(db),
+      getQuestionList(db),
+      getAiTopicUsage(db),
+    ])
+  : [null, false, null, null, null];
+const view = access
+  ? {
+      name: access.event.name,
+      apiBase: `/api${organizerPath(access.event.organizerKey)}`,
+      organizerUrl: new URL(organizerPath(access.event.organizerKey), Astro.url).href,
+      tvUrl: new URL(tvPath(access.event.tvKey), Astro.url).href,
+      guestsPath: `${organizerPath(access.event.organizerKey)}/goscie`,
+      guestSummary: board ? formatGuestSummary(summarizeGuestList(board.guestList)) : null,
+      venuePath: `${organizerPath(access.event.organizerKey)}/sale`,
+      venueSummary: board ? formatVenueSummary(summarizeVenue(board.venue)) : null,
+      seatingPath: `${organizerPath(access.event.organizerKey)}/rozsadzenie`,
+      seatingSummary: board ? formatSeatingSummary(summarizeSeating(board), board.published, board.upToDate) : null,
+      linksPath: `${organizerPath(access.event.organizerKey)}/linki`,
+      linksSummary: board
+        ? formatGuestLinksSummary({ enabled: guestAccessEnabled, guestCount: board.guestList.guests.length })
+        : null,
+      guessesPath: `${organizerPath(access.event.organizerKey)}/strzaly`,
+      guessesSummary: guessBoard ? formatGuessSummary(guessBoard) : null,
+      questionsPath: `${organizerPath(access.event.organizerKey)}/pytania`,
+      questionsSummary: questionList ? formatQuestionSummary(questionList.questions) : null,
+      aiTopicsPath: `${organizerPath(access.event.organizerKey)}/pytania#tematy-ai`,
+      aiTopicsSummary: aiUsage ? formatAiTopicSummary(aiUsage, getAiProviderStatus()) : null,
+      readoutPath: `${organizerPath(access.event.organizerKey)}/odczyt`,
+    }
+  : null;
+---
+
+{view ? (
+  <Layout title={`${view.name} — panel organizatora`}>
+    <main class="mx-auto flex max-w-3xl flex-col gap-8 p-4 sm:p-8">
+      <header class="flex flex-col gap-1">
+        <p class="text-sm text-muted-foreground">Panel organizatora</p>
+        <h1 class="text-3xl font-bold">{view.name}</h1>
+      </header>
+      <OfflineSync client:load apiBase={view.apiBase} />
+
+      <section aria-labelledby="links-heading" class="flex flex-col gap-4 rounded-xl border p-4 sm:p-6">
+        <h2 id="links-heading" class="text-xl font-semibold">
+          Twoje linki
+        </h2>
+        <div class="flex flex-col gap-2">
+          <label for="organizer-link" class="font-medium">
+            Link organizatora
+          </label>
+          <input
+            id="organizer-link"
+            type="text"
+            readonly
+            value={view.organizerUrl}
+            class="w-full rounded-md border bg-muted px-3 py-2 font-mono text-sm"
+          />
+          <p class="text-sm text-muted-foreground">
+            Dodaj ten link do zakładek: to jedyne wejście do panelu. Nie udostępniaj go nikomu.
+          </p>
+        </div>
+        <div class="flex flex-col gap-2">
+          <label for="tv-link" class="font-medium">
+            Adres TV
+          </label>
+          <input
+            id="tv-link"
+            type="text"
+            readonly
+            value={view.tvUrl}
+            class="w-full rounded-md border bg-muted px-3 py-2 font-mono text-sm"
+          />
+          <p class="text-sm text-muted-foreground">
+            Otwórz go na urządzeniu przy telewizorze. Pokazuje tylko rozsadzenie, bez strzałów i rankingu.
+          </p>
+        </div>
+      </section>
+
+      <section aria-labelledby="sections-heading" class="flex flex-col gap-4">
+        <h2 id="sections-heading" class="text-xl font-semibold">
+          Przygotowanie i wieczór
+        </h2>
+        <ul class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <li>
+            <a
+              href={view.guestsPath}
+              class="flex h-full flex-col gap-2 rounded-xl border p-4 transition-colors hover:bg-accent focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
+            >
+              <div class="flex items-center justify-between gap-2">
+                <h3 class="font-semibold">Goście i grupy</h3>
+                <span class="rounded-full bg-primary px-2 py-0.5 text-xs text-primary-foreground">Otwórz</span>
+              </div>
+              <p class="text-sm text-muted-foreground">Lista gości, nierozdzielne grupy i nieobecni.</p>
+              {view.guestSummary && <p class="text-sm font-medium">{view.guestSummary}</p>}
+            </a>
+          </li>
+          <li>
+            <a
+              href={view.venuePath}
+              class="flex h-full flex-col gap-2 rounded-xl border p-4 transition-colors hover:bg-accent focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
+            >
+              <div class="flex items-center justify-between gap-2">
+                <h3 class="font-semibold">Sale i stoliki</h3>
+                <span class="rounded-full bg-primary px-2 py-0.5 text-xs text-primary-foreground">Otwórz</span>
+              </div>
+              <p class="text-sm text-muted-foreground">Plan lokalu, sale i stoliki z miejscami i typem.</p>
+              {view.venueSummary && <p class="text-sm font-medium">{view.venueSummary}</p>}
+            </a>
+          </li>
+          <li>
+            <a
+              href={view.seatingPath}
+              class="flex h-full flex-col gap-2 rounded-xl border p-4 transition-colors hover:bg-accent focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
+            >
+              <div class="flex items-center justify-between gap-2">
+                <h3 class="font-semibold">Rozsadzenie</h3>
+                <span class="rounded-full bg-primary px-2 py-0.5 text-xs text-primary-foreground">Otwórz</span>
+              </div>
+              <p class="text-sm text-muted-foreground">
+                Losowanie bez powtórek sąsiadów, ręczne poprawki, publikacja na TV i powrót do poprzedniego.
+              </p>
+              {view.seatingSummary && <p class="text-sm font-medium">{view.seatingSummary}</p>}
+            </a>
+          </li>
+          <li>
+            <a
+              href={view.linksPath}
+              class="flex h-full flex-col gap-2 rounded-xl border p-4 transition-colors hover:bg-accent focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
+            >
+              <div class="flex items-center justify-between gap-2">
+                <h3 class="font-semibold">Linki gości i karteczki</h3>
+                <span class="rounded-full bg-primary px-2 py-0.5 text-xs text-primary-foreground">Otwórz</span>
+              </div>
+              <p class="text-sm text-muted-foreground">Osobiste linki, kody QR do druku i włącznik dostępu gości.</p>
+              {view.linksSummary && <p class="text-sm font-medium">{view.linksSummary}</p>}
+            </a>
+          </li>
+          <li>
+            <a
+              href={view.guessesPath}
+              class="flex h-full flex-col gap-2 rounded-xl border p-4 transition-colors hover:bg-accent focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
+            >
+              <div class="flex items-center justify-between gap-2">
+                <h3 class="font-semibold">Strzały i ranking</h3>
+                <span class="rounded-full bg-primary px-2 py-0.5 text-xs text-primary-foreground">Otwórz</span>
+              </div>
+              <p class="text-sm text-muted-foreground">
+                Strzały gości, zamknięcie przyjmowania, prawidłowa kwota i ranking od końca.
+              </p>
+              {view.guessesSummary && <p class="text-sm font-medium">{view.guessesSummary}</p>}
+            </a>
+          </li>
+          <li>
+            <a
+              href={view.questionsPath}
+              class="flex h-full flex-col gap-2 rounded-xl border p-4 transition-colors hover:bg-accent focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
+            >
+              <div class="flex items-center justify-between gap-2">
+                <h3 class="font-semibold">Pytania do rozmowy</h3>
+                <span class="rounded-full bg-primary px-2 py-0.5 text-xs text-primary-foreground">Otwórz</span>
+              </div>
+              <p class="text-sm text-muted-foreground">
+                Baza pytań w trzech kategoriach, wklejanie wielu naraz i losowanie pytania.
+              </p>
+              {view.questionsSummary && <p class="text-sm font-medium">{view.questionsSummary}</p>}
+            </a>
+          </li>
+          <li>
+            <a
+              href={view.aiTopicsPath}
+              class="flex h-full flex-col gap-2 rounded-xl border p-4 transition-colors hover:bg-accent focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
+            >
+              <div class="flex items-center justify-between gap-2">
+                <h3 class="font-semibold">Tematy AI</h3>
+                <span class="rounded-full bg-primary px-2 py-0.5 text-xs text-primary-foreground">Otwórz</span>
+              </div>
+              <p class="text-sm text-muted-foreground">
+                {`Temat do rozmowy od AI w wybranej kategorii; gość ma ${MAX_GUEST_TOPICS} na wieczór, wszyscy razem ${MAX_EVENT_TOPICS}.`}
+              </p>
+              {view.aiTopicsSummary && <p class="text-sm font-medium">{view.aiTopicsSummary}</p>}
+            </a>
+          </li>
+          <li>
+            <a
+              href={view.readoutPath}
+              class="flex h-full flex-col gap-2 rounded-xl border p-4 transition-colors hover:bg-accent focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
+            >
+              <div class="flex items-center justify-between gap-2">
+                <h3 class="font-semibold">Odczyt bez sieci</h3>
+                <span class="rounded-full bg-primary px-2 py-0.5 text-xs text-primary-foreground">Otwórz</span>
+              </div>
+              <p class="text-sm text-muted-foreground">
+                Ostatni opublikowany rozkład i ranking strzałów zapisane na tym urządzeniu — działa także bez internetu.
+              </p>
+            </a>
+          </li>
+        </ul>
+      </section>
+
+      <section
+        aria-labelledby="reset-heading"
+        class="flex flex-col gap-3 rounded-xl border border-destructive/40 p-4 sm:p-6"
+      >
+        <h2 id="reset-heading" class="text-xl font-semibold">
+          Reset danych
+        </h2>
+        <p class="text-sm text-muted-foreground">
+          Czyści wybrane dane jednym kliknięciem, np. po próbie generalnej: strzały, licznik tematów AI, rozsadzenie,
+          gości, plan lokalu, pytania albo linki gości. Link organizatora i adres TV zostają bez zmian.
+        </p>
+        <ResetPanel client:load apiBase={view.apiBase} />
+      </section>
+    </main>
+  </Layout>
+) : (
+  <NoAccess />
+)}

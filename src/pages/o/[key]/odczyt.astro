@@ -1,0 +1,47 @@
+---
+import NoAccess from "@/components/NoAccess.astro";
+import { OfflineReadoutPage } from "@/components/offline/OfflineReadoutPage";
+import Layout from "@/layouts/Layout.astro";
+import { accessFor, organizerPath } from "@/lib/access";
+
+// Organizer offline readout page (S-09, NFR-004, US-04): the last published seating and the guess ranking saved on
+// this device, read by the island from the browser's memory. Its HTML carries no guest names or amounts and reads
+// nothing from the DB beyond the key check: it is the copy the organizer's service worker keeps and serves when an
+// organizer page cannot be loaded. The middleware has already checked the key; this is the role-specific check.
+const access = accessFor(Astro.locals, "organizer");
+if (!access) {
+  Astro.response.status = 404;
+}
+
+const view = access
+  ? {
+      name: access.event.name,
+      panelPath: organizerPath(access.event.organizerKey),
+      apiBase: `/api${organizerPath(access.event.organizerKey)}`,
+      readoutPath: `${organizerPath(access.event.organizerKey)}/odczyt`,
+    }
+  : null;
+---
+
+{view ? (
+  <Layout title={`Odczyt bez sieci — ${view.name}`}>
+    <main class="mx-auto flex max-w-3xl flex-col gap-6 p-4 sm:p-8">
+      <header class="flex flex-col gap-2">
+        <a
+          href={view.panelPath}
+          class="self-start py-2 text-sm text-muted-foreground underline-offset-4 hover:underline"
+        >
+          ← Panel organizatora
+        </a>
+        <h1 class="text-3xl font-bold">Odczyt bez sieci</h1>
+        <p class="text-sm text-muted-foreground">
+          Ostatni opublikowany rozkład i ranking zapisane na tym urządzeniu. Gdy sieć w lokalu padnie, przełącz się na
+          hotspot w telefonie — strony połączą się same.
+        </p>
+      </header>
+      <OfflineReadoutPage client:load apiBase={view.apiBase} readoutPath={view.readoutPath} />
+    </main>
+  </Layout>
+) : (
+  <NoAccess />
+)}

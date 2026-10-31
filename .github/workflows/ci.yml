@@ -1,0 +1,52 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx astro sync
+      - run: npm run lint
+      - run: npx astro check
+      - name: Unit tests (DB integration tests skip without a local Supabase)
+        run: npm test
+      - run: npm run build
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      # Supabase CLI comes from devDependencies (version pinned by package-lock.json), same as local development.
+      - name: Start local Supabase (database, REST and gateway only)
+        run: npx supabase start -x gotrue,realtime,storage-api,imgproxy,studio,postgres-meta,mailpit,edge-runtime,logflare,vector,supavisor
+      - name: Write local Supabase credentials to .env
+        run: npm run env:local
+      - name: Unit and DB integration tests
+        run: npm test
+      - run: npm run build
+      - name: Run the access smoke test against the production preview
+        run: |
+          npm run preview -- --port 4321 &
+          for i in $(seq 1 60); do curl -sf -o /dev/null http://localhost:4321/ && break; sleep 1; done
+          BASE_URL=http://localhost:4321 npm run smoke
+      - if: always()
+        run: npx supabase stop --no-backup

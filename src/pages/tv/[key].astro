@@ -1,0 +1,38 @@
+---
+import NoAccess from "@/components/NoAccess.astro";
+import { TvSeatingView } from "@/components/tv/TvSeatingView";
+import Layout from "@/layouts/Layout.astro";
+import { accessFor, tvPath } from "@/lib/access";
+import { getDb } from "@/lib/db";
+import { getTvScreen } from "@/lib/tv-spotlight";
+
+// Read-only TV view (S-03, FR-008, NFR-003, NFR-006): the published seating on the venue plan, refreshed by polling,
+// with what the organizer puts over it (tv-spotlight: a question, an AI topic, a drawn guest). TvAccess carries no
+// keys, and only the TV state (names on tables, the spotlight text, no ids) and the event name reach the HTML, so
+// nothing here can leak the organizer link or working data. The middleware has already checked the key (the one in
+// this URL); this is the second, role-specific check.
+const access = accessFor(Astro.locals, "tv");
+const db = access ? getDb() : null;
+if (!access || !db) {
+  Astro.response.status = 404;
+}
+
+const view =
+  access && db
+    ? {
+        name: access.event.name,
+        apiBase: `/api${tvPath(Astro.params.key ?? "")}`,
+        initial: await getTvScreen(db),
+      }
+    : null;
+---
+
+{view ? (
+  <Layout title={`${view.name} — TV`}>
+    <main class="fixed inset-0 overflow-hidden bg-neutral-950 text-white">
+      <TvSeatingView client:load apiBase={view.apiBase} initial={view.initial} eventName={view.name} />
+    </main>
+  </Layout>
+) : (
+  <NoAccess />
+)}
