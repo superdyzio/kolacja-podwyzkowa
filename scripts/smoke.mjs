@@ -2084,10 +2084,14 @@ check(
 );
 
 // 20. AI conversation topics (S-08). Only the MOCK provider is ever asked here (no network, no cost): when the server
-// reports another provider, every generate check is skipped and one check fails. A guest gets at most 5 topics; a
+// reports another provider, every generate check is skipped and one check fails. A guest gets at most 15 topics; a
 // failed attempt (header x-ai-mock: fail, honoured only by the mock) does not count; the organizer has no personal
 // limit; nothing is stored, so no page shows a topic; the TV gets nothing. Guest access is on here.
 const aiApi = `${api}/ai-topics`;
+// The limits of src/lib/ai-topics/limits.ts (MAX_GUEST_TOPICS, MAX_EVENT_TOPICS).
+const GUEST_AI_LIMIT = 15;
+const EVENT_AI_LIMIT = 1000;
+const GUEST_AI_FULL = `${GUEST_AI_LIMIT} z ${GUEST_AI_LIMIT}`;
 const guestAiApi = (key) => `/api/g/${key}/ai-topics`;
 const AI_FAIL = { "x-ai-mock": "fail" };
 const keysOf = (value) =>
@@ -2102,18 +2106,18 @@ const isTopic = (topic, category) =>
   topic.text.trim().length >= 5;
 const isQuota = (quota, remaining) =>
   keysOf(quota) === "eventExhausted,limit,remaining,used" &&
-  quota.limit === 5 &&
+  quota.limit === GUEST_AI_LIMIT &&
   quota.remaining === remaining &&
-  quota.used === 5 - remaining &&
+  quota.used === GUEST_AI_LIMIT - remaining &&
   quota.eventExhausted === false;
 // The mock bills nothing: no tokens, an estimate of 0. lastFailureHint = why the latest finished attempt failed.
 const MOCK_FAILURE_HINT = "Dostawca AI niedostępny.";
 const usageText = (used, failed, lastFailureHint = null) =>
   JSON.stringify({
     used,
-    limit: 300,
+    limit: EVENT_AI_LIMIT,
     failed,
-    guestLimit: 5,
+    guestLimit: GUEST_AI_LIMIT,
     inputTokens: 0,
     outputTokens: 0,
     costNanoUsd: 0,
@@ -2138,7 +2142,7 @@ check(
   olaPageBeforeAi.status === 200 &&
     olaPageBeforeAi.body.includes("Temat od AI") &&
     olaPageBeforeAi.body.includes("GuestTopicView") &&
-    olaPageBeforeAi.body.includes("Zostało 5 z 5") &&
+    olaPageBeforeAi.body.includes(`Zostało ${GUEST_AI_FULL}`) &&
     olaPageBeforeAi.body.includes("Temat widzisz tylko Ty."),
   String(olaPageBeforeAi.status),
 );
@@ -2150,9 +2154,11 @@ check(
 );
 
 if (aiOnMock) {
-  // Ania: one topic per category and one from all; every answer carries her quota.
-  let aniaRemaining = 5;
-  for (const category of [...QUESTION_CATEGORIES, null]) {
+  // Ania: one topic per category and one from all, then more until one is left; every answer carries her quota.
+  let aniaRemaining = GUEST_AI_LIMIT;
+  const aniaCategories = [...QUESTION_CATEGORIES, null];
+  while (aniaCategories.length < GUEST_AI_LIMIT - 1) aniaCategories.push(null);
+  for (const category of aniaCategories) {
     const res = await request(guestAiApi(aniaNewKey), { method: "POST", json: { category } });
     aniaRemaining--;
     check(
@@ -2201,17 +2207,17 @@ if (aiOnMock) {
   );
   const aniaFifth = await request(guestAiApi(aniaNewKey), { method: "POST", json: { category: "refleksyjne" } });
   check(
-    "the failed attempt left the fifth topic available",
+    "the failed attempt left the last topic available",
     aniaFifth.status === 200 && isTopic(aniaFifth.data?.topic, "refleksyjne") && isQuota(aniaFifth.data.quota, 0),
     aniaFifth.body.slice(0, 200),
   );
   if (typeof aniaFifth.data?.topic?.text === "string") generatedTopics.push(aniaFifth.data.topic.text);
   const aniaSixth = await request(guestAiApi(aniaNewKey), { method: "POST", json: { category: null } });
   check(
-    "the sixth topic is refused with a clear Polish message",
+    "one topic over the limit is refused with a clear Polish message",
     aniaSixth.status === 429 &&
       keysOf(aniaSixth.data) === "error,quota" &&
-      aniaSixth.data.error.includes("5 z 5") &&
+      aniaSixth.data.error.includes(GUEST_AI_FULL) &&
       isQuota(aniaSixth.data.quota, 0),
     aniaSixth.body,
   );
@@ -2222,23 +2228,27 @@ if (aiOnMock) {
   });
   check(
     "at the limit even a failing attempt is refused before the AI is asked",
-    aniaSixthFailing.status === 429 && aniaSixthFailing.data?.error?.includes("5 z 5"),
+    aniaSixthFailing.status === 429 && aniaSixthFailing.data?.error?.includes(GUEST_AI_FULL),
     aniaSixthFailing.body,
   );
 
-  // Ola has her own 5.
+  // Ola has her own limit.
   const olaTopic = await request(guestAiApi(olaKey), { method: "POST", json: { category: "kontrowersyjne" } });
   check(
     "another guest has her own limit",
-    olaTopic.status === 200 && isTopic(olaTopic.data?.topic, "kontrowersyjne") && isQuota(olaTopic.data.quota, 4),
+    olaTopic.status === 200 &&
+      isTopic(olaTopic.data?.topic, "kontrowersyjne") &&
+      isQuota(olaTopic.data.quota, GUEST_AI_LIMIT - 1),
     olaTopic.body.slice(0, 200),
   );
   if (typeof olaTopic.data?.topic?.text === "string") generatedTopics.push(olaTopic.data.topic.text);
 
-  // The organizer: no personal limit; a failure carries a hint about the cause.
+  // The organizer: no personal limit (more than a guest gets); a failure carries a hint about the cause.
+  const organizerCount = GUEST_AI_LIMIT + 1;
+  const evening = GUEST_AI_LIMIT + 1 + organizerCount;
   let organizerTopics = 0;
   let organizerUsage = null;
-  for (let index = 0; index < 6; index++) {
+  for (let index = 0; index < organizerCount; index++) {
     const category = index % 2 === 0 ? "refleksyjne" : null;
     const res = await request(aiApi, { method: "POST", json: { category } });
     if (res.status === 200 && keysOf(res.data) === "topic,usage" && isTopic(res.data.topic, category)) {
@@ -2248,8 +2258,8 @@ if (aiOnMock) {
     organizerUsage = res.data?.usage;
   }
   check(
-    "the organizer generates more than 5 topics",
-    organizerTopics === 6 && JSON.stringify(organizerUsage) === usageText(12, 1),
+    `the organizer generates more than ${GUEST_AI_LIMIT} topics`,
+    organizerTopics === organizerCount && JSON.stringify(organizerUsage) === usageText(evening, 1),
     `${organizerTopics} ${JSON.stringify(organizerUsage)}`,
   );
   const organizerFail = await request(aiApi, { method: "POST", json: { category: null }, extraHeaders: AI_FAIL });
@@ -2260,7 +2270,7 @@ if (aiOnMock) {
       organizerFail.data.error.includes("nie zmniejszyła limitu") &&
       typeof organizerFail.data.hint === "string" &&
       organizerFail.data.hint.length > 0 &&
-      JSON.stringify(organizerFail.data.usage) === usageText(12, 2, MOCK_FAILURE_HINT),
+      JSON.stringify(organizerFail.data.usage) === usageText(evening, 2, MOCK_FAILURE_HINT),
     organizerFail.body,
   );
   const organizerExtra = await request(aiApi, { method: "POST", json: { category: null, guestId: ola.id } });
@@ -2268,7 +2278,8 @@ if (aiOnMock) {
   const aiBoardAfter = await request(aiApi);
   check(
     "AI board counts every success and every failure",
-    aiBoardAfter.status === 200 && JSON.stringify(aiBoardAfter.data?.usage) === usageText(12, 2, MOCK_FAILURE_HINT),
+    aiBoardAfter.status === 200 &&
+      JSON.stringify(aiBoardAfter.data?.usage) === usageText(evening, 2, MOCK_FAILURE_HINT),
     aiBoardAfter.body.slice(0, 200),
   );
 
@@ -2282,7 +2293,7 @@ if (aiOnMock) {
     const res = await request(path);
     check(
       `${label} shows no generated AI topic`,
-      res.status === 200 && generatedTopics.length === 12 && topicLeaks(res.body).length === 0,
+      res.status === 200 && generatedTopics.length === evening && topicLeaks(res.body).length === 0,
       `${res.status} ${topicLeaks(res.body).join(" | ")}`,
     );
   }
@@ -2290,8 +2301,8 @@ if (aiOnMock) {
   check(
     "the guest page renders the used-up quota",
     aniaPageAfterAi.status === 200 &&
-      aniaPageAfterAi.body.includes("Zostało 0 z 5") &&
-      aniaPageAfterAi.body.includes("5 z 5") &&
+      aniaPageAfterAi.body.includes(`Zostało 0 z ${GUEST_AI_LIMIT}`) &&
+      aniaPageAfterAi.body.includes(GUEST_AI_FULL) &&
       // Costs and the organizer's failure hints never reach a guest.
       !aniaPageAfterAi.body.includes("Koszt AI") &&
       !aniaPageAfterAi.body.includes(MOCK_FAILURE_HINT) &&
@@ -2307,7 +2318,7 @@ if (aiOnMock) {
       aiPage.body.includes('id="tematy-ai"') &&
       aiPage.body.includes("Temat od AI") &&
       aiPage.body.includes("Wygeneruj temat z AI") &&
-      aiPage.body.includes("Wykorzystano 12 z 300 · nieudane: 2") &&
+      aiPage.body.includes(`Wykorzystano ${evening} z ${EVENT_AI_LIMIT} · nieudane: 2`) &&
       aiPage.body.includes("atrapa AI") &&
       aiPage.body.includes("Ostatnia próba (np. gościa) się nie udała") &&
       aiPage.body.includes(MOCK_FAILURE_HINT) &&
@@ -2321,7 +2332,7 @@ if (aiOnMock) {
     "organizer shell links to the AI panel with its summary",
     shellWithAi.status === 200 &&
       shellWithAi.body.includes(`/o/${organizerKey}/pytania#tematy-ai`) &&
-      shellWithAi.body.includes("Tematy AI: 12 z 300 · atrapa AI · ostatnia próba nieudana") &&
+      shellWithAi.body.includes(`Tematy AI: ${evening} z ${EVENT_AI_LIMIT} · atrapa AI · ostatnia próba nieudana`) &&
       countOf(shellWithAi.body, "Wkrótce") === 0,
     String(shellWithAi.status),
   );
