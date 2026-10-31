@@ -6,7 +6,7 @@ import { GUEST_UNPUBLISHED_MESSAGE, GUEST_UNSEATED_MESSAGE, describeGuestSeat } 
 import { pluralPl } from "@/lib/guests/summary";
 import { fractionStyle, planImagePath } from "@/lib/venue/pin";
 import { cn } from "@/lib/utils";
-import type { GuestSeatDto, GuestStateDto } from "@/types";
+import type { GuestSeatDto, GuestStateDto, TablemateDto, TablemateRelation } from "@/types";
 
 interface Props {
   // Guest API base, e.g. "/api/g/<key>".
@@ -14,14 +14,42 @@ interface Props {
   initial: GuestStateDto;
 }
 
+const RELATION_LABELS: Record<TablemateRelation, string> = { side: "obok Ciebie", opposite: "naprzeciwko" };
+
 function tableKind(seat: GuestSeatDto): string {
   const shape = seat.shape === "round" ? "okrągły" : "prostokątny";
   return `Stolik ${shape} · ${seat.seatCount} ${pluralPl(seat.seatCount, "miejsce", "miejsca", "miejsc")}`;
 }
 
+// Who else sits at the guest's table in the published arrangement, in seat order, neighbours marked.
+function Tablemates({ tablemates }: { tablemates: TablemateDto[] }) {
+  return (
+    <div className="flex flex-col gap-2 rounded-2xl border p-5">
+      <h3 className="text-muted-foreground text-sm font-medium tracking-wide uppercase">Przy Twoim stoliku</h3>
+      {tablemates.length === 0 ? (
+        <p className="text-lg">Nikt więcej nie siedzi przy tym stoliku.</p>
+      ) : (
+        <ul className="flex flex-col divide-y">
+          {tablemates.map((mate) => (
+            <li key={mate.seat} className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2">
+              <span className={cn("text-lg break-words", mate.relation && "font-semibold")}>{mate.name}</span>
+              {mate.relation && (
+                <span className="rounded-full bg-amber-100 px-2 py-0.5 text-sm text-amber-900">
+                  {RELATION_LABELS[mate.relation]}
+                </span>
+              )}
+              <span className="text-muted-foreground ml-auto text-sm tabular-nums">miejsce {mate.seat}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 // The guest's phone view of their own seat (S-05, FR-013): name, table, room and seat in the latest PUBLISHED
-// arrangement, refreshed live; the plan with the table highlighted on request. When access is gone (switched off,
-// link revoked) it shows the no-access message and nothing else.
+// arrangement, refreshed live, with who else sits at that table (tablemates); the plan with the table highlighted on
+// request. When access is gone (switched off, link revoked) it shows the no-access message and nothing else.
 export function GuestSeatView({ apiBase, initial }: Props) {
   const { state, offline, changed } = useGuestState(apiBase, initial);
   const [showPlan, setShowPlan] = useState(false);
@@ -79,6 +107,8 @@ export function GuestSeatView({ apiBase, initial }: Props) {
           {state.status === "unpublished" ? GUEST_UNPUBLISHED_MESSAGE : GUEST_UNSEATED_MESSAGE}
         </p>
       )}
+
+      {seat && <Tablemates tablemates={seat.tablemates} />}
 
       <p className="sr-only" aria-live="polite">
         {describeGuestSeat(state)}

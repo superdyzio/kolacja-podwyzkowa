@@ -1,4 +1,5 @@
-import type { GuestGuessDto, GuestSeatDto, GuestStateDto } from "@/types";
+import { oppositeSeat, sideNeighbours } from "@/lib/venue/seats";
+import type { GuestGuessDto, GuestSeatDto, GuestStateDto, TableShape, TablemateDto } from "@/types";
 
 // What a guest's phone shows (S-05), pure: the polling token and the mapping of "latest snapshot + the guest's own
 // seat row in it" to the three states. The seat comes from the PUBLISHED snapshot (same truth as the TV); the name is
@@ -56,6 +57,27 @@ export function toGuestState({
     return { version, name, status: "unseated", seat: null, planVersion, guess: own };
   }
   return { version, name, status: "seated", seat, planVersion, guess: own };
+}
+
+// Everyone else at the guest's table in the same snapshot (rows = that table's snapshot seats, names as published),
+// in seat order, with the guest's neighbours marked by the seat contract: side neighbours, then the opposite seat of a
+// rectangular table. The guest's own seat is left out by seat number (a deleted guest's row has no id but still shows
+// on the TV, so it shows here too).
+export function toTablemates(
+  table: { shape: TableShape; seatCount: number },
+  ownSeat: number,
+  rows: readonly { seat: number; name: string }[],
+): TablemateDto[] {
+  const side = new Set(sideNeighbours(table.shape, table.seatCount, ownSeat));
+  const opposite = oppositeSeat(table.shape, table.seatCount, ownSeat);
+  return rows
+    .filter((row) => row.seat !== ownSeat)
+    .map((row) => ({
+      seat: row.seat,
+      name: row.name,
+      relation: side.has(row.seat) ? ("side" as const) : row.seat === opposite ? ("opposite" as const) : null,
+    }))
+    .sort((a, b) => a.seat - b.seat);
 }
 
 // One sentence for screen readers (announced when the seat changes).

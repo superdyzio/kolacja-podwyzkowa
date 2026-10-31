@@ -1085,18 +1085,30 @@ check(
     aniaState.cacheControl.includes("no-store"),
   `${aniaState.status} ${aniaState.body}`,
 );
+// Tablemates: the published names at the guest's OWN table (what the TV shows) are the only other guests a phone
+// gets. "Okno Smoke" is rectangular with 6 seats, so seat 1 (Ola) is opposite seat 4 (Ania).
+const stripTablemates = (data) => ({ ...data, seat: data?.seat ? { ...data.seat, tablemates: [] } : data?.seat });
 check(
-  "guest state leaks no keys, ids or other guests",
-  leaksFromGuest(aniaState.body, aniaKey).length === 0 && !aniaState.body.includes(GUEST_NAMES[2]),
+  "guest state leaks no keys or ids, and other guests only as tablemates",
+  leaksFromGuest(aniaState.body, aniaKey).length === 0 &&
+    !JSON.stringify(stripTablemates(aniaState.data)).includes(GUEST_NAMES[2]),
   leaksFromGuest(aniaState.body, aniaKey).join(" "),
+);
+check(
+  "guest state lists the tablemates with the neighbour relation",
+  JSON.stringify(aniaState.data?.seat?.tablemates) ===
+    JSON.stringify([{ seat: 1, name: GUEST_NAMES[2], relation: "opposite" }]),
+  JSON.stringify(aniaState.data?.seat?.tablemates),
 );
 const olaState = await request(guestStateApi(olaKey));
 check(
-  "another guest sees only her own seat",
+  "another guest sees her own seat and her tablemate",
   olaState.status === 200 &&
     olaState.data?.name === GUEST_NAMES[2] &&
     olaState.data.seat?.seat === 1 &&
-    !olaState.body.includes(GUEST_NAMES[0]),
+    JSON.stringify(olaState.data.seat.tablemates) ===
+      JSON.stringify([{ seat: 4, name: GUEST_NAMES[0], relation: "opposite" }]) &&
+    !JSON.stringify(stripTablemates(olaState.data)).includes(GUEST_NAMES[0]),
   `${olaState.status} ${olaState.body}`,
 );
 const aniaSame = await guestSince(aniaKey, aniaState.data?.version);
@@ -1125,6 +1137,34 @@ check(
     aniaAfterPublish.data?.seat?.seat === 2 &&
     aniaAfterPublish.data.version !== aniaState.data?.version,
   `${publishedForGuest.status} ${aniaAfterPublish.status} ${aniaAfterPublish.body}`,
+);
+check(
+  "after the move her tablemate sits right next to her",
+  JSON.stringify(aniaAfterPublish.data?.seat?.tablemates) ===
+    JSON.stringify([{ seat: 1, name: GUEST_NAMES[2], relation: "side" }]),
+  JSON.stringify(aniaAfterPublish.data?.seat?.tablemates),
+);
+
+// A guest left out of the published arrangement (absent) is nobody's tablemate; then back to both seated.
+const olaAway = await request(`${api}/guests/${ola.id}`, { method: "PATCH", json: { isAbsent: true } });
+const publishedWithoutOla = await request(`${seatingApi}/publish`, { method: "POST" });
+const aniaAlone = await request(guestStateApi(aniaKey));
+check(
+  "a guest who is not in the published arrangement never reaches another phone",
+  olaAway.status === 200 &&
+    publishedWithoutOla.status === 201 &&
+    aniaAlone.status === 200 &&
+    aniaAlone.data?.seat?.seat === 2 &&
+    aniaAlone.data.seat.tablemates.length === 0 &&
+    !aniaAlone.body.includes(GUEST_NAMES[2]),
+  `${olaAway.status} ${publishedWithoutOla.status} ${aniaAlone.body}`,
+);
+const olaHere = await request(`${api}/guests/${ola.id}`, { method: "PATCH", json: { isAbsent: false } });
+const publishedWithOla = await request(`${seatingApi}/publish`, { method: "POST" });
+check(
+  "the guest is back in the published arrangement",
+  olaHere.status === 200 && publishedWithOla.status === 201,
+  `${olaHere.status} ${publishedWithOla.status}`,
 );
 
 const planForGuest = await requestBytes(`/api/g/${aniaKey}/plan/image`);
@@ -1323,7 +1363,6 @@ const phonePageLeaks = [
   tvKey,
   olaKey,
   aniaKey,
-  GUEST_NAMES[2],
   "guestId",
   "tableId",
   "snapshotId",
@@ -1332,11 +1371,21 @@ const phonePageLeaks = [
   "&quot;id&quot;",
   '"id"',
 ].filter((secret) => phonePage.body.includes(secret));
-check("guest page leaks no keys, ids or other guests", phonePageLeaks.length === 0, phonePageLeaks.join(" "));
+check("guest page leaks no keys or ids", phonePageLeaks.length === 0, phonePageLeaks.join(" "));
+check(
+  "guest page shows who sits at her table, the neighbour marked",
+  phonePage.body.includes("Przy Twoim stoliku") &&
+    phonePage.body.includes(GUEST_NAMES[2]) &&
+    phonePage.body.includes("obok Ciebie"),
+  String(phonePage.status),
+);
 const olaPage = await request(`/g/${olaKey}`);
 check(
-  "another guest's page shows only her own name",
-  olaPage.status === 200 && olaPage.body.includes(GUEST_NAMES[2]) && !olaPage.body.includes(GUEST_NAMES[0]),
+  "another guest's page shows her own name and her tablemate",
+  olaPage.status === 200 &&
+    olaPage.body.includes(GUEST_NAMES[2]) &&
+    olaPage.body.includes("Przy Twoim stoliku") &&
+    olaPage.body.includes(GUEST_NAMES[0]),
   String(olaPage.status),
 );
 
@@ -1454,8 +1503,16 @@ check(
   `${olaGuessState.body} ${aniaAfterOla.status}`,
 );
 const aniaStateNow = await request(guestStateApi(aniaNewKey));
-const aniaLeaks = leaksIn(withoutVersions(aniaStateNow.data), [OLA_GUESS, CORRECT], [...SECRET_WORDS, GUEST_NAMES[2]]);
-const olaLeaks = leaksIn(withoutVersions(olaGuessState.data), [ANIA_GUESS], [...SECRET_WORDS, GUEST_NAMES[0]]);
+const aniaLeaks = leaksIn(
+  withoutVersions(stripTablemates(aniaStateNow.data)),
+  [OLA_GUESS, CORRECT],
+  [...SECRET_WORDS, GUEST_NAMES[2]],
+);
+const olaLeaks = leaksIn(
+  withoutVersions(stripTablemates(olaGuessState.data)),
+  [ANIA_GUESS],
+  [...SECRET_WORDS, GUEST_NAMES[0]],
+);
 check(
   "a guest's state shows nobody else's guess",
   aniaStateNow.data?.guess?.amountGrosze === ANIA_GUESS && aniaLeaks.length === 0 && olaLeaks.length === 0,
@@ -1623,17 +1680,7 @@ const phoneWithGuess = await request(`/g/${aniaNewKey}`);
 const phoneGuessLeaks = leaksIn(
   phoneWithGuess.body,
   [],
-  [
-    `7${NBSP}777,77`,
-    "7 777,77",
-    "7777,77",
-    `5${NBSP}000,00`,
-    "5 000,00",
-    "correctAmount",
-    "ranking",
-    "distanceGrosze",
-    GUEST_NAMES[2],
-  ],
+  [`7${NBSP}777,77`, "7 777,77", "7777,77", `5${NBSP}000,00`, "5 000,00", "correctAmount", "ranking", "distanceGrosze"],
 );
 check(
   "guest page shows her own guess in the guess section",
@@ -1654,8 +1701,7 @@ check(
   olaPhone.status === 200 &&
     olaPhone.body.includes(`7${NBSP}777,77${NBSP}zł`) &&
     !olaPhone.body.includes("2 222,23") &&
-    !olaPhone.body.includes(`2${NBSP}222,23`) &&
-    !olaPhone.body.includes(GUEST_NAMES[0]),
+    !olaPhone.body.includes(`2${NBSP}222,23`),
   String(olaPhone.status),
 );
 

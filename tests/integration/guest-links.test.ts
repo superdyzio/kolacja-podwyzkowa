@@ -9,7 +9,7 @@ import {
   revokeGuestKey,
   setGuestAccess,
 } from "@/lib/guest-links";
-import { updateGuest } from "@/lib/guests";
+import { deleteGuest, updateGuest } from "@/lib/guests";
 import { publishSeating, seatGuest } from "@/lib/seating";
 import type { DbClient } from "@/lib/supabase-client";
 import {
@@ -150,6 +150,44 @@ describe.skipIf(!hasLocalDb)("guest link services", () => {
     // The next publish does.
     await publish();
     expect((await getGuestState(db, { id: g1, displayName: n1 })).seat?.seat).toBe(5);
+  });
+
+  it("lists who else sits at the guest's table in the same published snapshot, neighbours marked", async () => {
+    // T1 rectangular 6 (side A 1..3, side B 4..6), T2 round 4; G1..G4.
+    seating = await createTestSeating(
+      db,
+      testTag(),
+      [
+        { seatCount: 6, shape: "rectangular" },
+        { seatCount: 4, shape: "round" },
+      ],
+      4,
+    );
+    const [t1, t2] = seating.tableIds;
+    const [g1, g2, g3, g4] = seating.guestIds;
+    const [n1, n2, n3, n4] = seating.guestNames;
+    await seatGuest(db, g1, t1, 2);
+    await seatGuest(db, g2, t1, 1);
+    await seatGuest(db, g3, t1, 5);
+    await seatGuest(db, g4, t2, 1);
+    await publish();
+
+    const expected = [
+      { seat: 1, name: n2, relation: "side" },
+      { seat: 5, name: n3, relation: "opposite" },
+    ];
+    expect((await getGuestState(db, { id: g1, displayName: n1 })).seat?.tablemates).toEqual(expected);
+    expect((await getGuestState(db, { id: g3, displayName: n3 })).seat?.tablemates).toEqual([
+      { seat: 1, name: n2, relation: null },
+      { seat: 2, name: n1, relation: "opposite" },
+    ]);
+    // Another table's guests never show up.
+    expect((await getGuestState(db, { id: g4, displayName: n4 })).seat?.tablemates).toEqual([]);
+
+    // An unpublished move changes nothing; a guest deleted after the publish still shows on the TV, so here too.
+    await seatGuest(db, g3, t1, 6);
+    await deleteGuest(db, g2);
+    expect((await getGuestState(db, { id: g1, displayName: n1 })).seat?.tablemates).toEqual(expected);
   });
 
   it("leaves absent guests out (they are not in the snapshot)", async () => {

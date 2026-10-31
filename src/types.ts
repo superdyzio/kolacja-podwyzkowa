@@ -210,8 +210,21 @@ export interface GuestLinksDto {
   guests: GuestLinkDto[];
 }
 
+// How a tablemate sits relative to the guest (seats.ts): side = right next to them, opposite = across a rectangular
+// table; null = elsewhere at the same table.
+export type TablemateRelation = "side" | "opposite";
+
+// Someone else at the guest's table in the same published snapshot: the seat and the name as published (exactly what
+// the TV shows for that table). No ids, keys or absence flags.
+export interface TablemateDto {
+  seat: number;
+  name: string;
+  relation: TablemateRelation | null;
+}
+
 // The guest's own seat in the latest PUBLISHED arrangement (from the snapshot, like the TV): table name, room name,
-// seat number, and the table's shape, seat count and pin (x, y fractions of the plan image). No ids.
+// seat number, and the table's shape, seat count and pin (x, y fractions of the plan image). No ids. tablemates:
+// everyone else at that table in the same snapshot, in seat order.
 export interface GuestSeatDto {
   table: string;
   room: string;
@@ -220,6 +233,7 @@ export interface GuestSeatDto {
   seatCount: number;
   x: number;
   y: number;
+  tablemates: TablemateDto[];
 }
 
 // unpublished: nothing published yet; unseated: no seat in the latest published arrangement (absent or not seated
@@ -228,7 +242,8 @@ export type GuestSeatStatus = "unpublished" | "unseated" | "seated";
 
 // What a guest's phone shows (S-05) and polls for. version is the opaque polling token; name is the guest's current
 // display name; planVersion is the plan image version (null before an upload); guess (S-06) is the intake flag and
-// the guest's OWN guess. Nothing about other guests, the correct amount or the ranking.
+// the guest's OWN guess. Nothing about other guests beyond the published names at their own table (seat.tablemates),
+// nothing about the correct amount or the ranking.
 export interface GuestStateDto {
   version: string;
   name: string;

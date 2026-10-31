@@ -6,10 +6,65 @@ import {
   describeGuestSeat,
   guestStateVersion,
   toGuestState,
+  toTablemates,
 } from "./state";
 
-const SEAT: GuestSeatDto = { table: "Okno", room: "Sala A", seat: 3, shape: "round", seatCount: 8, x: 0.25, y: 0.5 };
+const SEAT: GuestSeatDto = {
+  table: "Okno",
+  room: "Sala A",
+  seat: 3,
+  shape: "round",
+  seatCount: 8,
+  x: 0.25,
+  y: 0.5,
+  tablemates: [{ seat: 4, name: "Ola", relation: "side" }],
+};
 const OPEN: GuestGuessDto = { intakeOpen: true, amountGrosze: null };
+
+describe("toTablemates", () => {
+  const rows = (...seats: number[]) => seats.map((seat) => ({ seat, name: `Gość ${String(seat)}` }));
+
+  it("marks the side neighbours of a round table, with wrap-around, in seat order", () => {
+    expect(toTablemates({ shape: "round", seatCount: 8 }, 1, rows(5, 2, 8, 4))).toEqual([
+      { seat: 2, name: "Gość 2", relation: "side" },
+      { seat: 4, name: "Gość 4", relation: null },
+      { seat: 5, name: "Gość 5", relation: null },
+      { seat: 8, name: "Gość 8", relation: "side" },
+    ]);
+  });
+
+  it("marks side neighbours on the same side and the opposite seat of a rectangular table", () => {
+    // 6 seats: side A = 1..3, side B = 4..6; seat 2 sits next to 1 and 3, opposite 5.
+    expect(toTablemates({ shape: "rectangular", seatCount: 6 }, 2, rows(1, 3, 4, 5, 6))).toEqual([
+      { seat: 1, name: "Gość 1", relation: "side" },
+      { seat: 3, name: "Gość 3", relation: "side" },
+      { seat: 4, name: "Gość 4", relation: null },
+      { seat: 5, name: "Gość 5", relation: "opposite" },
+      { seat: 6, name: "Gość 6", relation: null },
+    ]);
+    // No wrap-around between the sides: seat 4 (start of B) is opposite 1, next to 5 only.
+    expect(toTablemates({ shape: "rectangular", seatCount: 6 }, 4, rows(1, 3, 5, 6))).toEqual([
+      { seat: 1, name: "Gość 1", relation: "opposite" },
+      { seat: 3, name: "Gość 3", relation: null },
+      { seat: 5, name: "Gość 5", relation: "side" },
+      { seat: 6, name: "Gość 6", relation: null },
+    ]);
+  });
+
+  it("leaves out the guest's own seat and copes with an empty table", () => {
+    expect(toTablemates({ shape: "round", seatCount: 4 }, 2, rows(2))).toEqual([]);
+    expect(toTablemates({ shape: "round", seatCount: 4 }, 2, [])).toEqual([]);
+  });
+
+  it("carries only seat, name and relation", () => {
+    const leaky = [{ seat: 1, name: "Ola", guestId: 7, isAbsent: false }];
+    expect(Object.keys(toTablemates({ shape: "round", seatCount: 4 }, 2, leaky)[0] ?? {})).toEqual([
+      "seat",
+      "name",
+      "relation",
+    ]);
+  });
+});
 
 describe("guestStateVersion", () => {
   it("is stable for the same inputs", () => {

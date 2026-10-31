@@ -5,14 +5,15 @@ import { getPublishedVersion } from "@/lib/seating/service";
 import type { DbClient } from "@/lib/supabase-client";
 import { isTableShape } from "@/lib/venue/rules";
 import type { GuestLinksDto, GuestSeatDto, GuestStateDto } from "@/types";
-import { guestStateVersion, toGuestState } from "./state";
+import { guestStateVersion, toGuestState, toTablemates } from "./state";
 
 // Personal guest links and the guest's own view (S-05, PRD FR-011..FR-013) for the singleton event. Functions take the
 // client as a parameter (no `astro:*`), so they are tested against the local DB. Supabase errors always throw;
 // expected outcomes come back as status unions.
 //
 // Keys live in guest.access_key (the DB default gives every guest one); revoking writes a fresh key, so the old link
-// stops working at once. The guest side reads only what the guest may see: their own seat in the latest snapshot.
+// stops working at once. The guest side reads only what the guest may see: their own seat in the latest snapshot and
+// the published names at that table (what the TV shows anyway).
 
 const UNIQUE_VIOLATION = "23505";
 
@@ -79,11 +80,12 @@ export async function revokeGuestKey(db: DbClient, guestId: number): Promise<Rev
   return fail("unieważnić linku", "powtórzony klucz");
 }
 
-// The guest's own seat in snapshot `snapshotId` (one row, its snapshot table embedded), or null.
+// The guest's own seat in snapshot `snapshotId` (one row, its snapshot table embedded), or null; then the other seats
+// of that snapshot table (names as published, the same the TV shows) as the tablemates.
 async function guestSeat(db: DbClient, snapshotId: number, guestId: number): Promise<GuestSeatDto | null> {
   const { data, error } = await db
     .from("seating_snapshot_seat")
-    .select("seat, seating_snapshot_table(name, room_name, seat_count, shape, pos_x, pos_y)")
+    .select("seat, snapshot_table_id, seating_snapshot_table(name, room_name, seat_count, shape, pos_x, pos_y)")
     .eq("snapshot_id", snapshotId)
     .eq("guest_id", guestId)
     .maybeSingle();
@@ -97,14 +99,28 @@ async function guestSeat(db: DbClient, snapshotId: number, guestId: number): Pro
   if (!isTableShape(table.shape)) {
     fail("odczytać miejsca", `nieznany typ stolika ${table.shape}`);
   }
+  const others = await db
+    .from("seating_snapshot_seat")
+    .select("seat, guest_name")
+    .eq("snapshot_table_id", data.snapshot_table_id)
+    .neq("seat", data.seat);
+  if (others.error) {
+    fail("odczytać stolika", others.error.message);
+  }
+  const shape = table.shape;
   return {
     table: table.name,
     room: table.room_name,
     seat: data.seat,
-    shape: table.shape,
+    shape,
     seatCount: table.seat_count,
     x: table.pos_x,
     y: table.pos_y,
+    tablemates: toTablemates(
+      { shape, seatCount: table.seat_count },
+      data.seat,
+      others.data.map((row) => ({ seat: row.seat, name: row.guest_name })),
+    ),
   };
 }
 

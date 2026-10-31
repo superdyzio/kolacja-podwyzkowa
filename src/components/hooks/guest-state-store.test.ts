@@ -14,6 +14,7 @@ const SEAT: NonNullable<GuestStateDto["seat"]> = {
   seatCount: 6,
   x: 0.5,
   y: 0.5,
+  tablemates: [{ seat: 2, name: "Ola", relation: "side" }],
 };
 
 function state(overrides: Partial<GuestStateDto> = {}): GuestStateDto {
@@ -91,10 +92,17 @@ describe("guest state store", () => {
     expect(listener).toHaveBeenCalled();
     expect(fetchMock.mock.calls[0]?.[0]).toMatch(/since=v1$/);
 
+    // A republish that only changes who else sits at the table is not a new seat.
+    const newTablemates = state({ version: "v2b", seat: { ...SEAT, tablemates: [] } });
+    fetchMock.mockResolvedValueOnce(answer(200, newTablemates));
+    await vi.advanceTimersByTimeAsync(2_500);
+    expect(store.getSnapshot().state?.seat?.tablemates).toEqual([]);
+    expect(store.getSnapshot().seatChanged).toBe(false);
+
     const moved = state({ version: "v3", seat: { ...SEAT, seat: 4 } });
     fetchMock.mockResolvedValueOnce(answer(200, moved));
     await vi.advanceTimersByTimeAsync(2_500);
-    expect(fetchMock.mock.calls[1]?.[0]).toMatch(/since=v2$/);
+    expect(fetchMock.mock.calls[2]?.[0]).toMatch(/since=v2b$/);
     expect(store.getSnapshot().seatChanged).toBe(true);
     await vi.advanceTimersByTimeAsync(10_000);
     expect(store.getSnapshot().seatChanged).toBe(false);
