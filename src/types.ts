@@ -154,6 +154,27 @@ export interface TvSeatingDto {
   tables: TvTableDto[];
 }
 
+// What the organizer put on the TV over the seating (tv-spotlight): a drawn question, an AI topic or a randomly drawn
+// present guest's name. shownAt (ISO) is new for every show, so the TV notices a fresh draw. No ids.
+export type TvSpotlightKind = "question" | "topic" | "person";
+
+export interface TvSpotlightDto {
+  kind: TvSpotlightKind;
+  text: string;
+  shownAt: string;
+}
+
+// The organizer's TV controls: every answer of /api/o/<key>/tv-spotlight[/person] (null = the TV shows the plan).
+export interface TvSpotlightAnswerDto {
+  spotlight: TvSpotlightDto | null;
+}
+
+// Everything the TV shows: the published seating plus the spotlight. version is the opaque polling token
+// ("<snapshot id>.<plan version>.<spotlight id>"), compared for equality only.
+export interface TvScreenDto extends TvSeatingDto {
+  spotlight: TvSpotlightDto | null;
+}
+
 // The organizer's view of the latest published arrangement (S-09 offline readout): names on seats with the room, no
 // ids. seats: seated guests only, in seat order.
 export interface PublishedTableDto {

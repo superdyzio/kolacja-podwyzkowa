@@ -3,13 +3,14 @@ import { useTvSeating } from "@/components/hooks/useTvSeating";
 import { containBox, layoutCards, type Size } from "@/lib/seating/tv-layout";
 import { cn } from "@/lib/utils";
 import { planImagePath } from "@/lib/venue/pin";
-import type { TvSeatingDto } from "@/types";
+import type { TvScreenDto } from "@/types";
 import { TableCard } from "./TableCard";
+import { TvSpotlight } from "./TvSpotlight";
 
 interface Props {
   // TV API base, e.g. "/api/tv/<key>".
   apiBase: string;
-  initial: TvSeatingDto;
+  initial: TvScreenDto;
   eventName: string;
 }
 
@@ -42,9 +43,13 @@ function cardId(index: number, name: string): string {
 }
 
 // The read-only TV screen (FR-008, NFR-003, NFR-006): the whole plan fitted to the screen, a card with the seated
-// names next to each table pin, refreshed by polling. Shows only the PUBLISHED arrangement.
+// names next to each table pin, refreshed by polling. Shows only the PUBLISHED arrangement — and, on its own layer
+// above it (also before the first publish), what the organizer put on the TV (tv-spotlight).
 export function TvSeatingView({ apiBase, initial, eventName }: Props) {
   const { tv, offline, updates } = useTvSeating(apiBase, initial);
+  // A drawn guest spins only when the draw happens while this page runs, never for what was on the TV at load.
+  const [loadedShownAt] = useState(initial.spotlight?.shownAt ?? null);
+  const seatedNames = useMemo(() => tv.tables.flatMap((table) => table.seats.map((seat) => seat.name)), [tv.tables]);
   const viewportKey = useSyncExternalStore(subscribeToResize, windowSize, noWindow);
   const viewport = useMemo(() => parseSize(viewportKey), [viewportKey]);
   const [natural, setNatural] = useState<Size | null>(null);
@@ -145,10 +150,18 @@ export function TvSeatingView({ apiBase, initial, eventName }: Props) {
           })}
         </>
       )}
+      {tv.spotlight && (
+        <TvSpotlight
+          key={tv.spotlight.shownAt}
+          spotlight={tv.spotlight}
+          pool={seatedNames}
+          spin={tv.spotlight.shownAt !== loadedShownAt}
+        />
+      )}
       {offline && (
         <p
           role="status"
-          className="absolute right-[1.5vh] bottom-[1.5vh] rounded-[0.8vh] bg-black/75 px-[1.2vh] py-[0.6vh] text-[1.8vh] text-neutral-200"
+          className="absolute right-[1.5vh] bottom-[1.5vh] z-30 rounded-[0.8vh] bg-black/75 px-[1.2vh] py-[0.6vh] text-[1.8vh] text-neutral-200"
         >
           Brak połączenia — ponawiam…
         </p>

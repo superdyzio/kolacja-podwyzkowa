@@ -2358,6 +2358,176 @@ for (const [label, key] of [
 const tvAi = await request(`/api/tv/${tvKey}/ai-topics`, { method: "POST", json: { category: null } });
 check("the TV has no AI topic route", tvAi.status === 404 && topicLeaks(tvAi.body).length === 0, String(tvAi.status));
 
+// 21. TV screen (tv-spotlight): the organizer puts a drawn question, an AI topic or a randomly drawn PRESENT guest on
+// the TV over the seating. The TV gets it only through its seating poll (no new TV route); guests never. State here:
+// Ania Smoke and Ola Smoke, both present and seated in the latest snapshot; guest access on.
+const tvSpotApi = `${api}/tv-spotlight`;
+const SPOT_QUESTION = "Jakie były Twoje najlepsze wakacje? Smoke";
+const SPOT_TOPIC = "Najdziwniejsze jedzenie z podróży Smoke";
+const spotNone = await request(tvSpotApi);
+check(
+  "the TV screen starts with the plan",
+  spotNone.status === 200 &&
+    spotNone.body === JSON.stringify({ spotlight: null }) &&
+    spotNone.cacheControl.includes("no-store"),
+  `${spotNone.status} ${spotNone.body}`,
+);
+const tvPlain = await request(tvSeatingApi);
+const guestBeforeSpot = await request(guestStateApi(aniaNewKey));
+check(
+  "the TV poll carries an empty spotlight",
+  tvPlain.status === 200 && tvPlain.data?.spotlight === null && tvPlain.data.publishedAt !== null,
+  `${tvPlain.status} ${tvPlain.data?.spotlight}`,
+);
+for (const json of [
+  { kind: "person", text: GUEST_NAMES[0] },
+  { kind: "question" },
+  { kind: "question", text: "Pytanie", extra: 1 },
+  { kind: "question", text: 5 },
+]) {
+  const res = await request(tvSpotApi, { method: "PUT", json });
+  check(
+    `the TV screen refuses ${JSON.stringify(json)}`,
+    res.status === 400 && errorOf(res) === "Nieprawidłowe dane.",
+    `${res.status} ${res.body}`,
+  );
+}
+for (const text of [" \n ", "a".repeat(301)]) {
+  const res = await request(tvSpotApi, { method: "PUT", json: { kind: "question", text } });
+  check(
+    `the TV screen refuses a text of ${text.length} characters`,
+    res.status === 400 && errorOf(res) === "Tekst musi mieć od 1 do 300 znaków.",
+    `${res.status} ${res.body}`,
+  );
+}
+
+const spotQuestion = await request(tvSpotApi, {
+  method: "PUT",
+  json: { kind: "question", text: `  ${SPOT_QUESTION} ` },
+});
+check(
+  "the organizer shows a question on the TV",
+  spotQuestion.status === 200 &&
+    spotQuestion.data?.spotlight?.kind === "question" &&
+    spotQuestion.data.spotlight.text === SPOT_QUESTION &&
+    keysOf(spotQuestion.data.spotlight) === "kind,shownAt,text",
+  `${spotQuestion.status} ${spotQuestion.body}`,
+);
+const tvWithQuestion = await tvSince(tvPlain.data?.version);
+check(
+  "the TV poll gets the question at once, the seating unchanged and no ids",
+  tvWithQuestion.status === 200 &&
+    tvWithQuestion.data?.spotlight?.kind === "question" &&
+    tvWithQuestion.data.spotlight.text === SPOT_QUESTION &&
+    JSON.stringify(tvNames(tvWithQuestion)) === JSON.stringify(tvNames(tvPlain)) &&
+    leaksFromTv(tvWithQuestion.body).length === 0,
+  `${tvWithQuestion.status} ${JSON.stringify(tvWithQuestion.data?.spotlight)}`,
+);
+const tvQuestionSame = await tvSince(tvWithQuestion.data?.version);
+check("the TV poll is 204 while the question stays", tvQuestionSame.status === 204, String(tvQuestionSame.status));
+const tvPageWithQuestion = await request(`/tv/${tvKey}`);
+check(
+  "the TV page renders the question over the plan",
+  tvPageWithQuestion.status === 200 &&
+    tvPageWithQuestion.body.includes(SPOT_QUESTION) &&
+    tvPageWithQuestion.body.includes("Pytanie do rozmowy") &&
+    !tvPageWithQuestion.body.includes(organizerKey),
+  String(tvPageWithQuestion.status),
+);
+const guestAfterSpot = await guestSince(aniaNewKey, guestBeforeSpot.data?.version);
+const guestPageWithSpot = await request(`/g/${aniaNewKey}`);
+check(
+  "guests never get the TV screen or its controls",
+  guestBeforeSpot.status === 200 &&
+    !guestBeforeSpot.body.includes("spotlight") &&
+    guestAfterSpot.status === 204 &&
+    guestPageWithSpot.status === 200 &&
+    !guestPageWithSpot.body.includes(SPOT_QUESTION) &&
+    !guestPageWithSpot.body.includes("Pokaż na TV") &&
+    !guestPageWithSpot.body.includes("Na ekranie TV") &&
+    !guestPageWithSpot.body.includes("tv-spotlight"),
+  `${guestAfterSpot.status} ${guestPageWithSpot.status}`,
+);
+const questionsWithSpot = await request(`/o/${organizerKey}/pytania`);
+check(
+  "the questions page has the TV controls and says what the TV shows",
+  questionsWithSpot.status === 200 &&
+    questionsWithSpot.body.includes("Na ekranie TV") &&
+    questionsWithSpot.body.includes("Wylosuj osobę na TV") &&
+    questionsWithSpot.body.includes(`Na TV jest pytanie: „${SPOT_QUESTION}”`),
+  String(questionsWithSpot.status),
+);
+
+const spotTopic = await request(tvSpotApi, { method: "PUT", json: { kind: "topic", text: SPOT_TOPIC } });
+const tvWithTopic = await tvSince(tvWithQuestion.data?.version);
+check(
+  "an AI topic replaces the question on the TV",
+  spotTopic.status === 200 &&
+    spotTopic.data?.spotlight?.kind === "topic" &&
+    tvWithTopic.status === 200 &&
+    tvWithTopic.data?.spotlight?.kind === "topic" &&
+    tvWithTopic.data.spotlight.text === SPOT_TOPIC,
+  `${spotTopic.status} ${tvWithTopic.status} ${JSON.stringify(tvWithTopic.data?.spotlight)}`,
+);
+
+const PRESENT_NAMES = [GUEST_NAMES[0], GUEST_NAMES[2]];
+const spotPerson = await request(`${tvSpotApi}/person`, { method: "POST" });
+const spotPersonAgain = await request(`${tvSpotApi}/person`, { method: "POST" });
+const tvWithPerson = await tvSince(tvWithTopic.data?.version);
+check(
+  "drawing a person puts a present guest on the TV, never the same one twice in a row",
+  spotPerson.status === 200 &&
+    spotPerson.data?.spotlight?.kind === "person" &&
+    PRESENT_NAMES.includes(spotPerson.data.spotlight.text) &&
+    spotPersonAgain.status === 200 &&
+    PRESENT_NAMES.includes(spotPersonAgain.data?.spotlight?.text) &&
+    spotPersonAgain.data.spotlight.text !== spotPerson.data.spotlight.text &&
+    tvWithPerson.status === 200 &&
+    tvWithPerson.data?.spotlight?.kind === "person" &&
+    tvWithPerson.data.spotlight.text === spotPersonAgain.data.spotlight.text,
+  `${spotPerson.body} ${spotPersonAgain.body} ${tvWithPerson.status}`,
+);
+
+for (const [label, key] of [
+  ["<tv>", tvKey],
+  ["<guest>", aniaNewKey],
+]) {
+  for (const [method, path, json] of [
+    ["GET", ""],
+    ["PUT", "", { kind: "question", text: "Pytanie" }],
+    ["DELETE", ""],
+    ["POST", "/person"],
+  ]) {
+    const res = await request(`/api/o/${key}/tv-spotlight${path}`, { method, json });
+    check(
+      `TV screen API with a wrong key: ${method} /api/o/${label}/tv-spotlight${path}`,
+      noAccessJson(res),
+      String(res.status),
+    );
+  }
+}
+const tvSpotRoute = await request(`/api/tv/${tvKey}/tv-spotlight`);
+check("the TV has no spotlight route of its own", tvSpotRoute.status === 404, String(tvSpotRoute.status));
+const spotStill = await request(tvSpotApi);
+check(
+  "refused requests change nothing on the TV",
+  spotStill.data?.spotlight?.text === spotPersonAgain.data?.spotlight?.text,
+  spotStill.body,
+);
+
+const spotHidden = await request(tvSpotApi, { method: "DELETE" });
+const tvAfterHide = await tvSince(tvWithPerson.data?.version);
+check(
+  "hiding brings the plan back on the TV",
+  spotHidden.status === 200 &&
+    spotHidden.body === JSON.stringify({ spotlight: null }) &&
+    tvAfterHide.status === 200 &&
+    tvAfterHide.data?.spotlight === null &&
+    tvAfterHide.data.version === tvPlain.data?.version &&
+    JSON.stringify(tvNames(tvAfterHide)) === JSON.stringify(tvNames(tvPlain)),
+  `${spotHidden.status} ${tvAfterHide.status} ${tvAfterHide.data?.version}`,
+);
+
 const accessOff = await request(linksApi, { method: "PATCH", json: { enabled: false } });
 const offAgainPage = await request(`/g/${aniaNewKey}`);
 const offAgainState = await request(guestStateApi(aniaNewKey));
@@ -2377,7 +2547,7 @@ check("guest question draw with access off: JSON 404", noAccessJson(drawWithAcce
 const aiWithAccessOff = await request(guestAiApi(aniaNewKey), { method: "POST", json: { category: null } });
 check("guest AI topic with access off: JSON 404", noAccessJson(aiWithAccessOff), aiWithAccessOff.body);
 
-// 21. Offline readout (S-09). Every organizer page except the print sheet carries the offline fallback (its own island
+// 22. Offline readout (S-09). Every organizer page except the print sheet carries the offline fallback (its own island
 // or OfflineSync), rendered online: the server HTML never contains the offline notice.
 const OFFLINE_NOTICE_TEXTS = ["Brak połączenia z serwerem", "Pokaż ostatni zapisany stan", "Ostatni zapisany stan"];
 for (const [path, island] of [
@@ -2444,7 +2614,7 @@ check(
   `${workerResponse.status} ${workerType}`,
 );
 
-// 22. Organizer reset („Reset danych”). Organizer only; one POST resets the chosen parts (implied ones added) in one
+// 23. Organizer reset („Reset danych”). Organizer only; one POST resets the chosen parts (implied ones added) in one
 // transaction and answers with the Polish summary. Here: a subset first (guesses + AI usage), then the guest links,
 // then everything — the organizer and TV links keep working, the event is empty except the 90 starter questions.
 const resetApi = `${api}/reset`;
@@ -2541,6 +2711,7 @@ check(
   previewAfterRefusals.body,
 );
 
+const spotBeforeReset = await request(tvSpotApi, { method: "PUT", json: { kind: "question", text: SPOT_QUESTION } });
 const subsetReset = await request(resetApi, { method: "POST", json: { parts: ["aiUsage", "guesses"] } });
 const guessesAfterSubset = await request(guessesApi);
 const aiAfterSubset = await request(aiApi);
@@ -2560,6 +2731,17 @@ check(
     guestsAfterSubset.data?.guests?.length === previewCounts.guests &&
     venueAfterSubset.data?.tables?.length === previewCounts.tables,
   `${subsetReset.status} ${subsetReset.body}`,
+);
+
+const spotAfterSubset = await request(tvSpotApi);
+const tvAfterSubset = await request(tvSeatingApi);
+check(
+  "any reset takes what was on the TV down",
+  spotBeforeReset.status === 200 &&
+    spotBeforeReset.data?.spotlight?.text === SPOT_QUESTION &&
+    spotAfterSubset.body === JSON.stringify({ spotlight: null }) &&
+    tvAfterSubset.data?.spotlight === null,
+  `${spotBeforeReset.status} ${spotAfterSubset.body}`,
 );
 
 await request(linksApi, { method: "PATCH", json: { enabled: true } });
@@ -2615,6 +2797,14 @@ check(
     guessesAfterReset.data.correctAmountGrosze === null &&
     linksAfterFullReset.data?.enabled === false,
   `${guestsAfterReset.body} ${venueAfterReset.body} ${tvAfterReset.body}`,
+);
+const personAfterReset = await request(`${tvSpotApi}/person`, { method: "POST" });
+check(
+  "after resetting everything nobody can be drawn for the TV",
+  personAfterReset.status === 409 &&
+    errorOf(personAfterReset) === "Nie ma kogo losować — brak obecnych gości na liście." &&
+    (await request(tvSpotApi)).body === JSON.stringify({ spotlight: null }),
+  `${personAfterReset.status} ${personAfterReset.body}`,
 );
 check(
   "after resetting everything: exactly the 90 starter questions",

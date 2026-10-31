@@ -1,6 +1,7 @@
 import { EVENT_ID } from "@/lib/event";
 import { starterQuestionRows } from "@/lib/questions/seed";
 import type { DbClient } from "@/lib/supabase-client";
+import { hideTvSpotlight } from "@/lib/tv-spotlight/service";
 import type { ResetPart, ResetPreviewDto, ResetResultDto } from "@/types";
 import { ResetCountsSchema, ResetEventAnswerSchema } from "./api";
 import { expandResetParts } from "./parts";
@@ -11,7 +12,8 @@ import { describeResetResult } from "./summary";
 // against the local DB. Supabase errors always throw; an event that does not exist comes back as null / not-found.
 //
 // The whole reset is ONE call of reset_event: one transaction, the starter questions passed in as data, so either
-// every chosen part is reset or nothing is.
+// every chosen part is reset or nothing is. After it, whatever the organizer put on the TV (tv-spotlight) is taken
+// down, so no deleted guest's name or question stays there.
 
 export type ResetEventResult = { status: "reset"; result: ResetResultDto } | { status: "not-found" };
 
@@ -56,5 +58,6 @@ export async function resetEvent(db: DbClient, parts: readonly ResetPart[]): Pro
   if (!answer.success) {
     fail("zresetować danych", "nieoczekiwana odpowiedź bazy");
   }
+  await hideTvSpotlight(db);
   return { status: "reset", result: { ...answer.data, summary: describeResetResult(answer.data) } };
 }

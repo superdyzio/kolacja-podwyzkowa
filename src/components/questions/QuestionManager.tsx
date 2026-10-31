@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useQuestionList, parseQuestionList } from "@/components/hooks/useQuestionList";
+import { useTvSpotlight } from "@/components/hooks/useTvSpotlight";
 import { Button } from "@/components/ui/button";
 import { ORGANIZER_DRAW_STORAGE_KEY } from "@/lib/questions/draw-memory";
 import { countQuestions } from "@/lib/questions/summary";
@@ -10,13 +11,16 @@ import type {
   QuestionPasteResultDto,
   QuestionSkipDto,
   QuestionSkipReason,
+  TvSpotlightDto,
 } from "@/types";
 import { CategoryChips } from "./CategoryChips";
 import { OrganizerAiTopics } from "./OrganizerAiTopics";
 import { QuestionAddForm } from "./QuestionAddForm";
 import { QuestionDrawPanel } from "./QuestionDrawPanel";
 import { QuestionRow } from "./QuestionRow";
+import { ShowOnTvButton } from "./ShowOnTvButton";
 import { StarterCard } from "./StarterCard";
+import { TvSpotlightPanel } from "./TvSpotlightPanel";
 
 interface Props {
   // Organizer API base, e.g. "/api/o/<key>".
@@ -24,6 +28,8 @@ interface Props {
   initial: QuestionListDto;
   // The evening's AI topic usage and the provider (S-08).
   aiInitial: AiTopicBoardDto;
+  // What is on the TV over the seating (tv-spotlight).
+  tvInitial: TvSpotlightDto | null;
 }
 
 const SKIP_REASONS: readonly QuestionSkipReason[] = ["duplicate", "repeated", "too-short", "too-long"];
@@ -58,11 +64,13 @@ function deleteQuestionPrompt(question: QuestionDto): string {
   return `Usunąć pytanie „${preview}”?`;
 }
 
-// The organizer's questions page island (S-07, US-03, FR-014, FR-015), phone-first, top to bottom: the organizer's own
-// draw, the AI topic panel (S-08, #tematy-ai), adding/pasting, the starter base, and the list with a category filter,
-// in-place edit and delete. Guests never see this list: they only get the question they draw themselves.
-export function QuestionManager({ apiBase, initial, aiInitial }: Props) {
+// The organizer's questions page island (S-07, US-03, FR-014, FR-015), phone-first, top to bottom: the TV controls
+// (tv-spotlight, #ekran-tv), the organizer's own draw, the AI topic panel (S-08, #tematy-ai) — both with „Pokaż na TV”
+// —, adding/pasting, the starter base, and the list with a category filter, in-place edit and delete. Guests never see
+// this list: they only get the question they draw themselves.
+export function QuestionManager({ apiBase, initial, aiInitial, tvInitial }: Props) {
   const { list, pending, failure, send, dismissFailure } = useQuestionList(apiBase, initial);
+  const tv = useTvSpotlight(apiBase, tvInitial);
   const [filter, setFilter] = useState<QuestionDto["category"] | null>(null);
 
   const counts = countQuestions(list.questions);
@@ -70,11 +78,26 @@ export function QuestionManager({ apiBase, initial, aiInitial }: Props) {
 
   return (
     <div className="flex flex-col gap-6">
+      <section
+        id="ekran-tv"
+        aria-labelledby="tv-heading"
+        className="flex scroll-mt-4 flex-col gap-3 rounded-xl border p-4"
+      >
+        <h2 id="tv-heading" className="text-lg font-semibold">
+          Na ekranie TV
+        </h2>
+        <TvSpotlightPanel tv={tv} />
+      </section>
+
       <section aria-labelledby="draw-heading" className="flex flex-col gap-3 rounded-xl border p-4">
         <h2 id="draw-heading" className="text-lg font-semibold">
           Losuj pytanie
         </h2>
-        <QuestionDrawPanel drawUrl={`${apiBase}/questions/draw`} storageKey={ORGANIZER_DRAW_STORAGE_KEY} />
+        <QuestionDrawPanel
+          drawUrl={`${apiBase}/questions/draw`}
+          storageKey={ORGANIZER_DRAW_STORAGE_KEY}
+          renderAction={(text) => <ShowOnTvButton tv={tv} kind="question" text={text} />}
+        />
       </section>
 
       <section
@@ -85,7 +108,11 @@ export function QuestionManager({ apiBase, initial, aiInitial }: Props) {
         <h2 id="ai-heading" className="text-lg font-semibold">
           Temat od AI
         </h2>
-        <OrganizerAiTopics apiBase={apiBase} initial={aiInitial} />
+        <OrganizerAiTopics
+          apiBase={apiBase}
+          initial={aiInitial}
+          renderAction={(text) => <ShowOnTvButton tv={tv} kind="topic" text={text} />}
+        />
       </section>
 
       {failure && (

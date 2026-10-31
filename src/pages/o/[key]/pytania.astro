@@ -8,11 +8,13 @@ import { getAiProviderStatus } from "@/lib/ai";
 import { getAiTopicUsage } from "@/lib/ai-topics/service";
 import { getDb } from "@/lib/db";
 import { getQuestionList } from "@/lib/questions";
+import { getTvSpotlight } from "@/lib/tv-spotlight";
 
-// Organizer questions page (S-07, US-03, FR-014, FR-015): the organizer's own draw, the AI topic panel with the
-// evening's usage and the provider (S-08, FR-016, #tematy-ai), adding and pasting questions, the starter base and the
-// whole list with edit and delete. Organizer only — guests get just the question they draw (and the AI topic they
-// generate) on their phone, the TV nothing. The middleware has already checked the key; this is the second,
+// Organizer questions page (S-07, US-03, FR-014, FR-015): the TV controls (tv-spotlight, #ekran-tv: a question or an
+// AI topic for the whole room, a drawn guest), the organizer's own draw, the AI topic panel with the evening's usage
+// and the provider (S-08, FR-016, #tematy-ai), adding and pasting questions, the starter base and the whole list with
+// edit and delete. Organizer only — guests get just the question they draw (and the AI topic they generate) on their
+// phone; the TV only what the organizer explicitly sends there. The middleware has already checked the key; this is the second,
 // role-specific check.
 const access = accessFor(Astro.locals, "organizer");
 const db = access ? getDb() : null;
@@ -20,7 +22,7 @@ if (!access || !db) {
   Astro.response.status = 404;
 }
 
-const loaded = db ? await Promise.all([getQuestionList(db), getAiTopicUsage(db)]) : null;
+const loaded = db ? await Promise.all([getQuestionList(db), getAiTopicUsage(db), getTvSpotlight(db)]) : null;
 const view =
   access && loaded
     ? {
@@ -29,6 +31,7 @@ const view =
         apiBase: `/api${organizerPath(access.event.organizerKey)}`,
         list: loaded[0],
         aiBoard: { usage: loaded[1], provider: getAiProviderStatus() },
+        tv: loaded[2],
       }
     : null;
 ---
@@ -49,7 +52,13 @@ const view =
         </p>
       </header>
       <OfflineSync client:load apiBase={view.apiBase} />
-      <QuestionManager client:load apiBase={view.apiBase} initial={view.list} aiInitial={view.aiBoard} />
+      <QuestionManager
+        client:load
+        apiBase={view.apiBase}
+        initial={view.list}
+        aiInitial={view.aiBoard}
+        tvInitial={view.tv}
+      />
     </main>
   </Layout>
 ) : (

@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useState, type ReactNode } from "react";
 import { formatSpend } from "@/lib/ai-topics/cost";
 import { EVENT_LIMIT_MESSAGE, formatUsage } from "@/lib/ai-topics/limits";
 import { ORGANIZER_TOPIC_STORAGE_KEY, parseUsage } from "@/lib/ai-topics/topic-memory";
@@ -9,6 +9,8 @@ interface Props {
   // Organizer API base, e.g. "/api/o/<key>".
   apiBase: string;
   initial: AiTopicBoardDto;
+  // „Pokaż na TV” under the generated topic (tv-spotlight).
+  renderAction?: (text: string) => ReactNode;
 }
 
 function providerLine(provider: AiProviderStatusDto): string {
@@ -29,7 +31,7 @@ const CONSOLE_COST_URL = "https://platform.claude.com/cost";
 // provider answers. A failed attempt shows the server's hint about the cause (timeout, rejected key, no credits, …)
 // under the message; when the organizer did not fail themself, the latest failed attempt of anyone (a guest's) shows
 // the same hint. Guests never see hints or costs.
-export function OrganizerAiTopics({ apiBase, initial }: Props) {
+export function OrganizerAiTopics({ apiBase, initial, renderAction }: Props) {
   const [usage, setUsage] = useState(initial.usage);
   const [hint, setHint] = useState<string | null>(null);
   const { provider } = initial;
@@ -54,6 +56,7 @@ export function OrganizerAiTopics({ apiBase, initial }: Props) {
         onAnswer={onAnswer}
         blockedMessage={usage.used >= usage.limit ? EVENT_LIMIT_MESSAGE : null}
         status={formatUsage(usage)}
+        renderAction={renderAction}
       />
       {hint ? (
         <p className="text-destructive text-sm">Przyczyna: {hint}</p>

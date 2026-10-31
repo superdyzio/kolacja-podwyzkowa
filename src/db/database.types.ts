@@ -542,6 +542,39 @@ export interface Database {
           },
         ];
       };
+      // What the organizer shows on the TV (tv-spotlight); the newest row wins, its id is the TV token's last part.
+      tv_spotlight: {
+        Row: {
+          id: number;
+          event_id: number;
+          kind: string;
+          text: string;
+          shown_at: string;
+        };
+        Insert: {
+          id?: never;
+          event_id?: number;
+          kind: string;
+          text: string;
+          shown_at?: string;
+        };
+        Update: {
+          id?: never;
+          event_id?: number;
+          kind?: string;
+          text?: string;
+          shown_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "tv_spotlight_event_id_fkey";
+            columns: ["event_id"];
+            isOneToOne: false;
+            referencedRelation: "event";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
     };
     Views: { [_ in never]: never };
     Functions: {

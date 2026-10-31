@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { useQuestionDraw } from "@/components/hooks/useQuestionDraw";
 import { Button } from "@/components/ui/button";
 import { QUESTION_CATEGORY_HINTS, QUESTION_CATEGORY_LABELS } from "@/lib/questions/categories";
@@ -9,13 +10,15 @@ interface Props {
   // localStorage key of this person's draw memory (src/lib/questions/draw-memory.ts).
   storageKey: string;
   onNoAccess?: () => void;
+  // Extra action under the drawn question — the organizer's „Pokaż na TV” (tv-spotlight); the guest's phone has none.
+  renderAction?: (text: string) => ReactNode;
 }
 
 const ALL_HINT = "Z dowolnej kategorii.";
 
 // The question draw (S-07, US-03, FR-015), the same on the guest's phone and the organizer's questions page: pick a
 // category (or all), draw, read the question in large type. Only this browser sees what it drew.
-export function QuestionDrawPanel({ drawUrl, storageKey, onNoAccess }: Props) {
+export function QuestionDrawPanel({ drawUrl, storageKey, onNoAccess, renderAction }: Props) {
   const { category, setCategory, question, message, pending, ready, draw } = useQuestionDraw(
     drawUrl,
     storageKey,
@@ -43,6 +46,7 @@ export function QuestionDrawPanel({ drawUrl, storageKey, onNoAccess }: Props) {
             <blockquote className="text-2xl leading-snug font-semibold text-balance">{question.text}</blockquote>
           </figure>
         )}
+        {question && renderAction?.(question.text)}
       </div>
     </div>
   );

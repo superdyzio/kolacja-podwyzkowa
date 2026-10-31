@@ -13,13 +13,23 @@ interface Props extends AiTopicCallbacks {
   blockedMessage?: string | null;
   // Shown under the button, e.g. „Zostało 3 z 5”.
   status?: ReactNode;
+  // Extra action under the topic — the organizer's „Pokaż na TV” (tv-spotlight); the guest's phone has none.
+  renderAction?: (text: string) => ReactNode;
 }
 
 const ALL_HINT = "Kategorię wybierze AI.";
 
 // The AI topic generator (S-08, US-03, FR-016), the same on the guest's phone and the organizer's questions page:
 // pick a category (or all), generate, read the topic in large type. Only this browser sees the topic.
-export function AiTopicPanel({ generateUrl, storageKey, blockedMessage = null, status, onAnswer, onNoAccess }: Props) {
+export function AiTopicPanel({
+  generateUrl,
+  storageKey,
+  blockedMessage = null,
+  status,
+  onAnswer,
+  onNoAccess,
+  renderAction,
+}: Props) {
   const { category, setCategory, topic, message, pending, ready, generate } = useAiTopic(generateUrl, storageKey, {
     onAnswer,
     onNoAccess,
@@ -59,6 +69,7 @@ export function AiTopicPanel({ generateUrl, storageKey, blockedMessage = null, s
             <blockquote className="text-2xl leading-snug font-semibold text-balance">{topic.text}</blockquote>
           </figure>
         )}
+        {topic && renderAction?.(topic.text)}
       </div>
     </div>
   );

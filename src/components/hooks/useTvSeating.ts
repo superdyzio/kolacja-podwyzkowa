@@ -1,23 +1,41 @@
 import { useEffect, useRef, useState } from "react";
-import type { TvSeatingDto } from "@/types";
+import { isTvSpotlightKind } from "@/lib/tv-spotlight/rules";
+import type { TvScreenDto } from "@/types";
 
 // Live TV state (NFR-003): asks `GET <apiBase>/seating?since=<version>` every 2.5 s — 204 keeps what is shown, 200
-// replaces it. A failed or slow request (4 s limit) keeps the last state; after 3 failures in a row the view shows a
+// replaces it (the published seating and the organizer's spotlight, tv-spotlight). A failed or slow request (4 s limit) keeps the last state; after 3 failures in a row the view shows a
 // small "reconnecting" badge until the next answer. One request at a time (a setTimeout chain, never setInterval).
 
 const POLL_MS = 2_500;
 const TIMEOUT_MS = 4_000;
 const OFFLINE_AFTER = 3;
 
-function isTvSeating(data: unknown): data is TvSeatingDto {
+function isSpotlight(value: unknown): boolean {
+  if (value === null) {
+    return true;
+  }
+  if (typeof value !== "object") {
+    return false;
+  }
+  const { kind, text, shownAt } = value as Record<string, unknown>;
+  return isTvSpotlightKind(kind) && typeof text === "string" && typeof shownAt === "string";
+}
+
+function isTvScreen(data: unknown): data is TvScreenDto {
   if (typeof data !== "object" || data === null) {
     return false;
   }
-  const candidate = data as Partial<Record<keyof TvSeatingDto, unknown>>;
-  return typeof candidate.version === "string" && Array.isArray(candidate.tables) && "planVersion" in candidate;
+  const candidate = data as Partial<Record<keyof TvScreenDto, unknown>>;
+  return (
+    typeof candidate.version === "string" &&
+    Array.isArray(candidate.tables) &&
+    "planVersion" in candidate &&
+    "spotlight" in candidate &&
+    isSpotlight(candidate.spotlight)
+  );
 }
 
-export function useTvSeating(apiBase: string, initial: TvSeatingDto) {
+export function useTvSeating(apiBase: string, initial: TvScreenDto) {
   const [tv, setTv] = useState(initial);
   const [failures, setFailures] = useState(0);
   // How many times the shown arrangement changed since the page opened (announced to screen readers).
@@ -41,7 +59,7 @@ export function useTvSeating(apiBase: string, initial: TvSeatingDto) {
           setFailures(0);
         } else if (response.ok) {
           const data: unknown = await response.json();
-          if (!isTvSeating(data)) {
+          if (!isTvScreen(data)) {
             throw new Error("unexpected answer");
           }
           version.current = data.version;
