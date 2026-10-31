@@ -222,7 +222,7 @@ async function readTokens(
 }
 
 // Why the latest finished attempt failed, for the organizer; null when it succeeded or nothing finished yet. A failed
-// attempt without a kind expired while pending (the server was cut off mid-call).
+// attempt without a kind expired while pending (the server was cut off mid-call) or predates the ai-spend migration.
 async function readLastFailureHint(db: DbClient): Promise<string | null> {
   const { data, error } = await db
     .from("ai_topic")
@@ -240,7 +240,7 @@ async function readLastFailureHint(db: DbClient): Promise<string | null> {
     return null;
   }
   if (last.failure_kind === null) {
-    return "Próba przerwana bez odpowiedzi — serwer nie zdążył zapisać wyniku.";
+    return "Przyczyna nie została zapisana.";
   }
   const kind = isAiFailureKind(last.failure_kind) ? last.failure_kind : "unavailable";
   return describeFailureForOrganizer(kind, last.http_status ?? undefined);

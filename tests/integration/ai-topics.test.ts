@@ -295,6 +295,6 @@ describe.skipIf(!hasLocalDb)("AI topic generation", () => {
     const id = (await rowsSince()).at(0)?.id ?? 0;
     const { error } = await db.from("ai_topic").update({ failure_kind: null }).eq("id", id);
     expect(error).toBeNull();
-    expect((await getAiTopicUsage(db)).lastFailureHint).toContain("Próba przerwana");
+    expect((await getAiTopicUsage(db)).lastFailureHint).toBe("Przyczyna nie została zapisana.");
   });
 });

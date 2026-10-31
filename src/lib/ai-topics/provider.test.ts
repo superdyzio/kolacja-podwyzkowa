@@ -42,6 +42,9 @@ describe("AI provider failures", () => {
     expect(describeFailureForOrganizer("bad-request", 404)).toBe(
       "Model niedostępny lub złe parametry (HTTP 404) — sprawdź AI_MODEL.",
     );
+    expect(describeFailureForOrganizer("bad-request", 400)).toBe(
+      "Model niedostępny, złe parametry albo blokada rozliczeń (HTTP 400) — sprawdź AI_MODEL i Billing na platform.claude.com.",
+    );
     expect(describeFailureForOrganizer("rate-limit", 429)).toBe("Limit zapytań u dostawcy (HTTP 429).");
     expect(describeFailureForOrganizer("overloaded", 529)).toBe("Dostawca przeciążony (HTTP 529).");
     expect(describeFailureForOrganizer("not-configured")).toContain("AI_PROVIDER=mock");

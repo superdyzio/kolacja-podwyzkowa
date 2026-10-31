@@ -93,7 +93,10 @@ export function describeFailureForOrganizer(kind: AiFailureKind, status?: number
     case "no-credits":
       return `${withStatus("Skończyły się kredyty API Anthropic albo zadziałał limit wydatków", status)} — doładuj je w konsoli: platform.claude.com → Billing.`;
     case "bad-request":
-      return `${withStatus("Model niedostępny lub złe parametry", status)} — sprawdź AI_MODEL.`;
+      // A 400 is also what a spend limit (or a billing block whose text we did not recognize) looks like.
+      return status === 400
+        ? `${withStatus("Model niedostępny, złe parametry albo blokada rozliczeń", status)} — sprawdź AI_MODEL i Billing na platform.claude.com.`
+        : `${withStatus("Model niedostępny lub złe parametry", status)} — sprawdź AI_MODEL.`;
     case "rate-limit":
       return `${withStatus("Limit zapytań u dostawcy", status)}.`;
     case "overloaded":
