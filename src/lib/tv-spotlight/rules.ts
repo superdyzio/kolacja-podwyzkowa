@@ -48,12 +48,12 @@ export function spotlightFontSize(kind: TvSpotlightKind, text: string): number {
     return length <= 16 ? 14 : length <= 28 ? 10 : 8;
   }
   if (length <= 60) {
-    return 8;
+    return 9;
   }
   if (length <= 120) {
-    return 6.5;
+    return 7.5;
   }
-  return length <= 200 ? 5.5 : 4.5;
+  return length <= 200 ? 6.5 : 5.5;
 }
 
 // The organizer's status line about the TV.

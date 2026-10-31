@@ -51,7 +51,13 @@ export function TvSpotlight({ spotlight, pool, spin }: Props) {
 
   return (
     <div className="absolute inset-0 z-20 flex items-center justify-center bg-neutral-950/85 p-[5vh] backdrop-blur-sm">
-      <figure className="animate-in fade-in flex max-h-full max-w-[86vw] flex-col items-center gap-[3vh] overflow-hidden rounded-[3vh] border border-white/10 bg-neutral-900/95 px-[6vh] py-[5vh] text-center shadow-2xl duration-500">
+      <figure
+        className={cn(
+          "animate-in fade-in flex max-h-full max-w-[86vw] flex-col items-center gap-[3vh] overflow-hidden rounded-[3vh] border border-white/10 bg-neutral-900/95 px-[6vh] py-[5vh] text-center shadow-2xl duration-500",
+          // A steady card while the names spin.
+          spotlight.kind === "person" && "min-w-[48vw]",
+        )}
+      >
         <figcaption className="text-[3vh] font-semibold tracking-[0.2em] text-amber-400 uppercase">
           {spinning ? TV_PERSON_DRAWING_LABEL : TV_SPOTLIGHT_LABELS[spotlight.kind]}
         </figcaption>
