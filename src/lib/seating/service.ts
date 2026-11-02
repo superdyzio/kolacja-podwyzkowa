@@ -314,7 +314,7 @@ export async function publishSeating(db: DbClient): Promise<PublishSeatingResult
   return { status: "published", snapshotId: data };
 }
 
-async function planVersion(db: DbClient): Promise<number | null> {
+export async function getPlanVersion(db: DbClient): Promise<number | null> {
   const { data, error } = await db.from("venue_plan").select("updated_at").eq("event_id", EVENT_ID).maybeSingle();
   if (error) {
     fail("odczytać planu", error.message);
@@ -331,7 +331,7 @@ export interface PublishedVersion {
 }
 
 export async function getPublishedVersion(db: DbClient): Promise<PublishedVersion> {
-  const [latest, plan] = await Promise.all([latestSnapshotRow(db), planVersion(db)]);
+  const [latest, plan] = await Promise.all([latestSnapshotRow(db), getPlanVersion(db)]);
   const snapshotId = latest?.id ?? null;
   return { snapshotId, planVersion: plan, version: seatingVersion(snapshotId, plan) };
 }
@@ -343,7 +343,7 @@ export async function getSeatingVersion(db: DbClient): Promise<string> {
 
 // The TV state: the latest snapshot as names on tables, plus the plan version for the image URL.
 export async function getTvSeating(db: DbClient): Promise<TvSeatingDto> {
-  const [latest, plan] = await Promise.all([getLatestSnapshot(db), planVersion(db)]);
+  const [latest, plan] = await Promise.all([getLatestSnapshot(db), getPlanVersion(db)]);
   return toTvSeating(latest, plan);
 }
 

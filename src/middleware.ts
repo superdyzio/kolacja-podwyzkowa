@@ -2,7 +2,7 @@ import { defineMiddleware } from "astro:middleware";
 import { decideAccess, parseAccessPath } from "@/lib/access";
 import { getDb } from "@/lib/db";
 
-// Link-key guard (PRD Access Control). Every path under /o/, /tv/, /g/ and /api/{o,tv,g}/ needs a valid key of the
+// Link-key guard (PRD Access Control). Every path under /o/, /tv/, /g/, /r/ and /api/{o,tv,g,r}/ needs a valid key of the
 // matching role; anything else gets the same 404 "brak dostępu" response, whatever the reason (malformed, unknown or
 // another role's key). A DB failure throws and becomes a 500, never a misleading 404.
 

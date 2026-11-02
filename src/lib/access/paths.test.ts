@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { guestPath, organizerPath, parseAccessPath, tvPath } from "./paths";
+import { guestPath, organizerPath, parseAccessPath, restaurantPath, tvPath } from "./paths";
 
 const KEY = "AbCdEfGhIjKlMnOpQrStUv-_";
 
@@ -13,6 +13,8 @@ describe("parseAccessPath", () => {
     [`/api/o/${KEY}/guests`, "organizer", true],
     [`/api/tv/${KEY}/state`, "tv", true],
     [`/api/g/${KEY}`, "guest", true],
+    [`/r/${KEY}`, "restaurant", false],
+    [`/api/r/${KEY}/orders`, "restaurant", true],
   ] as const)("maps %s to role %s (api: %s)", (pathname, role, isApi) => {
     expect(parseAccessPath(pathname)).toEqual({ role, key: KEY, isApi });
   });
@@ -35,6 +37,9 @@ describe("parseAccessPath", () => {
     "/favicon.png",
     "/404",
     "/x/o/abc",
+    "/r",
+    "/robots.txt",
+    "/rx/abc",
   ])("ignores non-access path %s", (pathname) => {
     expect(parseAccessPath(pathname)).toBeNull();
   });
@@ -45,5 +50,6 @@ describe("path builders", () => {
     expect(parseAccessPath(organizerPath(KEY))).toEqual({ role: "organizer", key: KEY, isApi: false });
     expect(parseAccessPath(tvPath(KEY))).toEqual({ role: "tv", key: KEY, isApi: false });
     expect(parseAccessPath(guestPath(KEY))).toEqual({ role: "guest", key: KEY, isApi: false });
+    expect(parseAccessPath(restaurantPath(KEY))).toEqual({ role: "restaurant", key: KEY, isApi: false });
   });
 });

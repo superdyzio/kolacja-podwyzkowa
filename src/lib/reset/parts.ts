@@ -13,6 +13,7 @@ export const RESET_PARTS = [
   "seating",
   "guests",
   "venue",
+  "orders",
   "questions",
   "guestLinks",
 ] as const satisfies readonly ResetPart[];
@@ -27,6 +28,7 @@ export const RESET_PART_LABELS: Readonly<Record<ResetPart, string>> = {
   seating: "Rozsadzenie i historia",
   guests: "Goście i grupy",
   venue: "Plan, sale i stoliki",
+  orders: "Zamówienia",
   questions: "Pytania",
   guestLinks: "Linki gości",
 };
@@ -43,6 +45,7 @@ export const RESET_PART_DESCRIPTIONS: Readonly<Record<ResetPart, string>> = {
     "Usuwa rozsadzenie (z przypięciami) i wszystkie publikacje: TV nic nie pokazuje, historia sąsiadów zaczyna się od zera.",
   guests: "Usuwa wszystkich gości i grupy, a razem z nimi strzały, licznik tematów AI i rozsadzenie.",
   venue: "Usuwa plan lokalu, sale i stoliki, a razem z nimi rozsadzenie.",
+  orders: "Usuwa wszystkie pozycje zamówienia. Link restauracji zostaje bez zmian.",
   questions: "Usuwa wszystkie pytania i wczytuje od nowa bazę startową.",
   guestLinks:
     "Nowy link dla każdego gościa i wyłączony dostęp gości: wydrukowane karteczki i wysłane linki przestają działać.",
@@ -55,6 +58,7 @@ export const RESET_IMPLIES: Readonly<Record<ResetPart, readonly ResetPart[]>> = 
   seating: [],
   guests: ["guesses", "aiUsage", "seating"],
   venue: ["seating"],
+  orders: [],
   questions: [],
   guestLinks: [],
 };

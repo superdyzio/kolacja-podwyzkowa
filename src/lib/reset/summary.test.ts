@@ -17,6 +17,7 @@ const EMPTY: ResetCountsDto = {
   plan: false,
   rooms: 0,
   tables: 0,
+  orders: 0,
   questions: 0,
   guestAccessEnabled: false,
 };
@@ -35,6 +36,7 @@ const DEMO: ResetCountsDto = {
   plan: true,
   rooms: 3,
   tables: 7,
+  orders: 12,
   questions: 95,
   guestAccessEnabled: true,
 };
@@ -56,6 +58,7 @@ describe("describeResetCount", () => {
       "38 miejsc (przypięte: 1) · 2 publikacje",
       "40 gości · 3 grupy",
       "plan · 3 sale · 7 stolików",
+      "12 pozycji zamówienia",
       "95 pytań → zostanie 90 startowych",
       "40 linków · dostęp gości włączony",
     ]);
@@ -85,6 +88,16 @@ describe("describeResetCount", () => {
     expect(describeResetCount("guests", one, 90)).toBe("1 gość · 1 grupa");
     expect(describeResetCount("venue", one, 90)).toBe("1 sala · 1 stolik");
     expect(describeResetCount("guestLinks", one, 90)).toBe("1 link");
+    expect(describeResetCount("orders", { ...EMPTY, orders: 1 }, 90)).toBe("1 pozycja zamówienia");
+    expect(describeResetCount("orders", { ...EMPTY, orders: 3 }, 90)).toBe("3 pozycje zamówienia");
+    expect(
+      describeResetResult({
+        parts: ["orders"],
+        before: { ...EMPTY, orders: 1 },
+        questionsAdded: 0,
+        guestKeysReplaced: 0,
+      }),
+    ).toEqual(["Zamówienia: usunięto 1 pozycję zamówienia."]);
     expect(describeResetCount("questions", one, 2)).toBe("1 pytanie → zostaną 2 startowe");
     const few = { ...EMPTY, guesses: 22, guests: 2, groups: 4, rooms: 2, tables: 3 };
     expect(describeResetCount("guesses", few, 90)).toBe("22 strzały");
@@ -111,6 +124,7 @@ describe("describeResetResult", () => {
       "Rozsadzenie i historia: usunięto 38 miejsc i 2 publikacje; TV nie pokazuje rozsadzenia do następnej publikacji.",
       "Goście i grupy: usunięto 40 gości i 3 grupy.",
       "Plan, sale i stoliki: usunięto plan, 3 sale i 7 stolików.",
+      "Zamówienia: usunięto 12 pozycji zamówienia.",
       "Pytania: usunięto 95 pytań, wczytano 90 startowych.",
       "Linki gości: dostęp gości wyłączony.",
     ]);

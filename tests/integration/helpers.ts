@@ -40,16 +40,26 @@ export interface TestEvent {
   name: string;
   organizerKey: string;
   tvKey: string;
+  restaurantKey: string;
   // Only an event the test created itself may be deleted afterwards; a pre-existing event is real data.
   createdByTest: boolean;
 }
 
 export async function readEvent(db: DbClient): Promise<Omit<TestEvent, "createdByTest">> {
-  const { data, error } = await db.from("event").select("name, organizer_key, tv_key").eq("id", EVENT_ID).single();
+  const { data, error } = await db
+    .from("event")
+    .select("name, organizer_key, tv_key, restaurant_key")
+    .eq("id", EVENT_ID)
+    .single();
   if (error) {
     throw new Error(`Nie udało się odczytać wydarzenia: ${error.message}`);
   }
-  return { name: data.name, organizerKey: data.organizer_key, tvKey: data.tv_key };
+  return {
+    name: data.name,
+    organizerKey: data.organizer_key,
+    tvKey: data.tv_key,
+    restaurantKey: data.restaurant_key,
+  };
 }
 
 // Reuses the existing event, or creates one that releaseEvent() deletes afterwards (its guests and groups go with

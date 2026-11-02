@@ -27,6 +27,7 @@ export const ResetCountsSchema = z.strictObject({
   plan: z.boolean(),
   rooms: Count,
   tables: Count,
+  orders: Count,
   questions: Count,
   guestAccessEnabled: z.boolean(),
 });

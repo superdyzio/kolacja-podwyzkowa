@@ -1,4 +1,4 @@
-// Prints the organizer and TV links of the event — the recovery path when the organizer link is lost.
+// Prints the organizer, TV and restaurant links of the event — the recovery path when the organizer link is lost.
 // Usage: npm run links            (reads SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY from .env, if present)
 //        BASE_URL=https://twoja-domena SUPABASE_URL=... SUPABASE_SERVICE_ROLE_KEY=... npm run links
 // The links are secret: do not paste the output anywhere public.
@@ -14,7 +14,7 @@ if (!supabaseUrl || !serviceRoleKey) {
   process.exit(1);
 }
 
-const response = await fetch(`${supabaseUrl}/rest/v1/event?select=name,organizer_key,tv_key`, {
+const response = await fetch(`${supabaseUrl}/rest/v1/event?select=name,organizer_key,tv_key,restaurant_key`, {
   headers: { apikey: serviceRoleKey, Authorization: `Bearer ${serviceRoleKey}` },
 });
 if (!response.ok) {
@@ -31,3 +31,4 @@ if (!event) {
 console.log(event.name);
 console.log(`Organizator: ${new URL(`/o/${event.organizer_key}`, baseUrl).href}`);
 console.log(`TV:          ${new URL(`/tv/${event.tv_key}`, baseUrl).href}`);
+console.log(`Restauracja: ${new URL(`/r/${event.restaurant_key}`, baseUrl).href}`);

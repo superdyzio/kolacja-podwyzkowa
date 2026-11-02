@@ -24,6 +24,7 @@ describe("reset parts", () => {
       "Rozsadzenie i historia",
       "Goście i grupy",
       "Plan, sale i stoliki",
+      "Zamówienia",
       "Pytania",
       "Linki gości",
     ]);
@@ -98,7 +99,7 @@ describe("selection in the modal", () => {
   it("selects everything and knows when everything is selected", () => {
     expect(selectAllResetParts()).toEqual([...RESET_PARTS]);
     expect(isEveryResetPartSelected(selectAllResetParts())).toBe(true);
-    expect(isEveryResetPartSelected(["guests", "venue", "questions", "guestLinks"])).toBe(true);
+    expect(isEveryResetPartSelected(["guests", "venue", "orders", "questions", "guestLinks"])).toBe(true);
     expect(isEveryResetPartSelected(["guests", "venue", "questions"])).toBe(false);
   });
 });

@@ -23,6 +23,8 @@ export interface Database {
           guess_intake_open: boolean;
           // S-06: the correct raise amount in grosze, null until entered.
           correct_amount_grosze: number | null;
+          // restaurant-orders: the restaurant link key (/r/<key>), filled by the column default.
+          restaurant_key: string;
         };
         Insert: {
           id?: number;
@@ -33,6 +35,7 @@ export interface Database {
           guest_access_enabled?: boolean;
           guess_intake_open?: boolean;
           correct_amount_grosze?: number | null;
+          restaurant_key?: string;
         };
         Update: {
           id?: number;
@@ -43,6 +46,7 @@ export interface Database {
           guest_access_enabled?: boolean;
           guess_intake_open?: boolean;
           correct_amount_grosze?: number | null;
+          restaurant_key?: string;
         };
         Relationships: [];
       };
@@ -611,6 +615,70 @@ export interface Database {
         ];
       };
       // What the organizer shows on the TV (tv-spotlight); the newest row wins, its id is the TV token's last part.
+      order_item: {
+        Row: {
+          id: number;
+          event_id: number;
+          name: string;
+          note: string | null;
+          quantity: number;
+          unit_price_grosze: number;
+          guest_id: number | null;
+          table_id: number | null;
+          delivered: boolean;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: never;
+          event_id?: number;
+          name: string;
+          note?: string | null;
+          quantity: number;
+          unit_price_grosze: number;
+          guest_id?: number | null;
+          table_id?: number | null;
+          delivered?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: never;
+          event_id?: number;
+          name?: string;
+          note?: string | null;
+          quantity?: number;
+          unit_price_grosze?: number;
+          guest_id?: number | null;
+          table_id?: number | null;
+          delivered?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "order_item_event_id_fkey";
+            columns: ["event_id"];
+            isOneToOne: false;
+            referencedRelation: "event";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "order_item_guest_id_fkey";
+            columns: ["guest_id"];
+            isOneToOne: false;
+            referencedRelation: "guest";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "order_item_table_id_fkey";
+            columns: ["table_id"];
+            isOneToOne: false;
+            referencedRelation: "venue_table";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       tv_spotlight: {
         Row: {
           id: number;

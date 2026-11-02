@@ -16,6 +16,7 @@ const COUNTS = {
   plan: false,
   rooms: 0,
   tables: 0,
+  orders: 0,
   questions: 90,
   guestAccessEnabled: false,
 };

@@ -3,13 +3,14 @@ import NoAccess from "@/components/NoAccess.astro";
 import { OfflineSync } from "@/components/offline/OfflineSync";
 import { ResetPanel } from "@/components/reset/ResetPanel";
 import Layout from "@/layouts/Layout.astro";
-import { accessFor, organizerPath, tvPath } from "@/lib/access";
+import { accessFor, organizerPath, restaurantPath, tvPath } from "@/lib/access";
 import { getAiProviderStatus } from "@/lib/ai";
 import { formatAiTopicSummary, MAX_EVENT_TOPICS, MAX_GUEST_TOPICS } from "@/lib/ai-topics/limits";
 import { getAiTopicUsage } from "@/lib/ai-topics/service";
 import { getDb } from "@/lib/db";
 import { formatGuestLinksSummary, getGuestAccessEnabled } from "@/lib/guest-links";
 import { formatGuessSummary, getGuessBoard } from "@/lib/guesses";
+import { formatOrderSummary, getOrderItems, orderTotals } from "@/lib/orders";
 import { formatGuestSummary, summarizeGuestList } from "@/lib/guests";
 import { formatQuestionSummary, getQuestionList } from "@/lib/questions";
 import { formatSeatingSummary, getSeatingBoard, summarizeSeating } from "@/lib/seating";
@@ -23,21 +24,23 @@ if (!access) {
 
 const db = access ? getDb() : null;
 // One read of the seating board carries the guest list and the venue too.
-const [board, guestAccessEnabled, guessBoard, questionList, aiUsage] = db
+const [board, guestAccessEnabled, guessBoard, questionList, aiUsage, orderItems] = db
   ? await Promise.all([
       getSeatingBoard(db),
       getGuestAccessEnabled(db),
       getGuessBoard(db),
       getQuestionList(db),
       getAiTopicUsage(db),
+      getOrderItems(db),
     ])
-  : [null, false, null, null, null];
+  : [null, false, null, null, null, null];
 const view = access
   ? {
       name: access.event.name,
       apiBase: `/api${organizerPath(access.event.organizerKey)}`,
       organizerUrl: new URL(organizerPath(access.event.organizerKey), Astro.url).href,
       tvUrl: new URL(tvPath(access.event.tvKey), Astro.url).href,
+      restaurantUrl: new URL(restaurantPath(access.event.restaurantKey), Astro.url).href,
       guestsPath: `${organizerPath(access.event.organizerKey)}/goscie`,
       guestSummary: board ? formatGuestSummary(summarizeGuestList(board.guestList)) : null,
       venuePath: `${organizerPath(access.event.organizerKey)}/sale`,
@@ -55,6 +58,8 @@ const view = access
       aiTopicsPath: `${organizerPath(access.event.organizerKey)}/pytania#tematy-ai`,
       aiTopicsSummary: aiUsage ? formatAiTopicSummary(aiUsage, getAiProviderStatus()) : null,
       readoutPath: `${organizerPath(access.event.organizerKey)}/odczyt`,
+      ordersPath: `${organizerPath(access.event.organizerKey)}/zamowienia`,
+      ordersSummary: orderItems ? formatOrderSummary(orderTotals(orderItems)) : null,
     }
   : null;
 ---
@@ -100,6 +105,21 @@ const view = access
           />
           <p class="text-sm text-muted-foreground">
             Otwórz go na urządzeniu przy telewizorze. Pokazuje tylko rozsadzenie, bez strzałów i rankingu.
+          </p>
+        </div>
+        <div class="flex flex-col gap-2">
+          <label for="restaurant-link" class="font-medium">
+            Link dla restauracji
+          </label>
+          <input
+            id="restaurant-link"
+            type="text"
+            readonly
+            value={view.restaurantUrl}
+            class="w-full rounded-md border bg-muted px-3 py-2 font-mono text-sm"
+          />
+          <p class="text-sm text-muted-foreground">
+            Lista dań do przygotowania i co gdzie podać, bez cen. Wymienisz go w „Zamówienia i restauracja”.
           </p>
         </div>
       </section>
@@ -206,6 +226,22 @@ const view = access
                 {`Temat do rozmowy od AI w wybranej kategorii; gość ma ${MAX_GUEST_TOPICS} na wieczór, wszyscy razem ${MAX_EVENT_TOPICS}.`}
               </p>
               {view.aiTopicsSummary && <p class="text-sm font-medium">{view.aiTopicsSummary}</p>}
+            </a>
+          </li>
+          <li>
+            <a
+              href={view.ordersPath}
+              class="flex h-full flex-col gap-2 rounded-xl border p-4 transition-colors hover:bg-accent focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
+            >
+              <div class="flex items-center justify-between gap-2">
+                <h3 class="font-semibold">Zamówienia i restauracja</h3>
+                <span class="rounded-full bg-primary px-2 py-0.5 text-xs text-primary-foreground">Otwórz</span>
+              </div>
+              <p class="text-sm text-muted-foreground">
+                Co kto zamówił, ceny i suma, odhaczanie wydanych dań oraz link dla restauracji: co przygotować i gdzie
+                podać.
+              </p>
+              {view.ordersSummary && <p class="text-sm font-medium">{view.ordersSummary}</p>}
             </a>
           </li>
           <li>

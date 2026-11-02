@@ -20,6 +20,8 @@ const groups = (n: number) => count(n, "grupa", "grupy", "grup");
 const rooms = (n: number) => count(n, "sala", "sale", "sal");
 const tables = (n: number) => count(n, "stolik", "stoliki", "stolików");
 const questions = (n: number) => count(n, "pytanie", "pytania", "pytań");
+const orders = (n: number) => count(n, "pozycja", "pozycje", "pozycji");
+const ordersAcc = (n: number) => count(n, "pozycję", "pozycje", "pozycji");
 const links = (n: number) => count(n, "link", "linki", "linków");
 // Accusative forms for „usunięto …” where they differ (gościa is also the genitive after „dla”).
 const snapshotsAcc = (n: number) => count(n, "publikację", "publikacje", "publikacji");
@@ -76,6 +78,9 @@ export function describeResetCount(part: ResetPart, counts: ResetCountsDto, star
         counts.tables > 0 && tables(counts.tables),
       ]);
       break;
+    case "orders":
+      items = nonEmpty([counts.orders > 0 && `${orders(counts.orders)} zamówienia`]);
+      break;
     case "questions":
       // Always does something: the starter base comes back.
       return `${counts.questions > 0 ? questions(counts.questions) : "brak pytań"} → ${pluralPl(starterQuestions, "zostanie", "zostaną", "zostanie")} ${starter(starterQuestions)}`;
@@ -130,6 +135,8 @@ function resultLine(part: ResetPart, outcome: ResetOutcome): string {
         before.rooms > 0 && roomsAcc(before.rooms),
         before.tables > 0 && tables(before.tables),
       ]);
+    case "orders":
+      return removedLine(part, [before.orders > 0 && `${ordersAcc(before.orders)} zamówienia`]);
     case "questions":
       return `${RESET_PART_LABELS[part]}: ${
         before.questions > 0 ? `usunięto ${questions(before.questions)}, ` : ""

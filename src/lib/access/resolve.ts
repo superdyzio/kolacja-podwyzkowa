@@ -2,14 +2,14 @@ import type { DbClient } from "@/lib/supabase-client";
 import { isWellFormedAccessKey } from "./keys";
 import { parseAccessPath, type AccessRole } from "./paths";
 
-// Access matrix (PRD Access Control). The organizer access carries both keys so the organizer view can show the
-// links; the TV and guest accesses carry no key at all, so nothing rendered for them can leak another link.
+// Access matrix (PRD Access Control). The organizer access carries the event keys so the organizer view can show the
+// links; the TV, guest and restaurant accesses carry no key at all, so nothing rendered for them can leak another link.
 // A guest key opens /g/ paths only while the organizer's guest-access switch is on (S-05); switched off, revoked,
 // unknown and other roles' keys all get the same denial.
 
 export interface OrganizerAccess {
   role: "organizer";
-  event: { id: number; name: string; organizerKey: string; tvKey: string };
+  event: { id: number; name: string; organizerKey: string; tvKey: string; restaurantKey: string };
 }
 
 export interface TvAccess {
@@ -25,7 +25,13 @@ export interface GuestAccess {
   guest: { id: number; displayName: string };
 }
 
-export type Access = OrganizerAccess | TvAccess | GuestAccess;
+// The restaurant's read-only view of the food order (restaurant-orders): the prep list and where to serve, no prices.
+export interface RestaurantAccess {
+  role: "restaurant";
+  event: { id: number; name: string };
+}
+
+export type Access = OrganizerAccess | TvAccess | GuestAccess | RestaurantAccess;
 
 export type AccessDecision =
   { kind: "public" } | { kind: "granted"; access: Access } | { kind: "denied"; status: 404; isApi: boolean };
@@ -48,7 +54,7 @@ export async function resolveAccess(db: DbClient, role: AccessRole, key: string)
     case "organizer": {
       const { data, error } = await db
         .from("event")
-        .select("id, name, organizer_key, tv_key")
+        .select("id, name, organizer_key, tv_key, restaurant_key")
         .eq("organizer_key", key)
         .maybeSingle();
       if (error) {
@@ -59,7 +65,13 @@ export async function resolveAccess(db: DbClient, role: AccessRole, key: string)
       }
       return {
         role: "organizer",
-        event: { id: data.id, name: data.name, organizerKey: data.organizer_key, tvKey: data.tv_key },
+        event: {
+          id: data.id,
+          name: data.name,
+          organizerKey: data.organizer_key,
+          tvKey: data.tv_key,
+          restaurantKey: data.restaurant_key,
+        },
       };
     }
     case "tv": {
@@ -71,6 +83,16 @@ export async function resolveAccess(db: DbClient, role: AccessRole, key: string)
         return null;
       }
       return { role: "tv", event: { id: data.id, name: data.name } };
+    }
+    case "restaurant": {
+      const { data, error } = await db.from("event").select("id, name").eq("restaurant_key", key).maybeSingle();
+      if (error) {
+        throw new AccessLookupError(error.message);
+      }
+      if (!data) {
+        return null;
+      }
+      return { role: "restaurant", event: { id: data.id, name: data.name } };
     }
     case "guest": {
       // One round trip: the guest by key with the event's switch embedded (every guest poll pays this lookup).
