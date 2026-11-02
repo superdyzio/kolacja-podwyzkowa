@@ -10,7 +10,7 @@ import {
   describeLayoutFailure,
   proposeVenueLayout,
 } from "@/lib/venue-ai";
-import { NO_PLAN_MESSAGE, PLAN_EMPTY_MESSAGE, PLAN_UNSUPPORTED_MESSAGE } from "@/lib/venue";
+import { NO_PLAN_MESSAGE, PLAN_EMPTY_MESSAGE, PLAN_UNSUPPORTED_MESSAGE, sniffImageType } from "@/lib/venue";
 import type { VenueLayoutProposalAnswerDto } from "@/types";
 
 export const prerender = false;
@@ -33,6 +33,11 @@ export const POST: APIRoute = async ({ locals, request }) => {
       return jsonError(413, LAYOUT_IMAGE_TOO_LARGE_MESSAGE);
     case "ok":
       break;
+  }
+
+  // Not an image → 415 whatever the provider (the same order as PUT /plan).
+  if (sniffImageType(body.bytes) === null) {
+    return jsonError(415, PLAN_UNSUPPORTED_MESSAGE);
   }
 
   const provider = getVenueVisionProvider();

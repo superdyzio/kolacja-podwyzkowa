@@ -168,10 +168,9 @@ async function guestDrawing(db: DbClient, snapshotId: number): Promise<GuestDraw
 export async function getGuestState(db: DbClient, guest: { id: number; displayName: string }): Promise<GuestStateDto> {
   const [published, guess] = await Promise.all([getPublishedVersion(db), getGuestGuess(db, guest.id)]);
   const snapshotId = published.snapshotId;
-  const [seat, drawing] =
-    snapshotId === null
-      ? [null, null]
-      : await Promise.all([guestSeat(db, snapshotId, guest.id), guestDrawing(db, snapshotId)]);
+  const seat = snapshotId === null ? null : await guestSeat(db, snapshotId, guest.id);
+  // Only a seated guest sees the drawing (state.ts drops it otherwise): unseated phones skip its queries.
+  const drawing = snapshotId === null || seat === null ? null : await guestDrawing(db, snapshotId);
   return toGuestState({
     seatingVersion: published.version,
     snapshotId: published.snapshotId,

@@ -44,7 +44,7 @@ describe("layout proposal review", () => {
     expect(describeRoomOutline("Sala A", null)).toBe("Sala A: kontur");
     expect(describeRoomOutline("Sala A", outline)).toBe("Sala A: nowy kontur");
     expect(describePitch(answer)).toBe("Skala krzeseł: 3,5% → 4,0%");
-    expect(describeCost(21_000_000)).toBe("Koszt odczytu: ≈ 0,0210\u00a0USD.");
+    expect(describeCost(21_000_000)).toBe("Koszt odczytu: ≈ 0,0210\u00a0USD (nie wlicza się do kosztu tematów AI).");
     expect(describeCost(null)).toBe("Koszt odczytu nieznany.");
   });
 

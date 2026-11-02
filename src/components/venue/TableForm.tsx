@@ -19,9 +19,11 @@ export interface TableFormValues {
   name: string;
   seatCount: number;
   shape: TableShape;
-  x: number;
-  y: number;
-  rotation: number;
+  // Left out when editing a table whose position fields were not touched, so „Zapisz” never writes back a position
+  // the table had before a drag or a nudge that is still being saved.
+  x?: number;
+  y?: number;
+  rotation?: number;
 }
 
 interface Props {
@@ -92,7 +94,15 @@ export function TableForm({
     if (x === null || y === null || rotation === null) {
       return;
     }
-    await onSubmit({ roomId, name, seatCount, shape, x, y, rotation: Math.round(rotation) });
+    const untouched =
+      fields.x === toPercent(geometry.x) &&
+      fields.y === toPercent(geometry.y) &&
+      fields.rotation === String(geometry.rotation);
+    await onSubmit(
+      table && untouched
+        ? { roomId, name, seatCount, shape }
+        : { roomId, name, seatCount, shape, x, y, rotation: Math.round(rotation) },
+    );
   }
 
   return (

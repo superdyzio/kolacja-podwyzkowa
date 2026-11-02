@@ -500,8 +500,14 @@ const taras = await request(`${api}/tables`, {
 });
 const kominek = await request(`${api}/tables`, {
   method: "POST",
-  json: { roomId: gardenId, name: "Kominek Smoke", seatCount: 10, shape: "rectangular", x: 0.8, y: 0.8 },
+  // Sent like the editor's form: with the rotation (venue-drawing), normalized to 0..359.
+  json: { roomId: gardenId, name: "Kominek Smoke", seatCount: 10, shape: "rectangular", x: 0.8, y: 0.8, rotation: 375 },
 });
+check(
+  "a table is added with its rotation, as the editor's form sends it",
+  kominek.status === 201 && tableNamed(kominek, "Kominek Smoke")?.rotation === 15,
+  `${kominek.status} ${kominek.body}`,
+);
 const tarasId = tableNamed(taras, "Taras Smoke")?.id;
 const tarasDeleted = await request(`${api}/tables/${tarasId}`, { method: "DELETE" });
 check(

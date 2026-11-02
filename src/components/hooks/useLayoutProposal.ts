@@ -11,9 +11,10 @@ export type LayoutProposalState =
   | { kind: "idle" }
   | { kind: "reading" }
   | { kind: "ready"; answer: VenueLayoutProposalAnswerDto }
-  | { kind: "failed"; message: string; hint: string | null };
+  // costNanoUsd: what a failed read was billed (a refusal or a cut-off answer), null when nothing was.
+  | { kind: "failed"; message: string; hint: string | null; costNanoUsd: number | null };
 
-const TIMEOUT_MESSAGE = "AI nie odpowiedziało w 30 s. Spróbuj ponownie.";
+const TIMEOUT_MESSAGE = "AI nie odpowiedziało w ciągu pół minuty. Spróbuj ponownie.";
 const IMAGE_MESSAGE = "Nie udało się przygotować zdjęcia planu. Odśwież stronę i spróbuj ponownie.";
 
 function isAnswer(data: unknown): data is VenueLayoutProposalAnswerDto {
@@ -77,7 +78,7 @@ export function useLayoutProposal(apiBase: string) {
       }
       if (!blob) {
         if (current === generation.current) {
-          setState({ kind: "failed", message: IMAGE_MESSAGE, hint: null });
+          setState({ kind: "failed", message: IMAGE_MESSAGE, hint: null, costNanoUsd: null });
         }
         return;
       }
@@ -98,14 +99,20 @@ export function useLayoutProposal(apiBase: string) {
         if (response.ok && isAnswer(data)) {
           next = { kind: "ready", answer: data };
         } else {
-          const hint = (data as { hint?: unknown } | null)?.hint;
-          next = { kind: "failed", message: toFailure(data).message, hint: typeof hint === "string" ? hint : null };
+          const { hint, costNanoUsd } = (data ?? {}) as { hint?: unknown; costNanoUsd?: unknown };
+          next = {
+            kind: "failed",
+            message: toFailure(data).message,
+            hint: typeof hint === "string" ? hint : null,
+            costNanoUsd: typeof costNanoUsd === "number" && costNanoUsd > 0 ? costNanoUsd : null,
+          };
         }
       } catch {
         next = {
           kind: "failed",
           message: controller.signal.aborted ? TIMEOUT_MESSAGE : NETWORK_FAILURE.message,
           hint: null,
+          costNanoUsd: null,
         };
       } finally {
         clearTimeout(timer);

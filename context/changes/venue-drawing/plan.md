@@ -98,6 +98,7 @@ Build order follows value and risk: data and geometry, then the renderer, then t
   3. Then `deploy:aws`.
 
   The old app must keep working against the new schema in between. This holds because all new columns are nullable or defaulted, and `publish_seating()` keeps its signature.
+
 - **Republish after the deploy.** After the deploy the TV always draws. For old snapshots it uses defaults: rotation 0, the default pitch and no outlines. The organizer sees the real drawing on the TV only after redrawing and publishing again. The README and the success summary must say so.
 - **Label fitting needs real text widths.** The TV measures them in the browser (an SVG `getComputedTextLength` pass in a layout effect, like today's card measuring) and then applies the per-table font size. The pure module takes measured widths as input so it stays testable.
 - **AI timing:**
@@ -120,6 +121,7 @@ Add the columns, copy them into snapshots, expose them in DTOs and APIs, and wri
 **Intent**: Add the drawing data to the live venue and to snapshots, additively, and make publish copy it.
 
 **Contract**:
+
 - `venue_table.rotation smallint not null default 0`, check 0..359 (degrees clockwise).
 - `venue_room.outline_x`, `outline_y`, `outline_w`, `outline_h real null`. All four are null or all four are set; x, y ∈ [0, 1] and w, h ∈ (0, 1].
 - `venue_plan.chair_pitch real not null default 0.035`, check 0.005..0.2, as a fraction of the stage width.
@@ -146,6 +148,7 @@ Add the columns, copy them into snapshots, expose them in DTOs and APIs, and wri
 **Intent**: Mirror the schema and extend the DTOs.
 
 **Contract**:
+
 - `TableDto.rotation`.
 - `RoomDto.outline: { x, y, width, height } | null`.
 - `VenueDto.chairPitch`.
@@ -160,6 +163,7 @@ Add the columns, copy them into snapshots, expose them in DTOs and APIs, and wri
 **Intent**: Read and write the new fields, and keep "up to date" stable across the migration.
 
 **Contract**:
+
 - `updateTable` accepts `rotation`.
 - `updateRoom` (renamed from or added next to `renameRoom`) accepts `outline | null`.
 - New `setChairPitch`.
@@ -174,6 +178,7 @@ Add the columns, copy them into snapshots, expose them in DTOs and APIs, and wri
 **Intent**: Let the editor save rotation, outlines and pitch.
 
 **Contract**:
+
 - `PATCH /tables/<id>` accepts `rotation` (integer, normalized to 0..359).
 - `PATCH /rooms/<id>` accepts `{ name?, outline?: {x,y,width,height} | null }`.
 - `PATCH /venue { chairPitch }`.
@@ -187,6 +192,7 @@ Every answer is the whole `VenueDto`, and validation errors are in Polish.
 **Intent**: The single source of where tables, chairs and labels are, in stage units.
 
 **Contract**:
+
 - `tableBody(table, pitch, aspect)` → round `{ cx, cy, r }` | rectangular `{ cx, cy, length, depth, rotation }`.
   - Round: circumference ≈ n × pitch, with a minimum radius.
   - Rectangular: length = ⌈n/2⌉ × pitch, fixed depth ≈ 1.6 × pitch.
@@ -241,9 +247,11 @@ One SVG renderer replaces the photo, the pins and the name cards on the TV, and 
 **Intent**: Draw rooms, tables, chairs and names from a drawing DTO in a `viewBox`.
 
 **Contract**: Props:
+
 - `{ aspect, chairPitch, rooms, tables (with seats: [{ seat, name }]), highlight?: { table, seat }, focusTable?, variant: "tv" | "phone" | "editor" }`.
 
 Rendering:
+
 - Rooms: thin outline with the name at the top-left inside.
 - Tables: filled body with the table name in the middle.
 - Chairs: small circles. Occupied chairs are filled; empty ones are an outline only.
@@ -258,6 +266,7 @@ Colours follow the TV's dark theme. The phone uses the app tokens.
 **Intent**: Use `VenueDrawing` instead of `<img>`, dots and `TableCard`.
 
 **Contract**:
+
 - The photo is still loaded (hidden, `aria-hidden`) only to read its natural size, keyed by `planVersion`. Without a plan, the stage is 16:9.
 - The spotlight layer (`z-20`), the offline badge and the "before publish" screen are unchanged.
 - Remove `TableCard.tsx` and `layoutCards` (with its tests), and keep `containBox`.
@@ -269,6 +278,7 @@ Colours follow the TV's dark theme. The phone uses the app tokens.
 **Intent**: Replace the photo-and-pin block with `VenueDrawing variant="phone"`, cropped or zoomed so the guest's table is large, with the guest's chair highlighted and the tablemates' names at their chairs.
 
 **Contract**:
+
 - Uses `state.drawing` and `state.seat`.
 - Names come only from `seat.tablemates` plus the guest's own name.
 - „Nowe miejsce!” and polling are unchanged.
@@ -280,6 +290,7 @@ Colours follow the TV's dark theme. The phone uses the app tokens.
 **Intent**: Follow the DTO changes and keep the guardrails.
 
 **Contract**:
+
 - `TvSeatingDto` and `GuestStateDto` key sets updated.
 - Guest `drawing` carries no guest names, ids or keys.
 - The TV page HTML still carries no organizer data.
@@ -318,6 +329,7 @@ The organizer redraws the venue over the photo.
 **Intent**: The photo at reduced opacity under `VenueDrawing variant="editor"` (tables as draggable groups, rooms as resizable rectangles), keeping today's modes (click empty → "Nowy stolik" there, click a table → edit).
 
 **Contract**:
+
 - **Mouse:**
   - Pointer drag moves a table and saves on release (PATCH x, y).
   - A rotate handle snaps to 15°, or free with Shift.
@@ -370,6 +382,7 @@ Sonnet 5.5 reads the uploaded plan photo and proposes the drawing. The organizer
 **Intent**: One call that turns an image and the current venue (table names, shapes, seat counts, pins; room names; no guest data) into a proposal.
 
 **Contract**:
+
 - `proposeLayout(image: { mimeType, bytes }, venue)` → `{ chairPitch, rooms: [{ name, outline }], tables: [{ name, shape, seatCount, x, y, rotation }] }`, or an `AiProviderError` with the existing kinds and Polish hints.
 - **Anthropic adapter:**
   - same plain-`fetch` style as `anthropic-provider.ts`;
@@ -388,6 +401,7 @@ Sonnet 5.5 reads the uploaded plan photo and proposes the drawing. The organizer
 **Intent**: Run the proposal and apply an accepted draft.
 
 **Contract**:
+
 - `POST /venue/layout-proposal`: raw JPEG/PNG/WebP body ≤ 1.5 MB via `readBodyBytes` (sniffed) → 200 `{ proposal: { updates: [{ tableId, x, y, rotation }], newTables: [...], rooms: [{ roomId, outline }], chairPitch }, costNanoUsd }`, 413/415, or 503 `{ error, hint }`.
 - `POST /venue/layout` with the accepted subset → `apply_venue_layout` → 200 `VenueDto`, or 409/400 with a Polish message.
 - Both are organizer-only (TV and guest keys get 404).
@@ -399,6 +413,7 @@ Sonnet 5.5 reads the uploaded plan photo and proposes the drawing. The organizer
 **Intent**: The button „Zaproponuj układ ze zdjęcia (AI)” opens a draft. It shows ghost tables and outlines on the canvas and a list of changes: „Stolik 3: przesunięty, obrót 90°”, „Nowy stolik „Okno 2” (8 miejsc, Sala A)”, „Sala A: kontur”, „Skala: 0,04”. Each line has a checkbox, and the new tables have editable name, room and seat count. „Zastosuj zaznaczone” and „Odrzuć” close it.
 
 **Contract**:
+
 - The browser draws the plan image to a canvas, downscales the long edge to ≤ 1568 px, encodes JPEG at quality 0.85 and POSTs the bytes.
 - 32 s client abort, with a pending state „AI czyta zdjęcie… (do 30 s)”.
 - The cost of the call is shown („≈ 0,02 USD”).
@@ -410,6 +425,7 @@ Sonnet 5.5 reads the uploaded plan photo and proposes the drawing. The organizer
 **Intent**: Raise the Lambda timeout and document the feature, the deploy order and the republish note.
 
 **Contract**:
+
 - `TIMEOUT_SECONDS = 30`.
 - The CLAUDE.md architecture section documents the drawing (geometry contract, DTOs, editor, AI path).
 - The README „Plan sali” section is in Polish.
@@ -483,6 +499,32 @@ Sonnet 5.5 reads the uploaded plan photo and proposes the drawing. The organizer
 - TV layout today: `src/components/tv/TvSeatingView.tsx:82-160`.
 - AI adapter pattern: `src/lib/ai-topics/anthropic-provider.ts`.
 - Lambda timeout: `scripts/lib/aws-deploy.mjs:14`.
+
+## Deviations (recorded after the implementation review, 2026-11-02)
+
+- **DB:**
+  - `apply_venue_layout(p_layout jsonb, p_max_tables integer)` also raises `TOO_MANY_TABLES` and `NO_PLAN`.
+  - The new columns are `double precision`, not `real`, so 0.035 reads back exactly and the fingerprints compare equal.
+  - The snapshot room columns are named `outline_*`.
+- **Geometry:**
+  - `fitStage` was not added; the SVG `viewBox` does the fitting.
+  - `labelAnchor` became `labelBox`: names above and below a chair are centred on it, while names at side chairs start or end at the chair.
+  - `fitTableFont` checks every pair of labels and staggers them.
+  - `layoutDrawing` shrinks tables that stand too close and keeps font sizes within a narrow spread.
+- **TV and phone:**
+  - The TV crops the drawing to its content.
+  - The phone shows the guest's own table, cropped. „Pokaż na planie sali” opens the whole venue.
+- **Editor:**
+  - The outline mode is called „Kontur”, and the outline number fields live in `RoomOutlinePanel`.
+  - Shift+arrow moves a table by a larger step.
+  - „Podgląd jak na TV” shows the working arrangement's names; example names appear only when nobody is seated.
+  - Venue saves run one after another (`useVenue`).
+- **AI:**
+  - `thinking: { type: "between_tools" }`, because Sonnet 5.5 refuses `disabled`.
+  - The proposal endpoint answers 409 without a plan and 400 for an empty body. The 503 body carries `costNanoUsd`.
+  - The proposal DTO also has `name`, `previous`, `previousChairPitch` and `skipped`.
+  - The browser re-encodes the JPEG at quality 0.7, then 0.5, when needed to stay under 1.5 MB.
+  - The read's cost is shown but not recorded.
 
 ## Progress
 

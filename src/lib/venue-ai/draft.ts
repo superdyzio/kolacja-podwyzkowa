@@ -87,8 +87,11 @@ export function describePitch(answer: VenueLayoutProposalAnswerDto): string {
   return `Skala krzeseł: ${formatChairPitch(previousChairPitch)} → ${formatChairPitch(chairPitch)}`;
 }
 
+// An estimate for this one read; it is not recorded, so the AI topics' cost line never includes it.
 export function describeCost(costNanoUsd: number | null): string {
-  return costNanoUsd === null ? "Koszt odczytu nieznany." : `Koszt odczytu: ≈ ${formatUsd(costNanoUsd)}.`;
+  return costNanoUsd === null
+    ? "Koszt odczytu nieznany."
+    : `Koszt odczytu: ≈ ${formatUsd(costNanoUsd)} (nie wlicza się do kosztu tematów AI).`;
 }
 
 export function isValidEdit(edit: NewTableEdit): boolean {

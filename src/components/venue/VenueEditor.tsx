@@ -14,7 +14,7 @@ import type { TableGeometry } from "@/lib/venue/editor";
 import { planImagePath, type PinPosition } from "@/lib/venue/pin";
 import { MAX_CHAIR_PITCH_SLIDER, MIN_CHAIR_PITCH_SLIDER, formatChairPitch } from "@/lib/venue/editor";
 import { nextTableName } from "@/lib/venue/rules";
-import { EMPTY_SELECTION, proposalGhost, type ApplyLayoutBody } from "@/lib/venue-ai/draft";
+import { EMPTY_SELECTION, describeCost, proposalGhost, type ApplyLayoutBody } from "@/lib/venue-ai/draft";
 import { formatVenueSummary, summarizeVenue } from "@/lib/venue/summary";
 import type { RoomOutline, SeatOccupantDto, VenueDto } from "@/types";
 import { DrawingCanvas } from "./DrawingCanvas";
@@ -407,6 +407,9 @@ export function VenueEditor({ apiBase, initialVenue, initialOccupancy }: Props) 
               >
                 <p className="text-destructive font-medium">{layoutProposal.state.message}</p>
                 {layoutProposal.state.hint && <p className="text-sm">{layoutProposal.state.hint}</p>}
+                {layoutProposal.state.costNanoUsd !== null && (
+                  <p className="text-muted-foreground text-xs">{describeCost(layoutProposal.state.costNanoUsd)}</p>
+                )}
                 <Button type="button" variant="ghost" className="h-10 self-start" onClick={layoutProposal.discard}>
                   Zamknij
                 </Button>

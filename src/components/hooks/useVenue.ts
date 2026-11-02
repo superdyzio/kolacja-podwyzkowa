@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import {
   MAX_PLAN_BYTES,
   PLAN_TOO_LARGE_MESSAGE,
@@ -10,7 +10,9 @@ import type { VenueDto } from "@/types";
 import { NETWORK_FAILURE, readJson, toFailure, type ApiFailure } from "./api-failure";
 
 // Venue state of the rooms-and-tables page. Every change goes through the API, and the venue is replaced with the
-// one the server returns, so the page never drifts from the database.
+// one the server returns, so the page never drifts from the database. Changes run one after another (venue-drawing:
+// a drag, a debounced nudge and the chair-scale slider may overlap): each answer then already holds every earlier
+// change, and answers arrive in the order the changes were made.
 
 export interface VenueRequest {
   method: "POST" | "PATCH" | "DELETE";
@@ -40,11 +42,11 @@ export function useVenue(apiBase: string, initialVenue: VenueDto) {
   const [venue, setVenue] = useState<VenueDto>(initialVenue);
   const [pending, setPending] = useState(false);
   const [failure, setFailure] = useState<ApiFailure | null>(null);
+  const queue = useRef<Promise<unknown>>(Promise.resolve());
+  const waiting = useRef(0);
 
-  // Resolves to true when the change was saved.
-  const run = useCallback(
+  const execute = useCallback(
     async (request: () => Promise<Response>): Promise<boolean> => {
-      setPending(true);
       setFailure(null);
       try {
         const response = await request();
@@ -67,11 +69,26 @@ export function useVenue(apiBase: string, initialVenue: VenueDto) {
       } catch {
         setFailure(NETWORK_FAILURE);
         return false;
-      } finally {
-        setPending(false);
       }
     },
     [apiBase],
+  );
+
+  // Resolves to true when the change was saved; starts after every change asked for before it has answered.
+  const run = useCallback(
+    (request: () => Promise<Response>): Promise<boolean> => {
+      waiting.current += 1;
+      setPending(true);
+      const result = queue.current.then(() => execute(request));
+      queue.current = result;
+      return result.finally(() => {
+        waiting.current -= 1;
+        if (waiting.current === 0) {
+          setPending(false);
+        }
+      });
+    },
+    [execute],
   );
 
   const send = useCallback(

@@ -14,8 +14,8 @@ import {
 
 export const prerender = false;
 
-// POST { roomId, name, seatCount, shape, x, y }: add a table in a room with its pin on the plan (FR-006).
-// x, y are fractions 0–1 of the plan image. Answers with the whole venue.
+// POST { roomId, name, seatCount, shape, x, y, rotation? }: add a table in a room with its pin on the plan (FR-006).
+// x, y are fractions 0–1 of the plan image; rotation in whole degrees, normalized to 0..359. Answers with the whole venue.
 
 const AddTableBody = z.strictObject({
   roomId: z.number().int().positive(),
@@ -24,6 +24,7 @@ const AddTableBody = z.strictObject({
   shape: z.enum(TABLE_SHAPES),
   x: z.number(),
   y: z.number(),
+  rotation: z.number().int().min(-36_000).max(36_000).optional(),
 });
 
 export const POST: APIRoute = async ({ locals, request }) => {
