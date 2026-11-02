@@ -531,10 +531,10 @@ Sonnet 5.5 reads the uploaded plan photo and proposes the drawing. The organizer
 
 #### Automated
 
-- [x] 4.1 Schema, matching and adapter unit tests
+- [x] 4.1 Schema, matching and adapter unit tests — e348031
 - [x] 4.2 Integration: applying a proposal is in place and atomic
-- [x] 4.3 Smoke covers the proposal and apply endpoints on the mock
-- [x] 4.4 No AI network in tests; lint, astro check, tests and package:lambda pass
+- [x] 4.3 Smoke covers the proposal and apply endpoints on the mock — e348031
+- [x] 4.4 No AI network in tests; lint, astro check, tests and package:lambda pass — e348031
 
 #### Manual
 
