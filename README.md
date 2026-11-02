@@ -58,6 +58,17 @@ Domyślnie działa atrapa AI (`AI_PROVIDER=mock` albo brak zmiennej): przykłado
 
 Bez klucza przy `AI_PROVIDER=anthropic` każda próba od razu się nie udaje, a panel organizatora mówi dlaczego. Klucz jest sekretem serwera i nigdy nie trafia do przeglądarki ani do repozytorium. Testy nigdy nie łączą się z API Anthropic, a `npm run smoke` wymaga atrapy.
 
+## Plan sali
+
+TV i telefony gości nie pokazują zdjęcia planu, tylko rysunek: kontury sal z nazwami, stoliki z krzesłami i imię każdego gościa przy jego krześle. Rysunek powstaje na `/o/<klucz>/sale` na podstawie wgranego zdjęcia (zdjęcie widać tam tylko jako półprzezroczyste tło):
+
+1. Wgraj zdjęcie planu i dodaj sale.
+2. „Zaproponuj układ ze zdjęcia (AI)”: AI (Claude Sonnet 5.5, do 30 s, kilka centów; na atrapie — siatka przykładowa) proponuje położenie i obrót stolików, nowe stoliki, kontury sal i skalę krzeseł. Każda zmiana ma swój ptaszek; odznacz, czego nie chcesz, i „Zastosuj zaznaczone”. Do AI idą tylko zdjęcie oraz nazwy sal i stolików — nigdy dane gości.
+3. Popraw ręcznie: przeciągnij stolik, obróć go uchwytem (co 15°, z Shift dowolnie), strzałki przesuwają, `[` i `]` obracają wybrany stolik. „Kontur” przy sali rysuje jej prostokąt. „Skala krzeseł” zmienia rozmiar wszystkich stolików naraz. „Podgląd jak na TV” pokazuje rysunek z imionami.
+4. Zmiany rysunku nie ruszają przypisań gości. TV i telefony pokażą nowy rysunek dopiero po „Opublikuj” na stronie rozsadzenia.
+
+Na produkcji: przed `npx supabase db push` zrób kopię danych (`npx supabase db dump --data-only -f ~/kolacja-backup-<data>.sql`), potem `db push`, potem `npm run deploy:aws` (podnosi limit czasu Lambdy do 30 s). Do czasu przerysowania TV rysuje dotychczasowy układ z domyślnymi wartościami.
+
 ## Skrypty
 
 - `npm run dev`, `npm run build`, `npm run preview`: serwer deweloperski, build produkcyjny, podgląd buildu.
@@ -81,7 +92,7 @@ CI niczego nie wdraża i nie ma dostępu do AWS: wdrożenie uruchamiasz sam (`np
 
 ## Wdrożenie na AWS
 
-Aplikacja działa jako jedna funkcja AWS Lambda (arm64, Node.js 24, 1024 MB, 15 s) pod stałym adresem Function URL (`https://<id>.lambda-url.<region>.on.aws/`, bez logowania — dostęp dają klucze w linkach). Warstwa AWS Lambda Web Adapter (v1.1.0, wersja warstwy 30) przekazuje żądania do serwera Node z paczki. Baza to hostowany projekt Supabase (plan Free). Tylko darmowe usługi: bez API Gateway, CloudFront, S3, ECR i VPC. Klucz service role omija RLS, więc nigdy nie trafia do przeglądarki ani do repozytorium.
+Aplikacja działa jako jedna funkcja AWS Lambda (arm64, Node.js 24, 1024 MB, 30 s) pod stałym adresem Function URL (`https://<id>.lambda-url.<region>.on.aws/`, bez logowania — dostęp dają klucze w linkach). Warstwa AWS Lambda Web Adapter (v1.1.0, wersja warstwy 30) przekazuje żądania do serwera Node z paczki. Baza to hostowany projekt Supabase (plan Free). Tylko darmowe usługi: bez API Gateway, CloudFront, S3, ECR i VPC. Klucz service role omija RLS, więc nigdy nie trafia do przeglądarki ani do repozytorium.
 
 ### Przygotowanie (raz)
 
@@ -121,7 +132,7 @@ AWS_REGION=eu-central-1 npm run deploy:aws
 
 - Darmowy próg Lambdy (1 mln żądań i 400 000 GB-s miesięcznie) z zapasem wystarcza na wieczór: 40 telefonów odpytujących co 2,5 s to ok. 16 żądań/s, czyli ok. 60 tys. na godzinę. Mimo to ustaw alert budżetu: Billing → Budgets → „Zero spend budget” (albo 1 USD).
 - Współbieżność: każda instancja Lambdy obsługuje jedno żądanie naraz. Sprawdź limit konta: `aws lambda get-account-settings --profile mikusia --region <region>` (`AccountLimit.ConcurrentExecutions`). Nowe konta mają czasem tylko 10 — wtedy przed imprezą poproś o więcej w Service Quotas.
-- Plan sali: najwyżej 4 MB (Function URL koduje plik w base64 w ładunku ≤ 6 MB).
+- Plan sali: najwyżej 4 MB (Function URL koduje plik w base64 w ładunku ≤ 6 MB). Odczyt układu przez AI wysyła zdjęcie zmniejszone w przeglądarce (≤ 1,5 MB) i trwa do 25 s; Lambda ma limit 30 s.
 - Po dłuższej przerwie pierwsze żądanie startuje funkcję (ok. 1 s). Otwórz TV i panel organizatora przed przyjściem gości.
 - Supabase Free usypia projekt po tygodniu bez ruchu — kilka dni przed imprezą otwórz aplikację (albo wznów projekt w panelu).
 - Logi: CloudWatch, grupa `/aws/lambda/kolacja-podwyzkowa`. Wersja warstwy Lambda Web Adapter jest przypięta w `scripts/lib/aws-deploy.mjs`.

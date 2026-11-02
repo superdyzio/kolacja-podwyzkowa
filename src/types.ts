@@ -86,6 +86,52 @@ export interface VenueDto {
   chairPitch: number;
 }
 
+// A layout read from the plan photo by AI (venue-drawing), matched against the venue: what would change if applied.
+// Existing tables only move and turn (seat count and shape stay); new tables get a room; outlines only for existing
+// rooms. Nothing is saved until the organizer applies the lines they keep (POST /venue/layout).
+export interface LayoutTableUpdateDto {
+  tableId: number;
+  name: string;
+  x: number;
+  y: number;
+  rotation: number;
+  previous: { x: number; y: number; rotation: number };
+}
+
+export interface LayoutNewTableDto {
+  roomId: number;
+  name: string;
+  shape: TableShape;
+  seatCount: number;
+  x: number;
+  y: number;
+  rotation: number;
+}
+
+export interface LayoutRoomOutlineDto {
+  roomId: number;
+  name: string;
+  outline: RoomOutline;
+  previous: RoomOutline | null;
+}
+
+export interface VenueLayoutProposalDto {
+  chairPitch: number;
+  previousChairPitch: number;
+  // Only tables whose position or rotation would change.
+  updates: LayoutTableUpdateDto[];
+  newTables: LayoutNewTableDto[];
+  rooms: LayoutRoomOutlineDto[];
+  // Tables the AI saw that could not be offered (no room in the venue, or the table limit).
+  skipped: number;
+}
+
+export interface VenueLayoutProposalAnswerDto {
+  proposal: VenueLayoutProposalDto;
+  // Estimated cost of this read (integer nano-dollars); 0 for the mock, null for a model without a known price.
+  costNanoUsd: number | null;
+}
+
 export type SeatAssignmentRow = Tables["seat_assignment"]["Row"];
 export type SeatingSnapshotRow = Tables["seating_snapshot"]["Row"];
 export type SeatingSnapshotTableRow = Tables["seating_snapshot_table"]["Row"];

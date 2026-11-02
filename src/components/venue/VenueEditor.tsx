@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { isBoard } from "@/components/hooks/useSeatingBoard";
+import { useLayoutProposal } from "@/components/hooks/useLayoutProposal";
 import { useVenue } from "@/components/hooks/useVenue";
 import { Button } from "@/components/ui/button";
 import {
@@ -13,9 +14,11 @@ import type { TableGeometry } from "@/lib/venue/editor";
 import { planImagePath, type PinPosition } from "@/lib/venue/pin";
 import { MAX_CHAIR_PITCH_SLIDER, MIN_CHAIR_PITCH_SLIDER, formatChairPitch } from "@/lib/venue/editor";
 import { nextTableName } from "@/lib/venue/rules";
+import { EMPTY_SELECTION, proposalGhost, type ApplyLayoutBody } from "@/lib/venue-ai/draft";
 import { formatVenueSummary, summarizeVenue } from "@/lib/venue/summary";
 import type { RoomOutline, SeatOccupantDto, VenueDto } from "@/types";
 import { DrawingCanvas } from "./DrawingCanvas";
+import { LayoutProposal } from "./LayoutProposal";
 import { PlanUpload } from "./PlanUpload";
 import { RoomOutlinePanel } from "./RoomOutlinePanel";
 import { RoomsSection } from "./RoomsSection";
@@ -56,6 +59,9 @@ export function VenueEditor({ apiBase, initialVenue, initialOccupancy }: Props) 
   const [pitchDraft, setPitchDraft] = useState<number | null>(null);
   const pitchTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const panelRef = useRef<HTMLDivElement>(null);
+  const layoutProposal = useLayoutProposal(apiBase);
+  const [proposalSelection, setProposalSelection] = useState(EMPTY_SELECTION);
+  const proposalAnswer = layoutProposal.state.kind === "ready" ? layoutProposal.state.answer : null;
 
   const roomNameById = useMemo(() => new Map(venue.rooms.map((room) => [room.id, room.name])), [venue.rooms]);
   const tableNameById = useMemo(() => new Map(venue.tables.map((table) => [table.id, table.name])), [venue.tables]);
@@ -257,20 +263,38 @@ export function VenueEditor({ apiBase, initialVenue, initialOccupancy }: Props) 
 
   const chairPitch = pitchDraft ?? venue.chairPitch;
 
+  function readLayoutFromPhoto() {
+    if (!venue.plan) {
+      return;
+    }
+    setPreview(false);
+    setMode({ kind: "idle" });
+    setProposalSelection(EMPTY_SELECTION);
+    void layoutProposal.request(planImagePath(apiBase, venue.plan.version));
+  }
+
+  async function applyProposal(body: ApplyLayoutBody) {
+    if (await send({ method: "POST", path: "/venue/layout", body })) {
+      layoutProposal.discard();
+    }
+  }
+
   const hint =
     venue.rooms.length === 0
       ? "Najpierw dodaj salę, potem klikaj na planie, gdzie stoją stoliki."
-      : preview
-        ? "Tak TV pokaże plan po publikacji (imiona z bieżącego rozsadzenia). Wyłącz podgląd, żeby dalej rysować."
-        : current.kind === "outline" && outlineRoom
-          ? `Przeciągnij na planie prostokąt sali „${outlineRoom.name}”. Esc — koniec.`
-          : current.kind === "new"
-            ? "Uzupełnij dane nowego stolika. Kliknięcie w inne miejsce planu przesuwa pinezkę."
-            : current.kind === "move" && activeTable
-              ? `Kliknij na planie nowe miejsce stolika „${activeTable.name}”. Esc — anuluj.`
-              : current.kind === "edit" && activeTable
-                ? `Edytujesz stolik „${activeTable.name}”. Kliknięcie w puste miejsce planu dodaje nowy stolik.`
-                : "Kliknij na planie, gdzie stoi nowy stolik, albo kliknij stolik, żeby go edytować. Stoliki przeciągasz myszą; strzałki przesuwają, a [ i ] obracają wybrany.";
+      : proposalAnswer
+        ? "Sprawdź propozycję AI: odznacz to, czego nie chcesz, i zastosuj resztę. Potem możesz wszystko poprawić ręcznie."
+        : preview
+          ? "Tak TV pokaże plan po publikacji (imiona z bieżącego rozsadzenia). Wyłącz podgląd, żeby dalej rysować."
+          : current.kind === "outline" && outlineRoom
+            ? `Przeciągnij na planie prostokąt sali „${outlineRoom.name}”. Esc — koniec.`
+            : current.kind === "new"
+              ? "Uzupełnij dane nowego stolika. Kliknięcie w inne miejsce planu przesuwa pinezkę."
+              : current.kind === "move" && activeTable
+                ? `Kliknij na planie nowe miejsce stolika „${activeTable.name}”. Esc — anuluj.`
+                : current.kind === "edit" && activeTable
+                  ? `Edytujesz stolik „${activeTable.name}”. Kliknięcie w puste miejsce planu dodaje nowy stolik.`
+                  : "Kliknij na planie, gdzie stoi nowy stolik, albo kliknij stolik, żeby go edytować. Stoliki przeciągasz myszą; strzałki przesuwają, a [ i ] obracają wybrany.";
 
   const surfaceLabel =
     current.kind === "move" && activeTable
@@ -337,6 +361,17 @@ export function VenueEditor({ apiBase, initialVenue, initialOccupancy }: Props) 
               </Button>
               <Button
                 type="button"
+                variant="outline"
+                className="h-10"
+                disabled={pending || layoutProposal.state.kind === "reading"}
+                onClick={readLayoutFromPhoto}
+              >
+                {layoutProposal.state.kind === "reading"
+                  ? "AI czyta zdjęcie… (do 30 s)"
+                  : "Zaproponuj układ ze zdjęcia (AI)"}
+              </Button>
+              <Button
+                type="button"
                 variant={preview ? "default" : "outline"}
                 className="h-10"
                 aria-pressed={preview}
@@ -365,6 +400,18 @@ export function VenueEditor({ apiBase, initialVenue, initialOccupancy }: Props) 
             <p className="text-sm" aria-live="polite">
               {hint}
             </p>
+            {layoutProposal.state.kind === "failed" && (
+              <div
+                role="alert"
+                className="border-destructive/50 bg-destructive/5 flex flex-col gap-1 rounded-lg border p-3"
+              >
+                <p className="text-destructive font-medium">{layoutProposal.state.message}</p>
+                {layoutProposal.state.hint && <p className="text-sm">{layoutProposal.state.hint}</p>}
+                <Button type="button" variant="ghost" className="h-10 self-start" onClick={layoutProposal.discard}>
+                  Zamknij
+                </Button>
+              </div>
+            )}
           </>
         )}
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_20rem] lg:items-start">
@@ -380,6 +427,7 @@ export function VenueEditor({ apiBase, initialVenue, initialOccupancy }: Props) 
               outlineRoomId={current.kind === "outline" ? current.roomId : null}
               draftPin={current.kind === "new" ? current.position : null}
               preview={preview}
+              ghost={proposalAnswer ? proposalGhost(proposalAnswer, proposalSelection, venue.tables) : null}
               disabled={pending}
               label={surfaceLabel}
               onPlanClick={(position) => void handlePlanClick(position)}
@@ -394,7 +442,18 @@ export function VenueEditor({ apiBase, initialVenue, initialOccupancy }: Props) 
           )}
 
           <div ref={panelRef} className="lg:sticky lg:top-4">
-            {current.kind === "new" && (
+            {proposalAnswer && (
+              <LayoutProposal
+                answer={proposalAnswer}
+                rooms={venue.rooms}
+                selection={proposalSelection}
+                onSelectionChange={setProposalSelection}
+                pending={pending}
+                onApply={(body) => void applyProposal(body)}
+                onDiscard={layoutProposal.discard}
+              />
+            )}
+            {!proposalAnswer && current.kind === "new" && (
               <TableForm
                 key="new"
                 table={null}
@@ -409,7 +468,7 @@ export function VenueEditor({ apiBase, initialVenue, initialOccupancy }: Props) 
                 }}
               />
             )}
-            {current.kind === "edit" && activeTable && (
+            {!proposalAnswer && current.kind === "edit" && activeTable && (
               <TableForm
                 key={`edit-${activeTable.id}`}
                 table={activeTable}
@@ -428,7 +487,7 @@ export function VenueEditor({ apiBase, initialVenue, initialOccupancy }: Props) 
                 onDelete={() => void deleteActiveTable()}
               />
             )}
-            {current.kind === "outline" && outlineRoom && (
+            {!proposalAnswer && current.kind === "outline" && outlineRoom && (
               <RoomOutlinePanel
                 key={`outline-${outlineRoom.id}`}
                 room={outlineRoom}
@@ -439,7 +498,7 @@ export function VenueEditor({ apiBase, initialVenue, initialOccupancy }: Props) 
                 }}
               />
             )}
-            {current.kind === "move" && activeTable && (
+            {!proposalAnswer && current.kind === "move" && activeTable && (
               <div className="flex flex-col gap-3 rounded-xl border p-4">
                 <p className="text-sm">
                   Kliknij na planie nowe miejsce stolika <strong>„{activeTable.name}”</strong>.

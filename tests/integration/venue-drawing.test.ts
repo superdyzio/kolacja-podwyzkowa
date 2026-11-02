@@ -15,15 +15,19 @@ import {
   MAX_TABLES,
   applyVenueLayout,
   getVenue,
+  savePlanImage,
   setChairPitch,
   updateRoom,
   updateTable,
 } from "@/lib/venue";
+import { createMockLayoutProvider, proposeVenueLayout, type VenueVisionProvider } from "@/lib/venue-ai";
 import type { SeatingSnapshot } from "@/types";
 import {
   acquireTestEvent,
+  TINY_PNG,
   cleanupTestSeating,
   createTestSeating,
+  deleteTestPlan,
   deleteTestSnapshots,
   hasLocalDb,
   localDb,
@@ -201,6 +205,73 @@ describe.skipIf(!hasLocalDb)("venue drawing", () => {
     } finally {
       if (hasPlan) {
         await setChairPitch(db, originalPitch);
+      }
+    }
+  });
+
+  it("reads a proposal (mock) without guest data and applies its lines in place, seats and pins untouched", async () => {
+    const { s } = await setup();
+    const [t1, t2] = s.tableIds;
+    const [g1, g2] = s.guestIds;
+    await seatGuest(db, g1, t1, 2);
+    await setPinned(db, g1, true);
+    await seatGuest(db, g2, t2, 1);
+    const before = await getAssignments(db);
+    // The plan is a singleton: upload one only when there is none, and remove it again.
+    const uploadedPlan = !(await planExists(db));
+    if (uploadedPlan) {
+      expect((await savePlanImage(db, TINY_PNG)).status).toBe("saved");
+    }
+    const mock = createMockLayoutProvider({ delayMs: 0 });
+    const prompts: string[] = [];
+    const recording: VenueVisionProvider = {
+      ...mock,
+      readLayout(input, options) {
+        prompts.push(JSON.stringify(input.venue));
+        return mock.readLayout(input, options);
+      },
+    };
+    try {
+      const result = await proposeVenueLayout(db, recording, TINY_PNG);
+      if (result.status !== "proposed") {
+        throw new Error(`no proposal: ${result.status}`);
+      }
+      expect(prompts).toHaveLength(1);
+      expect(prompts[0]).toContain(s.tableNames[0]);
+      for (const name of s.guestNames) {
+        expect(prompts[0]).not.toContain(name);
+      }
+      // Nothing is written by the read.
+      expect(await getAssignments(db)).toEqual(before);
+
+      // Apply only what concerns this test's own rows (the event may hold real tables).
+      const ours = result.proposal.updates.filter((update) => s.tableIds.includes(update.tableId));
+      expect(ours.map((update) => update.tableId).sort()).toEqual([t1, t2].sort());
+      const [newTable] = result.proposal.newTables;
+      const applied = await applyVenueLayout(db, {
+        tables: ours.map((update) => ({ id: update.tableId, x: update.x, y: update.y, rotation: update.rotation })),
+        newTables: [{ ...newTable, roomId: s.roomId, name: `${newTable.name} ${s.tableNames[0]}` }],
+        rooms: result.proposal.rooms
+          .filter((room) => room.roomId === s.roomId)
+          .map((room) => ({ id: room.roomId, outline: room.outline })),
+        chairPitch: null,
+      });
+      expect(applied).toEqual({ status: "applied" });
+      const venue = await getVenue(db);
+      for (const update of ours) {
+        expect(venue.tables.find((table) => table.id === update.tableId)).toMatchObject({
+          x: update.x,
+          y: update.y,
+          rotation: update.rotation,
+        });
+      }
+      // The rectangular table turned 90° (the mock's tell).
+      expect(venue.tables.find((table) => table.id === t2)?.rotation).toBe(90);
+      expect(venue.tables.filter((table) => table.roomId === s.roomId)).toHaveLength(3);
+      expect(await getAssignments(db)).toEqual(before);
+    } finally {
+      if (uploadedPlan) {
+        await deleteTestPlan(db);
       }
     }
   });

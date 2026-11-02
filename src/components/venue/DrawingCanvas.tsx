@@ -2,10 +2,13 @@ import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointer
 import { VenueDrawing, type VenueDrawingTable } from "@/components/venue-drawing/VenueDrawing";
 import {
   STAGE_WIDTH,
+  chairPositions,
+  chairRadius,
   fromStage,
   pitchUnits,
   rotatePoint,
   stageHeight,
+  tableBody,
   tableExtent,
   toStage,
   type StagePoint,
@@ -24,6 +27,7 @@ import {
   type TableGeometry,
 } from "@/lib/venue/editor";
 import type { PinPosition } from "@/lib/venue/pin";
+import type { ProposalGhost } from "@/lib/venue-ai/draft";
 import { roundFraction, type OutlineFields } from "@/lib/venue/rules";
 import type { RoomOutline, SeatOccupantDto, VenueDto } from "@/types";
 
@@ -40,6 +44,8 @@ interface Props {
   draftPin: PinPosition | null;
   // „Podgląd jak na TV”: the drawing as the TV will show it, without the photo, read-only.
   preview: boolean;
+  // The kept lines of an AI layout proposal, drawn dashed over the plan.
+  ghost?: ProposalGhost | null;
   disabled: boolean;
   label: string;
   onPlanClick: (position: PinPosition) => void;
@@ -94,6 +100,7 @@ export function DrawingCanvas({
   outlineRoomId,
   draftPin,
   preview,
+  ghost = null,
   disabled,
   label,
   onPlanClick,
@@ -502,6 +509,47 @@ export function DrawingCanvas({
           </>
         }
       >
+        {ghost && (
+          <g className="pointer-events-none" strokeDasharray={`${pitch * 0.25} ${pitch * 0.15}`}>
+            {ghost.rooms.map((outline, index) => (
+              <rect
+                key={`room-${String(index)}`}
+                x={outline.x * STAGE_WIDTH}
+                y={outline.y * height}
+                width={outline.width * STAGE_WIDTH}
+                height={outline.height * height}
+                fill="none"
+                strokeWidth={stroke * 2}
+                className="stroke-amber-600"
+              />
+            ))}
+            {ghost.tables.map((table, index) => {
+              const body = tableBody(table, chairPitch, aspect);
+              return (
+                <g
+                  key={`table-${String(index)}`}
+                  className="fill-amber-400/20 stroke-amber-600"
+                  strokeWidth={stroke * 2}
+                >
+                  {body.shape === "round" ? (
+                    <circle cx={body.cx} cy={body.cy} r={body.r} />
+                  ) : (
+                    <rect
+                      x={body.cx - body.length / 2}
+                      y={body.cy - body.depth / 2}
+                      width={body.length}
+                      height={body.depth}
+                      transform={`rotate(${String(body.rotation)} ${String(body.cx)} ${String(body.cy)})`}
+                    />
+                  )}
+                  {chairPositions(table, chairPitch, aspect).map((chair) => (
+                    <circle key={chair.seat} cx={chair.x} cy={chair.y} r={chairRadius(chairPitch)} />
+                  ))}
+                </g>
+              );
+            })}
+          </g>
+        )}
         {draftPin && (
           <g className="pointer-events-none">
             <circle

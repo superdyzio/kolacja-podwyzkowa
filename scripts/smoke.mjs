@@ -2690,6 +2690,126 @@ check(
   `${workerResponse.status} ${workerType}`,
 );
 
+// 22b. Layout proposal from the plan photo (venue-drawing). Organizer only. Only the MOCK provider is ever asked
+// (no network, no cost): it answers with every table moved (rectangular ones turned 90°), one new table, every room
+// outlined and another chair scale. Nothing is saved by the read; applying the kept lines moves tables in place (seat
+// assignments stay), the board shows unpublished changes, and the TV draws the new rotation only after a publish.
+const proposalApi = `${api}/venue/layout-proposal`;
+const proposalOn = (key) => `/api/o/${key}/venue/layout-proposal`;
+const proposalTv = await requestBytes(proposalOn(tvKey), { method: "POST", body: TINY_PNG, contentType: "image/png" });
+const proposalGuest = await requestBytes(proposalOn(aniaKey), {
+  method: "POST",
+  body: TINY_PNG,
+  contentType: "image/png",
+});
+const applyTv = await request(`/api/o/${tvKey}/venue/layout`, {
+  method: "POST",
+  json: { tables: [], newTables: [], rooms: [], chairPitch: null },
+});
+check(
+  "layout proposal and apply with the TV or a guest key: JSON no-access",
+  [proposalTv, proposalGuest, applyTv].every(
+    (response) => response.status === 404 && JSON.stringify(response.data) === '{"error":"Brak dostępu"}',
+  ),
+  [proposalTv.status, proposalGuest.status, applyTv.status].join(" "),
+);
+const proposalHtml = await requestBytes(proposalApi, {
+  method: "POST",
+  body: new TextEncoder().encode("<html><body>nie obraz</body></html>"),
+  contentType: "text/html",
+});
+const proposalHuge = new Uint8Array(1_572_865);
+proposalHuge.set(TINY_PNG.subarray(0, 8));
+const proposalTooLarge = await requestBytes(proposalApi, {
+  method: "POST",
+  body: proposalHuge,
+  contentType: "image/png",
+});
+check(
+  "layout proposal refuses a non-image (415) and more than 1.5 MB (413)",
+  proposalHtml.status === 415 && proposalTooLarge.status === 413,
+  `${proposalHtml.status} ${proposalTooLarge.status}`,
+);
+
+if (aiOnMock) {
+  const venueBeforeProposal = await request(`${api}/venue`);
+  const boardBeforeProposal = await request(seatingApi);
+  const proposal = await requestBytes(proposalApi, { method: "POST", body: TINY_PNG, contentType: "image/png" });
+  const proposed = proposal.data?.proposal;
+  const venueAfterRead = await request(`${api}/venue`);
+  check(
+    "layout proposal (mock) lists moves, one new table, outlines and the scale, and saves nothing",
+    proposal.status === 200 &&
+      keysOf(proposed) === "chairPitch,newTables,previousChairPitch,rooms,skipped,updates" &&
+      proposal.data.costNanoUsd === 0 &&
+      proposed.updates.length > 0 &&
+      proposed.newTables.length === 1 &&
+      proposed.rooms.length === venueBeforeProposal.data.rooms.length &&
+      proposed.chairPitch === 0.03 &&
+      !GUEST_NAMES.some(
+        (name) => proposal.bytes.length > 0 && new TextDecoder().decode(proposal.bytes).includes(name),
+      ) &&
+      JSON.stringify(venueAfterRead.data) === JSON.stringify(venueBeforeProposal.data),
+    `${proposal.status} ${new TextDecoder().decode(proposal.bytes).slice(0, 300)}`,
+  );
+
+  const turnedUpdate = proposed?.updates.find((update) => update.rotation !== update.previous.rotation);
+  const applyBody = {
+    tables: (proposed?.updates ?? []).map((update) => ({
+      id: update.tableId,
+      x: update.x,
+      y: update.y,
+      rotation: update.rotation,
+    })),
+    newTables: proposed?.newTables ?? [],
+    rooms: (proposed?.rooms ?? []).map((room) => ({ id: room.roomId, outline: room.outline })),
+    chairPitch: proposed?.chairPitch ?? null,
+  };
+  const duplicate = await request(`${api}/venue/layout`, {
+    method: "POST",
+    json: { ...applyBody, newTables: [{ ...applyBody.newTables[0], name: TABLE_NAME.toUpperCase() }] },
+  });
+  const afterDuplicate = await request(`${api}/venue`);
+  check(
+    "applying a proposal with a duplicate table name writes nothing",
+    duplicate.status === 409 &&
+      duplicate.data?.error === "Stolik o tej nazwie już jest." &&
+      JSON.stringify(afterDuplicate.data) === JSON.stringify(venueBeforeProposal.data),
+    `${duplicate.status} ${duplicate.body}`,
+  );
+
+  const applied = await request(`${api}/venue/layout`, { method: "POST", json: applyBody });
+  const boardAfterApply = await request(seatingApi);
+  const turnedTable = applied.data?.tables?.find((table) => table.id === turnedUpdate?.tableId);
+  check(
+    "applying the proposal moves tables in place, adds the new one and keeps every seat assignment",
+    applied.status === 200 &&
+      applied.data.tables.length === venueBeforeProposal.data.tables.length + 1 &&
+      turnedUpdate !== undefined &&
+      turnedTable?.rotation === turnedUpdate.rotation &&
+      applied.data.chairPitch === 0.03 &&
+      applied.data.rooms.every((room) => room.outline !== null) &&
+      JSON.stringify(boardAfterApply.data?.assignments) === JSON.stringify(boardBeforeProposal.data?.assignments) &&
+      boardAfterApply.data?.upToDate === false,
+    `${applied.status} ${applied.body.slice(0, 300)}`,
+  );
+  const tvBeforePublish = await request(`/api/tv/${tvKey}/seating`);
+  const republished = await request(`${seatingApi}/publish`, { method: "POST" });
+  const tvAfterPublish = await request(`/api/tv/${tvKey}/seating`);
+  check(
+    "the TV draws the applied layout only after a publish",
+    tvBeforePublish.data?.tables?.find((table) => table.name === turnedTable?.name)?.rotation !==
+      turnedUpdate?.rotation &&
+      republished.status === 201 &&
+      tvAfterPublish.data?.tables?.find((table) => table.name === turnedTable?.name)?.rotation ===
+        turnedUpdate?.rotation &&
+      tvAfterPublish.data?.chairPitch === 0.03,
+    `${republished.status} ${tvAfterPublish.status}`,
+  );
+} else {
+  check("layout proposal checks run only on the mock AI provider", false, "AI_PROVIDER is not the mock");
+}
+
 // 23. Organizer reset („Reset danych”). Organizer only; one POST resets the chosen parts (implied ones added) in one
 // transaction and answers with the Polish summary. Here: a subset first (guesses + AI usage), then the guest links,
 // then everything — the organizer and TV links keep working, the event is empty except the 90 starter questions.
