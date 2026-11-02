@@ -431,7 +431,6 @@ export function VenueEditor({ apiBase, initialVenue, initialOccupancy }: Props) 
               draftPin={current.kind === "new" ? current.position : null}
               preview={preview}
               ghost={proposalAnswer ? proposalGhost(proposalAnswer, proposalSelection, venue.tables) : null}
-              disabled={pending}
               label={surfaceLabel}
               onPlanClick={(position) => void handlePlanClick(position)}
               onTableClick={selectTable}

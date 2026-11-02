@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-import { DEFAULT_CHAIR_PITCH } from "@/lib/venue/rules";
 import { parseLayoutText } from "./schema";
 
 const table = { name: "Okno", room: "Sala A", shape: "round", seatCount: 8, x: 0.5, y: 0.5, rotation: 0 };
@@ -38,7 +37,8 @@ describe("parseLayoutText", () => {
         ],
       }),
     );
-    expect(layout?.chairPitch).toBe(DEFAULT_CHAIR_PITCH);
+    // Out of range → no scale proposed: the venue keeps its own.
+    expect(layout?.chairPitch).toBeNull();
     expect(layout?.rooms).toEqual([{ name: "Sala A", outline: { x: 0, y: 0.9, width: 1, height: 0.1 } }]);
     expect(layout?.tables[0]).toMatchObject({ name: "Bardzo długa nazwa stoli", seatCount: 20, x: 1, y: 0 });
     expect(layout?.tables[1]).toMatchObject({ seatCount: 2, rotation: 270 });
@@ -58,6 +58,6 @@ describe("parseLayoutText", () => {
         tables: [{ ...table, name: "   " }, { ...table, x: "lewo" }, table, null],
       }),
     );
-    expect(layout).toEqual({ chairPitch: DEFAULT_CHAIR_PITCH, rooms: [], tables: [table] });
+    expect(layout).toEqual({ chairPitch: null, rooms: [], tables: [table] });
   });
 });

@@ -47,7 +47,6 @@ export function useVenue(apiBase: string, initialVenue: VenueDto) {
 
   const execute = useCallback(
     async (request: () => Promise<Response>): Promise<boolean> => {
-      setFailure(null);
       try {
         const response = await request();
         const data = await readJson(response);
@@ -79,6 +78,10 @@ export function useVenue(apiBase: string, initialVenue: VenueDto) {
     (request: () => Promise<Response>): Promise<boolean> => {
       waiting.current += 1;
       setPending(true);
+      // A new change clears the last error only when nothing is queued: an error of a queued change stays visible.
+      if (waiting.current === 1) {
+        setFailure(null);
+      }
       const result = queue.current.then(() => execute(request));
       queue.current = result;
       return result.finally(() => {

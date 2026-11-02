@@ -2,7 +2,6 @@ import { z } from "astro/zod";
 import { displayNameLength } from "@/lib/guests/names";
 import { MIN_OUTLINE_SIZE } from "@/lib/venue/editor";
 import {
-  DEFAULT_CHAIR_PITCH,
   MAX_CHAIR_PITCH,
   MAX_SEATS,
   MAX_TABLE_NAME_LENGTH,
@@ -82,7 +81,8 @@ export interface RawLayoutRoom {
 }
 
 export interface RawLayout {
-  chairPitch: number;
+  // null: no usable scale in the answer (missing or out of range) — the venue keeps its own.
+  chairPitch: number | null;
   rooms: RawLayoutRoom[];
   tables: RawLayoutTable[];
 }
@@ -131,9 +131,7 @@ function clampOutline(room: z.infer<typeof RoomSchema>): OutlineFields | null {
     width: Math.min(1 - x, Math.max(0, room.width)),
     height: Math.min(1 - y, Math.max(0, room.height)),
   });
-  return isValidOutline(outline) && outline.x + outline.width <= 1.0001 && outline.y + outline.height <= 1.0001
-    ? outline
-    : null;
+  return isValidOutline(outline) ? outline : null;
 }
 
 // The model's answer → a clamped layout, or null when it is not the expected JSON at all. Entries that cannot be
@@ -151,8 +149,7 @@ export function parseLayoutText(text: string): RawLayout | null {
   }
   const pitch =
     typeof raw.data.chairPitch === "number" && Number.isFinite(raw.data.chairPitch) ? raw.data.chairPitch : 0;
-  const chairPitch =
-    pitch >= MIN_CHAIR_PITCH && pitch <= MAX_CHAIR_PITCH ? roundChairPitch(pitch) : DEFAULT_CHAIR_PITCH;
+  const chairPitch = pitch >= MIN_CHAIR_PITCH && pitch <= MAX_CHAIR_PITCH ? roundChairPitch(pitch) : null;
 
   const rooms: RawLayoutRoom[] = [];
   for (const entry of raw.data.rooms.slice(0, MAX_PROPOSED_ROOMS)) {

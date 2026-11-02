@@ -46,7 +46,6 @@ interface Props {
   preview: boolean;
   // The kept lines of an AI layout proposal, drawn dashed over the plan.
   ghost?: ProposalGhost | null;
-  disabled: boolean;
   label: string;
   onPlanClick: (position: PinPosition) => void;
   onTableClick: (tableId: number) => void;
@@ -101,7 +100,6 @@ export function DrawingCanvas({
   draftPin,
   preview,
   ghost = null,
-  disabled,
   label,
   onPlanClick,
   onTableClick,
@@ -153,42 +151,57 @@ export function DrawingCanvas({
     liveGeometry.current = geometryOf;
   });
 
+  // A key nudge waiting for its pause before the save. Any gesture saves it first, so a drag that starts within the
+  // pause is saved after it and never overwritten by it.
+  const pendingNudge = useRef<{
+    tableId: number;
+    geometry: TableGeometry;
+    timer: ReturnType<typeof setTimeout>;
+  } | null>(null);
+  function flushNudge() {
+    const nudge = pendingNudge.current;
+    if (nudge) {
+      pendingNudge.current = null;
+      clearTimeout(nudge.timer);
+      void commitTable(nudge.tableId, nudge.geometry);
+    }
+  }
+
   // Keys on the selected table: arrows move it, [ ] turn it; saved after a pause.
   useEffect(() => {
     if (selectedTableId === null || preview) {
       return;
     }
     const tableId = selectedTableId;
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    let latest: TableGeometry | null = null;
     function onKeyDown(event: KeyboardEvent) {
       if (isTyping(event.target) || event.altKey || event.ctrlKey || event.metaKey) {
         return;
       }
-      const current = latest ?? liveGeometry.current(tableId);
+      const waiting = pendingNudge.current?.tableId === tableId ? pendingNudge.current : null;
+      const current = waiting?.geometry ?? liveGeometry.current(tableId);
       const next = current ? nudgeTable(current, event.key, event.shiftKey) : null;
       if (!next) {
         return;
       }
       event.preventDefault();
-      latest = next;
       setTableDraft(tableId, next);
-      clearTimeout(timer);
-      timer = setTimeout(() => {
-        latest = null;
-        void commitTable(tableId, next);
-      }, KEY_SAVE_DELAY_MS);
+      clearTimeout(waiting?.timer);
+      pendingNudge.current = {
+        tableId,
+        geometry: next,
+        timer: setTimeout(() => {
+          pendingNudge.current = null;
+          void commitTable(tableId, next);
+        }, KEY_SAVE_DELAY_MS),
+      };
     }
     window.addEventListener("keydown", onKeyDown);
     return () => {
       window.removeEventListener("keydown", onKeyDown);
       // Leaving the table (or the page) with a pending nudge saves it now rather than dropping it.
-      if (timer !== undefined && latest) {
-        clearTimeout(timer);
-        void commitTable(tableId, latest);
-      }
+      flushNudge();
     };
-    // Rebuilt only when the selection changes, so a held key keeps its own running geometry (`latest`); commitTable
+    // Rebuilt only when the selection changes; a held key keeps its running geometry in `pendingNudge`. commitTable
     // only calls the save prop and functional state updates, so an older copy of it behaves the same.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedTableId, preview]);
@@ -196,11 +209,12 @@ export function DrawingCanvas({
   // One gesture at a time, followed on the window so it keeps going outside the drawing.
   function startGesture(event: ReactPointerEvent<SVGElement>, gesture: Gesture) {
     const svg = event.currentTarget.ownerSVGElement ?? (event.currentTarget as SVGSVGElement);
-    if (event.button !== 0 || disabled) {
+    if (event.button !== 0) {
       return;
     }
     event.preventDefault();
     event.stopPropagation();
+    flushNudge();
     const pressX = event.clientX;
     const pressY = event.clientY;
     let moved = false;

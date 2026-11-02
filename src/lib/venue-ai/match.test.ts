@@ -39,6 +39,17 @@ describe("matchLayout", () => {
     expect(result).toMatchObject({ chairPitch: 0.04, previousChairPitch: 0.035, skipped: 0 });
   });
 
+  it("keeps a round table's turn and the venue's scale when the answer has none", () => {
+    const turned: VenueDto = { ...venue, tables: [{ ...existing(10, "Okno", 0.1, 0.1), rotation: 30 }] };
+    // Not moved: the AI's 0° for a round table is no change at all.
+    const still = matchLayout({ ...layout([proposed("Okno", 0.1, 0.1)]), chairPitch: null }, turned);
+    expect(still.updates).toEqual([]);
+    expect(still).toMatchObject({ chairPitch: 0.035, previousChairPitch: 0.035 });
+    // Moved: the new place keeps the turn.
+    const moved = matchLayout(layout([proposed("Okno", 0.2, 0.1)]), turned);
+    expect(moved.updates[0]).toMatchObject({ x: 0.2, rotation: 30, previous: { rotation: 30 } });
+  });
+
   it("then pairs the nearest pin within the radius, closest first, one to one", () => {
     const result = matchLayout(
       layout([proposed("Stół A", 0.32, 0.3), proposed("Stół B", 0.31, 0.3), proposed("Daleki", 0.5, 0.5)]),

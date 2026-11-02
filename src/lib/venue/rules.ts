@@ -193,7 +193,10 @@ export function isValidOutline(outline: OutlineFields): boolean {
     width > 0 &&
     height > 0 &&
     width <= 1 &&
-    height <= 1
+    height <= 1 &&
+    // Inside the plan (with room for 4-decimal rounding), whoever sends it: the editor, the API or the AI.
+    x + width <= 1.0001 &&
+    y + height <= 1.0001
   );
 }
 

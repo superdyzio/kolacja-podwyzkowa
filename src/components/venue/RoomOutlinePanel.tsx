@@ -43,11 +43,7 @@ export function RoomOutlinePanel({ room, pending, onSave, onDone }: Props) {
   const values = FIELDS.map(([field]) => fromPercent(texts[field]));
   const [x, y, width, height] = values;
   const outline = x !== null && y !== null && width !== null && height !== null ? { x, y, width, height } : null;
-  const valid =
-    outline !== null &&
-    isValidOutline(outline) &&
-    outline.x + outline.width <= 1.0001 &&
-    outline.y + outline.height <= 1.0001;
+  const valid = outline !== null && isValidOutline(outline);
 
   async function submit(event: SubmitEvent<HTMLFormElement>) {
     event.preventDefault();

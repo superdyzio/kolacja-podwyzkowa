@@ -74,13 +74,15 @@ export function matchLayout(raw: RawLayout, venue: VenueDto): VenueLayoutProposa
       continue;
     }
     const moved = distance(proposed, table) > MOVE_EPSILON;
-    if (moved || proposed.rotation !== table.rotation) {
+    // A round table's turn only says where seat 1 is (e.g. by the door): the photo cannot show it, so it stays.
+    const rotation = table.shape === "round" ? table.rotation : proposed.rotation;
+    if (moved || rotation !== table.rotation) {
       updates.push({
         tableId: table.id,
         name: table.name,
         x: proposed.x,
         y: proposed.y,
-        rotation: proposed.rotation,
+        rotation,
         previous: { x: table.x, y: table.y, rotation: table.rotation },
       });
     }
@@ -139,5 +141,12 @@ export function matchLayout(raw: RawLayout, venue: VenueDto): VenueLayoutProposa
     });
   }
 
-  return { chairPitch: raw.chairPitch, previousChairPitch: venue.chairPitch, updates, newTables, rooms, skipped };
+  return {
+    chairPitch: raw.chairPitch ?? venue.chairPitch,
+    previousChairPitch: venue.chairPitch,
+    updates,
+    newTables,
+    rooms,
+    skipped,
+  };
 }

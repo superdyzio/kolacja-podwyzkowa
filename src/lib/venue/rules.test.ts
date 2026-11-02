@@ -9,6 +9,7 @@ import {
   describeTableNameProblem,
   isTableShape,
   isValidFraction,
+  isValidOutline,
   isValidSeatCount,
   nextTableName,
   normalizeVenueName,
@@ -88,6 +89,15 @@ describe("pin fractions", () => {
     expect(roundFraction(-0.2)).toBe(0);
     expect(roundFraction(1.7)).toBe(1);
     expect(roundFraction(Number.NaN)).toBe(0.5);
+  });
+});
+
+describe("isValidOutline", () => {
+  it("accepts an outline inside the plan and refuses one sticking out or empty", () => {
+    expect(isValidOutline({ x: 0.5, y: 0, width: 0.5, height: 1 })).toBe(true);
+    expect(isValidOutline({ x: 0.6, y: 0.1, width: 0.5, height: 0.2 })).toBe(false);
+    expect(isValidOutline({ x: 0.1, y: 0.7, width: 0.2, height: 0.4 })).toBe(false);
+    expect(isValidOutline({ x: 0.1, y: 0.1, width: 0, height: 0.2 })).toBe(false);
   });
 });
 
