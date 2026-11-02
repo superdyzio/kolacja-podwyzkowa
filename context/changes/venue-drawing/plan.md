@@ -492,19 +492,19 @@ Sonnet 5.5 reads the uploaded plan photo and proposes the drawing. The organizer
 
 #### Automated
 
-- [x] 1.1 Migration applies on a fresh DB and on demo data
-- [x] 1.2 A board published before the migration stays up to date
-- [x] 1.3 drawing.test.ts covers seat order, rotation and font fitting
-- [x] 1.4 Integration: publish copies the new fields; apply_venue_layout is atomic and in place
-- [x] 1.5 Lint, astro check and tests pass
+- [x] 1.1 Migration applies on a fresh DB and on demo data — a8fd1bf
+- [x] 1.2 A board published before the migration stays up to date — a8fd1bf
+- [x] 1.3 drawing.test.ts covers seat order, rotation and font fitting — a8fd1bf
+- [x] 1.4 Integration: publish copies the new fields; apply_venue_layout is atomic and in place — a8fd1bf
+- [x] 1.5 Lint, astro check and tests pass — a8fd1bf
 
 ### Phase 2: Drawn plan on the TV and the guest phone
 
 #### Automated
 
-- [ ] 2.1 Tests, lint and astro check pass
-- [ ] 2.2 Smoke passes on a fresh DB
-- [ ] 2.3 No new dependency; qrcode still not in dist/server
+- [x] 2.1 Tests, lint and astro check pass
+- [x] 2.2 Smoke passes on a fresh DB
+- [x] 2.3 No new dependency; qrcode still not in dist/server
 
 #### Manual
 

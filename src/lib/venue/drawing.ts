@@ -1,3 +1,4 @@
+import { displayNameLength } from "@/lib/guests/names";
 import type { TableShape } from "@/types";
 import { sideALength } from "./seats";
 
@@ -42,9 +43,11 @@ export type TableBody =
   | { shape: "round"; cx: number; cy: number; r: number }
   | { shape: "rectangular"; cx: number; cy: number; length: number; depth: number; rotation: number };
 
-// A chair centre and the outward unit normal (away from the table), in stage units.
+// A chair centre and the outward unit normal (away from the table), in stage units. position: 1-based place along
+// its side (rectangular) or around the table (round) — staggered names alternate by it.
 export interface Chair {
   seat: number;
+  position: number;
   x: number;
   y: number;
   normalX: number;
@@ -129,14 +132,14 @@ export function tableBody(table: DrawnTable, chairPitch: number, aspect: number)
 export function chairPositions(table: DrawnTable, chairPitch: number, aspect: number): Chair[] {
   const pitch = pitchUnits(chairPitch);
   const centre = toStage(table.x, table.y, aspect);
-  const local: { seat: number; x: number; y: number; nx: number; ny: number }[] = [];
+  const local: { seat: number; position: number; x: number; y: number; nx: number; ny: number }[] = [];
   if (table.shape === "round") {
     const ring = roundRadius(table.seatCount, pitch) + CHAIR_DISTANCE * pitch;
     for (let seat = 1; seat <= table.seatCount; seat++) {
       const angle = (2 * Math.PI * (seat - 1)) / table.seatCount;
       const nx = Math.sin(angle);
       const ny = -Math.cos(angle);
-      local.push({ seat, x: ring * nx, y: ring * ny, nx, ny });
+      local.push({ seat, position: seat, x: ring * nx, y: ring * ny, nx, ny });
     }
   } else {
     const a = sideALength(table.seatCount);
@@ -148,6 +151,7 @@ export function chairPositions(table: DrawnTable, chairPitch: number, aspect: nu
       const position = onA ? seat : seat - a;
       local.push({
         seat,
+        position,
         x: -length / 2 + (position - 0.5) * spacing,
         y: onA ? -edge : edge,
         nx: 0,
@@ -158,19 +162,31 @@ export function chairPositions(table: DrawnTable, chairPitch: number, aspect: nu
   return local.map((chair) => {
     const point = rotatePoint(chair.x, chair.y, table.rotation);
     const normal = rotatePoint(chair.nx, chair.ny, table.rotation);
-    return { seat: chair.seat, x: centre.x + point.x, y: centre.y + point.y, normalX: normal.x, normalY: normal.y };
+    return {
+      seat: chair.seat,
+      position: chair.position,
+      x: centre.x + point.x,
+      y: centre.y + point.y,
+      normalX: normal.x,
+      normalY: normal.y,
+    };
   });
 }
 
-// The name's box for a chair: it starts `offset` away from the chair centre along the outward normal and extends
-// further outward, so a name above the table is centred over its chair, a name to the right starts at the chair, and
-// everything in between slides smoothly. The text stays horizontal.
+// How far a name leans to one side: a normal component of ±0.5 or more puts the whole box on that side of its anchor.
+function lean(component: number): number {
+  return Math.max(-1, Math.min(1, component / 0.5));
+}
+
+// The name's box for a chair: anchored `offset` away from the chair centre along the outward normal and extending
+// outward from there, so a name above or below the table is centred over its chair, a name to the side starts (or
+// ends) at it, and a diagonal one sits in its corner, clear of the chair. The text stays horizontal.
 export function labelBox(chair: Chair, offset: number, width: number, height: number): LabelBox {
   const anchorX = chair.x + chair.normalX * offset;
   const anchorY = chair.y + chair.normalY * offset;
   return {
-    cx: anchorX + (chair.normalX * width) / 2,
-    cy: anchorY + (chair.normalY * height) / 2,
+    cx: anchorX + (lean(chair.normalX) * width) / 2,
+    cy: anchorY + (lean(chair.normalY) * height) / 2,
     width,
     height,
   };
@@ -191,8 +207,8 @@ export interface LabelLayoutOptions {
 }
 
 // The boxes of a table's names at one font size. widthsPerFont[i] = the measured text width of chairs[i]'s name at
-// font size 1 (0 = empty chair, no box). stagger: every second chair (seat order) pushes its name one line further
-// out, so neighbours on a dense side do not collide.
+// font size 1 (0 = empty chair, no box). stagger: every second chair along a side (or around a round table) pushes
+// its name one line further out, so neighbours on a dense side do not collide.
 export function labelBoxes(
   chairs: readonly Chair[],
   widthsPerFont: readonly number[],
@@ -206,7 +222,7 @@ export function labelBoxes(
     if (unitWidth <= 0) {
       return null;
     }
-    const extra = stagger && index % 2 === 1 ? height : 0;
+    const extra = stagger && chair.position % 2 === 0 ? height : 0;
     return labelBox(chair, options.offset + extra, unitWidth * font, height);
   });
 }
@@ -319,4 +335,181 @@ export function labelRect(box: LabelBox): StageRect {
     right: box.cx + box.width / 2,
     bottom: box.cy + box.height / 2,
   };
+}
+
+// One table laid out for drawing: body, chairs, the names at their chairs (one font per table) and the area it all
+// covers. `measure(name)` = the name's text width at font size 1 (the views measure real text; tests pass a stub).
+
+export interface DrawingSeat {
+  seat: number;
+  name: string;
+}
+
+export interface DrawingTableInput extends DrawnTable {
+  name: string;
+  seats: readonly DrawingSeat[];
+}
+
+export interface PlacedLabel {
+  seat: number;
+  name: string;
+  box: LabelBox;
+}
+
+export interface LaidOutTable {
+  body: TableBody;
+  chairs: Chair[];
+  occupied: ReadonlySet<number>;
+  labels: PlacedLabel[];
+  font: number;
+  // The table's own name in its middle.
+  nameFont: number;
+  // Body and chairs.
+  extent: StageRect;
+  // Body, chairs and names.
+  bounds: StageRect;
+}
+
+// Font range in chair pitches: names are at most this big, and shrink at a dense table down to the minimum.
+export interface FontRange {
+  max: number;
+  min: number;
+}
+
+export const DEFAULT_FONTS: FontRange = { max: 0.62, min: 0.3 };
+export const LINE_HEIGHT = 1.15;
+// A rough text width per font unit for a name of this length (before the real text is measured).
+export function estimateTextWidth(name: string): number {
+  return 0.56 * displayNameLength(name);
+}
+
+function tableNameFont(body: TableBody, name: string, pitch: number): number {
+  const room = body.shape === "round" ? body.r * 1.6 : body.length * 0.9;
+  return Math.max(0.2 * pitch, Math.min(0.42 * pitch, room / Math.max(1, estimateTextWidth(name))));
+}
+
+export function layoutTable(
+  table: DrawingTableInput,
+  chairPitch: number,
+  aspect: number,
+  measure: (name: string) => number,
+  fonts: FontRange = DEFAULT_FONTS,
+): LaidOutTable {
+  const pitch = pitchUnits(chairPitch);
+  const body = tableBody(table, chairPitch, aspect);
+  const chairs = chairPositions(table, chairPitch, aspect);
+  const nameBySeat = new Map(table.seats.map((seat) => [seat.seat, seat.name]));
+  const widths = chairs.map((chair) => {
+    const name = nameBySeat.get(chair.seat);
+    return name ? measure(name) : 0;
+  });
+  const options = { offset: labelOffset(chairPitch), lineHeight: LINE_HEIGHT };
+  const { font, stagger } = fitTableFont(chairs, widths, fonts.max * pitch, fonts.min * pitch, options);
+  const boxes = labelBoxes(chairs, widths, font, stagger, options);
+  const labels = chairs.flatMap((chair, index): PlacedLabel[] => {
+    const box = boxes[index];
+    const name = nameBySeat.get(chair.seat);
+    return box && name ? [{ seat: chair.seat, name, box }] : [];
+  });
+  const extent = tableExtent(table, chairPitch, aspect);
+  return {
+    body,
+    chairs,
+    occupied: new Set(nameBySeat.keys()),
+    labels,
+    font,
+    nameFont: tableNameFont(body, table.name, pitch),
+    extent,
+    bounds: unionRect([extent, ...labels.map((label) => labelRect(label.box))]) ?? extent,
+  };
+}
+
+function rectsOverlap(a: StageRect, b: StageRect): boolean {
+  return a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
+}
+
+// True when a name of `table` lands on (or right next to) a name, a chair or the body of `other`: names of different
+// tables keep half a line apart, so two of them never read as one.
+function crowds(table: LaidOutTable, other: LaidOutTable): boolean {
+  const gap = table.font * 0.5;
+  if (!rectsOverlap(padRect(table.bounds, gap), other.bounds)) {
+    return false;
+  }
+  return table.labels.some((label) => {
+    const rect = padRect(labelRect(label.box), gap);
+    return (
+      rectsOverlap(rect, other.extent) ||
+      other.labels.some((otherLabel) => boxesOverlap(label.box, otherLabel.box, gap))
+    );
+  });
+}
+
+const CROWDED_SHRINK = 0.85;
+const CROWDED_PASSES = 10;
+// The largest names are at most this many times the smallest, so the tables look like one drawing.
+const FONT_SPREAD = 1.6;
+
+// Every table laid out together: names that would land on another table (or its names) shrink step by step, and
+// the font sizes of different tables stay within FONT_SPREAD of each other. Deterministic and bounded.
+export function layoutDrawing(
+  tables: readonly DrawingTableInput[],
+  chairPitch: number,
+  aspect: number,
+  measure: (name: string) => number,
+  fonts: FontRange = DEFAULT_FONTS,
+): LaidOutTable[] {
+  const pitch = pitchUnits(chairPitch);
+  const maxFonts = tables.map(() => fonts.max);
+  const layOut = (index: number) =>
+    layoutTable(tables[index], chairPitch, aspect, measure, { max: maxFonts[index], min: fonts.min });
+  const laidOut = tables.map((_, index) => layOut(index));
+
+  for (let pass = 0; pass < CROWDED_PASSES; pass++) {
+    const crowded = laidOut.map(
+      (table, index) =>
+        maxFonts[index] > fonts.min &&
+        laidOut.some((other, otherIndex) => otherIndex !== index && crowds(table, other)),
+    );
+    crowded.forEach((shrink, index) => {
+      if (shrink) {
+        maxFonts[index] = Math.max(fonts.min, maxFonts[index] * CROWDED_SHRINK);
+      }
+    });
+    if (!crowded.includes(true)) {
+      break;
+    }
+    tables.forEach((_, index) => {
+      laidOut[index] = layOut(index);
+    });
+  }
+
+  const named = laidOut.filter((table) => table.labels.length > 0);
+  if (named.length > 1) {
+    const cap = (Math.min(...named.map((table) => table.font)) * FONT_SPREAD) / pitch;
+    laidOut.forEach((table, index) => {
+      if (table.font / pitch > cap) {
+        maxFonts[index] = Math.max(fonts.min, cap);
+        laidOut[index] = layOut(index);
+      }
+    });
+  }
+  return laidOut;
+}
+
+// A rect grown by `margin` on every side.
+export function padRect(rect: StageRect, margin: number): StageRect {
+  return { left: rect.left - margin, top: rect.top - margin, right: rect.right + margin, bottom: rect.bottom + margin };
+}
+
+// The SVG viewBox of a rect.
+export function viewBoxOf(rect: StageRect): string {
+  const round = (value: number) => Math.round(value * 100) / 100;
+  return `${round(rect.left)} ${round(rect.top)} ${round(rect.right - rect.left)} ${round(rect.bottom - rect.top)}`;
+}
+
+// A room's outline in stage units.
+export function roomRect(outline: { x: number; y: number; width: number; height: number }, aspect: number): StageRect {
+  const topLeft = toStage(outline.x, outline.y, aspect);
+  const bottomRight = toStage(outline.x + outline.width, outline.y + outline.height, aspect);
+  return { left: topLeft.x, top: topLeft.y, right: bottomRight.x, bottom: bottomRight.y };
 }

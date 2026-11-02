@@ -4,14 +4,20 @@ import {
   STAGE_WIDTH,
   boxesOverlap,
   chairPositions,
+  estimateTextWidth,
   fitTableFont,
   fromStage,
   labelBox,
   labelBoxes,
+  layoutDrawing,
+  layoutTable,
+  padRect,
+  roomRect,
   stageHeight,
   tableBody,
   tableExtent,
   toStage,
+  viewBoxOf,
   type Chair,
 } from "./drawing";
 import { oppositeSeat, sideALength, sideNeighbours } from "./seats";
@@ -145,9 +151,9 @@ describe("names", () => {
   const options = { offset: 10, lineHeight: 1.2 };
 
   it("centres a name above a top chair and starts it at a right chair", () => {
-    const top: Chair = { seat: 1, x: 100, y: 100, normalX: 0, normalY: -1 };
+    const top: Chair = { seat: 1, position: 1, x: 100, y: 100, normalX: 0, normalY: -1 };
     expect(labelBox(top, 10, 60, 12)).toEqual({ cx: 100, cy: 84, width: 60, height: 12 });
-    const right: Chair = { seat: 2, x: 100, y: 100, normalX: 1, normalY: 0 };
+    const right: Chair = { seat: 2, position: 2, x: 100, y: 100, normalX: 1, normalY: 0 };
     expect(labelBox(right, 10, 60, 12)).toEqual({ cx: 140, cy: 100, width: 60, height: 12 });
   });
 
@@ -205,5 +211,78 @@ describe("tableExtent", () => {
       expect(chair.y).toBeGreaterThan(extent.top);
       expect(chair.y).toBeLessThan(extent.bottom);
     }
+  });
+});
+
+describe("layoutTable", () => {
+  it("places a label at every occupied chair only and covers them in its bounds", () => {
+    const laidOut = layoutTable(
+      {
+        ...table("round", 6),
+        name: "Okno",
+        seats: [
+          { seat: 1, name: "Ania" },
+          { seat: 4, name: "Bartłomiej" },
+        ],
+      },
+      PITCH,
+      ASPECT,
+      estimateTextWidth,
+    );
+    expect(laidOut.labels.map((label) => label.seat)).toEqual([1, 4]);
+    expect([...laidOut.occupied]).toEqual([1, 4]);
+    for (const label of laidOut.labels) {
+      expect(label.box.cx - label.box.width / 2).toBeGreaterThanOrEqual(laidOut.bounds.left);
+      expect(label.box.cy - label.box.height / 2).toBeGreaterThanOrEqual(laidOut.bounds.top);
+    }
+    // Seat 1 is at the top: its name sits above the table, centred over the chair.
+    const top = laidOut.labels[0];
+    expect(top.box.cx).toBeCloseTo(laidOut.chairs[0].x);
+    expect(top.box.cy).toBeLessThan(laidOut.chairs[0].y);
+  });
+
+  it("builds a viewBox from a padded rect", () => {
+    expect(viewBoxOf(padRect({ left: 10, top: 20, right: 110, bottom: 70 }, 5))).toBe("5 15 110 60");
+    expect(roomRect({ x: 0.1, y: 0.2, width: 0.5, height: 0.5 }, 2)).toEqual({
+      left: 100,
+      top: 100,
+      right: 600,
+      bottom: 350,
+    });
+  });
+});
+
+describe("layoutDrawing", () => {
+  const seats = (names: string[]) => names.map((name, index) => ({ seat: index + 1, name }));
+
+  it("shrinks the names of tables standing too close and keeps sizes within a narrow spread", () => {
+    const a = {
+      ...table("round", 8),
+      x: 0.3,
+      name: "A",
+      seats: seats(["Aleksandra", "Bartłomiej", "Cecylia", "Dariusz"]),
+    };
+    const b = {
+      ...table("round", 8),
+      x: 0.42,
+      name: "B",
+      seats: seats(["Ewelina", "Franciszek", "Grażyna", "Henryk"]),
+    };
+    const alone = layoutDrawing([a], PITCH, ASPECT, estimateTextWidth);
+    const together = layoutDrawing([a, b], PITCH, ASPECT, estimateTextWidth);
+    expect(together[0].font).toBeLessThan(alone[0].font);
+    const far = { ...b, x: 0.9 };
+    const apart = layoutDrawing([a, far], PITCH, ASPECT, estimateTextWidth);
+    expect(apart[0].font).toBe(alone[0].font);
+
+    const dense = {
+      ...table("rectangular", 20),
+      x: 0.5,
+      y: 0.2,
+      name: "D",
+      seats: seats(Array.from({ length: 20 }, () => "Maksymilian")),
+    };
+    const mixed = layoutDrawing([{ ...a, x: 0.1, y: 0.8 }, dense], PITCH, ASPECT, estimateTextWidth);
+    expect(mixed[0].font / mixed[1].font).toBeLessThanOrEqual(1.6 + 1e-9);
   });
 });

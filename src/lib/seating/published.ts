@@ -1,13 +1,11 @@
 import { pluralPl } from "@/lib/guests/summary";
 import { DEFAULT_CHAIR_PITCH, compareTableNames } from "@/lib/venue/rules";
-import { sideALength } from "@/lib/venue/seats";
 import type {
   DrawingRoomDto,
   PublishedSeatingDto,
   PublishedTableDto,
   SeatOccupantDto,
   SeatingSnapshot,
-  TvSeatDto,
   TvSeatingDto,
   TvTableDto,
 } from "@/types";
@@ -182,25 +180,6 @@ export function toPublishedSeating(snapshot: SeatingSnapshot | null): PublishedS
         .map((seat) => ({ seat: seat.seat, name: seat.guestName })),
     }));
   return { snapshotId: snapshot.id, publishedAt: snapshot.publishedAt, tables };
-}
-
-const ROUND_SINGLE_COLUMN_LIMIT = 8;
-
-// The name columns of a TV table card: a rectangular table shows its two sides side by side; a round table one
-// column in seat order, split in two halves when it holds more than 8 names. Empty columns are left out.
-export function tableCardColumns(table: TvTableDto): TvSeatDto[][] {
-  const seats = [...table.seats].sort((a, b) => a.seat - b.seat);
-  let columns: TvSeatDto[][];
-  if (table.shape === "rectangular") {
-    const a = sideALength(table.seatCount);
-    columns = [seats.filter((seat) => seat.seat <= a), seats.filter((seat) => seat.seat > a)];
-  } else if (seats.length > ROUND_SINGLE_COLUMN_LIMIT) {
-    const half = Math.ceil(seats.length / 2);
-    columns = [seats.slice(0, half), seats.slice(half)];
-  } else {
-    columns = [seats];
-  }
-  return columns.filter((column) => column.length > 0);
 }
 
 // A venue edit that removes working seats (the DB does the same: FK cascade and the seat-count trigger).

@@ -356,7 +356,8 @@ const roomNamed = (res, name) => res.data?.rooms?.find((room) => room.name === n
 const emptyVenue = await request(`${api}/venue`);
 check(
   "venue starts empty",
-  emptyVenue.status === 200 && emptyVenue.body === JSON.stringify({ plan: null, rooms: [], tables: [] }),
+  emptyVenue.status === 200 &&
+    emptyVenue.body === JSON.stringify({ plan: null, rooms: [], tables: [], chairPitch: 0.035 }),
   `${emptyVenue.status} ${emptyVenue.body}`,
 );
 check("venue API is not cacheable", emptyVenue.cacheControl.includes("no-store"), emptyVenue.cacheControl);
@@ -525,6 +526,7 @@ for (const [method, path, json] of [
   ["GET", `${tvVenueApi}/plan/image`],
   ["POST", `${tvVenueApi}/rooms`, { name: "Intruz" }],
   ["PATCH", `${tvVenueApi}/rooms/${hallId}`, { name: "Intruz" }],
+  ["PATCH", `${tvVenueApi}/venue`, { chairPitch: 0.05 }],
   ["POST", `${tvVenueApi}/tables`, { roomId: hallId, name: "Intruz", seatCount: 4, shape: "round", x: 0.5, y: 0.5 }],
   ["DELETE", `${tvVenueApi}/tables/${oknoId}`],
   ["DELETE", `${tvVenueApi}/rooms/${hallId}`],
@@ -715,6 +717,41 @@ check(
   `${unseatPinned.status} ${errorOf(unseatPinned)}`,
 );
 
+// venue-drawing: a table's rotation, a room outline and the venue's chair pitch are saved at once, reach the TV only
+// with the next publish, and bad values are refused.
+const OUTLINE = { x: 0.05, y: 0.1, width: 0.6, height: 0.5 };
+const turned = await request(`${api}/tables/${oknoId}`, { method: "PATCH", json: { rotation: -90 } });
+check(
+  "a table turns (degrees normalized to 0..359)",
+  turned.status === 200 && tableNamed(turned, TABLE_NAME)?.rotation === 270,
+  `${turned.status} ${turned.body}`,
+);
+const outlined = await request(`${api}/rooms/${hallId}`, { method: "PATCH", json: { outline: OUTLINE } });
+check(
+  "a room gets an outline",
+  outlined.status === 200 &&
+    JSON.stringify(outlined.data?.rooms?.find((room) => room.id === hallId)?.outline) === JSON.stringify(OUTLINE),
+  `${outlined.status} ${outlined.body}`,
+);
+const badOutline = await request(`${api}/rooms/${hallId}`, {
+  method: "PATCH",
+  json: { outline: { ...OUTLINE, width: 0 } },
+});
+check("an empty outline is refused", badOutline.status === 400, `${badOutline.status} ${badOutline.body}`);
+const pitched = await request(`${api}/venue`, { method: "PATCH", json: { chairPitch: 0.04 } });
+const badPitch = await request(`${api}/venue`, { method: "PATCH", json: { chairPitch: 1 } });
+check(
+  "the chair pitch is saved for the whole venue and checked",
+  pitched.status === 200 && pitched.data?.chairPitch === 0.04 && badPitch.status === 400,
+  `${pitched.status} ${badPitch.status} ${badPitch.body}`,
+);
+const tvBeforeDrawingPublish = await tvSince(tvEmpty.data?.version);
+check(
+  "drawing edits do not reach the TV before a publish",
+  tvBeforeDrawingPublish.status === 204,
+  String(tvBeforeDrawingPublish.status),
+);
+
 const published = await request(`${seatingApi}/publish`, { method: "POST" });
 check(
   "publishing creates a snapshot and the board is up to date",
@@ -743,6 +780,19 @@ check(
   "TV seating leaks no ids, pins, absences or keys",
   leaksFromTv(tvFirst.body).length === 0,
   leaksFromTv(tvFirst.body).join(" "),
+);
+check(
+  "TV draws the published venue: rotations, outlined rooms and the chair pitch, nothing else",
+  JSON.stringify(Object.keys(tvFirst.data ?? {}).sort()) ===
+    JSON.stringify(["chairPitch", "planVersion", "publishedAt", "rooms", "spotlight", "tables", "version"]) &&
+    tvFirst.data.chairPitch === 0.04 &&
+    tvFirst.data.rooms.some((room) => room.width === OUTLINE.width && room.height === OUTLINE.height) &&
+    tvFirst.data.rooms.every((room) => Object.keys(room).sort().join(",") === "height,name,width,x,y") &&
+    tableNamed(tvFirst, TABLE_NAME)?.rotation === 270 &&
+    tvFirst.data.tables.every(
+      (table) => Object.keys(table).sort().join(",") === "name,rotation,seatCount,seats,shape,x,y",
+    ),
+  tvFirst.body,
 );
 const tvFirstSame = await tvSince(tvFirst.data?.version);
 check("TV seating is 204 until the next publish", tvFirstSame.status === 204, String(tvFirstSame.status));
@@ -1099,6 +1149,21 @@ check(
   JSON.stringify(aniaState.data?.seat?.tablemates) ===
     JSON.stringify([{ seat: 1, name: GUEST_NAMES[2], relation: "opposite" }]),
   JSON.stringify(aniaState.data?.seat?.tablemates),
+);
+// The guest's drawing (venue-drawing): every table's geometry and name, outlined rooms and the pitch — no guest
+// names (those only come as tablemates), ids or keys.
+const drawingOf = (data) => data?.drawing ?? null;
+check(
+  "guest state carries the published drawing without anyone's name",
+  JSON.stringify(Object.keys(drawingOf(aniaState.data) ?? {}).sort()) ===
+    JSON.stringify(["chairPitch", "rooms", "tables"]) &&
+    aniaState.data.drawing.chairPitch === 0.04 &&
+    aniaState.data.drawing.tables.some((table) => table.name === TABLE_NAME && table.rotation === 270) &&
+    aniaState.data.drawing.tables.every(
+      (table) => Object.keys(table).sort().join(",") === "name,rotation,seatCount,shape,x,y",
+    ) &&
+    !GUEST_NAMES.some((name) => JSON.stringify(aniaState.data.drawing).includes(name)),
+  JSON.stringify(aniaState.data?.drawing),
 );
 const olaState = await request(guestStateApi(olaKey));
 check(
@@ -2797,7 +2862,7 @@ check(
   "after resetting everything: no guests, venue, seating or guesses",
   guestsAfterReset.data?.guests?.length === 0 &&
     guestsAfterReset.data.groups.length === 0 &&
-    venueAfterReset.body === JSON.stringify({ plan: null, rooms: [], tables: [] }) &&
+    venueAfterReset.body === JSON.stringify({ plan: null, rooms: [], tables: [], chairPitch: 0.035 }) &&
     tvAfterReset.status === 200 &&
     tvAfterReset.data?.publishedAt === null &&
     tvAfterReset.data.tables.length === 0 &&
