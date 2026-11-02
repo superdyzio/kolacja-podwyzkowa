@@ -194,9 +194,9 @@ functions replaced with the same signatures. Hosted DB: dump → `db push` (also
 #### Automated
 
 - [x] 3.1 Reset part „Zamówienia” — d92ec17
-- [x] 3.2 Demo orders
-- [x] 3.3 CLAUDE.md and README
-- [x] 3.4 Full checks (lint, check, tests, smoke, package:lambda)
+- [x] 3.2 Demo orders — b474123
+- [x] 3.3 CLAUDE.md and README — b474123
+- [x] 3.4 Full checks (lint, check, tests, smoke, package:lambda) — b474123
 
 #### Manual
 

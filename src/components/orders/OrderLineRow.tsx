@@ -1,3 +1,4 @@
+import { useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { formatAmount } from "@/lib/guesses/amount";
 import { lineTotal, type DishSuggestion } from "@/lib/orders/rules";
@@ -15,7 +16,8 @@ interface Props {
   onEdit: () => void;
   onCancel: () => void;
   onSave: (values: OrderItemFormValues) => Promise<boolean>;
-  onDelivered: (delivered: boolean) => void;
+  // Resolves once the answer has replaced the board.
+  onDelivered: (delivered: boolean) => Promise<unknown>;
   onDelete: () => void;
 }
 
@@ -34,6 +36,23 @@ export function OrderLineRow({
   onDelivered,
   onDelete,
 }: Props) {
+  // The box shows the latest tick at once, so a quick second click sends the opposite value; the server's value
+  // shows again once every tick of this line has been answered (a failed save then shows what is really stored).
+  const [ticked, setTicked] = useState<boolean | null>(null);
+  const inFlight = useRef(0);
+  const delivered = ticked ?? item.delivered;
+
+  function tick(value: boolean) {
+    setTicked(value);
+    inFlight.current += 1;
+    void onDelivered(value).finally(() => {
+      inFlight.current -= 1;
+      if (inFlight.current === 0) {
+        setTicked(null);
+      }
+    });
+  }
+
   if (editing) {
     return (
       <li className="rounded-lg border p-3">
@@ -51,22 +70,20 @@ export function OrderLineRow({
     );
   }
   return (
-    <li
-      className={cn("flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg border p-3", item.delivered && "bg-muted")}
-    >
+    <li className={cn("flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg border p-3", delivered && "bg-muted")}>
       <label className="flex min-h-10 cursor-pointer items-center gap-2">
         <input
           type="checkbox"
-          checked={item.delivered}
+          checked={delivered}
           onChange={(event) => {
-            onDelivered(event.target.checked);
+            tick(event.target.checked);
           }}
           className="size-5 accent-emerald-600"
         />
         <span className="text-sm">Wydane</span>
       </label>
       <div className="flex min-w-0 flex-1 basis-48 flex-col">
-        <span className={cn("font-medium break-words", item.delivered && "text-muted-foreground line-through")}>
+        <span className={cn("font-medium break-words", delivered && "text-muted-foreground line-through")}>
           {item.name} × {item.quantity}
         </span>
         {item.note && <span className="text-muted-foreground text-sm break-words">{item.note}</span>}

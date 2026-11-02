@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { formatAmountInput } from "@/lib/guesses/amount";
 import {
+  dishKey,
   findDish,
   isValidQuantity,
   MAX_QUANTITY,
@@ -86,9 +87,11 @@ export function OrderItemForm({ item, guests, tables, dishes, pending, submitLab
 
   function changeName(value: string) {
     setName(value);
-    const dish = findDish(dishes, value);
-    if (dish && !priceTouched) {
-      setPrice(formatAmountInput(dish.unitPriceGrosze));
+    // While the price was not typed, it follows the dish: a known dish fills it in, anything else empties it (so
+    // typing on past „Pierogi” to „Pierogi z mięsem” never keeps the pierogi's price).
+    if (!priceTouched) {
+      const dish = findDish(dishes, value);
+      setPrice(dish ? formatAmountInput(dish.unitPriceGrosze) : "");
     }
   }
 
@@ -109,8 +112,9 @@ export function OrderItemForm({ item, guests, tables, dishes, pending, submitLab
       return;
     }
     setProblem(null);
-    // A dish already on the order keeps its spelling, so the prep list shows one line for it.
-    const known = findDish(dishes, name);
+    // A dish already on the order keeps its spelling, so the prep list shows one line for it — except when an edit
+    // only changes the spelling of the line's own dish.
+    const known = item !== null && dishKey(name) === dishKey(item.name) ? null : findDish(dishes, name);
     const saved = await onSubmit({
       name: known?.name ?? name,
       note,

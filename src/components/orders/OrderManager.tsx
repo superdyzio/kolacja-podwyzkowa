@@ -68,9 +68,9 @@ export function OrderManager({ apiBase, initial }: Props) {
               setEditingId(null);
             }}
             onSave={(values) => saveLine(item.id, values)}
-            onDelivered={(delivered) => {
-              void send({ method: "PATCH", path: `/orders/${String(item.id)}`, body: { delivered } });
-            }}
+            onDelivered={(delivered) =>
+              send({ method: "PATCH", path: `/orders/${String(item.id)}`, body: { delivered } })
+            }
             onDelete={() => {
               deleteLine(item);
             }}

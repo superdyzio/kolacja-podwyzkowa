@@ -31,8 +31,6 @@ export function useRestaurantView(apiBase: string, initial: RestaurantViewDto) {
   const [view, setView] = useState(initial);
   const [failures, setFailures] = useState(0);
   const [gone, setGone] = useState(false);
-  // When the shown state was last confirmed by the server (ms since epoch; null until the first poll in the browser).
-  const [checkedAt, setCheckedAt] = useState<number | null>(null);
   const version = useRef(initial.version);
 
   useEffect(() => {
@@ -56,7 +54,6 @@ export function useRestaurantView(apiBase: string, initial: RestaurantViewDto) {
         });
         if (response.status === 204) {
           setFailures(0);
-          setCheckedAt(Date.now());
         } else if (response.status === 404) {
           setGone(true);
           setFailures(0);
@@ -69,7 +66,6 @@ export function useRestaurantView(apiBase: string, initial: RestaurantViewDto) {
           setView(data);
           setGone(false);
           setFailures(0);
-          setCheckedAt(Date.now());
         } else {
           setFailures((count) => count + 1);
         }
@@ -102,5 +98,5 @@ export function useRestaurantView(apiBase: string, initial: RestaurantViewDto) {
     };
   }, [apiBase]);
 
-  return { view, gone, offline: failures >= OFFLINE_AFTER, checkedAt };
+  return { view, gone, offline: failures >= OFFLINE_AFTER };
 }
