@@ -166,24 +166,24 @@ functions replaced with the same signatures. Hosted DB: dump → `db push` (also
 
 #### Automated
 
-- [x] 1.1 Migration, DB types and DTOs
-- [x] 1.2 Pure order modules with unit tests
-- [x] 1.3 Service, organizer API and integration tests
-- [x] 1.4 Organizer page, island and shell card
-- [x] 1.5 Smoke section for the orders API
+- [x] 1.1 Migration, DB types and DTOs — d92ec17
+- [x] 1.2 Pure order modules with unit tests — d92ec17
+- [x] 1.3 Service, organizer API and integration tests — d92ec17
+- [x] 1.4 Organizer page, island and shell card — d92ec17
+- [x] 1.5 Smoke section for the orders API — d92ec17
 
 #### Manual
 
-- [x] 1.6 Lines added, edited, ticked and deleted in Chrome
+- [x] 1.6 Lines added, edited, ticked and deleted in Chrome — d92ec17
 
 ### Phase 2: The restaurant link and view
 
 #### Automated
 
-- [x] 2.1 Access role, rotation and restaurant API
-- [x] 2.2 Restaurant page and polling
-- [x] 2.3 Restaurant link in the panel and links script
-- [x] 2.4 Smoke: denial matrix and restaurant section
+- [x] 2.1 Access role, rotation and restaurant API — d92ec17
+- [x] 2.2 Restaurant page and polling — d92ec17
+- [x] 2.3 Restaurant link in the panel and links script — d92ec17
+- [x] 2.4 Smoke: denial matrix and restaurant section — d92ec17
 
 #### Manual
 
@@ -193,11 +193,18 @@ functions replaced with the same signatures. Hosted DB: dump → `db push` (also
 
 #### Automated
 
-- [x] 3.1 Reset part „Zamówienia”
-- [ ] 3.2 Demo orders
-- [ ] 3.3 CLAUDE.md and README
-- [ ] 3.4 Full checks (lint, check, tests, smoke, package:lambda)
+- [x] 3.1 Reset part „Zamówienia” — d92ec17
+- [x] 3.2 Demo orders
+- [x] 3.3 CLAUDE.md and README
+- [x] 3.4 Full checks (lint, check, tests, smoke, package:lambda)
 
 #### Manual
 
 - [ ] 3.5 Reset and demo checked in Chrome
+
+## Deviations
+
+- The reset part „Zamówienia” (3.1) landed in phase 1: the migration replaces `reset_counts`, and the strict zod
+  schema of the counts (`src/lib/reset/api.ts`) rejected the new `orders` key until the part existed.
+- Phases 1 and 2 were committed together (`d92ec17`); the smoke's denial matrix needed the restaurant role to pass.
+- The add form keeps a known dish's stored spelling (`findDish`), so the prep list never splits one dish by case.

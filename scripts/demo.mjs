@@ -1,6 +1,7 @@
 // Fills the LOCAL app with demo data for the manual checks: 40 fictional guests, a generated venue plan, 3 rooms,
-// 7 tables (45 seats), groups of 4, 2 and 2, one absent and one pinned guest, a published seating and 30 guesses
-// (a tie and the absent guest's guess among them, 10 missing). Every write goes through the HTTP API of a running
+// 7 tables (45 seats), groups of 4, 2 and 2, one absent and one pinned guest, a published seating, 30 guesses
+// (a tie and the absent guest's guess among them, 10 missing) and a food order (lines for guests, for tables, one
+// unassigned, one delivered). Every write goes through the HTTP API of a running
 // server, so it passes the same validation as the UI; the keys are read from the database like `npm run links`.
 // Defaults stay as they are: guest access OFF, guess intake OPEN, no correct amount, only the starter questions.
 // Usage: npm run build && npm run preview, then npm run demo   (BASE_URL, default http://localhost:4321)
@@ -120,6 +121,19 @@ const GUESSES = [
   ["Pani Halinka", "1850"],
   ["Weronika", "1 999"],
 ];
+// Food order lines: [dish, price as typed, quantity, note, for whom]. `for` is a guest name, `{ table }` or null
+// (unassigned). The first line is marked delivered after it is added.
+const ORDERS = [
+  ["Rosół z makaronem", "18,00", 1, null, "Ania"],
+  ["Schabowy z ziemniakami", "42,00", 1, null, "Bartek"],
+  ["Schabowy z ziemniakami", "42,00", 1, "bez kapusty", "Kasia"],
+  ["Pierogi ruskie", "32,50", 1, null, "Tomek"],
+  ["Sałatka z kozim serem", "36,00", 1, "bez orzechów", "Magda"],
+  ["Pierogi ruskie", "32,50", 1, null, "Pani Halinka"],
+  ["Deska serów", "79,00", 1, null, { table: "Dąb" }],
+  ["Dzbanek kompotu", "24,00", 2, null, { table: "Długi stół" }],
+  ["Tort czekoladowy", "180,00", 1, "na deser, ze świeczką", null],
+];
 
 // --- Helpers ---------------------------------------------------------------------------------------------------
 
@@ -176,7 +190,7 @@ async function step(name, path, options, expected = 200) {
 async function readEvent() {
   let response;
   try {
-    response = await fetch(`${supabaseUrl}/rest/v1/event?select=organizer_key,tv_key`, {
+    response = await fetch(`${supabaseUrl}/rest/v1/event?select=organizer_key,tv_key,restaurant_key`, {
       headers: { apikey: serviceRoleKey, Authorization: `Bearer ${serviceRoleKey}` },
     });
   } catch (error) {
@@ -397,7 +411,30 @@ for (const [name, amount] of GUESSES) {
   guessBoard = await step(`strzał ${name}`, `${api}/guesses/${idOf(name)}`, { method: "PUT", json: { amount } });
 }
 
-// --- 6. Summary -------------------------------------------------------------------------------------------------
+// --- 6. Food order -----------------------------------------------------------------------------------------------
+
+let orderBoard;
+for (const [name, price, quantity, note, target] of ORDERS) {
+  const assignment =
+    target === null
+      ? null
+      : typeof target === "string"
+        ? { guestId: idOf(target) }
+        : { tableId: tableByName.get(target.table).id };
+  orderBoard = await step(
+    `zamówienie ${name}`,
+    `${api}/orders`,
+    { method: "POST", json: { name, price, quantity, note, assignment } },
+    201,
+  );
+}
+const firstLine = orderBoard.items[0];
+orderBoard = await step(`wydane: ${firstLine.name}`, `${api}/orders/${firstLine.id}`, {
+  method: "PATCH",
+  json: { delivered: true },
+});
+
+// --- 7. Summary -------------------------------------------------------------------------------------------------
 
 const seatTotal = venue.tables.reduce((sum, table) => sum + table.seatCount, 0);
 const guessCount = guessBoard.guests.filter((guest) => guest.amountGrosze !== null).length;
@@ -409,9 +446,11 @@ Dane demo gotowe:
 - plan ${PLAN_WIDTH}×${PLAN_HEIGHT}, sale: ${venue.rooms.length}, stoliki: ${venue.tables.length}, miejsca: ${seatTotal}
 - rozsadzenie opublikowane na TV: ${board.assignments.length} osób, przypięta: ${PINNED}
 - strzały: ${guessCount} (remis: Bartek i Marta, strzał nieobecnej), brakuje: ${guessBoard.missing.length}
+- zamówienie: ${orderBoard.totals.lines} pozycji, ${orderBoard.totals.quantity} szt., wydane: ${orderBoard.totals.deliveredQuantity}
 - bez zmian: przyjmowanie strzałów otwarte, prawidłowa kwota niewpisana, dostęp gości wyłączony, pytania startowe
 
 Organizator: ${organizerUrl}
 TV:          ${new URL(`/tv/${event.tv_key}`, BASE_URL).href}
+Restauracja: ${new URL(`/r/${event.restaurant_key}`, BASE_URL).href}
 Linki gości: włącz dostęp na ${organizerUrl}/linki
 Linki są sekretne: nie wklejaj ich publicznie.`);
