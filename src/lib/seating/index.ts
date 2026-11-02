@@ -28,7 +28,6 @@ export {
   publishableFingerprint,
   seatingVersion,
   snapshotFingerprint,
-  tableCardColumns,
   toPublishedSeating,
   toTvSeating,
   type VenueSeatChange,

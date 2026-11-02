@@ -11,7 +11,8 @@ export const BASIC_EXECUTION_POLICY_ARN = "arn:aws:iam::aws:policy/service-role/
 export const RUNTIME = "nodejs24.x";
 export const ARCHITECTURE = "arm64";
 export const MEMORY_MB = 1024;
-export const TIMEOUT_SECONDS = 15;
+// 30 s: the AI read of the plan photo (venue-drawing) may take up to 25 s; everything else answers in well under a second.
+export const TIMEOUT_SECONDS = 30;
 export const HANDLER = "run.sh";
 // AWS Lambda Web Adapter v1.1.0, the arm64 layer from the official README
 // (github.com/awslabs/aws-lambda-web-adapter): arn:aws:lambda:${region}:753240598075:layer:LambdaAdapterLayerArm64:30

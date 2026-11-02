@@ -356,7 +356,8 @@ const roomNamed = (res, name) => res.data?.rooms?.find((room) => room.name === n
 const emptyVenue = await request(`${api}/venue`);
 check(
   "venue starts empty",
-  emptyVenue.status === 200 && emptyVenue.body === JSON.stringify({ plan: null, rooms: [], tables: [] }),
+  emptyVenue.status === 200 &&
+    emptyVenue.body === JSON.stringify({ plan: null, rooms: [], tables: [], chairPitch: 0.035 }),
   `${emptyVenue.status} ${emptyVenue.body}`,
 );
 check("venue API is not cacheable", emptyVenue.cacheControl.includes("no-store"), emptyVenue.cacheControl);
@@ -499,8 +500,14 @@ const taras = await request(`${api}/tables`, {
 });
 const kominek = await request(`${api}/tables`, {
   method: "POST",
-  json: { roomId: gardenId, name: "Kominek Smoke", seatCount: 10, shape: "rectangular", x: 0.8, y: 0.8 },
+  // Sent like the editor's form: with the rotation (venue-drawing), normalized to 0..359.
+  json: { roomId: gardenId, name: "Kominek Smoke", seatCount: 10, shape: "rectangular", x: 0.8, y: 0.8, rotation: 375 },
 });
+check(
+  "a table is added with its rotation, as the editor's form sends it",
+  kominek.status === 201 && tableNamed(kominek, "Kominek Smoke")?.rotation === 15,
+  `${kominek.status} ${kominek.body}`,
+);
 const tarasId = tableNamed(taras, "Taras Smoke")?.id;
 const tarasDeleted = await request(`${api}/tables/${tarasId}`, { method: "DELETE" });
 check(
@@ -525,6 +532,7 @@ for (const [method, path, json] of [
   ["GET", `${tvVenueApi}/plan/image`],
   ["POST", `${tvVenueApi}/rooms`, { name: "Intruz" }],
   ["PATCH", `${tvVenueApi}/rooms/${hallId}`, { name: "Intruz" }],
+  ["PATCH", `${tvVenueApi}/venue`, { chairPitch: 0.05 }],
   ["POST", `${tvVenueApi}/tables`, { roomId: hallId, name: "Intruz", seatCount: 4, shape: "round", x: 0.5, y: 0.5 }],
   ["DELETE", `${tvVenueApi}/tables/${oknoId}`],
   ["DELETE", `${tvVenueApi}/rooms/${hallId}`],
@@ -715,6 +723,41 @@ check(
   `${unseatPinned.status} ${errorOf(unseatPinned)}`,
 );
 
+// venue-drawing: a table's rotation, a room outline and the venue's chair pitch are saved at once, reach the TV only
+// with the next publish, and bad values are refused.
+const OUTLINE = { x: 0.05, y: 0.1, width: 0.6, height: 0.5 };
+const turned = await request(`${api}/tables/${oknoId}`, { method: "PATCH", json: { rotation: -90 } });
+check(
+  "a table turns (degrees normalized to 0..359)",
+  turned.status === 200 && tableNamed(turned, TABLE_NAME)?.rotation === 270,
+  `${turned.status} ${turned.body}`,
+);
+const outlined = await request(`${api}/rooms/${hallId}`, { method: "PATCH", json: { outline: OUTLINE } });
+check(
+  "a room gets an outline",
+  outlined.status === 200 &&
+    JSON.stringify(outlined.data?.rooms?.find((room) => room.id === hallId)?.outline) === JSON.stringify(OUTLINE),
+  `${outlined.status} ${outlined.body}`,
+);
+const badOutline = await request(`${api}/rooms/${hallId}`, {
+  method: "PATCH",
+  json: { outline: { ...OUTLINE, width: 0 } },
+});
+check("an empty outline is refused", badOutline.status === 400, `${badOutline.status} ${badOutline.body}`);
+const pitched = await request(`${api}/venue`, { method: "PATCH", json: { chairPitch: 0.04 } });
+const badPitch = await request(`${api}/venue`, { method: "PATCH", json: { chairPitch: 1 } });
+check(
+  "the chair pitch is saved for the whole venue and checked",
+  pitched.status === 200 && pitched.data?.chairPitch === 0.04 && badPitch.status === 400,
+  `${pitched.status} ${badPitch.status} ${badPitch.body}`,
+);
+const tvBeforeDrawingPublish = await tvSince(tvEmpty.data?.version);
+check(
+  "drawing edits do not reach the TV before a publish",
+  tvBeforeDrawingPublish.status === 204,
+  String(tvBeforeDrawingPublish.status),
+);
+
 const published = await request(`${seatingApi}/publish`, { method: "POST" });
 check(
   "publishing creates a snapshot and the board is up to date",
@@ -743,6 +786,19 @@ check(
   "TV seating leaks no ids, pins, absences or keys",
   leaksFromTv(tvFirst.body).length === 0,
   leaksFromTv(tvFirst.body).join(" "),
+);
+check(
+  "TV draws the published venue: rotations, outlined rooms and the chair pitch, nothing else",
+  JSON.stringify(Object.keys(tvFirst.data ?? {}).sort()) ===
+    JSON.stringify(["chairPitch", "planVersion", "publishedAt", "rooms", "spotlight", "tables", "version"]) &&
+    tvFirst.data.chairPitch === 0.04 &&
+    tvFirst.data.rooms.some((room) => room.width === OUTLINE.width && room.height === OUTLINE.height) &&
+    tvFirst.data.rooms.every((room) => Object.keys(room).sort().join(",") === "height,name,width,x,y") &&
+    tableNamed(tvFirst, TABLE_NAME)?.rotation === 270 &&
+    tvFirst.data.tables.every(
+      (table) => Object.keys(table).sort().join(",") === "name,rotation,seatCount,seats,shape,x,y",
+    ),
+  tvFirst.body,
 );
 const tvFirstSame = await tvSince(tvFirst.data?.version);
 check("TV seating is 204 until the next publish", tvFirstSame.status === 204, String(tvFirstSame.status));
@@ -1099,6 +1155,21 @@ check(
   JSON.stringify(aniaState.data?.seat?.tablemates) ===
     JSON.stringify([{ seat: 1, name: GUEST_NAMES[2], relation: "opposite" }]),
   JSON.stringify(aniaState.data?.seat?.tablemates),
+);
+// The guest's drawing (venue-drawing): every table's geometry and name, outlined rooms and the pitch — no guest
+// names (those only come as tablemates), ids or keys.
+const drawingOf = (data) => data?.drawing ?? null;
+check(
+  "guest state carries the published drawing without anyone's name",
+  JSON.stringify(Object.keys(drawingOf(aniaState.data) ?? {}).sort()) ===
+    JSON.stringify(["chairPitch", "rooms", "tables"]) &&
+    aniaState.data.drawing.chairPitch === 0.04 &&
+    aniaState.data.drawing.tables.some((table) => table.name === TABLE_NAME && table.rotation === 270) &&
+    aniaState.data.drawing.tables.every(
+      (table) => Object.keys(table).sort().join(",") === "name,rotation,seatCount,shape,x,y",
+    ) &&
+    !GUEST_NAMES.some((name) => JSON.stringify(aniaState.data.drawing).includes(name)),
+  JSON.stringify(aniaState.data?.drawing),
 );
 const olaState = await request(guestStateApi(olaKey));
 check(
@@ -2084,10 +2155,14 @@ check(
 );
 
 // 20. AI conversation topics (S-08). Only the MOCK provider is ever asked here (no network, no cost): when the server
-// reports another provider, every generate check is skipped and one check fails. A guest gets at most 5 topics; a
+// reports another provider, every generate check is skipped and one check fails. A guest gets at most 15 topics; a
 // failed attempt (header x-ai-mock: fail, honoured only by the mock) does not count; the organizer has no personal
 // limit; nothing is stored, so no page shows a topic; the TV gets nothing. Guest access is on here.
 const aiApi = `${api}/ai-topics`;
+// The limits of src/lib/ai-topics/limits.ts (MAX_GUEST_TOPICS, MAX_EVENT_TOPICS).
+const GUEST_AI_LIMIT = 15;
+const EVENT_AI_LIMIT = 1000;
+const GUEST_AI_FULL = `${GUEST_AI_LIMIT} z ${GUEST_AI_LIMIT}`;
 const guestAiApi = (key) => `/api/g/${key}/ai-topics`;
 const AI_FAIL = { "x-ai-mock": "fail" };
 const keysOf = (value) =>
@@ -2102,18 +2177,18 @@ const isTopic = (topic, category) =>
   topic.text.trim().length >= 5;
 const isQuota = (quota, remaining) =>
   keysOf(quota) === "eventExhausted,limit,remaining,used" &&
-  quota.limit === 5 &&
+  quota.limit === GUEST_AI_LIMIT &&
   quota.remaining === remaining &&
-  quota.used === 5 - remaining &&
+  quota.used === GUEST_AI_LIMIT - remaining &&
   quota.eventExhausted === false;
 // The mock bills nothing: no tokens, an estimate of 0. lastFailureHint = why the latest finished attempt failed.
 const MOCK_FAILURE_HINT = "Dostawca AI niedostępny.";
 const usageText = (used, failed, lastFailureHint = null) =>
   JSON.stringify({
     used,
-    limit: 300,
+    limit: EVENT_AI_LIMIT,
     failed,
-    guestLimit: 5,
+    guestLimit: GUEST_AI_LIMIT,
     inputTokens: 0,
     outputTokens: 0,
     costNanoUsd: 0,
@@ -2138,7 +2213,7 @@ check(
   olaPageBeforeAi.status === 200 &&
     olaPageBeforeAi.body.includes("Temat od AI") &&
     olaPageBeforeAi.body.includes("GuestTopicView") &&
-    olaPageBeforeAi.body.includes("Zostało 5 z 5") &&
+    olaPageBeforeAi.body.includes(`Zostało ${GUEST_AI_FULL}`) &&
     olaPageBeforeAi.body.includes("Temat widzisz tylko Ty."),
   String(olaPageBeforeAi.status),
 );
@@ -2150,9 +2225,11 @@ check(
 );
 
 if (aiOnMock) {
-  // Ania: one topic per category and one from all; every answer carries her quota.
-  let aniaRemaining = 5;
-  for (const category of [...QUESTION_CATEGORIES, null]) {
+  // Ania: one topic per category and one from all, then more until one is left; every answer carries her quota.
+  let aniaRemaining = GUEST_AI_LIMIT;
+  const aniaCategories = [...QUESTION_CATEGORIES, null];
+  while (aniaCategories.length < GUEST_AI_LIMIT - 1) aniaCategories.push(null);
+  for (const category of aniaCategories) {
     const res = await request(guestAiApi(aniaNewKey), { method: "POST", json: { category } });
     aniaRemaining--;
     check(
@@ -2201,17 +2278,17 @@ if (aiOnMock) {
   );
   const aniaFifth = await request(guestAiApi(aniaNewKey), { method: "POST", json: { category: "refleksyjne" } });
   check(
-    "the failed attempt left the fifth topic available",
+    "the failed attempt left the last topic available",
     aniaFifth.status === 200 && isTopic(aniaFifth.data?.topic, "refleksyjne") && isQuota(aniaFifth.data.quota, 0),
     aniaFifth.body.slice(0, 200),
   );
   if (typeof aniaFifth.data?.topic?.text === "string") generatedTopics.push(aniaFifth.data.topic.text);
   const aniaSixth = await request(guestAiApi(aniaNewKey), { method: "POST", json: { category: null } });
   check(
-    "the sixth topic is refused with a clear Polish message",
+    "one topic over the limit is refused with a clear Polish message",
     aniaSixth.status === 429 &&
       keysOf(aniaSixth.data) === "error,quota" &&
-      aniaSixth.data.error.includes("5 z 5") &&
+      aniaSixth.data.error.includes(GUEST_AI_FULL) &&
       isQuota(aniaSixth.data.quota, 0),
     aniaSixth.body,
   );
@@ -2222,23 +2299,27 @@ if (aiOnMock) {
   });
   check(
     "at the limit even a failing attempt is refused before the AI is asked",
-    aniaSixthFailing.status === 429 && aniaSixthFailing.data?.error?.includes("5 z 5"),
+    aniaSixthFailing.status === 429 && aniaSixthFailing.data?.error?.includes(GUEST_AI_FULL),
     aniaSixthFailing.body,
   );
 
-  // Ola has her own 5.
+  // Ola has her own limit.
   const olaTopic = await request(guestAiApi(olaKey), { method: "POST", json: { category: "kontrowersyjne" } });
   check(
     "another guest has her own limit",
-    olaTopic.status === 200 && isTopic(olaTopic.data?.topic, "kontrowersyjne") && isQuota(olaTopic.data.quota, 4),
+    olaTopic.status === 200 &&
+      isTopic(olaTopic.data?.topic, "kontrowersyjne") &&
+      isQuota(olaTopic.data.quota, GUEST_AI_LIMIT - 1),
     olaTopic.body.slice(0, 200),
   );
   if (typeof olaTopic.data?.topic?.text === "string") generatedTopics.push(olaTopic.data.topic.text);
 
-  // The organizer: no personal limit; a failure carries a hint about the cause.
+  // The organizer: no personal limit (more than a guest gets); a failure carries a hint about the cause.
+  const organizerCount = GUEST_AI_LIMIT + 1;
+  const evening = GUEST_AI_LIMIT + 1 + organizerCount;
   let organizerTopics = 0;
   let organizerUsage = null;
-  for (let index = 0; index < 6; index++) {
+  for (let index = 0; index < organizerCount; index++) {
     const category = index % 2 === 0 ? "refleksyjne" : null;
     const res = await request(aiApi, { method: "POST", json: { category } });
     if (res.status === 200 && keysOf(res.data) === "topic,usage" && isTopic(res.data.topic, category)) {
@@ -2248,8 +2329,8 @@ if (aiOnMock) {
     organizerUsage = res.data?.usage;
   }
   check(
-    "the organizer generates more than 5 topics",
-    organizerTopics === 6 && JSON.stringify(organizerUsage) === usageText(12, 1),
+    `the organizer generates more than ${GUEST_AI_LIMIT} topics`,
+    organizerTopics === organizerCount && JSON.stringify(organizerUsage) === usageText(evening, 1),
     `${organizerTopics} ${JSON.stringify(organizerUsage)}`,
   );
   const organizerFail = await request(aiApi, { method: "POST", json: { category: null }, extraHeaders: AI_FAIL });
@@ -2260,7 +2341,7 @@ if (aiOnMock) {
       organizerFail.data.error.includes("nie zmniejszyła limitu") &&
       typeof organizerFail.data.hint === "string" &&
       organizerFail.data.hint.length > 0 &&
-      JSON.stringify(organizerFail.data.usage) === usageText(12, 2, MOCK_FAILURE_HINT),
+      JSON.stringify(organizerFail.data.usage) === usageText(evening, 2, MOCK_FAILURE_HINT),
     organizerFail.body,
   );
   const organizerExtra = await request(aiApi, { method: "POST", json: { category: null, guestId: ola.id } });
@@ -2268,7 +2349,8 @@ if (aiOnMock) {
   const aiBoardAfter = await request(aiApi);
   check(
     "AI board counts every success and every failure",
-    aiBoardAfter.status === 200 && JSON.stringify(aiBoardAfter.data?.usage) === usageText(12, 2, MOCK_FAILURE_HINT),
+    aiBoardAfter.status === 200 &&
+      JSON.stringify(aiBoardAfter.data?.usage) === usageText(evening, 2, MOCK_FAILURE_HINT),
     aiBoardAfter.body.slice(0, 200),
   );
 
@@ -2282,7 +2364,7 @@ if (aiOnMock) {
     const res = await request(path);
     check(
       `${label} shows no generated AI topic`,
-      res.status === 200 && generatedTopics.length === 12 && topicLeaks(res.body).length === 0,
+      res.status === 200 && generatedTopics.length === evening && topicLeaks(res.body).length === 0,
       `${res.status} ${topicLeaks(res.body).join(" | ")}`,
     );
   }
@@ -2290,8 +2372,8 @@ if (aiOnMock) {
   check(
     "the guest page renders the used-up quota",
     aniaPageAfterAi.status === 200 &&
-      aniaPageAfterAi.body.includes("Zostało 0 z 5") &&
-      aniaPageAfterAi.body.includes("5 z 5") &&
+      aniaPageAfterAi.body.includes(`Zostało 0 z ${GUEST_AI_LIMIT}`) &&
+      aniaPageAfterAi.body.includes(GUEST_AI_FULL) &&
       // Costs and the organizer's failure hints never reach a guest.
       !aniaPageAfterAi.body.includes("Koszt AI") &&
       !aniaPageAfterAi.body.includes(MOCK_FAILURE_HINT) &&
@@ -2307,7 +2389,7 @@ if (aiOnMock) {
       aiPage.body.includes('id="tematy-ai"') &&
       aiPage.body.includes("Temat od AI") &&
       aiPage.body.includes("Wygeneruj temat z AI") &&
-      aiPage.body.includes("Wykorzystano 12 z 300 · nieudane: 2") &&
+      aiPage.body.includes(`Wykorzystano ${evening} z ${EVENT_AI_LIMIT} · nieudane: 2`) &&
       aiPage.body.includes("atrapa AI") &&
       aiPage.body.includes("Ostatnia próba (np. gościa) się nie udała") &&
       aiPage.body.includes(MOCK_FAILURE_HINT) &&
@@ -2321,7 +2403,7 @@ if (aiOnMock) {
     "organizer shell links to the AI panel with its summary",
     shellWithAi.status === 200 &&
       shellWithAi.body.includes(`/o/${organizerKey}/pytania#tematy-ai`) &&
-      shellWithAi.body.includes("Tematy AI: 12 z 300 · atrapa AI · ostatnia próba nieudana") &&
+      shellWithAi.body.includes(`Tematy AI: ${evening} z ${EVENT_AI_LIMIT} · atrapa AI · ostatnia próba nieudana`) &&
       countOf(shellWithAi.body, "Wkrótce") === 0,
     String(shellWithAi.status),
   );
@@ -2614,6 +2696,126 @@ check(
   `${workerResponse.status} ${workerType}`,
 );
 
+// 22b. Layout proposal from the plan photo (venue-drawing). Organizer only. Only the MOCK provider is ever asked
+// (no network, no cost): it answers with every table moved (rectangular ones turned 90°), one new table, every room
+// outlined and another chair scale. Nothing is saved by the read; applying the kept lines moves tables in place (seat
+// assignments stay), the board shows unpublished changes, and the TV draws the new rotation only after a publish.
+const proposalApi = `${api}/venue/layout-proposal`;
+const proposalOn = (key) => `/api/o/${key}/venue/layout-proposal`;
+const proposalTv = await requestBytes(proposalOn(tvKey), { method: "POST", body: TINY_PNG, contentType: "image/png" });
+const proposalGuest = await requestBytes(proposalOn(aniaKey), {
+  method: "POST",
+  body: TINY_PNG,
+  contentType: "image/png",
+});
+const applyTv = await request(`/api/o/${tvKey}/venue/layout`, {
+  method: "POST",
+  json: { tables: [], newTables: [], rooms: [], chairPitch: null },
+});
+check(
+  "layout proposal and apply with the TV or a guest key: JSON no-access",
+  [proposalTv, proposalGuest, applyTv].every(
+    (response) => response.status === 404 && JSON.stringify(response.data) === '{"error":"Brak dostępu"}',
+  ),
+  [proposalTv.status, proposalGuest.status, applyTv.status].join(" "),
+);
+const proposalHtml = await requestBytes(proposalApi, {
+  method: "POST",
+  body: new TextEncoder().encode("<html><body>nie obraz</body></html>"),
+  contentType: "text/html",
+});
+const proposalHuge = new Uint8Array(1_572_865);
+proposalHuge.set(TINY_PNG.subarray(0, 8));
+const proposalTooLarge = await requestBytes(proposalApi, {
+  method: "POST",
+  body: proposalHuge,
+  contentType: "image/png",
+});
+check(
+  "layout proposal refuses a non-image (415) and more than 1.5 MB (413)",
+  proposalHtml.status === 415 && proposalTooLarge.status === 413,
+  `${proposalHtml.status} ${proposalTooLarge.status}`,
+);
+
+if (aiOnMock) {
+  const venueBeforeProposal = await request(`${api}/venue`);
+  const boardBeforeProposal = await request(seatingApi);
+  const proposal = await requestBytes(proposalApi, { method: "POST", body: TINY_PNG, contentType: "image/png" });
+  const proposed = proposal.data?.proposal;
+  const venueAfterRead = await request(`${api}/venue`);
+  check(
+    "layout proposal (mock) lists moves, one new table, outlines and the scale, and saves nothing",
+    proposal.status === 200 &&
+      keysOf(proposed) === "chairPitch,newTables,previousChairPitch,rooms,skipped,updates" &&
+      proposal.data.costNanoUsd === 0 &&
+      proposed.updates.length > 0 &&
+      proposed.newTables.length === 1 &&
+      proposed.rooms.length === venueBeforeProposal.data.rooms.length &&
+      proposed.chairPitch === 0.03 &&
+      !GUEST_NAMES.some(
+        (name) => proposal.bytes.length > 0 && new TextDecoder().decode(proposal.bytes).includes(name),
+      ) &&
+      JSON.stringify(venueAfterRead.data) === JSON.stringify(venueBeforeProposal.data),
+    `${proposal.status} ${new TextDecoder().decode(proposal.bytes).slice(0, 300)}`,
+  );
+
+  const turnedUpdate = proposed?.updates.find((update) => update.rotation !== update.previous.rotation);
+  const applyBody = {
+    tables: (proposed?.updates ?? []).map((update) => ({
+      id: update.tableId,
+      x: update.x,
+      y: update.y,
+      rotation: update.rotation,
+    })),
+    newTables: proposed?.newTables ?? [],
+    rooms: (proposed?.rooms ?? []).map((room) => ({ id: room.roomId, outline: room.outline })),
+    chairPitch: proposed?.chairPitch ?? null,
+  };
+  const duplicate = await request(`${api}/venue/layout`, {
+    method: "POST",
+    json: { ...applyBody, newTables: [{ ...applyBody.newTables[0], name: TABLE_NAME.toUpperCase() }] },
+  });
+  const afterDuplicate = await request(`${api}/venue`);
+  check(
+    "applying a proposal with a duplicate table name writes nothing",
+    duplicate.status === 409 &&
+      duplicate.data?.error === "Stolik o tej nazwie już jest." &&
+      JSON.stringify(afterDuplicate.data) === JSON.stringify(venueBeforeProposal.data),
+    `${duplicate.status} ${duplicate.body}`,
+  );
+
+  const applied = await request(`${api}/venue/layout`, { method: "POST", json: applyBody });
+  const boardAfterApply = await request(seatingApi);
+  const turnedTable = applied.data?.tables?.find((table) => table.id === turnedUpdate?.tableId);
+  check(
+    "applying the proposal moves tables in place, adds the new one and keeps every seat assignment",
+    applied.status === 200 &&
+      applied.data.tables.length === venueBeforeProposal.data.tables.length + 1 &&
+      turnedUpdate !== undefined &&
+      turnedTable?.rotation === turnedUpdate.rotation &&
+      applied.data.chairPitch === 0.03 &&
+      applied.data.rooms.every((room) => room.outline !== null) &&
+      JSON.stringify(boardAfterApply.data?.assignments) === JSON.stringify(boardBeforeProposal.data?.assignments) &&
+      boardAfterApply.data?.upToDate === false,
+    `${applied.status} ${applied.body.slice(0, 300)}`,
+  );
+  const tvBeforePublish = await request(`/api/tv/${tvKey}/seating`);
+  const republished = await request(`${seatingApi}/publish`, { method: "POST" });
+  const tvAfterPublish = await request(`/api/tv/${tvKey}/seating`);
+  check(
+    "the TV draws the applied layout only after a publish",
+    tvBeforePublish.data?.tables?.find((table) => table.name === turnedTable?.name)?.rotation !==
+      turnedUpdate?.rotation &&
+      republished.status === 201 &&
+      tvAfterPublish.data?.tables?.find((table) => table.name === turnedTable?.name)?.rotation ===
+        turnedUpdate?.rotation &&
+      tvAfterPublish.data?.chairPitch === 0.03,
+    `${republished.status} ${tvAfterPublish.status}`,
+  );
+} else {
+  check("layout proposal checks run only on the mock AI provider", false, "AI_PROVIDER is not the mock");
+}
+
 // 23. Organizer reset („Reset danych”). Organizer only; one POST resets the chosen parts (implied ones added) in one
 // transaction and answers with the Polish summary. Here: a subset first (guesses + AI usage), then the guest links,
 // then everything — the organizer and TV links keep working, the event is empty except the 90 starter questions.
@@ -2786,7 +2988,7 @@ check(
   "after resetting everything: no guests, venue, seating or guesses",
   guestsAfterReset.data?.guests?.length === 0 &&
     guestsAfterReset.data.groups.length === 0 &&
-    venueAfterReset.body === JSON.stringify({ plan: null, rooms: [], tables: [] }) &&
+    venueAfterReset.body === JSON.stringify({ plan: null, rooms: [], tables: [], chairPitch: 0.035 }) &&
     tvAfterReset.status === 200 &&
     tvAfterReset.data?.publishedAt === null &&
     tvAfterReset.data.tables.length === 0 &&

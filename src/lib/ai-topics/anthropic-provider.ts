@@ -21,7 +21,7 @@ interface ContentBlock {
   text?: unknown;
 }
 
-interface MessageResponse {
+export interface MessageResponse {
   content?: unknown;
   stop_reason?: unknown;
   usage?: { input_tokens?: unknown; output_tokens?: unknown };
@@ -31,14 +31,14 @@ interface ErrorResponse {
   error?: { type?: unknown; message?: unknown };
 }
 
-interface ApiError {
+export interface ApiError {
   type: string;
   message: string;
 }
 
 // Some runtimes (e.g. Cloudflare Workers) throw "Illegal invocation" when a stored global fetch is called as a method,
 // so the default is a wrapper.
-const defaultFetch: FetchLike = (input, init) => fetch(input, init);
+export const defaultFetch: FetchLike = (input, init) => fetch(input, init);
 
 // Haiku 5.5 (the default) thinks unless told not to, and thinking counts toward max_tokens and the 9 s budget: a
 // one-line topic needs none. Other models reject or treat these fields differently (Sonnet/Opus 5.5 refuse
@@ -54,7 +54,7 @@ function tuningFor(model: string): Record<string, unknown> {
 // whose message names the credit balance or the spend limit (the API docs list both). Checked before the generic 400.
 const BILLING_MESSAGE = /credit balance|spend(ing)? limit/i;
 
-function kindFor(status: number, error: ApiError): AiFailureKind {
+export function kindFor(status: number, error: ApiError): AiFailureKind {
   if (status === 402 || error.type === "billing_error" || BILLING_MESSAGE.test(error.message)) {
     return "no-credits";
   }
@@ -73,7 +73,7 @@ function kindFor(status: number, error: ApiError): AiFailureKind {
   return "unavailable";
 }
 
-async function apiError(response: Response): Promise<ApiError> {
+export async function apiError(response: Response): Promise<ApiError> {
   try {
     const body = (await response.json()) as ErrorResponse;
     return {
@@ -90,13 +90,13 @@ function isTokenCount(value: unknown): value is number {
 }
 
 // The billed tokens of an answer, or null when the response carries no usable counts.
-function usageOf(body: MessageResponse): AiTokenUsage | null {
+export function usageOf(body: MessageResponse): AiTokenUsage | null {
   const input = body.usage?.input_tokens;
   const output = body.usage?.output_tokens;
   return isTokenCount(input) && isTokenCount(output) ? { inputTokens: input, outputTokens: output } : null;
 }
 
-function textOf(body: MessageResponse): string {
+export function textOf(body: MessageResponse): string {
   if (!Array.isArray(body.content)) {
     return "";
   }

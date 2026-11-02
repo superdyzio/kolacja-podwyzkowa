@@ -162,7 +162,7 @@ describe("awsCommands", () => {
     ).toEqual([]);
   });
 
-  it("creates an arm64 function on nodejs24.x with run.sh, 1024 MB, 15 s, the layer and the env file", () => {
+  it("creates an arm64 function on nodejs24.x with run.sh, 1024 MB, 30 s, the layer and the env file", () => {
     const args = commands.createFunction;
     expect(args.slice(0, 2)).toEqual(["lambda", "create-function"]);
     expect(flag(args, "--function-name")).toBe("kolacja-podwyzkowa");
@@ -170,7 +170,7 @@ describe("awsCommands", () => {
     expect(flag(args, "--runtime")).toBe("nodejs24.x");
     expect(flag(args, "--handler")).toBe("run.sh");
     expect(flag(args, "--memory-size")).toBe("1024");
-    expect(flag(args, "--timeout")).toBe("15");
+    expect(flag(args, "--timeout")).toBe("30");
     expect(flag(args, "--layers")).toBe(layerArn("eu-central-1"));
     expect(flag(args, "--role")).toBe("arn:role");
     expect(flag(args, "--zip-file")).toBe("fileb://dist-lambda/function.zip");

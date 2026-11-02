@@ -125,6 +125,8 @@ export interface Database {
           byte_size: number;
           image_base64: string;
           updated_at: string;
+          // venue-drawing: distance between two chairs as a fraction of the plan width (0.005–0.2).
+          chair_pitch: number;
         };
         Insert: {
           event_id?: number;
@@ -132,6 +134,7 @@ export interface Database {
           byte_size: number;
           image_base64: string;
           updated_at?: string;
+          chair_pitch?: number;
         };
         Update: {
           event_id?: number;
@@ -139,6 +142,7 @@ export interface Database {
           byte_size?: number;
           image_base64?: string;
           updated_at?: string;
+          chair_pitch?: number;
         };
         Relationships: [
           {
@@ -156,18 +160,31 @@ export interface Database {
           event_id: number;
           name: string;
           created_at: string;
+          // venue-drawing: the room's rectangle as fractions of the plan image; all four null = no outline.
+          outline_x: number | null;
+          outline_y: number | null;
+          outline_w: number | null;
+          outline_h: number | null;
         };
         Insert: {
           id?: never;
           event_id?: number;
           name: string;
           created_at?: string;
+          outline_x?: number | null;
+          outline_y?: number | null;
+          outline_w?: number | null;
+          outline_h?: number | null;
         };
         Update: {
           id?: never;
           event_id?: number;
           name?: string;
           created_at?: string;
+          outline_x?: number | null;
+          outline_y?: number | null;
+          outline_w?: number | null;
+          outline_h?: number | null;
         };
         Relationships: [
           {
@@ -190,6 +207,8 @@ export interface Database {
           pos_x: number;
           pos_y: number;
           created_at: string;
+          // venue-drawing: degrees clockwise 0..359.
+          rotation: number;
         };
         Insert: {
           id?: never;
@@ -201,6 +220,7 @@ export interface Database {
           pos_x: number;
           pos_y: number;
           created_at?: string;
+          rotation?: number;
         };
         Update: {
           id?: never;
@@ -212,6 +232,7 @@ export interface Database {
           pos_x?: number;
           pos_y?: number;
           created_at?: string;
+          rotation?: number;
         };
         Relationships: [
           {
@@ -281,16 +302,20 @@ export interface Database {
           id: number;
           event_id: number;
           published_at: string;
+          // venue-drawing: the venue's chair pitch at publish time; null = published before (read as the default).
+          chair_pitch: number | null;
         };
         Insert: {
           id?: never;
           event_id?: number;
           published_at?: string;
+          chair_pitch?: number | null;
         };
         Update: {
           id?: never;
           event_id?: number;
           published_at?: string;
+          chair_pitch?: number | null;
         };
         Relationships: [
           {
@@ -313,6 +338,8 @@ export interface Database {
           shape: string;
           pos_x: number;
           pos_y: number;
+          // venue-drawing: null = published before rotations existed (read as 0).
+          rotation: number | null;
         };
         Insert: {
           id?: never;
@@ -324,6 +351,7 @@ export interface Database {
           shape: string;
           pos_x: number;
           pos_y: number;
+          rotation?: number | null;
         };
         Update: {
           id?: never;
@@ -335,6 +363,7 @@ export interface Database {
           shape?: string;
           pos_x?: number;
           pos_y?: number;
+          rotation?: number | null;
         };
         Relationships: [
           {
@@ -395,6 +424,45 @@ export interface Database {
             columns: ["guest_id"];
             isOneToOne: false;
             referencedRelation: "guest";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      // venue-drawing: the outlined rooms of a published snapshot.
+      seating_snapshot_room: {
+        Row: {
+          id: number;
+          snapshot_id: number;
+          room_name: string;
+          outline_x: number;
+          outline_y: number;
+          outline_w: number;
+          outline_h: number;
+        };
+        Insert: {
+          id?: never;
+          snapshot_id: number;
+          room_name: string;
+          outline_x: number;
+          outline_y: number;
+          outline_w: number;
+          outline_h: number;
+        };
+        Update: {
+          id?: never;
+          snapshot_id?: number;
+          room_name?: string;
+          outline_x?: number;
+          outline_y?: number;
+          outline_w?: number;
+          outline_h?: number;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "seating_snapshot_room_snapshot_id_fkey";
+            columns: ["snapshot_id"];
+            isOneToOne: false;
+            referencedRelation: "seating_snapshot";
             referencedColumns: ["id"];
           },
         ];
@@ -599,6 +667,12 @@ export interface Database {
       // or restore). Constraint violations abort the whole call.
       replace_seating: {
         Args: { p_seats: Json };
+        Returns: undefined;
+      };
+      // venue-drawing: applies an accepted drawing proposal ({ tables, newTables, rooms, chairPitch }) atomically;
+      // never deletes. Raises TABLE_NOT_FOUND, ROOM_NOT_FOUND, DUPLICATE_NAME, TOO_MANY_TABLES or NO_PLAN.
+      apply_venue_layout: {
+        Args: { p_layout: Json; p_max_tables: number };
         Returns: undefined;
       };
       // S-06: saves or replaces a guest's own guess while intake is open. Raises GUEST_NOT_FOUND or INTAKE_CLOSED.

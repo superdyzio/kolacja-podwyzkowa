@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { SeatingSnapshot, TvTableDto } from "@/types";
+import type { SeatingSnapshot } from "@/types";
 import { guest, input, seat, snapshotOf, table } from "./fixtures.test-helpers";
 import {
   describeRemovedOccupants,
@@ -10,7 +10,6 @@ import {
   publishableFingerprint,
   seatingVersion,
   snapshotFingerprint,
-  tableCardColumns,
   toPublishedSeating,
   toTvSeating,
 } from "./published";
@@ -47,11 +46,28 @@ describe("isUpToDate", () => {
       { ...base, guestList: { ...base.guestList, guests: [{ ...ania, displayName: "Anna" }, kuba, ola] } },
       { ...base, guestList: { ...base.guestList, guests: [ania, { ...kuba, isAbsent: true }, ola] } },
       { ...base, venue: { ...base.venue, tables: [{ ...okno, x: 0.9 }, kominek] } },
-      { ...base, venue: { ...base.venue, rooms: [{ id: 1, name: "Ogród" }] } },
+      { ...base, venue: { ...base.venue, rooms: [{ id: 1, name: "Ogród", outline: null }] } },
       { ...base, venue: { ...base.venue, tables: [okno, kominek, table(3, "Taras", 4)] } },
     ];
     for (const changed of changes) {
       expect(isUpToDate(snapshot, changed)).toBe(false);
+    }
+  });
+
+  it("notices drawing changes: a rotation, a room outline and the chair pitch", () => {
+    const snapshot = snapshotOf(base);
+    const changes = [
+      { ...base, venue: { ...base.venue, tables: [{ ...okno, rotation: 90 }, kominek] } },
+      {
+        ...base,
+        venue: { ...base.venue, rooms: [{ id: 1, name: "Sala", outline: { x: 0, y: 0, width: 0.5, height: 0.5 } }] },
+      },
+      { ...base, venue: { ...base.venue, chairPitch: 0.05 } },
+    ];
+    for (const changed of changes) {
+      expect(isUpToDate(snapshot, changed)).toBe(false);
+      // …and publishing the change makes it up to date again.
+      expect(isUpToDate(snapshotOf(changed), changed)).toBe(true);
     }
   });
 
@@ -76,7 +92,14 @@ describe("isUpToDate", () => {
 
 describe("toTvSeating", () => {
   it("shows nothing before the first publish", () => {
-    expect(toTvSeating(null, 1234)).toEqual({ version: "0.1234", planVersion: 1234, publishedAt: null, tables: [] });
+    expect(toTvSeating(null, 1234)).toEqual({
+      version: "0.1234",
+      planVersion: 1234,
+      publishedAt: null,
+      tables: [],
+      chairPitch: 0.035,
+      rooms: [],
+    });
   });
 
   it("lists tables by name and names by seat, without ids", () => {
@@ -90,6 +113,7 @@ describe("toTvSeating", () => {
       seatCount: 8,
       x: 0.1,
       y: 0.05,
+      rotation: 0,
       seats: [{ seat: 1, name: "Ania" }],
     });
     const json = JSON.stringify(tv);
@@ -103,31 +127,6 @@ describe("seatingVersion", () => {
   it("joins the snapshot id and the plan version", () => {
     expect(seatingVersion(12, 1761529200000)).toBe("12.1761529200000");
     expect(seatingVersion(null, null)).toBe("0.0");
-  });
-});
-
-describe("tableCardColumns", () => {
-  function tvTable(shape: TvTableDto["shape"], seatCount: number, seats: number[]): TvTableDto {
-    return { name: "T", shape, seatCount, x: 0, y: 0, seats: seats.map((s) => ({ seat: s, name: `G${s}` })) };
-  }
-  const numbers = (columns: ReturnType<typeof tableCardColumns>) => columns.map((column) => column.map((s) => s.seat));
-
-  it("splits a rectangular table into its two sides", () => {
-    expect(numbers(tableCardColumns(tvTable("rectangular", 6, [6, 1, 2, 4])))).toEqual([
-      [1, 2],
-      [4, 6],
-    ]);
-    expect(numbers(tableCardColumns(tvTable("rectangular", 7, [4, 5])))).toEqual([[4], [5]]);
-    expect(numbers(tableCardColumns(tvTable("rectangular", 10, [1, 2, 3])))).toEqual([[1, 2, 3]]);
-  });
-
-  it("keeps a round table in one column up to 8 names, then halves it", () => {
-    expect(numbers(tableCardColumns(tvTable("round", 4, [3, 1])))).toEqual([[1, 3]]);
-    expect(numbers(tableCardColumns(tvTable("round", 10, [1, 2, 3, 4, 5, 6, 7, 8, 9])))).toEqual([
-      [1, 2, 3, 4, 5],
-      [6, 7, 8, 9],
-    ]);
-    expect(tableCardColumns(tvTable("round", 10, []))).toEqual([]);
   });
 });
 
@@ -205,6 +204,7 @@ describe("toPublishedSeating", () => {
           shape: "round",
           x: 0,
           y: 0,
+          rotation: 0,
         },
         {
           snapshotTableId: 1,
@@ -215,6 +215,7 @@ describe("toPublishedSeating", () => {
           shape: "round",
           x: 0,
           y: 0,
+          rotation: 0,
         },
         {
           snapshotTableId: 2,
@@ -225,8 +226,11 @@ describe("toPublishedSeating", () => {
           shape: "rectangular",
           x: 0,
           y: 0,
+          rotation: 0,
         },
       ],
+      chairPitch: 0.035,
+      rooms: [],
       seats: [
         { snapshotTableId: 1, seat: 5, guestId: 1, guestName: "Ola" },
         { snapshotTableId: 1, seat: 2, guestId: null, guestName: "Kuba" },

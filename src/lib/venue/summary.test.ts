@@ -3,7 +3,7 @@ import type { TableDto, VenueDto } from "@/types";
 import { formatVenueSummary, summarizeVenue } from "./summary";
 
 function table(id: number, seatCount: number): TableDto {
-  return { id, roomId: 1, name: `Stolik ${id}`, seatCount, shape: "round", x: 0.5, y: 0.5 };
+  return { id, roomId: 1, name: `Stolik ${id}`, seatCount, shape: "round", x: 0.5, y: 0.5, rotation: 0 };
 }
 
 describe("summarizeVenue", () => {
@@ -11,10 +11,11 @@ describe("summarizeVenue", () => {
     const venue: VenueDto = {
       plan: { mimeType: "image/png", byteSize: 100, version: 1 },
       rooms: [
-        { id: 1, name: "Sala" },
-        { id: 2, name: "Ogród" },
+        { id: 1, name: "Sala", outline: null },
+        { id: 2, name: "Ogród", outline: null },
       ],
       tables: [table(1, 8), table(2, 6)],
+      chairPitch: 0.035,
     };
     expect(summarizeVenue(venue)).toEqual({ hasPlan: true, rooms: 2, tables: 2, seats: 14 });
   });

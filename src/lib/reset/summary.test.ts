@@ -52,7 +52,7 @@ describe("describeResetCount", () => {
   it("says what each part would remove", () => {
     expect(RESET_PARTS.map((part) => describeResetCount(part, DEMO, 90))).toEqual([
       "30 strzałów · prawidłowa kwota · przyjmowanie zamknięte",
-      "wykorzystano 12 z 300 · nieudane: 2",
+      "wykorzystano 12 z 1000 · nieudane: 2",
       "38 miejsc (przypięte: 1) · 2 publikacje",
       "40 gości · 3 grupy",
       "plan · 3 sale · 7 stolików",
@@ -95,9 +95,9 @@ describe("describeResetCount", () => {
 
   it("counts failed AI attempts apart from used ones", () => {
     expect(describeResetCount("aiUsage", { ...EMPTY, aiAttempts: 2, aiUsed: 0 }, 90)).toBe(
-      "wykorzystano 0 z 300 · nieudane: 2",
+      "wykorzystano 0 z 1000 · nieudane: 2",
     );
-    expect(describeResetCount("aiUsage", { ...EMPTY, aiAttempts: 5, aiUsed: 5 }, 90)).toBe("wykorzystano 5 z 300");
+    expect(describeResetCount("aiUsage", { ...EMPTY, aiAttempts: 5, aiUsed: 5 }, 90)).toBe("wykorzystano 5 z 1000");
   });
 });
 
@@ -107,7 +107,7 @@ describe("describeResetResult", () => {
       describeResetResult({ parts: [...RESET_PARTS], before: DEMO, questionsAdded: 90, guestKeysReplaced: 0 }),
     ).toEqual([
       "Strzały: usunięto 30 strzałów i prawidłową kwotę; przyjmowanie strzałów otwarte.",
-      "Licznik tematów AI: wyzerowany (0 z 300), każdy gość znów ma 5.",
+      "Licznik tematów AI: wyzerowany (0 z 1000), każdy gość znów ma 15.",
       "Rozsadzenie i historia: usunięto 38 miejsc i 2 publikacje; TV nie pokazuje rozsadzenia do następnej publikacji.",
       "Goście i grupy: usunięto 40 gości i 3 grupy.",
       "Plan, sale i stoliki: usunięto plan, 3 sale i 7 stolików.",

@@ -1,10 +1,10 @@
 import { generateAccessKey } from "@/lib/access/keys";
 import { EVENT_ID } from "@/lib/event";
 import { getGuestGuess } from "@/lib/guesses/service";
-import { getPublishedVersion } from "@/lib/seating/service";
+import { getPublishedVersion, readSnapshotRooms } from "@/lib/seating/service";
 import type { DbClient } from "@/lib/supabase-client";
-import { isTableShape } from "@/lib/venue/rules";
-import type { GuestLinksDto, GuestSeatDto, GuestStateDto } from "@/types";
+import { DEFAULT_CHAIR_PITCH, compareTableNames, isTableShape } from "@/lib/venue/rules";
+import type { DrawingTableDto, GuestDrawingDto, GuestLinksDto, GuestSeatDto, GuestStateDto } from "@/types";
 import { guestStateVersion, toGuestState, toTablemates } from "./state";
 
 // Personal guest links and the guest's own view (S-05, PRD FR-011..FR-013) for the singleton event. Functions take the
@@ -124,11 +124,53 @@ async function guestSeat(db: DbClient, snapshotId: number, guestId: number): Pro
   };
 }
 
-// What the guest's phone shows: their current name, their seat in the latest PUBLISHED arrangement, and (S-06) the
-// guess intake flag with their own guess.
+// The drawing of snapshot `snapshotId` as a guest may see it (venue-drawing): every table's geometry and name, the
+// outlined rooms and the pitch — never who sits where.
+async function guestDrawing(db: DbClient, snapshotId: number): Promise<GuestDrawingDto> {
+  const [snapshot, tables, rooms] = await Promise.all([
+    db.from("seating_snapshot").select("chair_pitch").eq("id", snapshotId).maybeSingle(),
+    db
+      .from("seating_snapshot_table")
+      .select("name, shape, seat_count, pos_x, pos_y, rotation")
+      .eq("snapshot_id", snapshotId),
+    readSnapshotRooms(db, snapshotId),
+  ]);
+  if (snapshot.error) {
+    fail("odczytać rysunku sali", snapshot.error.message);
+  }
+  if (tables.error) {
+    fail("odczytać rysunku sali", tables.error.message);
+  }
+  return {
+    chairPitch: snapshot.data?.chair_pitch ?? DEFAULT_CHAIR_PITCH,
+    rooms,
+    tables: tables.data
+      .flatMap((table): DrawingTableDto[] =>
+        isTableShape(table.shape)
+          ? [
+              {
+                name: table.name,
+                shape: table.shape,
+                seatCount: table.seat_count,
+                x: table.pos_x,
+                y: table.pos_y,
+                rotation: table.rotation ?? 0,
+              },
+            ]
+          : [],
+      )
+      .sort((a, b) => compareTableNames(a.name, b.name)),
+  };
+}
+
+// What the guest's phone shows: their current name, their seat in the latest PUBLISHED arrangement with the drawing
+// of that arrangement, and (S-06) the guess intake flag with their own guess.
 export async function getGuestState(db: DbClient, guest: { id: number; displayName: string }): Promise<GuestStateDto> {
   const [published, guess] = await Promise.all([getPublishedVersion(db), getGuestGuess(db, guest.id)]);
-  const seat = published.snapshotId === null ? null : await guestSeat(db, published.snapshotId, guest.id);
+  const snapshotId = published.snapshotId;
+  const seat = snapshotId === null ? null : await guestSeat(db, snapshotId, guest.id);
+  // Only a seated guest sees the drawing (state.ts drops it otherwise): unseated phones skip its queries.
+  const drawing = snapshotId === null || seat === null ? null : await guestDrawing(db, snapshotId);
   return toGuestState({
     seatingVersion: published.version,
     snapshotId: published.snapshotId,
@@ -136,6 +178,7 @@ export async function getGuestState(db: DbClient, guest: { id: number; displayNa
     name: guest.displayName,
     seat,
     guess,
+    drawing,
   });
 }
 

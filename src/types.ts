@@ -47,12 +47,24 @@ export interface VenuePlanDto {
   version: number;
 }
 
+// A room's rectangle on the drawing (venue-drawing): x, y = top-left corner, width, height — all fractions of the
+// plan image, like table pins.
+export interface RoomOutline {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+// outline: null = the room is not drawn (its tables still are).
 export interface RoomDto {
   id: number;
   name: string;
+  outline: RoomOutline | null;
 }
 
-// A table with its pin: x, y are fractions 0–1 of the rendered plan image from its top-left corner.
+// A table with its pin: x, y are fractions 0–1 of the rendered plan image from its top-left corner (the table's
+// centre on the drawing); rotation in degrees clockwise 0..359 (src/lib/venue/drawing.ts).
 export interface TableDto {
   id: number;
   roomId: number;
@@ -61,14 +73,63 @@ export interface TableDto {
   shape: TableShape;
   x: number;
   y: number;
+  rotation: number;
 }
 
 // The whole venue: plan metadata (null before the first upload), rooms in creation order, tables ordered by room
-// and then by name (numeric-aware, Polish).
+// and then by name (numeric-aware, Polish). chairPitch: distance between two chairs as a fraction of the plan width
+// (the default when there is no plan); every table's drawn size follows from it.
 export interface VenueDto {
   plan: VenuePlanDto | null;
   rooms: RoomDto[];
   tables: TableDto[];
+  chairPitch: number;
+}
+
+// A layout read from the plan photo by AI (venue-drawing), matched against the venue: what would change if applied.
+// Existing tables only move and turn (seat count and shape stay); new tables get a room; outlines only for existing
+// rooms. Nothing is saved until the organizer applies the lines they keep (POST /venue/layout).
+export interface LayoutTableUpdateDto {
+  tableId: number;
+  name: string;
+  x: number;
+  y: number;
+  rotation: number;
+  previous: { x: number; y: number; rotation: number };
+}
+
+export interface LayoutNewTableDto {
+  roomId: number;
+  name: string;
+  shape: TableShape;
+  seatCount: number;
+  x: number;
+  y: number;
+  rotation: number;
+}
+
+export interface LayoutRoomOutlineDto {
+  roomId: number;
+  name: string;
+  outline: RoomOutline;
+  previous: RoomOutline | null;
+}
+
+export interface VenueLayoutProposalDto {
+  chairPitch: number;
+  previousChairPitch: number;
+  // Only tables whose position or rotation would change.
+  updates: LayoutTableUpdateDto[];
+  newTables: LayoutNewTableDto[];
+  rooms: LayoutRoomOutlineDto[];
+  // Tables the AI saw that could not be offered (no room in the venue, or the table limit).
+  skipped: number;
+}
+
+export interface VenueLayoutProposalAnswerDto {
+  proposal: VenueLayoutProposalDto;
+  // Estimated cost of this read (integer nano-dollars); 0 for the mock, null for a model without a known price.
+  costNanoUsd: number | null;
 }
 
 export type SeatAssignmentRow = Tables["seat_assignment"]["Row"];
@@ -112,6 +173,13 @@ export interface SnapshotTable {
   shape: TableShape;
   x: number;
   y: number;
+  // 0 for snapshots published before rotations existed.
+  rotation: number;
+}
+
+// A room outline as drawn (snapshot, TV, guest phone): the room name and its rectangle (fractions of the plan).
+export interface DrawingRoomDto extends RoomOutline {
+  name: string;
 }
 
 // A seated (present) guest in a snapshot, with the display name at publish time. guestId is null once deleted.
@@ -123,11 +191,14 @@ export interface SnapshotSeat {
 }
 
 // A published snapshot (server-side; the base for the TV, guest phones in S-05 and the history in S-04).
+// chairPitch: the default for snapshots published before the drawing existed; rooms: the outlined rooms only.
 export interface SeatingSnapshot {
   id: number;
   publishedAt: string;
   tables: SnapshotTable[];
   seats: SnapshotSeat[];
+  chairPitch: number;
+  rooms: DrawingRoomDto[];
 }
 
 // What the TV may see: names on seats, no ids, pins, absences or keys.
@@ -142,16 +213,20 @@ export interface TvTableDto {
   seatCount: number;
   x: number;
   y: number;
+  rotation: number;
   seats: TvSeatDto[];
 }
 
 // The TV state: the latest published snapshot plus the current plan image version. version is the opaque polling
-// token ("<snapshot id>.<plan version>"); publishedAt is null before the first publish.
+// token ("<snapshot id>.<plan version>"); publishedAt is null before the first publish. chairPitch and rooms: the
+// drawing (venue-drawing), defaults before the first publish.
 export interface TvSeatingDto {
   version: string;
   planVersion: number | null;
   publishedAt: string | null;
   tables: TvTableDto[];
+  chairPitch: number;
+  rooms: DrawingRoomDto[];
 }
 
 // What the organizer put on the TV over the seating (tv-spotlight): a drawn question, an AI topic or a randomly drawn
@@ -257,6 +332,25 @@ export interface GuestSeatDto {
   tablemates: TablemateDto[];
 }
 
+// A table on the guest's drawing: geometry and name only, never who sits there (only the guest's own table gets
+// names, through seat.tablemates).
+export interface DrawingTableDto {
+  name: string;
+  shape: TableShape;
+  seatCount: number;
+  x: number;
+  y: number;
+  rotation: number;
+}
+
+// The published drawing as the guest's phone gets it (venue-drawing): the venue's tables and outlined rooms from the
+// same snapshot as the guest's seat. No guest names, ids or keys.
+export interface GuestDrawingDto {
+  chairPitch: number;
+  rooms: DrawingRoomDto[];
+  tables: DrawingTableDto[];
+}
+
 // unpublished: nothing published yet; unseated: no seat in the latest published arrangement (absent or not seated
 // when it was published); seated: `seat` is set.
 export type GuestSeatStatus = "unpublished" | "unseated" | "seated";
@@ -264,7 +358,8 @@ export type GuestSeatStatus = "unpublished" | "unseated" | "seated";
 // What a guest's phone shows (S-05) and polls for. version is the opaque polling token; name is the guest's current
 // display name; planVersion is the plan image version (null before an upload); guess (S-06) is the intake flag and
 // the guest's OWN guess. Nothing about other guests beyond the published names at their own table (seat.tablemates),
-// nothing about the correct amount or the ranking.
+// nothing about the correct amount or the ranking. drawing: the published venue drawing while the guest is seated
+// (null otherwise); its snapshot is the one in the token, so it needs no token part of its own.
 export interface GuestStateDto {
   version: string;
   name: string;
@@ -272,6 +367,7 @@ export interface GuestStateDto {
   seat: GuestSeatDto | null;
   planVersion: number | null;
   guess: GuestGuessDto;
+  drawing: GuestDrawingDto | null;
 }
 
 // Guesses of the final raise amount (S-06). Every amount is an integer number of grosze (1 zł = 100), never a float.

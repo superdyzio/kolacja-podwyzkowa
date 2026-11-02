@@ -4,6 +4,7 @@ import type { DbClient } from "@/lib/supabase-client";
 import type {
   PlanImageType,
   RoomDto,
+  RoomOutline,
   TableDto,
   VenueDto,
   VenuePlanDto,
@@ -13,12 +14,18 @@ import type {
 } from "@/types";
 import { MAX_PLAN_BYTES, base64ToBytes, bytesToBase64, isPlanImageType, sniffImageType } from "./image";
 import {
+  DEFAULT_CHAIR_PITCH,
   MAX_ROOMS,
   MAX_TABLES,
   compareTableNames,
   isTableShape,
+  isValidChairPitch,
+  isValidOutline,
+  normalizeRotation,
   normalizeVenueName,
+  roundChairPitch,
   roundFraction,
+  roundOutline,
   validateRoomName,
   validateTableFields,
   type TableFieldProblem,
@@ -36,13 +43,16 @@ const UNIQUE_VIOLATION = "23505";
 const FOREIGN_KEY_VIOLATION = "23503";
 const ROOM_FOREIGN_KEY = "venue_table_room_id_fkey";
 
-const PLAN_METADATA_COLUMNS = "mime_type, byte_size, updated_at";
-const ROOM_COLUMNS = "id, name";
-const TABLE_COLUMNS = "id, room_id, name, seat_count, shape, pos_x, pos_y";
+const PLAN_METADATA_COLUMNS = "mime_type, byte_size, updated_at, chair_pitch";
+const ROOM_COLUMNS = "id, name, outline_x, outline_y, outline_w, outline_h";
+const TABLE_COLUMNS = "id, room_id, name, seat_count, shape, pos_x, pos_y, rotation";
 
 type PlanMetadata = Pick<VenuePlanRow, "mime_type" | "byte_size" | "updated_at">;
-type RoomColumns = Pick<VenueRoomRow, "id" | "name">;
-type TableColumns = Pick<VenueTableRow, "id" | "room_id" | "name" | "seat_count" | "shape" | "pos_x" | "pos_y">;
+type RoomColumns = Pick<VenueRoomRow, "id" | "name" | "outline_x" | "outline_y" | "outline_w" | "outline_h">;
+type TableColumns = Pick<
+  VenueTableRow,
+  "id" | "room_id" | "name" | "seat_count" | "shape" | "pos_x" | "pos_y" | "rotation"
+>;
 type TableUpdate = Database["public"]["Tables"]["venue_table"]["Update"];
 
 export type SavePlanResult =
@@ -65,6 +75,39 @@ export type RenameRoomResult =
   | { status: "invalid"; reason: VenueNameProblem }
   | { status: "duplicate" }
   | { status: "not-found" };
+
+// A room edit: a new name and/or a new outline (null clears it).
+export interface RoomPatch {
+  name?: string;
+  outline?: RoomOutline | null;
+}
+
+export type UpdateRoomResult =
+  | { status: "updated"; room: RoomDto }
+  | { status: "invalid"; reason: VenueNameProblem }
+  | { status: "invalid-outline" }
+  | { status: "duplicate" }
+  | { status: "not-found" };
+
+export type SetChairPitchResult = { status: "updated" } | { status: "invalid" } | { status: "no-plan" };
+
+// An accepted drawing proposal (venue-drawing phase 4): existing tables moved/rotated, rooms outlined (null clears),
+// new tables added, and the pitch (null = unchanged).
+export interface VenueLayout {
+  tables: { id: number; x: number; y: number; rotation: number }[];
+  newTables: (Omit<TableFields, "rotation"> & { rotation: number })[];
+  rooms: { id: number; outline: RoomOutline | null }[];
+  chairPitch: number | null;
+}
+
+export type ApplyVenueLayoutResult =
+  | { status: "applied" }
+  | { status: "invalid"; problem: TableFieldProblem | "outline" | "chairPitch" }
+  | { status: "table-not-found" }
+  | { status: "room-not-found" }
+  | { status: "duplicate" }
+  | { status: "too-many"; limit: number }
+  | { status: "no-plan" };
 
 export type DeleteRoomResult = { status: "deleted"; tablesDeleted: number } | { status: "not-found" };
 
@@ -98,7 +141,9 @@ function toPlanDto(row: PlanMetadata): VenuePlanDto {
 }
 
 function toRoomDto(row: RoomColumns): RoomDto {
-  return { id: row.id, name: row.name };
+  const { outline_x: x, outline_y: y, outline_w: width, outline_h: height } = row;
+  const outline = x !== null && y !== null && width !== null && height !== null ? { x, y, width, height } : null;
+  return { id: row.id, name: row.name, outline };
 }
 
 function toTableDto(row: TableColumns): TableDto {
@@ -113,6 +158,7 @@ function toTableDto(row: TableColumns): TableDto {
     shape: row.shape,
     x: row.pos_x,
     y: row.pos_y,
+    rotation: row.rotation,
   };
 }
 
@@ -147,6 +193,7 @@ export async function getVenue(db: DbClient): Promise<VenueDto> {
     plan: plan.data ? toPlanDto(plan.data) : null,
     rooms: rooms.data.map(toRoomDto),
     tables: sortedTables,
+    chairPitch: plan.data?.chair_pitch ?? DEFAULT_CHAIR_PITCH,
   };
 }
 
@@ -226,19 +273,67 @@ export async function addRoom(db: DbClient, rawName: string): Promise<AddRoomRes
 }
 
 export async function renameRoom(db: DbClient, id: number, rawName: string): Promise<RenameRoomResult> {
-  const name = normalizeVenueName(rawName);
-  const reason = validateRoomName(name);
-  if (reason) {
-    return { status: "invalid", reason };
+  const result = await updateRoom(db, id, { name: rawName });
+  return result.status === "updated"
+    ? { status: "renamed", room: result.room }
+    : result.status === "invalid-outline"
+      ? fail("zmienić nazwy sali", "nieoczekiwany kontur")
+      : result;
+}
+
+function outlineColumns(outline: RoomOutline | null) {
+  if (outline === null) {
+    return { outline_x: null, outline_y: null, outline_w: null, outline_h: null };
   }
-  const { data, error } = await db.from("venue_room").update({ name }).eq("id", id).select(ROOM_COLUMNS).maybeSingle();
+  const rounded = roundOutline(outline);
+  return { outline_x: rounded.x, outline_y: rounded.y, outline_w: rounded.width, outline_h: rounded.height };
+}
+
+// Renames a room and/or sets its outline (null clears it). Neither touches its tables or anyone's seat.
+export async function updateRoom(db: DbClient, id: number, patch: RoomPatch): Promise<UpdateRoomResult> {
+  const update: Database["public"]["Tables"]["venue_room"]["Update"] = {};
+  if (patch.name !== undefined) {
+    const name = normalizeVenueName(patch.name);
+    const reason = validateRoomName(name);
+    if (reason) {
+      return { status: "invalid", reason };
+    }
+    update.name = name;
+  }
+  if (patch.outline !== undefined) {
+    if (patch.outline !== null && !isValidOutline(patch.outline)) {
+      return { status: "invalid-outline" };
+    }
+    Object.assign(update, outlineColumns(patch.outline));
+  }
+  const query =
+    Object.keys(update).length > 0
+      ? db.from("venue_room").update(update).eq("id", id).select(ROOM_COLUMNS).maybeSingle()
+      : db.from("venue_room").select(ROOM_COLUMNS).eq("id", id).maybeSingle();
+  const { data, error } = await query;
   if (error) {
     if (error.code === UNIQUE_VIOLATION) {
       return { status: "duplicate" };
     }
-    fail("zmienić nazwy sali", error.message);
+    fail("zmienić sali", error.message);
   }
-  return data ? { status: "renamed", room: toRoomDto(data) } : { status: "not-found" };
+  return data ? { status: "updated", room: toRoomDto(data) } : { status: "not-found" };
+}
+
+// The venue-wide chair pitch; it lives with the plan, so there must be one.
+export async function setChairPitch(db: DbClient, pitch: number): Promise<SetChairPitchResult> {
+  if (!isValidChairPitch(pitch)) {
+    return { status: "invalid" };
+  }
+  const { data, error } = await db
+    .from("venue_plan")
+    .update({ chair_pitch: roundChairPitch(pitch) })
+    .eq("event_id", EVENT_ID)
+    .select("event_id");
+  if (error) {
+    fail("zmienić skali", error.message);
+  }
+  return data.length > 0 ? { status: "updated" } : { status: "no-plan" };
 }
 
 // Deletes a room together with its tables (FK on delete cascade); S-03 seat assignments at them go too.
@@ -275,6 +370,9 @@ function toTableUpdate(fields: TablePatch): TableUpdate {
   if (fields.x !== undefined && fields.y !== undefined) {
     update.pos_x = roundFraction(fields.x);
     update.pos_y = roundFraction(fields.y);
+  }
+  if (fields.rotation !== undefined) {
+    update.rotation = normalizeRotation(fields.rotation);
   }
   return update;
 }
@@ -313,6 +411,7 @@ export async function addTable(db: DbClient, input: TableFields): Promise<AddTab
       shape: fields.shape,
       pos_x: roundFraction(fields.x),
       pos_y: roundFraction(fields.y),
+      rotation: normalizeRotation(fields.rotation ?? 0),
     })
     .select(TABLE_COLUMNS)
     .single();
@@ -348,4 +447,67 @@ export async function deleteTable(db: DbClient, id: number): Promise<DeleteTable
     fail("usunąć stolika", error.message);
   }
   return data.length > 0 ? { status: "deleted" } : { status: "not-found" };
+}
+
+const LAYOUT_ERRORS: Record<string, ApplyVenueLayoutResult> = {
+  TABLE_NOT_FOUND: { status: "table-not-found" },
+  ROOM_NOT_FOUND: { status: "room-not-found" },
+  DUPLICATE_NAME: { status: "duplicate" },
+  TOO_MANY_TABLES: { status: "too-many", limit: MAX_TABLES },
+  NO_PLAN: { status: "no-plan" },
+};
+
+// Writes an accepted drawing proposal in one transaction (DB function apply_venue_layout): existing tables only move
+// and turn, so their seat assignments and pins stay; nothing is deleted. Any problem → nothing is written.
+export async function applyVenueLayout(db: DbClient, layout: VenueLayout): Promise<ApplyVenueLayoutResult> {
+  const newTables = layout.newTables.map((table) => ({ ...normalizeName(table) }));
+  for (const table of [...layout.tables.map((t) => ({ x: t.x, y: t.y, rotation: t.rotation })), ...newTables]) {
+    const problem = validateTableFields(table);
+    if (problem) {
+      return { status: "invalid", problem };
+    }
+  }
+  if (layout.rooms.some((room) => room.outline !== null && !isValidOutline(room.outline))) {
+    return { status: "invalid", problem: "outline" };
+  }
+  if (layout.chairPitch !== null && !isValidChairPitch(layout.chairPitch)) {
+    return { status: "invalid", problem: "chairPitch" };
+  }
+  const payload = {
+    tables: layout.tables.map((table) => ({
+      id: table.id,
+      x: roundFraction(table.x),
+      y: roundFraction(table.y),
+      rotation: normalizeRotation(table.rotation),
+    })),
+    newTables: newTables.map((table) => ({
+      roomId: table.roomId,
+      name: table.name,
+      seatCount: table.seatCount,
+      shape: table.shape,
+      x: roundFraction(table.x),
+      y: roundFraction(table.y),
+      rotation: normalizeRotation(table.rotation),
+    })),
+    rooms: layout.rooms.map((room) => {
+      if (room.outline === null) {
+        return { id: room.id, outline: null };
+      }
+      const { x, y, width, height } = roundOutline(room.outline);
+      return { id: room.id, outline: { x, y, width, height } };
+    }),
+    chairPitch: layout.chairPitch === null ? null : roundChairPitch(layout.chairPitch),
+  };
+  const { error } = await db.rpc("apply_venue_layout", { p_layout: payload, p_max_tables: MAX_TABLES });
+  if (!error) {
+    return { status: "applied" };
+  }
+  const known = LAYOUT_ERRORS[error.message] as ApplyVenueLayoutResult | undefined;
+  if (known) {
+    return known;
+  }
+  if (error.code === UNIQUE_VIOLATION) {
+    return { status: "duplicate" };
+  }
+  fail("zapisać układu sali", error.message);
 }

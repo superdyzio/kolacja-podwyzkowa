@@ -1,5 +1,6 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { createAiProvider, parseAiConfig } from "@/lib/ai-topics/config";
+import { MAX_GUEST_TOPICS } from "@/lib/ai-topics/limits";
 import { createMockProvider } from "@/lib/ai-topics/mock-provider";
 import { MOCK_TOPICS } from "@/lib/ai-topics/mock-topics";
 import { AiProviderError, type AiGeneration, type AiTopicProvider } from "@/lib/ai-topics/provider";
@@ -94,7 +95,12 @@ describe.skipIf(!hasLocalDb)("AI topic generation", () => {
       expect.objectContaining({ requester: "guest", guest_id: guest, category: "refleksyjne", status: "succeeded" }),
     ]);
     expect((await rowsSince())[0]?.finished_at).not.toBeNull();
-    expect(await getGuestAiQuota(db, guest)).toEqual({ limit: 5, used: 1, remaining: 4, eventExhausted: false });
+    expect(await getGuestAiQuota(db, guest)).toEqual({
+      limit: MAX_GUEST_TOPICS,
+      used: 1,
+      remaining: MAX_GUEST_TOPICS - 1,
+      eventExhausted: false,
+    });
     expect((await getAiTopicUsage(db)).used).toBe(before.used + 1);
   });
 
@@ -134,7 +140,7 @@ describe.skipIf(!hasLocalDb)("AI topic generation", () => {
     ).toEqual({ status: "failed", kind: "empty" });
 
     expect((await rowsSince()).map((row) => row.status)).toEqual(["failed", "failed", "failed", "failed"]);
-    expect(await getGuestAiQuota(db, guest)).toMatchObject({ used: 0, remaining: 5 });
+    expect(await getGuestAiQuota(db, guest)).toMatchObject({ used: 0, remaining: MAX_GUEST_TOPICS });
     const after = await getAiTopicUsage(db);
     expect(after.used).toBe(before.used);
     expect(after.failed).toBe(before.failed + 4);
@@ -180,7 +186,7 @@ describe.skipIf(!hasLocalDb)("AI topic generation", () => {
         "generated",
       );
     }
-    expect(await getGuestAiQuota(db, guest)).toMatchObject({ used: 2, remaining: 3 });
+    expect(await getGuestAiQuota(db, guest)).toMatchObject({ used: 2, remaining: MAX_GUEST_TOPICS - 2 });
   });
 
   it("stops everyone at the evening limit", async () => {
@@ -202,7 +208,12 @@ describe.skipIf(!hasLocalDb)("AI topic generation", () => {
     expect(await generateTopic(db, fast, { guestId: guest, category: "generyczne" })).toEqual({
       status: "not-found",
     });
-    expect(await getGuestAiQuota(db, guest)).toEqual({ limit: 5, used: 0, remaining: 5, eventExhausted: false });
+    expect(await getGuestAiQuota(db, guest)).toEqual({
+      limit: MAX_GUEST_TOPICS,
+      used: 0,
+      remaining: MAX_GUEST_TOPICS,
+      eventExhausted: false,
+    });
   });
   it("records the model and the billed tokens and estimates the cost", async () => {
     const [guest = 0] = await guests(1);

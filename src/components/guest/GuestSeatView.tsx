@@ -1,12 +1,13 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useGuestState } from "@/components/hooks/useGuestState";
 import { Button } from "@/components/ui/button";
+import { VenueDrawing, type VenueDrawingTable } from "@/components/venue-drawing/VenueDrawing";
 import { NO_ACCESS_HINT, NO_ACCESS_TEXT, NO_ACCESS_TITLE } from "@/lib/access/messages";
 import { GUEST_UNPUBLISHED_MESSAGE, GUEST_UNSEATED_MESSAGE, describeGuestSeat } from "@/lib/guest-links/state";
 import { pluralPl } from "@/lib/guests/summary";
-import { fractionStyle, planImagePath } from "@/lib/venue/pin";
+import { planImagePath } from "@/lib/venue/pin";
 import { cn } from "@/lib/utils";
-import type { GuestSeatDto, GuestStateDto, TablemateDto, TablemateRelation } from "@/types";
+import type { GuestDrawingDto, GuestSeatDto, GuestStateDto, TablemateDto, TablemateRelation } from "@/types";
 
 interface Props {
   // Guest API base, e.g. "/api/g/<key>".
@@ -47,12 +48,109 @@ function Tablemates({ tablemates }: { tablemates: TablemateDto[] }) {
   );
 }
 
+const DEFAULT_ASPECT = 16 / 9;
+
+// The guest's table drawn with the names at their chairs (the guest's own chair highlighted), and the whole venue
+// with that table emphasised on request (venue-drawing). Names come only from the guest's own table (tablemates and
+// the guest), exactly what the TV shows for it.
+function SeatDrawing({
+  apiBase,
+  drawing,
+  seat,
+  name,
+  planVersion,
+}: {
+  apiBase: string;
+  drawing: GuestDrawingDto;
+  seat: GuestSeatDto;
+  name: string;
+  planVersion: number | null;
+}) {
+  const [showVenue, setShowVenue] = useState(false);
+  // The plan photo's aspect ratio (the drawing's coordinates are fractions of it), read only for the whole-venue view.
+  const [aspect, setAspect] = useState<{ version: number; value: number } | null>(null);
+  const tables = useMemo(
+    (): VenueDrawingTable[] =>
+      drawing.tables.map((table) => {
+        const mine = table.name === seat.table;
+        return {
+          ...table,
+          key: table.name,
+          muted: !mine,
+          seats: mine
+            ? [{ seat: seat.seat, name }, ...seat.tablemates.map((mate) => ({ seat: mate.seat, name: mate.name }))]
+            : [],
+        };
+      }),
+    [drawing.tables, seat, name],
+  );
+  const ratio = aspect !== null && aspect.version === planVersion ? aspect.value : DEFAULT_ASPECT;
+  const highlight = { table: seat.table, seat: seat.seat };
+
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="overflow-hidden rounded-2xl border">
+        <VenueDrawing
+          aspect={ratio}
+          chairPitch={drawing.chairPitch}
+          rooms={[]}
+          tables={tables.filter((table) => table.key === seat.table)}
+          variant="phone"
+          highlight={highlight}
+          focus={seat.table}
+          label={`Stolik ${seat.table} z Twoim miejscem ${seat.seat} i imionami przy krzesłach`}
+          className="max-h-[70vh] w-full"
+        />
+      </div>
+      <Button
+        type="button"
+        variant="outline"
+        className="h-12 self-start text-base"
+        aria-expanded={showVenue}
+        onClick={() => {
+          setShowVenue((shown) => !shown);
+        }}
+      >
+        {showVenue ? "Ukryj plan sali" : "Pokaż na planie sali"}
+      </Button>
+      {showVenue && (
+        <div className="overflow-hidden rounded-2xl border">
+          {planVersion !== null && (
+            <img
+              src={planImagePath(apiBase, planVersion)}
+              alt=""
+              aria-hidden
+              className="hidden"
+              onLoad={(event) => {
+                const img = event.currentTarget;
+                if (img.naturalWidth > 0 && img.naturalHeight > 0) {
+                  setAspect({ version: planVersion, value: img.naturalWidth / img.naturalHeight });
+                }
+              }}
+            />
+          )}
+          <VenueDrawing
+            aspect={ratio}
+            chairPitch={drawing.chairPitch}
+            rooms={drawing.rooms}
+            tables={tables}
+            variant="phone"
+            highlight={highlight}
+            label={`Plan sali z zaznaczonym stolikiem ${seat.table}`}
+            className="w-full"
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
 // The guest's phone view of their own seat (S-05, FR-013): name, table, room and seat in the latest PUBLISHED
-// arrangement, refreshed live, with who else sits at that table (tablemates); the plan with the table highlighted on
-// request. When access is gone (switched off, link revoked) it shows the no-access message and nothing else.
+// arrangement, refreshed live, the table drawn with the names at their chairs, who else sits there (tablemates), and
+// the whole venue drawing on request. When access is gone (switched off, link revoked) it shows the no-access message
+// and nothing else.
 export function GuestSeatView({ apiBase, initial }: Props) {
   const { state, offline, changed } = useGuestState(apiBase, initial);
-  const [showPlan, setShowPlan] = useState(false);
 
   if (!state) {
     return (
@@ -108,47 +206,21 @@ export function GuestSeatView({ apiBase, initial }: Props) {
         </p>
       )}
 
+      {seat && state.drawing && (
+        <SeatDrawing
+          apiBase={apiBase}
+          drawing={state.drawing}
+          seat={seat}
+          name={state.name}
+          planVersion={state.planVersion}
+        />
+      )}
+
       {seat && <Tablemates tablemates={seat.tablemates} />}
 
       <p className="sr-only" aria-live="polite">
         {describeGuestSeat(state)}
       </p>
-
-      {seat && state.planVersion !== null && (
-        <div className="flex flex-col gap-3">
-          <Button
-            type="button"
-            variant="outline"
-            className="h-12 self-start text-base"
-            aria-expanded={showPlan}
-            onClick={() => {
-              setShowPlan((shown) => !shown);
-            }}
-          >
-            {showPlan ? "Ukryj plan" : "Pokaż na planie"}
-          </Button>
-          {showPlan && (
-            <div className="overflow-hidden rounded-lg border">
-              {/* Pin contract: the wrapper is sized by the <img> itself (no padding, border or object-fit on it). */}
-              <div className="relative">
-                <img
-                  src={planImagePath(apiBase, state.planVersion)}
-                  alt={`Plan lokalu z zaznaczonym stolikiem ${seat.table}`}
-                  className="block h-auto w-full"
-                />
-                <span
-                  aria-hidden="true"
-                  className="pointer-events-none absolute flex size-7 -translate-x-1/2 -translate-y-1/2 items-center justify-center"
-                  style={fractionStyle(seat)}
-                >
-                  <span className="absolute inline-flex size-full animate-ping rounded-full bg-red-500 opacity-75" />
-                  <span className="relative inline-flex size-4 rounded-full bg-red-600 ring-2 ring-white" />
-                </span>
-              </div>
-            </div>
-          )}
-        </div>
-      )}
     </div>
   );
 }

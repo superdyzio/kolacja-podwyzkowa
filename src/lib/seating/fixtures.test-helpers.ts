@@ -7,7 +7,9 @@ import type {
   TableShape,
   VenueDto,
 } from "@/types";
+import { DEFAULT_CHAIR_PITCH } from "@/lib/venue/rules";
 import type { SeatingInput } from "./rules";
+import { outlinedRooms } from "./published";
 
 // Small builders for the pure seating tests (not a test file itself).
 
@@ -16,7 +18,7 @@ export function guest(id: number, displayName: string, extra: Partial<GuestDto> 
 }
 
 export function table(id: number, name: string, seatCount: number, shape: TableShape = "round", roomId = 1): TableDto {
-  return { id, roomId, name, seatCount, shape, x: id / 10, y: id / 20 };
+  return { id, roomId, name, seatCount, shape, x: id / 10, y: id / 20, rotation: 0 };
 }
 
 export function seat(guestId: number, tableId: number, seatNumber: number, pinned = false): SeatAssignmentDto {
@@ -24,7 +26,7 @@ export function seat(guestId: number, tableId: number, seatNumber: number, pinne
 }
 
 export function venue(tables: TableDto[]): VenueDto {
-  return { plan: null, rooms: [{ id: 1, name: "Sala" }], tables };
+  return { plan: null, rooms: [{ id: 1, name: "Sala", outline: null }], tables, chairPitch: DEFAULT_CHAIR_PITCH };
 }
 
 export function input(
@@ -49,6 +51,7 @@ export function snapshotOf(data: SeatingInput, id = 1): SeatingSnapshot {
     shape: t.shape,
     x: t.x,
     y: t.y,
+    rotation: t.rotation,
   }));
   const snapshotTableId = new Map(tables.map((t) => [t.tableId, t.snapshotTableId]));
   const seats = data.assignments.flatMap((a) => {
@@ -64,7 +67,14 @@ export function snapshotOf(data: SeatingInput, id = 1): SeatingSnapshot {
         ]
       : [];
   });
-  return { id, publishedAt: "2026-10-27T18:42:00.000Z", tables, seats };
+  return {
+    id,
+    publishedAt: "2026-10-27T18:42:00.000Z",
+    tables,
+    seats,
+    chairPitch: data.venue.chairPitch,
+    rooms: outlinedRooms(data.venue),
+  };
 }
 
 // The demo evening from the overnight brief: 40 guests, 3 rooms, 7 tables (4 × round 6, 2 × rectangular 6,
@@ -117,11 +127,12 @@ export function demoEvening(): SeatingInput {
     venue: {
       plan: null,
       rooms: [
-        { id: 1, name: "Sala Główna" },
-        { id: 2, name: "Ogród zimowy" },
-        { id: 3, name: "Biblioteka" },
+        { id: 1, name: "Sala Główna", outline: null },
+        { id: 2, name: "Ogród zimowy", outline: null },
+        { id: 3, name: "Biblioteka", outline: null },
       ],
       tables,
+      chairPitch: DEFAULT_CHAIR_PITCH,
     },
     assignments,
   };

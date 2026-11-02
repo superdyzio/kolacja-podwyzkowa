@@ -5,9 +5,9 @@ import { formatUsd, type AiSpend } from "./cost";
 // reserve_ai_topic(), which enforces them atomically; the texts are what guests and the organizer read.
 
 // A guest generates at most this many topics per evening (failed attempts do not count).
-export const MAX_GUEST_TOPICS = 5;
-// Everyone together, the organizer included, at most this many per evening.
-export const MAX_EVENT_TOPICS = 300;
+export const MAX_GUEST_TOPICS = 15;
+// Everyone together, the organizer included, at most this many per evening (until the organizer resets the counter).
+export const MAX_EVENT_TOPICS = 1000;
 // The server aborts the AI call after this long, so a topic (or the failure message) shows within 10 s.
 export const AI_PROVIDER_TIMEOUT_MS = 9000;
 // The browser gives up on a generate request after this long (server deadline + DB time + network).
@@ -73,12 +73,12 @@ export function toUsage(
   };
 }
 
-// „Zostało 3 z 5” — the guest's remaining topics.
+// „Zostało 3 z 15” — the guest's remaining topics.
 export function formatRemaining(quota: GuestAiQuotaDto): string {
   return `Zostało ${quota.remaining} z ${quota.limit}`;
 }
 
-// „Wykorzystano 12 z 300 · nieudane: 2” — the organizer's view of the evening.
+// „Wykorzystano 12 z 1000 · nieudane: 2” — the organizer's view of the evening.
 export function formatUsage(usage: AiTopicUsageDto): string {
   const base = `Wykorzystano ${usage.used} z ${usage.limit}`;
   return usage.failed > 0 ? `${base} · nieudane: ${usage.failed}` : base;
@@ -95,7 +95,7 @@ export function formatProvider(provider: AiProviderStatusDto): string {
   return provider.model ? `Claude (${provider.model})` : "Claude";
 }
 
-// The shell card: „Tematy AI: 12 z 300 · atrapa AI”, with the estimate once tokens were billed („· ≈ 0,0012 USD”)
+// The shell card: „Tematy AI: 12 z 1000 · atrapa AI”, with the estimate once tokens were billed („· ≈ 0,0012 USD”)
 // and a warning while the latest attempt failed.
 export function formatAiTopicSummary(usage: AiTopicUsageDto, provider: AiProviderStatusDto): string {
   const parts = [`Tematy AI: ${usage.used} z ${usage.limit}`, formatProvider(provider)];
