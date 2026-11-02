@@ -14,6 +14,8 @@ interface Props {
   // „\n\nMiejsce stracą: …” for the guests seated at the room's tables, or "".
   seatLoss: (roomId: number) => string;
   onDelete: (roomId: number) => void;
+  // Opens the outline of the room on the plan („Kontur”); absent while there is no plan to draw on.
+  onOutline?: (roomId: number) => void;
 }
 
 function deleteRoomQuestion(room: RoomDto, tableCount: number): string {
@@ -29,12 +31,14 @@ function RoomRow({
   pending,
   onRename,
   onDelete,
+  onOutline,
 }: {
   room: RoomDto;
   tableCount: number;
   pending: boolean;
   onRename: (name: string) => Promise<boolean>;
   onDelete: () => void;
+  onOutline?: () => void;
 }) {
   const inputId = useId();
   const [editing, setEditing] = useState(false);
@@ -88,8 +92,14 @@ function RoomRow({
         <span className="truncate font-medium">{room.name}</span>
         <span className="text-muted-foreground text-xs">
           {tableCount} {pluralPl(tableCount, "stolik", "stoliki", "stolików")}
+          {room.outline ? " · ma kontur" : ""}
         </span>
       </div>
+      {onOutline && (
+        <Button type="button" variant="outline" className="h-10" disabled={pending} onClick={onOutline}>
+          Kontur
+        </Button>
+      )}
       <Button
         type="button"
         variant="outline"
@@ -117,7 +127,16 @@ function RoomRow({
 
 // Named rooms of the venue (FR-005): add, rename, delete (with its tables, after a confirm naming their count and
 // the guests who lose their seats).
-export function RoomsSection({ rooms, tableCountByRoom, pending, onAdd, onRename, seatLoss, onDelete }: Props) {
+export function RoomsSection({
+  rooms,
+  tableCountByRoom,
+  pending,
+  onAdd,
+  onRename,
+  seatLoss,
+  onDelete,
+  onOutline,
+}: Props) {
   const inputId = useId();
   const [name, setName] = useState("");
 
@@ -144,6 +163,13 @@ export function RoomsSection({ rooms, tableCountByRoom, pending, onAdd, onRename
               tableCount={tableCountByRoom.get(room.id) ?? 0}
               pending={pending}
               onRename={(newName) => onRename(room.id, newName)}
+              onOutline={
+                onOutline
+                  ? () => {
+                      onOutline(room.id);
+                    }
+                  : undefined
+              }
               onDelete={() => {
                 if (window.confirm(deleteRoomQuestion(room, tableCountByRoom.get(room.id) ?? 0) + seatLoss(room.id))) {
                   onDelete(room.id);

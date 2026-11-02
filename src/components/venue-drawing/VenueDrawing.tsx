@@ -197,7 +197,8 @@ export function VenueDrawing({
       {rooms.map((room, index) => {
         const rect = roomRects[index];
         return (
-          <g key={`room-${room.name}`}>
+          // Rooms never take the pointer: in the editor a click on a room is a click on the plan under it.
+          <g key={`room-${room.name}`} className="pointer-events-none">
             <rect
               x={rect.left}
               y={rect.top}
@@ -268,7 +269,7 @@ function DrawnTable({
   const { body } = laidOut;
   return (
     <g
-      className={cn(table.muted && "opacity-40", onPointerDown && "cursor-grab")}
+      className={cn(table.muted && "opacity-40", onPointerDown && "cursor-grab touch-none")}
       onPointerDown={
         onPointerDown
           ? (event) => {

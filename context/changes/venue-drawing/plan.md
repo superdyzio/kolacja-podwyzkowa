@@ -502,9 +502,9 @@ Sonnet 5.5 reads the uploaded plan photo and proposes the drawing. The organizer
 
 #### Automated
 
-- [x] 2.1 Tests, lint and astro check pass
-- [x] 2.2 Smoke passes on a fresh DB
-- [x] 2.3 No new dependency; qrcode still not in dist/server
+- [x] 2.1 Tests, lint and astro check pass — 008932f
+- [x] 2.2 Smoke passes on a fresh DB — 008932f
+- [x] 2.3 No new dependency; qrcode still not in dist/server — 008932f
 
 #### Manual
 
@@ -517,8 +517,8 @@ Sonnet 5.5 reads the uploaded plan photo and proposes the drawing. The organizer
 
 #### Automated
 
-- [ ] 3.1 Editor helper unit tests
-- [ ] 3.2 Tests, lint, astro check and smoke pass
+- [x] 3.1 Editor helper unit tests
+- [x] 3.2 Tests, lint, astro check and smoke pass
 
 #### Manual
 

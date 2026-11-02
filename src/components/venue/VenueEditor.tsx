@@ -9,12 +9,15 @@ import {
   occupantsRemovedBy,
   type VenueSeatChange,
 } from "@/lib/seating/published";
+import type { TableGeometry } from "@/lib/venue/editor";
 import { planImagePath, type PinPosition } from "@/lib/venue/pin";
+import { MAX_CHAIR_PITCH_SLIDER, MIN_CHAIR_PITCH_SLIDER, formatChairPitch } from "@/lib/venue/editor";
 import { nextTableName } from "@/lib/venue/rules";
 import { formatVenueSummary, summarizeVenue } from "@/lib/venue/summary";
-import type { SeatOccupantDto, VenueDto } from "@/types";
-import { PlanCanvas } from "./PlanCanvas";
+import type { RoomOutline, SeatOccupantDto, VenueDto } from "@/types";
+import { DrawingCanvas } from "./DrawingCanvas";
 import { PlanUpload } from "./PlanUpload";
+import { RoomOutlinePanel } from "./RoomOutlinePanel";
 import { RoomsSection } from "./RoomsSection";
 import { TableForm, type TableFormValues } from "./TableForm";
 import { TableList } from "./TableList";
@@ -28,12 +31,17 @@ interface Props {
 }
 
 // What a click on the plan does: idle → open "Nowy stolik" at that point; new → move the draft pin;
-// edit → (pins/list switch the table); move → put the edited table's pin there.
+// edit → (tables/list switch the table; dragging moves any table); move → put the edited table there;
+// outline → a drag draws the room's outline.
 type Mode =
   | { kind: "idle" }
   | { kind: "new"; position: PinPosition }
   | { kind: "edit"; tableId: number }
-  | { kind: "move"; tableId: number };
+  | { kind: "move"; tableId: number }
+  | { kind: "outline"; roomId: number };
+
+// The chair-scale slider saves after this pause.
+const PITCH_SAVE_DELAY_MS = 400;
 
 const NO_ROOM_MESSAGE = "Najpierw dodaj salę — każdy stolik stoi w jakiejś sali.";
 
@@ -43,6 +51,10 @@ export function VenueEditor({ apiBase, initialVenue, initialOccupancy }: Props) 
   const [occupancy, setOccupancy] = useState(initialOccupancy);
   const [mode, setMode] = useState<Mode>({ kind: "idle" });
   const [lastRoomId, setLastRoomId] = useState<number | null>(null);
+  const [preview, setPreview] = useState(false);
+  // The slider's value until its save answers.
+  const [pitchDraft, setPitchDraft] = useState<number | null>(null);
+  const pitchTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const panelRef = useRef<HTMLDivElement>(null);
 
   const roomNameById = useMemo(() => new Map(venue.rooms.map((room) => [room.id, room.name])), [venue.rooms]);
@@ -60,9 +72,11 @@ export function VenueEditor({ apiBase, initialVenue, initialOccupancy }: Props) 
     mode.kind === "edit" || mode.kind === "move"
       ? (venue.tables.find((table) => table.id === mode.tableId) ?? null)
       : null;
+  const outlineRoom = mode.kind === "outline" ? (venue.rooms.find((room) => room.id === mode.roomId) ?? null) : null;
   const current: Mode =
     ((mode.kind === "edit" || mode.kind === "move") && !activeTable) ||
-    (mode.kind === "new" && venue.rooms.length === 0)
+    (mode.kind === "new" && venue.rooms.length === 0) ||
+    (mode.kind === "outline" && (!outlineRoom || venue.plan === null))
       ? { kind: "idle" }
       : mode;
 
@@ -111,7 +125,12 @@ export function VenueEditor({ apiBase, initialVenue, initialOccupancy }: Props) 
   }, [apiBase]);
 
   // On narrow screens the form sits under the plan: bring it into view when it opens.
-  const formKey = current.kind === "edit" ? `edit-${current.tableId}` : current.kind;
+  const formKey =
+    current.kind === "edit"
+      ? `edit-${current.tableId}`
+      : current.kind === "outline"
+        ? `outline-${current.roomId}`
+        : current.kind;
   useEffect(() => {
     if (formKey !== "idle") {
       panelRef.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
@@ -146,7 +165,7 @@ export function VenueEditor({ apiBase, initialVenue, initialOccupancy }: Props) 
   async function saveTable(values: TableFormValues): Promise<boolean> {
     let saved = false;
     if (current.kind === "new") {
-      saved = await send({ method: "POST", path: "/tables", body: { ...values, ...current.position } });
+      saved = await send({ method: "POST", path: "/tables", body: values });
     } else if (current.kind === "edit") {
       // A lower seat count unseats whoever sits above it: ask first, naming them (nobody there → no question).
       const change: VenueSeatChange = { kind: "seat-count", tableId: current.tableId, seatCount: values.seatCount };
@@ -201,21 +220,62 @@ export function VenueEditor({ apiBase, initialVenue, initialOccupancy }: Props) 
     setMode({ kind: "edit", tableId });
   }
 
+  // Geometry edits on the plan never touch seating (S-02 contract): no seat-loss question.
+  function saveGeometry(tableId: number, geometry: TableGeometry): Promise<boolean> {
+    return send({ method: "PATCH", path: `/tables/${tableId}`, body: geometry });
+  }
+
+  function saveOutline(roomId: number, outline: RoomOutline | null): Promise<boolean> {
+    return send({ method: "PATCH", path: `/rooms/${roomId}`, body: { outline } });
+  }
+
+  function changePitch(pitch: number) {
+    setPitchDraft(pitch);
+    clearTimeout(pitchTimer.current);
+    pitchTimer.current = setTimeout(() => {
+      void send({ method: "PATCH", path: "/venue", body: { chairPitch: pitch } }).then(() => {
+        setPitchDraft((draft) => (draft === pitch ? null : draft));
+      });
+    }, PITCH_SAVE_DELAY_MS);
+  }
+
+  useEffect(
+    () => () => {
+      clearTimeout(pitchTimer.current);
+    },
+    [],
+  );
+
+  function addTableInCentre() {
+    if (venue.rooms.length === 0) {
+      showFailure(NO_ROOM_MESSAGE);
+      return;
+    }
+    setPreview(false);
+    setMode({ kind: "new", position: { x: 0.5, y: 0.5 } });
+  }
+
+  const chairPitch = pitchDraft ?? venue.chairPitch;
+
   const hint =
     venue.rooms.length === 0
       ? "Najpierw dodaj salę, potem klikaj na planie, gdzie stoją stoliki."
-      : current.kind === "new"
-        ? "Uzupełnij dane nowego stolika. Kliknięcie w inne miejsce planu przesuwa pinezkę."
-        : current.kind === "move" && activeTable
-          ? `Kliknij na planie nowe miejsce stolika „${activeTable.name}”. Esc — anuluj.`
-          : current.kind === "edit" && activeTable
-            ? `Edytujesz stolik „${activeTable.name}”. Kliknięcie w puste miejsce planu dodaje nowy stolik.`
-            : "Kliknij na planie, gdzie stoi nowy stolik, albo kliknij pinezkę, żeby go edytować.";
+      : preview
+        ? "Tak TV pokaże plan po publikacji (imiona z bieżącego rozsadzenia). Wyłącz podgląd, żeby dalej rysować."
+        : current.kind === "outline" && outlineRoom
+          ? `Przeciągnij na planie prostokąt sali „${outlineRoom.name}”. Esc — koniec.`
+          : current.kind === "new"
+            ? "Uzupełnij dane nowego stolika. Kliknięcie w inne miejsce planu przesuwa pinezkę."
+            : current.kind === "move" && activeTable
+              ? `Kliknij na planie nowe miejsce stolika „${activeTable.name}”. Esc — anuluj.`
+              : current.kind === "edit" && activeTable
+                ? `Edytujesz stolik „${activeTable.name}”. Kliknięcie w puste miejsce planu dodaje nowy stolik.`
+                : "Kliknij na planie, gdzie stoi nowy stolik, albo kliknij stolik, żeby go edytować. Stoliki przeciągasz myszą; strzałki przesuwają, a [ i ] obracają wybrany.";
 
   const surfaceLabel =
     current.kind === "move" && activeTable
       ? `Plan lokalu: kliknij, żeby przestawić stolik „${activeTable.name}”`
-      : "Plan lokalu: kliknij, żeby postawić nowy stolik";
+      : "Plan lokalu: kliknij, żeby postawić nowy stolik; przeciągnij stolik, żeby go przesunąć";
 
   return (
     <div className="flex flex-col gap-6">
@@ -252,6 +312,14 @@ export function VenueEditor({ apiBase, initialVenue, initialOccupancy }: Props) 
           pending={pending}
           onAdd={(name) => send({ method: "POST", path: "/rooms", body: { name } })}
           onRename={(roomId, name) => send({ method: "PATCH", path: `/rooms/${roomId}`, body: { name } })}
+          onOutline={
+            venue.plan
+              ? (roomId) => {
+                  setPreview(false);
+                  setMode({ kind: "outline", roomId });
+                }
+              : undefined
+          }
           seatLoss={(roomId) => seatLoss(roomChange(roomId))}
           onDelete={(roomId) => void deleteRoom(roomId)}
         />
@@ -262,24 +330,62 @@ export function VenueEditor({ apiBase, initialVenue, initialOccupancy }: Props) 
           Stoliki na planie
         </h2>
         {venue.plan && (
-          <p className="text-sm" aria-live="polite">
-            {hint}
-          </p>
+          <>
+            <div className="flex flex-wrap items-center gap-3">
+              <Button type="button" variant="outline" className="h-10" disabled={pending} onClick={addTableInCentre}>
+                Nowy stolik
+              </Button>
+              <Button
+                type="button"
+                variant={preview ? "default" : "outline"}
+                className="h-10"
+                aria-pressed={preview}
+                onClick={() => {
+                  setPreview((value) => !value);
+                }}
+              >
+                Podgląd jak na TV
+              </Button>
+              <label className="flex items-center gap-2 text-sm">
+                <span className="font-medium">Skala krzeseł</span>
+                <input
+                  type="range"
+                  min={MIN_CHAIR_PITCH_SLIDER}
+                  max={MAX_CHAIR_PITCH_SLIDER}
+                  step={0.001}
+                  value={chairPitch}
+                  onChange={(event) => {
+                    changePitch(Number(event.target.value));
+                  }}
+                  className="accent-primary w-36"
+                />
+                <span className="text-muted-foreground w-12 tabular-nums">{formatChairPitch(chairPitch)}</span>
+              </label>
+            </div>
+            <p className="text-sm" aria-live="polite">
+              {hint}
+            </p>
+          </>
         )}
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_20rem] lg:items-start">
           {venue.plan ? (
-            <PlanCanvas
+            <DrawingCanvas
               // A new upload (new version → new URL) remounts the canvas, clearing an earlier load error.
               key={venue.plan.version}
               imageSrc={planImagePath(apiBase, venue.plan.version)}
-              tables={venue.tables}
-              roomNameById={roomNameById}
-              selectedId={activeTable?.id ?? null}
+              venue={venue}
+              chairPitch={chairPitch}
+              occupancy={occupancy}
+              selectedTableId={activeTable?.id ?? null}
+              outlineRoomId={current.kind === "outline" ? current.roomId : null}
               draftPin={current.kind === "new" ? current.position : null}
-              surfaceLabel={surfaceLabel}
+              preview={preview}
               disabled={pending}
+              label={surfaceLabel}
               onPlanClick={(position) => void handlePlanClick(position)}
-              onPinClick={selectTable}
+              onTableClick={selectTable}
+              saveTable={saveGeometry}
+              saveOutline={saveOutline}
             />
           ) : (
             <p className="text-muted-foreground rounded-xl border border-dashed p-6 text-center text-sm">
@@ -295,6 +401,7 @@ export function VenueEditor({ apiBase, initialVenue, initialOccupancy }: Props) 
                 rooms={venue.rooms}
                 defaultRoomId={defaultRoomId}
                 suggestedName={nextTableName(venue.tables.map((table) => table.name))}
+                geometry={{ ...current.position, rotation: 0 }}
                 pending={pending}
                 onSubmit={saveTable}
                 onCancel={() => {
@@ -309,6 +416,7 @@ export function VenueEditor({ apiBase, initialVenue, initialOccupancy }: Props) 
                 rooms={venue.rooms}
                 defaultRoomId={activeTable.roomId}
                 suggestedName={activeTable.name}
+                geometry={activeTable}
                 pending={pending}
                 onSubmit={saveTable}
                 onCancel={() => {
@@ -318,6 +426,17 @@ export function VenueEditor({ apiBase, initialVenue, initialOccupancy }: Props) 
                   setMode({ kind: "move", tableId: activeTable.id });
                 }}
                 onDelete={() => void deleteActiveTable()}
+              />
+            )}
+            {current.kind === "outline" && outlineRoom && (
+              <RoomOutlinePanel
+                key={`outline-${outlineRoom.id}`}
+                room={outlineRoom}
+                pending={pending}
+                onSave={(outline) => saveOutline(outlineRoom.id, outline)}
+                onDone={() => {
+                  setMode({ kind: "idle" });
+                }}
               />
             )}
             {current.kind === "move" && activeTable && (
