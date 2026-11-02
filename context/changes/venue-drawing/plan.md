@@ -550,10 +550,10 @@ Sonnet 5.5 reads the uploaded plan photo and proposes the drawing. The organizer
 
 #### Manual
 
-- [ ] 2.4 1920×1080 TV screenshot: names readable and centred over chairs
-- [ ] 2.5 Name order matches the seat numbering
-- [ ] 2.6 Phone shows the drawing with the guest's chair highlighted and no other tables' names
-- [ ] 2.7 An old snapshot renders with defaults and stays up to date
+- [x] 2.4 1920×1080 TV screenshot: names readable and centred over chairs
+- [x] 2.5 Name order matches the seat numbering
+- [x] 2.6 Phone shows the drawing with the guest's chair highlighted and no other tables' names
+- [x] 2.7 An old snapshot renders with defaults and stays up to date
 
 ### Phase 3: Drawing editor on /sale
 
@@ -564,10 +564,10 @@ Sonnet 5.5 reads the uploaded plan photo and proposes the drawing. The organizer
 
 #### Manual
 
-- [ ] 3.3 Redraw the demo venue on a laptop; it survives a reload
-- [ ] 3.4 TV preview matches the TV after publish; the TV is unchanged before publish
-- [ ] 3.5 Phone number fields edit position and rotation
-- [ ] 3.6 Geometry edits never touch seat assignments or pins
+- [x] 3.3 Redraw the demo venue on a laptop; it survives a reload
+- [x] 3.4 TV preview matches the TV after publish; the TV is unchanged before publish
+- [x] 3.5 Phone number fields edit position and rotation
+- [x] 3.6 Geometry edits never touch seat assignments or pins
 
 ### Phase 4: AI layout proposal from the photo
 
@@ -580,5 +580,5 @@ Sonnet 5.5 reads the uploaded plan photo and proposes the drawing. The organizer
 
 #### Manual
 
-- [ ] 4.5 Real photo with the real key gives a usable draft within ~30 s
-- [ ] 4.6 A failed AI call shows a Polish message and changes nothing
+- [x] 4.5 Real photo with the real key gives a usable draft within ~30 s
+- [x] 4.6 A failed AI call shows a Polish message and changes nothing
