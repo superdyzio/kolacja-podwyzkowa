@@ -106,7 +106,7 @@ describe.skipIf(!hasLocalDb)("venue service", () => {
       expect((await getVenue(db)).rooms).toContainEqual(added);
 
       const renamed = await renameRoom(db, added.id, `Ogród ${tag}`);
-      expect(renamed).toEqual({ status: "renamed", room: { id: added.id, name: `Ogród ${tag}` } });
+      expect(renamed).toEqual({ status: "renamed", room: { id: added.id, name: `Ogród ${tag}`, outline: null } });
 
       expect(await deleteRoom(db, added.id)).toEqual({ status: "deleted", tablesDeleted: 0 });
       expect((await getVenue(db)).rooms.map((r) => r.id)).not.toContain(added.id);
@@ -160,6 +160,7 @@ describe.skipIf(!hasLocalDb)("venue service", () => {
         shape: "rectangular",
         x: 0.1235,
         y: 0.9877,
+        rotation: 0,
       };
       expect(added).toEqual(expected);
       expect((await getVenue(db)).tables).toContainEqual(expected);
@@ -213,6 +214,7 @@ describe.skipIf(!hasLocalDb)("venue service", () => {
           shape: "rectangular",
           x: 0.25,
           y: 0.75,
+          rotation: 0,
         },
       });
     });

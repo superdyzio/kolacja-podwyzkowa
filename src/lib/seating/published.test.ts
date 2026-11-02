@@ -47,11 +47,28 @@ describe("isUpToDate", () => {
       { ...base, guestList: { ...base.guestList, guests: [{ ...ania, displayName: "Anna" }, kuba, ola] } },
       { ...base, guestList: { ...base.guestList, guests: [ania, { ...kuba, isAbsent: true }, ola] } },
       { ...base, venue: { ...base.venue, tables: [{ ...okno, x: 0.9 }, kominek] } },
-      { ...base, venue: { ...base.venue, rooms: [{ id: 1, name: "Ogród" }] } },
+      { ...base, venue: { ...base.venue, rooms: [{ id: 1, name: "Ogród", outline: null }] } },
       { ...base, venue: { ...base.venue, tables: [okno, kominek, table(3, "Taras", 4)] } },
     ];
     for (const changed of changes) {
       expect(isUpToDate(snapshot, changed)).toBe(false);
+    }
+  });
+
+  it("notices drawing changes: a rotation, a room outline and the chair pitch", () => {
+    const snapshot = snapshotOf(base);
+    const changes = [
+      { ...base, venue: { ...base.venue, tables: [{ ...okno, rotation: 90 }, kominek] } },
+      {
+        ...base,
+        venue: { ...base.venue, rooms: [{ id: 1, name: "Sala", outline: { x: 0, y: 0, width: 0.5, height: 0.5 } }] },
+      },
+      { ...base, venue: { ...base.venue, chairPitch: 0.05 } },
+    ];
+    for (const changed of changes) {
+      expect(isUpToDate(snapshot, changed)).toBe(false);
+      // …and publishing the change makes it up to date again.
+      expect(isUpToDate(snapshotOf(changed), changed)).toBe(true);
     }
   });
 
@@ -76,7 +93,14 @@ describe("isUpToDate", () => {
 
 describe("toTvSeating", () => {
   it("shows nothing before the first publish", () => {
-    expect(toTvSeating(null, 1234)).toEqual({ version: "0.1234", planVersion: 1234, publishedAt: null, tables: [] });
+    expect(toTvSeating(null, 1234)).toEqual({
+      version: "0.1234",
+      planVersion: 1234,
+      publishedAt: null,
+      tables: [],
+      chairPitch: 0.035,
+      rooms: [],
+    });
   });
 
   it("lists tables by name and names by seat, without ids", () => {
@@ -90,6 +114,7 @@ describe("toTvSeating", () => {
       seatCount: 8,
       x: 0.1,
       y: 0.05,
+      rotation: 0,
       seats: [{ seat: 1, name: "Ania" }],
     });
     const json = JSON.stringify(tv);
@@ -108,7 +133,15 @@ describe("seatingVersion", () => {
 
 describe("tableCardColumns", () => {
   function tvTable(shape: TvTableDto["shape"], seatCount: number, seats: number[]): TvTableDto {
-    return { name: "T", shape, seatCount, x: 0, y: 0, seats: seats.map((s) => ({ seat: s, name: `G${s}` })) };
+    return {
+      name: "T",
+      shape,
+      seatCount,
+      x: 0,
+      y: 0,
+      rotation: 0,
+      seats: seats.map((s) => ({ seat: s, name: `G${s}` })),
+    };
   }
   const numbers = (columns: ReturnType<typeof tableCardColumns>) => columns.map((column) => column.map((s) => s.seat));
 
@@ -205,6 +238,7 @@ describe("toPublishedSeating", () => {
           shape: "round",
           x: 0,
           y: 0,
+          rotation: 0,
         },
         {
           snapshotTableId: 1,
@@ -215,6 +249,7 @@ describe("toPublishedSeating", () => {
           shape: "round",
           x: 0,
           y: 0,
+          rotation: 0,
         },
         {
           snapshotTableId: 2,
@@ -225,8 +260,11 @@ describe("toPublishedSeating", () => {
           shape: "rectangular",
           x: 0,
           y: 0,
+          rotation: 0,
         },
       ],
+      chairPitch: 0.035,
+      rooms: [],
       seats: [
         { snapshotTableId: 1, seat: 5, guestId: 1, guestName: "Ola" },
         { snapshotTableId: 1, seat: 2, guestId: null, guestName: "Kuba" },

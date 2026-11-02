@@ -25,6 +25,7 @@ function state(overrides: Partial<GuestStateDto> = {}): GuestStateDto {
     seat: SEAT,
     planVersion: null,
     guess: { intakeOpen: true, amountGrosze: null },
+    drawing: null,
     ...overrides,
   };
 }

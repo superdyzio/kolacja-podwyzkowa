@@ -15,7 +15,8 @@ import {
 
 export const prerender = false;
 
-// PATCH { roomId?, name?, seatCount?, shape?, x?, y? }: edit a table (the pin needs x and y together).
+// PATCH { roomId?, name?, seatCount?, shape?, x?, y?, rotation? }: edit a table (the pin needs x and y together;
+// rotation in whole degrees, normalized to 0..359).
 // DELETE: remove the table. Both answer with the whole venue.
 
 const UpdateTableBody = z
@@ -26,6 +27,7 @@ const UpdateTableBody = z
     shape: z.enum(TABLE_SHAPES).optional(),
     x: z.number().optional(),
     y: z.number().optional(),
+    rotation: z.number().int().min(-36_000).max(36_000).optional(),
   })
   .refine((body) => Object.keys(body).length > 0);
 

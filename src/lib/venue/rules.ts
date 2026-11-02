@@ -67,6 +67,7 @@ export function describeTableNameProblem(problem: VenueNameProblem): string {
 
 export const SEAT_COUNT_MESSAGE = `Stolik ma od ${MIN_SEATS} do ${MAX_SEATS} miejsc.`;
 export const POSITION_MESSAGE = "Kliknij na planie, gdzie stoi stolik.";
+export const ROTATION_MESSAGE = "Obrót stolika musi być liczbą stopni.";
 export const ROOM_DUPLICATE_MESSAGE = "Sala o tej nazwie już jest.";
 export const ROOM_NOT_FOUND_MESSAGE = "Nie znaleziono sali.";
 export const ROOMS_LIMIT_MESSAGE = `Można mieć najwyżej ${MAX_ROOMS} sal.`;
@@ -95,10 +96,17 @@ export interface TableFields {
   shape: TableShape;
   x: number;
   y: number;
+  // Degrees clockwise; any whole number is normalized to 0..359 on save (normalizeRotation). Optional: a new
+  // table without it stands at 0°.
+  rotation?: number;
 }
 
 export type TableFieldProblem =
-  { field: "name"; reason: VenueNameProblem } | { field: "seatCount" } | { field: "shape" } | { field: "position" };
+  | { field: "name"; reason: VenueNameProblem }
+  | { field: "seatCount" }
+  | { field: "shape" }
+  | { field: "position" }
+  | { field: "rotation" };
 
 // Checks the fields that are present (a full set for a new table, a patch for an edit). Expects a normalized name.
 // The pin is all or nothing: x without y (or the other way round) is a position problem.
@@ -123,6 +131,9 @@ export function validateTableFields(fields: Partial<TableFields>): TableFieldPro
   if (hasX && hasY && !(isValidFraction(fields.x ?? Number.NaN) && isValidFraction(fields.y ?? Number.NaN))) {
     return { field: "position" };
   }
+  if (fields.rotation !== undefined && !Number.isFinite(fields.rotation)) {
+    return { field: "rotation" };
+  }
   return null;
 }
 
@@ -136,7 +147,68 @@ export function describeTableFieldProblem(problem: TableFieldProblem): string {
       return "Wybierz typ stolika: okrągły albo prostokątny.";
     case "position":
       return POSITION_MESSAGE;
+    case "rotation":
+      return ROTATION_MESSAGE;
   }
+}
+
+// The drawing (venue-drawing): one chair pitch for the whole venue (distance between two chairs as a fraction of
+// the plan width), a rotation per table, a rectangle per room. The DB checks the same bounds.
+export const DEFAULT_CHAIR_PITCH = 0.035;
+export const MIN_CHAIR_PITCH = 0.005;
+export const MAX_CHAIR_PITCH = 0.2;
+
+export const CHAIR_PITCH_MESSAGE = "Skala krzeseł jest poza zakresem.";
+export const OUTLINE_MESSAGE = "Kontur sali musi leżeć na planie i mieć niezerowy rozmiar.";
+export const NO_PLAN_MESSAGE = "Najpierw wgraj plan sali.";
+
+export function isValidChairPitch(pitch: number): boolean {
+  return Number.isFinite(pitch) && pitch >= MIN_CHAIR_PITCH && pitch <= MAX_CHAIR_PITCH;
+}
+
+// Any whole number of degrees → 0..359 (−90 → 270, 360 → 0); non-finite → 0.
+export function normalizeRotation(degrees: number): number {
+  if (!Number.isFinite(degrees)) {
+    return 0;
+  }
+  const whole = Math.round(degrees) % 360;
+  return whole < 0 ? whole + 360 : whole;
+}
+
+export interface OutlineFields {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+// The corner on the plan, a positive size, and the rectangle may stick out of the plan by rounding only.
+export function isValidOutline(outline: OutlineFields): boolean {
+  const { x, y, width, height } = outline;
+  return (
+    isValidFraction(x) &&
+    isValidFraction(y) &&
+    Number.isFinite(width) &&
+    Number.isFinite(height) &&
+    width > 0 &&
+    height > 0 &&
+    width <= 1 &&
+    height <= 1
+  );
+}
+
+// 4 decimals like pins; the size keeps at least 0.0001 so a valid outline never rounds to zero.
+export function roundOutline(outline: OutlineFields): OutlineFields {
+  return {
+    x: roundFraction(outline.x),
+    y: roundFraction(outline.y),
+    width: Math.max(1 / FRACTION_SCALE, roundFraction(outline.width)),
+    height: Math.max(1 / FRACTION_SCALE, roundFraction(outline.height)),
+  };
+}
+
+export function roundChairPitch(pitch: number): number {
+  return Math.round(Math.min(MAX_CHAIR_PITCH, Math.max(MIN_CHAIR_PITCH, pitch)) * FRACTION_SCALE) / FRACTION_SCALE;
 }
 
 // Clamps to [0, 1] and keeps 4 decimals (0.01% of the image is far below a click's precision).

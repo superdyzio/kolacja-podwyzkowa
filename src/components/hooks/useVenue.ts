@@ -24,11 +24,16 @@ function isVenue(data: unknown): data is VenueDto {
     return false;
   }
   const candidate = data as Partial<Record<keyof VenueDto, unknown>>;
-  return "plan" in candidate && Array.isArray(candidate.rooms) && Array.isArray(candidate.tables);
+  return (
+    "plan" in candidate &&
+    Array.isArray(candidate.rooms) &&
+    Array.isArray(candidate.tables) &&
+    typeof candidate.chairPitch === "number"
+  );
 }
 
 function pick(venue: VenueDto): VenueDto {
-  return { plan: venue.plan, rooms: venue.rooms, tables: venue.tables };
+  return { plan: venue.plan, rooms: venue.rooms, tables: venue.tables, chairPitch: venue.chairPitch };
 }
 
 export function useVenue(apiBase: string, initialVenue: VenueDto) {

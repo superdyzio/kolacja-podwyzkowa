@@ -1,5 +1,5 @@
 import { oppositeSeat, sideNeighbours } from "@/lib/venue/seats";
-import type { GuestGuessDto, GuestSeatDto, GuestStateDto, TableShape, TablemateDto } from "@/types";
+import type { GuestDrawingDto, GuestGuessDto, GuestSeatDto, GuestStateDto, TableShape, TablemateDto } from "@/types";
 
 // What a guest's phone shows (S-05), pure: the polling token and the mapping of "latest snapshot + the guest's own
 // seat row in it" to the three states. The seat comes from the PUBLISHED snapshot (same truth as the TV); the name is
@@ -38,6 +38,8 @@ export interface GuestStateInput {
   seat: GuestSeatDto | null;
   // The intake flag and the guest's own guess (S-06).
   guess: GuestGuessDto;
+  // The published drawing (venue-drawing), read only for a seated guest.
+  drawing?: GuestDrawingDto | null;
 }
 
 export function toGuestState({
@@ -47,16 +49,17 @@ export function toGuestState({
   name,
   seat,
   guess,
+  drawing = null,
 }: GuestStateInput): GuestStateDto {
   const version = guestStateVersion(seatingVersion, name, guess);
   const own = { intakeOpen: guess.intakeOpen, amountGrosze: guess.amountGrosze };
   if (snapshotId === null) {
-    return { version, name, status: "unpublished", seat: null, planVersion, guess: own };
+    return { version, name, status: "unpublished", seat: null, planVersion, guess: own, drawing: null };
   }
   if (!seat) {
-    return { version, name, status: "unseated", seat: null, planVersion, guess: own };
+    return { version, name, status: "unseated", seat: null, planVersion, guess: own, drawing: null };
   }
-  return { version, name, status: "seated", seat, planVersion, guess: own };
+  return { version, name, status: "seated", seat, planVersion, guess: own, drawing };
 }
 
 // Everyone else at the guest's table in the same snapshot (rows = that table's snapshot seats, names as published),

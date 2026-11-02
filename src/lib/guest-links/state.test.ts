@@ -115,6 +115,7 @@ describe("toGuestState", () => {
       seat: null,
       planVersion: 17,
       guess: OPEN,
+      drawing: null,
     });
   });
 
@@ -130,6 +131,7 @@ describe("toGuestState", () => {
       seat: SEAT,
       planVersion: 17,
       guess: OPEN,
+      drawing: null,
     });
   });
 
@@ -138,7 +140,7 @@ describe("toGuestState", () => {
     const state = toGuestState({ ...base, snapshotId: 4, seat: null, guess: leaky });
     expect(state.guess).toEqual({ intakeOpen: false, amountGrosze: 149_999 });
     expect(state.version).toBe(guestStateVersion("4.17", "Ania", { intakeOpen: false, amountGrosze: 149_999 }));
-    expect(Object.keys(state).sort()).toEqual(["guess", "name", "planVersion", "seat", "status", "version"]);
+    expect(Object.keys(state).sort()).toEqual(["drawing", "guess", "name", "planVersion", "seat", "status", "version"]);
   });
 
   it("carries no ids, keys, correct amount or ranking", () => {

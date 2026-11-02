@@ -1,10 +1,11 @@
 import { EVENT_ID } from "@/lib/event";
 import { getGuestList } from "@/lib/guests/service";
 import type { DbClient } from "@/lib/supabase-client";
-import { isTableShape } from "@/lib/venue/rules";
+import { DEFAULT_CHAIR_PITCH, compareTableNames, isTableShape } from "@/lib/venue/rules";
 import { getVenue } from "@/lib/venue/service";
 import type {
   DraftSeatDto,
+  DrawingRoomDto,
   NeighbourHistoryDto,
   PublicationDto,
   PublishedSeatingDto,
@@ -156,10 +157,18 @@ export async function setPinned(db: DbClient, guestId: number, pinned: boolean):
   return (await guestName(db, guestId)) === null ? { status: "guest-not-found" } : { status: "not-seated" };
 }
 
-async function latestSnapshotRow(db: DbClient): Promise<{ id: number; published_at: string } | null> {
+interface SnapshotRow {
+  id: number;
+  published_at: string;
+  chair_pitch: number | null;
+}
+
+const SNAPSHOT_COLUMNS = "id, published_at, chair_pitch";
+
+async function latestSnapshotRow(db: DbClient): Promise<SnapshotRow | null> {
   const { data, error } = await db
     .from("seating_snapshot")
-    .select("id, published_at")
+    .select(SNAPSHOT_COLUMNS)
     .order("id", { ascending: false })
     .limit(1)
     .maybeSingle();
@@ -169,13 +178,34 @@ async function latestSnapshotRow(db: DbClient): Promise<{ id: number; published_
   return data;
 }
 
-async function readSnapshot(db: DbClient, row: { id: number; published_at: string }): Promise<SeatingSnapshot> {
-  const [tables, seats] = await Promise.all([
+// The outlined rooms of a snapshot, by name (snapshots published before the drawing have none).
+export async function readSnapshotRooms(db: DbClient, snapshotId: number): Promise<DrawingRoomDto[]> {
+  const { data, error } = await db
+    .from("seating_snapshot_room")
+    .select("room_name, outline_x, outline_y, outline_w, outline_h")
+    .eq("snapshot_id", snapshotId);
+  if (error) {
+    fail("odczytać publikacji", error.message);
+  }
+  return data
+    .map((room) => ({
+      name: room.room_name,
+      x: room.outline_x,
+      y: room.outline_y,
+      width: room.outline_w,
+      height: room.outline_h,
+    }))
+    .sort((a, b) => compareTableNames(a.name, b.name));
+}
+
+async function readSnapshot(db: DbClient, row: SnapshotRow): Promise<SeatingSnapshot> {
+  const [tables, seats, rooms] = await Promise.all([
     db
       .from("seating_snapshot_table")
-      .select("id, table_id, room_name, name, seat_count, shape, pos_x, pos_y")
+      .select("id, table_id, room_name, name, seat_count, shape, pos_x, pos_y, rotation")
       .eq("snapshot_id", row.id),
     db.from("seating_snapshot_seat").select("snapshot_table_id, seat, guest_id, guest_name").eq("snapshot_id", row.id),
+    readSnapshotRooms(db, row.id),
   ]);
   if (tables.error) {
     fail("odczytać publikacji", tables.error.message);
@@ -186,6 +216,9 @@ async function readSnapshot(db: DbClient, row: { id: number; published_at: strin
   return {
     id: row.id,
     publishedAt: new Date(row.published_at).toISOString(),
+    // Snapshots published before the drawing existed: the defaults (they still count as up to date).
+    chairPitch: row.chair_pitch ?? DEFAULT_CHAIR_PITCH,
+    rooms,
     tables: tables.data.map((table): SnapshotTable => {
       if (!isTableShape(table.shape)) {
         fail("odczytać publikacji", `nieznany typ stolika ${table.shape}`);
@@ -199,6 +232,7 @@ async function readSnapshot(db: DbClient, row: { id: number; published_at: strin
         shape: table.shape,
         x: table.pos_x,
         y: table.pos_y,
+        rotation: table.rotation ?? 0,
       };
     }),
     seats: seats.data.map((seat): SnapshotSeat => ({
@@ -217,7 +251,7 @@ export async function getLatestSnapshot(db: DbClient): Promise<SeatingSnapshot |
 }
 
 export async function getSnapshot(db: DbClient, id: number): Promise<SeatingSnapshot | null> {
-  const { data, error } = await db.from("seating_snapshot").select("id, published_at").eq("id", id).maybeSingle();
+  const { data, error } = await db.from("seating_snapshot").select(SNAPSHOT_COLUMNS).eq("id", id).maybeSingle();
   if (error) {
     fail("odczytać publikacji", error.message);
   }
@@ -226,10 +260,10 @@ export async function getSnapshot(db: DbClient, id: number): Promise<SeatingSnap
 
 // The snapshot published before the latest one (S-04 "back to the previous arrangement"), or null. Its own query,
 // so latestSnapshotRow (TV polling) stays a one-row read.
-async function previousSnapshotRow(db: DbClient): Promise<{ id: number; published_at: string } | null> {
+async function previousSnapshotRow(db: DbClient): Promise<SnapshotRow | null> {
   const { data, error } = await db
     .from("seating_snapshot")
-    .select("id, published_at")
+    .select(SNAPSHOT_COLUMNS)
     .order("id", { ascending: false })
     .range(1, 1)
     .maybeSingle();
