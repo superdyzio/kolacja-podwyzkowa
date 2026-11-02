@@ -537,7 +537,7 @@ export interface OrganizerAiTopicAnswerDto {
 
 // Organizer reset („Reset danych”). Part ids in canonical order (src/lib/reset/parts.ts has the labels, texts and
 // implications: guests ⇒ guesses, aiUsage, seating; venue ⇒ seating).
-export type ResetPart = "guesses" | "aiUsage" | "seating" | "guests" | "venue" | "questions" | "guestLinks";
+export type ResetPart = "guesses" | "aiUsage" | "seating" | "guests" | "venue" | "orders" | "questions" | "guestLinks";
 
 // What a reset would remove (and the flags it would change), read in one query (DB function reset_counts).
 export interface ResetCountsDto {
@@ -556,6 +556,8 @@ export interface ResetCountsDto {
   plan: boolean;
   rooms: number;
   tables: number;
+  // restaurant-orders: order lines.
+  orders: number;
   questions: number;
   guestAccessEnabled: boolean;
 }
@@ -574,4 +576,110 @@ export interface ResetResultDto {
   questionsAdded: number;
   guestKeysReplaced: number;
   summary: string[];
+}
+
+// restaurant-orders: the evening's food order (src/lib/orders/). Money in integer grosze. A line is for a guest
+// (served at the guest's seat in the latest published snapshot), a table (a loose line placed on the table) or
+// nobody yet (guestId and tableId both null; also after its guest or table was deleted).
+export interface OrderItemDto {
+  id: number;
+  name: string;
+  note: string | null;
+  quantity: number;
+  unitPriceGrosze: number;
+  guestId: number | null;
+  tableId: number | null;
+  delivered: boolean;
+}
+
+// What the restaurant sees of a line: no ids, no price.
+export interface RestaurantItemDto {
+  name: string;
+  note: string | null;
+  quantity: number;
+  delivered: boolean;
+}
+
+// A seated guest with their lines; guestName as published (like the TV).
+export interface PlacedSeatDto<T> {
+  seat: number;
+  guestName: string;
+  items: T[];
+}
+
+// A published table with lines: seats in order (only seats whose guest has lines), then the table's own lines.
+export interface PlacedTableDto<T> {
+  name: string;
+  room: string;
+  seats: PlacedSeatDto<T>[];
+  tableItems: T[];
+}
+
+// „Do rozstawienia”: lines whose guest or table is not on the published plan (live name).
+export interface UnplacedGroupDto<T> {
+  kind: "guest" | "table";
+  name: string;
+  items: T[];
+}
+
+export interface OrderPlacementDto<T> {
+  tables: PlacedTableDto<T>[];
+  unplaced: UnplacedGroupDto<T>[];
+  // „Nieprzypisane”: lines for nobody.
+  unassigned: T[];
+}
+
+// One dish of the prep list (case-insensitive by name): toServe = the quantity not delivered yet.
+export interface PrepLineDto {
+  name: string;
+  quantity: number;
+  toServe: number;
+  notes: { note: string; quantity: number }[];
+}
+
+export interface OrganizerPrepLineDto extends PrepLineDto {
+  totalGrosze: number;
+}
+
+export interface OrderTotalsDto {
+  lines: number;
+  quantity: number;
+  deliveredQuantity: number;
+  totalGrosze: number;
+}
+
+// The assignment choices of the organizer's form: guests (Polish order) with their published seat, live tables.
+export interface OrderGuestOptionDto {
+  id: number;
+  displayName: string;
+  isAbsent: boolean;
+  seat: { table: string; seat: number } | null;
+}
+
+export interface OrderTableOptionDto {
+  id: number;
+  name: string;
+  room: string;
+  published: boolean;
+}
+
+// GET /api/o/<key>/orders and every mutation's answer.
+export interface OrderBoardDto {
+  items: OrderItemDto[];
+  guests: OrderGuestOptionDto[];
+  tables: OrderTableOptionDto[];
+  published: boolean;
+  placement: OrderPlacementDto<OrderItemDto>;
+  prep: OrganizerPrepLineDto[];
+  totals: OrderTotalsDto;
+}
+
+// GET /api/r/<key>/orders: the restaurant's view. seating = what the TV draws (names at chairs, no ids); no prices,
+// ids, keys or absences. version: opaque polling token (?since= equal → 204).
+export interface RestaurantViewDto {
+  version: string;
+  seating: TvSeatingDto;
+  prep: PrepLineDto[];
+  placement: OrderPlacementDto<RestaurantItemDto>;
+  totals: { quantity: number; toServe: number };
 }

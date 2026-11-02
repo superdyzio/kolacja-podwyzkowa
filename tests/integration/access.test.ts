@@ -38,7 +38,13 @@ describe.skipIf(!hasLocalDb)("access matrix against the local DB", () => {
         kind: "granted",
         access: {
           role: "organizer",
-          event: { id: 1, name: event.name, organizerKey: event.organizerKey, tvKey: event.tvKey },
+          event: {
+            id: 1,
+            name: event.name,
+            organizerKey: event.organizerKey,
+            tvKey: event.tvKey,
+            restaurantKey: event.restaurantKey,
+          },
         },
       });
     });
@@ -75,6 +81,39 @@ describe.skipIf(!hasLocalDb)("access matrix against the local DB", () => {
         status: 404,
         isApi: true,
       });
+    });
+  });
+
+  describe("restaurant key", () => {
+    it("opens the restaurant view and its API without exposing any key", async () => {
+      for (const path of [`/r/${event.restaurantKey}`, `/api/r/${event.restaurantKey}/orders`]) {
+        const decision = await decideAccess(db, path);
+        expect(decision).toEqual({
+          kind: "granted",
+          access: { role: "restaurant", event: { id: 1, name: event.name } },
+        });
+        expect(JSON.stringify(decision)).not.toContain(event.restaurantKey);
+      }
+    });
+
+    it("opens nothing else, and no other key opens the restaurant view", async () => {
+      for (const path of [
+        `/o/${event.restaurantKey}`,
+        `/tv/${event.restaurantKey}`,
+        `/g/${event.restaurantKey}`,
+        `/api/o/${event.restaurantKey}/orders`,
+        `/api/tv/${event.restaurantKey}/seating`,
+        `/r/${event.organizerKey}`,
+        `/r/${event.tvKey}`,
+        `/api/r/${event.organizerKey}/orders`,
+      ]) {
+        expect((await decideAccess(db, path)).kind).toBe("denied");
+      }
+    });
+
+    it("is distinct from the other keys", () => {
+      expect(event.restaurantKey).toMatch(/^[A-Za-z0-9_-]{24}$/);
+      expect([event.organizerKey, event.tvKey]).not.toContain(event.restaurantKey);
     });
   });
 

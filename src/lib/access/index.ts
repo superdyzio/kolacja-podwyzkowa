@@ -1,5 +1,13 @@
 export { ACCESS_KEY_BYTES, ACCESS_KEY_LENGTH, generateAccessKey, isWellFormedAccessKey } from "./keys";
-export { guestPath, organizerPath, parseAccessPath, tvPath, type AccessPath, type AccessRole } from "./paths";
+export {
+  guestPath,
+  organizerPath,
+  parseAccessPath,
+  restaurantPath,
+  tvPath,
+  type AccessPath,
+  type AccessRole,
+} from "./paths";
 export {
   AccessLookupError,
   accessFor,
@@ -9,5 +17,6 @@ export {
   type AccessDecision,
   type GuestAccess,
   type OrganizerAccess,
+  type RestaurantAccess,
   type TvAccess,
 } from "./resolve";

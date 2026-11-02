@@ -2816,11 +2816,289 @@ if (aiOnMock) {
   check("layout proposal checks run only on the mock AI provider", false, "AI_PROVIDER is not the mock");
 }
 
-// 23. Organizer reset („Reset danych”). Organizer only; one POST resets the chosen parts (implied ones added) in one
+// 23. Food orders and the restaurant link (restaurant-orders). The organizer keeps the order (dish, unit price,
+// quantity, note, for a guest, a table or nobody) and ticks what was served; the restaurant's own key (/r/<key>) shows
+// the prep list and where to serve by the PUBLISHED seating — never prices, ids or other keys. Every other key is
+// refused on /r/ and the restaurant key opens nothing else; „Wymień link” kills the old link at once.
+const ordersApi = `${api}/orders`;
+const shellWithOrders = await request(`/o/${organizerKey}`);
+const restaurantKey = new RegExp(`/r/(${KEY})`).exec(shellWithOrders.body)?.[1];
+check(
+  "organizer shell shows the restaurant link and the orders card",
+  shellWithOrders.status === 200 &&
+    Boolean(restaurantKey) &&
+    restaurantKey !== organizerKey &&
+    restaurantKey !== tvKey &&
+    shellWithOrders.body.includes(`/o/${organizerKey}/zamowienia`) &&
+    shellWithOrders.body.includes("Zamówienia i restauracja"),
+  `${shellWithOrders.status} ${restaurantKey}`,
+);
+if (!restaurantKey) finish();
+const tvPageNoRestaurant = await request(`/tv/${tvKey}`);
+check("the TV page never contains the restaurant key", !tvPageNoRestaurant.body.includes(restaurantKey));
+
+const restaurantDeniedBody = [...deniedBodies][0];
+for (const path of [
+  "/r/garbage",
+  `/r/${unknownKey}`,
+  `/r/${organizerKey}`,
+  `/r/${tvKey}`,
+  `/r/${aniaNewKey}`,
+  `/o/${restaurantKey}`,
+  `/o/${restaurantKey}/zamowienia`,
+  `/tv/${restaurantKey}`,
+  `/g/${restaurantKey}`,
+]) {
+  const res = await request(path);
+  check(
+    `restaurant denial matrix: ${path
+      .replace(organizerKey, "<organizer>")
+      .replace(tvKey, "<tv>")
+      .replace(restaurantKey, "<restaurant>")
+      .replace(aniaNewKey, "<guest>")}`,
+    res.status === 404 && res.body === restaurantDeniedBody && res.cacheControl.includes("no-store"),
+    String(res.status),
+  );
+}
+for (const [method, path] of [
+  ["GET", `/api/r/${organizerKey}/orders`],
+  ["GET", `/api/r/${tvKey}/orders`],
+  ["GET", `/api/r/${aniaNewKey}/orders`],
+  ["GET", `/api/r/${tvKey}/plan/image`],
+  ["GET", `/api/o/${restaurantKey}/orders`],
+  ["POST", `/api/o/${restaurantKey}/restaurant-link`],
+  ["GET", `/api/tv/${restaurantKey}/seating`],
+  ["GET", `/api/g/${restaurantKey}/state`],
+  ["GET", `/api/o/${tvKey}/orders`],
+  ["POST", `/api/o/${tvKey}/restaurant-link`],
+]) {
+  const res = await request(path, { method });
+  check(
+    `restaurant API denial: ${method} ${path
+      .replace(organizerKey, "<organizer>")
+      .replace(tvKey, "<tv>")
+      .replace(restaurantKey, "<restaurant>")
+      .replace(aniaNewKey, "<guest>")}`,
+    noAccessJson(res),
+    `${res.status} ${res.body}`,
+  );
+}
+
+// A guest without a published seat: their lines wait under „Do rozstawienia”.
+const celinaAdded = await request(`${api}/guests`, { method: "POST", json: { text: "Celina Smoke" } });
+check("orders: a guest without a published seat is added", celinaAdded.status === 201, celinaAdded.body);
+const ordersBefore = await request(ordersApi);
+check(
+  "orders: an empty order to start with, private",
+  ordersBefore.status === 200 &&
+    ordersBefore.cacheControl.includes("no-store") &&
+    ordersBefore.data?.items?.length === 0 &&
+    ordersBefore.data.totals.totalGrosze === 0 &&
+    Array.isArray(ordersBefore.data.guests) &&
+    Array.isArray(ordersBefore.data.tables),
+  ordersBefore.body.slice(0, 200),
+);
+const seatedGuest = ordersBefore.data?.guests?.find((guest) => guest.seat !== null);
+const unseatedGuest = ordersBefore.data?.guests?.find((guest) => guest.seat === null);
+const publishedTable = ordersBefore.data?.tables?.find((table) => table.published);
+check(
+  "orders: the form lists guests with their published seats and the tables",
+  Boolean(seatedGuest) && Boolean(unseatedGuest) && Boolean(publishedTable),
+  ordersBefore.body.slice(0, 300),
+);
+
+const addLine = (json) => request(ordersApi, { method: "POST", json });
+const schabowy = await addLine({
+  name: "  Schabowy   Smoke ",
+  price: "49,90 zł",
+  quantity: 1,
+  note: "bez cebuli",
+  assignment: { guestId: seatedGuest?.id },
+});
+await addLine({ name: "Żurek Smoke", price: "24", quantity: 2, assignment: { guestId: seatedGuest?.id } });
+await addLine({ name: "Woda Smoke", price: "18", quantity: 2, assignment: { tableId: publishedTable?.id } });
+await addLine({ name: "Pierogi Smoke", price: "36", quantity: 1, assignment: { guestId: unseatedGuest?.id } });
+const tortLine = await addLine({ name: "Tort Smoke", price: "350", quantity: 1, assignment: null });
+const seatedTable = tortLine.data?.placement?.tables?.find((table) => table.name === seatedGuest?.seat?.table);
+check(
+  "orders: lines are added with normalized names and grosze, totals and placement by the published seating",
+  schabowy.status === 201 &&
+    tortLine.status === 201 &&
+    tortLine.data.items.length === 5 &&
+    tortLine.data.items[0].name === "Schabowy Smoke" &&
+    tortLine.data.items[0].unitPriceGrosze === 4990 &&
+    tortLine.data.totals.totalGrosze === 4990 + 4800 + 3600 + 3600 + 35000 &&
+    tortLine.data.totals.quantity === 7 &&
+    seatedTable?.seats?.some(
+      (seat) =>
+        seat.seat === seatedGuest?.seat?.seat &&
+        seat.items.map((item) => item.name).join() === "Schabowy Smoke,Żurek Smoke",
+    ) &&
+    tortLine.data.placement.unplaced.some(
+      (group) => group.kind === "guest" && group.name === unseatedGuest?.displayName,
+    ) &&
+    tortLine.data.placement.unassigned.map((item) => item.name).join() === "Tort Smoke",
+  tortLine.body.slice(0, 400),
+);
+check(
+  "orders: the prep list adds up each dish",
+  tortLine.data?.prep?.find((line) => line.name === "Żurek Smoke")?.quantity === 2 &&
+    tortLine.data.prep.find((line) => line.name === "Schabowy Smoke")?.notes?.[0]?.note === "bez cebuli",
+  JSON.stringify(tortLine.data?.prep),
+);
+
+for (const [label, json, status, message] of [
+  ["a zero quantity", { name: "X", price: "1", quantity: 0 }, 400, "Ilość to liczba od 1 do 99."],
+  ["a bad price", { name: "X", price: "abc", quantity: 1 }, 400, "Wpisz kwotę w złotych, np. 1500 albo 1499,99."],
+  ["no dish name", { name: "  ", price: "1", quantity: 1 }, 400, "Wpisz nazwę dania."],
+  [
+    "a guest and a table at once",
+    { name: "X", price: "1", quantity: 1, assignment: { guestId: 1, tableId: 1 } },
+    400,
+    "Nieprawidłowe dane.",
+  ],
+  ["an extra key", { name: "X", price: "1", quantity: 1, priceGrosze: 100 }, 400, "Nieprawidłowe dane."],
+  [
+    "a guest that does not exist",
+    { name: "X", price: "1", quantity: 1, assignment: { guestId: 2_000_000_000 } },
+    409,
+    "Nie ma już takiego gościa albo stolika.",
+  ],
+]) {
+  const res = await addLine(json);
+  check(`orders refuse ${label}`, res.status === status && errorOf(res) === message, `${res.status} ${res.body}`);
+}
+const unknownLine = await request(`${ordersApi}/2000000000`, { method: "PATCH", json: { delivered: true } });
+check(
+  "orders: an unknown line is 404",
+  unknownLine.status === 404 && errorOf(unknownLine) === "Nie znaleziono pozycji zamówienia.",
+  `${unknownLine.status} ${unknownLine.body}`,
+);
+
+// The restaurant's view.
+const restaurantApiBase = `/api/r/${restaurantKey}`;
+const restaurantPage = await request(`/r/${restaurantKey}`);
+check(
+  "restaurant page: the prep list and placement, private, without prices or other keys",
+  restaurantPage.status === 200 &&
+    restaurantPage.cacheControl.includes("no-store") &&
+    restaurantPage.referrerPolicy === "no-referrer" &&
+    restaurantPage.body.includes("Schabowy Smoke") &&
+    restaurantPage.body.includes("Do przygotowania") &&
+    !restaurantPage.body.includes("zł") &&
+    !restaurantPage.body.includes("49,90") &&
+    !restaurantPage.body.includes("4990") &&
+    !restaurantPage.body.includes(organizerKey) &&
+    !restaurantPage.body.includes(tvKey),
+  String(restaurantPage.status),
+);
+const restaurantView = await request(`${restaurantApiBase}/orders`);
+const servedTable = restaurantView.data?.placement?.tables?.find((table) => table.name === seatedGuest?.seat?.table);
+check(
+  "restaurant API: no prices, ids, keys or absences; dishes at the published seat and on the table",
+  restaurantView.status === 200 &&
+    restaurantView.cacheControl.includes("no-store") &&
+    !/Grosze|"id"|guestId|tableId|isAbsent|zł/.test(restaurantView.body) &&
+    !restaurantView.body.includes(organizerKey) &&
+    !restaurantView.body.includes(tvKey) &&
+    !restaurantView.body.includes(restaurantKey) &&
+    servedTable?.seats?.some((seat) => seat.guestName === seatedGuest?.displayName) &&
+    restaurantView.data.totals.quantity === 7 &&
+    restaurantView.data.totals.toServe === 7 &&
+    restaurantView.data.seating.publishedAt !== null,
+  restaurantView.body.slice(0, 400),
+);
+const restaurantSame = await request(
+  `${restaurantApiBase}/orders?since=${encodeURIComponent(restaurantView.data?.version ?? "")}`,
+);
+check(
+  "restaurant API: an unchanged view answers 204",
+  restaurantSame.status === 204 && restaurantSame.body === "",
+  String(restaurantSame.status),
+);
+const restaurantImage = await requestBytes(`${restaurantApiBase}/plan/image`);
+check(
+  "restaurant API: the plan image (for the drawing's aspect ratio)",
+  restaurantImage.status === 200 &&
+    restaurantImage.contentType.startsWith("image/") &&
+    restaurantImage.nosniff === "nosniff",
+  `${restaurantImage.status} ${restaurantImage.contentType}`,
+);
+const schabowyId = tortLine.data?.items?.find((item) => item.name === "Schabowy Smoke")?.id;
+const ticked = await request(`${ordersApi}/${schabowyId}`, { method: "PATCH", json: { delivered: true } });
+const restaurantTicked = await request(
+  `${restaurantApiBase}/orders?since=${encodeURIComponent(restaurantView.data?.version ?? "")}`,
+);
+check(
+  "a „Wydane” tick reaches the restaurant at its next poll",
+  ticked.status === 200 &&
+    ticked.data.totals.deliveredQuantity === 1 &&
+    restaurantTicked.status === 200 &&
+    restaurantTicked.data.totals.toServe === 6 &&
+    restaurantTicked.data.version !== restaurantView.data?.version &&
+    restaurantTicked.data.prep.find((line) => line.name === "Schabowy Smoke")?.toServe === 0,
+  `${ticked.status} ${restaurantTicked.status}`,
+);
+const moved = await request(`${ordersApi}/${schabowyId}`, {
+  method: "PATCH",
+  json: { assignment: { tableId: publishedTable?.id }, price: "52", quantity: 2 },
+});
+const movedLine = moved.data?.items?.find((item) => item.id === schabowyId);
+check(
+  "orders: a line is moved to a table and repriced, keeping its tick",
+  moved.status === 200 &&
+    movedLine?.guestId === null &&
+    movedLine.tableId === publishedTable?.id &&
+    movedLine.unitPriceGrosze === 5200 &&
+    movedLine.quantity === 2 &&
+    movedLine.delivered === true,
+  moved.body.slice(0, 300),
+);
+const tortId = tortLine.data?.items?.find((item) => item.name === "Tort Smoke")?.id;
+const deletedLine = await request(`${ordersApi}/${tortId}`, { method: "DELETE" });
+const deletedLineAgain = await request(`${ordersApi}/${tortId}`, { method: "DELETE" });
+check(
+  "orders: a line is deleted once",
+  deletedLine.status === 200 && deletedLine.data.items.length === 4 && deletedLineAgain.status === 404,
+  `${deletedLine.status} ${deletedLineAgain.status}`,
+);
+const ordersPage = await request(`/o/${organizerKey}/zamowienia`);
+const tvOrdersPage = await request(`/o/${tvKey}/zamowienia`);
+check(
+  "organizer order page renders with the restaurant link; other keys get the denial",
+  ordersPage.status === 200 &&
+    ordersPage.body.includes("Zamówienia i restauracja") &&
+    ordersPage.body.includes(`/r/${restaurantKey}`) &&
+    ordersPage.body.includes("Schabowy Smoke") &&
+    tvOrdersPage.status === 404,
+  `${ordersPage.status} ${tvOrdersPage.status}`,
+);
+
+const rotated = await request(`${api}/restaurant-link`, { method: "POST" });
+const newRestaurantKey = new RegExp(`^/r/(${KEY})$`).exec(rotated.data?.path ?? "")?.[1];
+const oldRestaurantPage = await request(`/r/${restaurantKey}`);
+const oldRestaurantApi = await request(`${restaurantApiBase}/orders`);
+const newRestaurantPage = newRestaurantKey ? await request(`/r/${newRestaurantKey}`) : null;
+const shellAfterRotation = await request(`/o/${organizerKey}`);
+check(
+  "„Wymień link”: a new restaurant key, the old link dead at once",
+  rotated.status === 200 &&
+    Boolean(newRestaurantKey) &&
+    newRestaurantKey !== restaurantKey &&
+    oldRestaurantPage.status === 404 &&
+    oldRestaurantPage.body === restaurantDeniedBody &&
+    noAccessJson(oldRestaurantApi) &&
+    newRestaurantPage?.status === 200 &&
+    shellAfterRotation.body.includes(`/r/${newRestaurantKey}`) &&
+    !shellAfterRotation.body.includes(`/r/${restaurantKey}`),
+  `${rotated.status} ${rotated.body}`,
+);
+
+// 24. Organizer reset („Reset danych”). Organizer only; one POST resets the chosen parts (implied ones added) in one
 // transaction and answers with the Polish summary. Here: a subset first (guesses + AI usage), then the guest links,
 // then everything — the organizer and TV links keep working, the event is empty except the 90 starter questions.
 const resetApi = `${api}/reset`;
-const RESET_PARTS = ["guesses", "aiUsage", "seating", "guests", "venue", "questions", "guestLinks"];
+const RESET_PARTS = ["guesses", "aiUsage", "seating", "guests", "venue", "orders", "questions", "guestLinks"];
 const COUNT_KEYS = [
   "guesses",
   "correctAmountSet",
@@ -2835,6 +3113,7 @@ const COUNT_KEYS = [
   "plan",
   "rooms",
   "tables",
+  "orders",
   "questions",
   "guestAccessEnabled",
 ]
@@ -2891,6 +3170,7 @@ check(
     previewCounts.correctAmountSet === true &&
     previewCounts.aiAttempts > 0 &&
     previewCounts.plan === true &&
+    previewCounts.orders > 0 &&
     !resetPreview.body.includes(organizerKey) &&
     !resetPreview.body.includes(tvKey),
   `${resetPreview.status} ${resetPreview.body}`,
@@ -3030,6 +3310,7 @@ check(
       plan: false,
       rooms: 0,
       tables: 0,
+      orders: 0,
       questions: 90,
       guestAccessEnabled: false,
     }),

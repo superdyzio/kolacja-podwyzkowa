@@ -29,11 +29,12 @@ Otwórz http://localhost:4321/, kliknij „Utwórz wydarzenie” i od razu dodaj
 | Organizator | `/o/<klucz>`  | wszystko; link do zakładek, nie udostępniać      |
 | TV          | `/tv/<klucz>` | tylko do odczytu, na urządzeniu przy telewizorze |
 | Gość        | `/g/<klucz>`  | osobisty link/QR (w kolejnych etapach)           |
+| Restauracja | `/r/<klucz>`  | tylko do odczytu: zamówienie i plan, bez cen     |
 | Inne        | —             | strona „Brak dostępu” (HTTP 404), żadnych danych |
 
 ## Reset danych
 
-Na dole panelu organizatora jest karta „Reset danych”. „Resetuj…” otwiera okno z listą rzeczy do wyczyszczenia, każda z opisem i aktualną liczbą: strzały (z prawidłową kwotą), licznik tematów AI, rozsadzenie z historią publikacji, goście i grupy, plan z salami i stolikami, pytania (wraca baza startowa) oraz linki gości (nowe linki, dostęp gości wyłączony — wydrukowane karteczki przestają działać). Goście pociągają za sobą strzały, licznik AI i rozsadzenie, a plan — rozsadzenie. Jedno kliknięcie „Resetuj zaznaczone” czyści wszystko naraz (jedna transakcja w bazie). Link organizatora i adres TV się nie zmieniają, więc np. po próbie generalnej wystarczy zresetować wszystko i od nowa wgrać dane (także `npm run demo`).
+Na dole panelu organizatora jest karta „Reset danych”. „Resetuj…” otwiera okno z listą rzeczy do wyczyszczenia, każda z opisem i aktualną liczbą: strzały (z prawidłową kwotą), licznik tematów AI, rozsadzenie z historią publikacji, goście i grupy, plan z salami i stolikami, zamówienia (link restauracji zostaje), pytania (wraca baza startowa) oraz linki gości (nowe linki, dostęp gości wyłączony — wydrukowane karteczki przestają działać). Goście pociągają za sobą strzały, licznik AI i rozsadzenie, a plan — rozsadzenie. Jedno kliknięcie „Resetuj zaznaczone” czyści wszystko naraz (jedna transakcja w bazie). Link organizatora i adres TV się nie zmieniają, więc np. po próbie generalnej wystarczy zresetować wszystko i od nowa wgrać dane (także `npm run demo`).
 
 ## Tematy AI
 
@@ -69,17 +70,25 @@ TV i telefony gości nie pokazują zdjęcia planu, tylko rysunek: kontury sal z 
 
 Na produkcji: przed `npx supabase db push` zrób kopię danych (`npx supabase db dump --data-only -f ~/kolacja-backup-<data>.sql`), potem `db push`, potem `npm run deploy:aws` (podnosi limit czasu Lambdy do 30 s). Do czasu przerysowania TV rysuje dotychczasowy układ z domyślnymi wartościami.
 
+## Zamówienia i restauracja
+
+Na `/o/<klucz>/zamowienia` organizator prowadzi zamówienie jedzenia: każda pozycja to danie (podpowiedzi z dań już wpisanych, cena podstawia się sama), cena za sztukę, ilość, opcjonalna uwaga dla kuchni i dla kogo — osoba (podanie na jej miejsce), stolik (na środek stołu) albo nieprzypisane. Widać sumę pozycji, łączną kwotę, listę „Do przygotowania” i każdą pozycję z ptaszkiem „Wydane”; wszystko da się poprawić albo usunąć.
+
+Link dla restauracji (`/r/<klucz>`, w panelu i w `npm run links`) działa zawsze i nie ma cen: lista dań do przygotowania (z uwagami i tym, co jeszcze do wydania), rysunek sali jak na TV oraz, stolik po stoliku, co podać na które miejsce i co na środek stołu. Wydane pozycje są przekreślone. Strona sama odświeża się co 15 s. Miejsca biorą się z **opublikowanego** rozsadzenia: osoba albo stolik spoza opublikowanego planu trafia do „Do ustalenia z organizatorem”. „Wymień link” od razu unieważnia stary link — wyślij restauracji nowy.
+
+Na produkcji ta zmiana wymaga migracji bazy **przed** wdrożeniem kodu: bez niej każda strona organizatora kończy się błędem 500 (panel czyta link restauracji). Kolejność: kopia danych (`npx supabase db dump --data-only -f ~/kolacja-backup-<data>.sql`), `npx supabase db push` (wgrywa też migrację planu sali, jeśli jeszcze jej nie było), potem `npm run deploy:aws`. Migracja tylko dodaje: istniejące linki organizatora, TV i gości się nie zmieniają.
+
 ## Skrypty
 
 - `npm run dev`, `npm run build`, `npm run preview`: serwer deweloperski, build produkcyjny, podgląd buildu.
 - `npm test`: testy jednostkowe i integracyjne. Integracyjne działają tylko z lokalnym Supabase (`SUPABASE_URL` na `127.0.0.1`), inaczej są pomijane.
 - `npm run lint`, `npx astro check`: lint i sprawdzanie typów.
 - `npm run env:local`: zapisuje dane lokalnego Supabase do `.env` (jedyny plik ze zmiennymi; stary `.dev.vars` z czasów Cloudflare nie jest już używany).
-- `npm run links`: wypisuje link organizatora i adres TV z bazy.
+- `npm run links`: wypisuje link organizatora, adres TV i link restauracji z bazy.
 - `npm run smoke`: test HTTP macierzy dostępu na działającym serwerze (`BASE_URL`, domyślnie `http://localhost:4321`). Wymaga bazy bez wydarzenia. `npm run preview` czyta `.env` przy starcie, więc po zmianie `.env` uruchom podgląd ponownie.
 - `npm run package:lambda`: build do `dist-lambda/build` (nie rusza `dist/` podglądu) i paczka `dist-lambda/function.zip` dla AWS Lambda, ze sprawdzeniem (bez plików env i sekretów, bez modułów natywnych, zip < 50 MB, rozpakowany zip startuje poza repozytorium).
 - `npm run deploy:aws`: wdrożenie na AWS Lambda (patrz niżej); `-- --dry-run` tylko wypisuje plan.
-- `npm run demo`: wypełnia lokalną aplikację danymi demo do sprawdzeń ręcznych (40 gości, plan, 3 sale, 7 stolików, grupy 4/2/2, 1 nieobecny, 1 przypięty, opublikowany rozkład, 30 strzałów z remisem) przez API działającego serwera (`BASE_URL`) i wypisuje linki. Tworzy wydarzenie, gdy go nie ma; odmawia, gdy wydarzenie ma już gości, sale albo plan.
+- `npm run demo`: wypełnia lokalną aplikację danymi demo do sprawdzeń ręcznych (40 gości, plan, 3 sale, 7 stolików, grupy 4/2/2, 1 nieobecny, 1 przypięty, opublikowany rozkład, 30 strzałów z remisem, zamówienie z 9 pozycjami) przez API działającego serwera (`BASE_URL`) i wypisuje linki. Tworzy wydarzenie, gdy go nie ma; odmawia, gdy wydarzenie ma już gości, sale albo plan.
 
 ## CI
 

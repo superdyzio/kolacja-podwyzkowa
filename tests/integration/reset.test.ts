@@ -102,6 +102,7 @@ describe.skipIf(!hasLocalDb)("organizer reset", () => {
     plan: true,
     rooms: 1,
     tables: 2,
+    orders: 2,
     questions: starterQuestionRows().length + 1,
     guestAccessEnabled: true,
   };
@@ -138,6 +139,14 @@ describe.skipIf(!hasLocalDb)("organizer reset", () => {
       throw new Error(error.message);
     }
     await setGuestAccess(db, true);
+    const [, rectangular] = seating.tableIds;
+    const orders = await db.from("order_item").insert([
+      { name: `Schabowy ${tag}`, quantity: 1, unit_price_grosze: 4_900, guest_id: a },
+      { name: `Woda ${tag}`, quantity: 2, unit_price_grosze: 1_200, table_id: rectangular },
+    ]);
+    if (orders.error) {
+      throw new Error(orders.error.message);
+    }
     expect((await addQuestions(db, "generyczne", [`Czy reset ${tag} działa?`])).status).toBe("added");
     expect(await counts()).toEqual(SEEDED);
   }
@@ -249,6 +258,21 @@ describe.skipIf(!hasLocalDb)("organizer reset", () => {
       });
     });
 
+    it("orders: every order line, nothing else; guests and tables leave their lines unassigned", async () => {
+      await seed();
+      await reset(["guests", "venue"]);
+      const { data, error } = await db.from("order_item").select("guest_id, table_id");
+      expect(error).toBeNull();
+      expect(data).toEqual([
+        { guest_id: null, table_id: null },
+        { guest_id: null, table_id: null },
+      ]);
+      const result = await reset(["orders"]);
+      expect(result.parts).toEqual(["orders"]);
+      expect(result.summary).toEqual(["Zamówienia: usunięto 2 pozycje zamówienia."]);
+      expect((await counts()).orders).toBe(0);
+    });
+
     it("guest links: a fresh key for every guest and guest access off", async () => {
       await seed();
       const ids = await guestIds();
@@ -304,6 +328,7 @@ describe.skipIf(!hasLocalDb)("organizer reset", () => {
         plan: false,
         rooms: 0,
         tables: 0,
+        orders: 0,
         questions: starterQuestionRows().length,
         guestAccessEnabled: false,
       });
