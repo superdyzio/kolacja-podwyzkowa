@@ -27,7 +27,7 @@ export const PUT: APIRoute = async ({ locals, params, request }) => {
   if (id === null) {
     return jsonError(404, GUESS_GUEST_NOT_FOUND_MESSAGE);
   }
-  const body = await readJsonBody(request, SaveGuessBody);
+  const body = await readJsonBody(request, SaveGuessBody, locals.locale);
   if (!body.ok) {
     return body.response;
   }

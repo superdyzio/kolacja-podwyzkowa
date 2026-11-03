@@ -1,3 +1,4 @@
+import { noAccessMessages } from "@/lib/access/messages";
 import type { APIRoute } from "astro";
 import { z } from "astro/zod";
 import { getGuestState } from "@/lib/guest-links";
@@ -19,7 +20,7 @@ export const PUT: APIRoute = async ({ locals, request }) => {
   if (api instanceof Response) {
     return api;
   }
-  const body = await readJsonBody(request, SaveGuessBody);
+  const body = await readJsonBody(request, SaveGuessBody, locals.locale);
   if (!body.ok) {
     return body.response;
   }
@@ -34,7 +35,7 @@ export const PUT: APIRoute = async ({ locals, request }) => {
     case "closed":
       return jsonError(409, GUESS_INTAKE_CLOSED_MESSAGE);
     case "not-found":
-      return jsonError(404, "Brak dostępu");
+      return jsonError(404, noAccessMessages(locals.locale).title);
     case "saved":
       return jsonResponse(await getGuestState(api.db, guest));
   }

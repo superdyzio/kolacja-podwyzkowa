@@ -1,3 +1,4 @@
+import { noAccessMessages } from "@/lib/access/messages";
 import type { APIRoute } from "astro";
 import { getAiProvider } from "@/lib/ai";
 import {
@@ -25,7 +26,7 @@ export const POST: APIRoute = async ({ locals, request }) => {
   if (api instanceof Response) {
     return api;
   }
-  const body = await readJsonBody(request, GenerateTopicBody);
+  const body = await readJsonBody(request, GenerateTopicBody, locals.locale);
   if (!body.ok) {
     return body.response;
   }
@@ -38,7 +39,7 @@ export const POST: APIRoute = async ({ locals, request }) => {
     { simulateFailure: mockFailureRequested(provider, request.headers) },
   );
   if (result.status === "not-found") {
-    return jsonError(404, "Brak dostępu");
+    return jsonError(404, noAccessMessages(locals.locale).title);
   }
   const quota = await getGuestAiQuota(api.db, guestId);
   switch (result.status) {

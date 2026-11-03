@@ -1,6 +1,7 @@
 import { accessFor, type GuestAccess } from "@/lib/access";
+import { noAccessMessages } from "@/lib/access/messages";
 import { getDb } from "@/lib/db";
-import { jsonError } from "@/lib/http";
+import { httpMessages, jsonError } from "@/lib/http";
 import type { DbClient } from "@/lib/supabase-client";
 
 // Shared prelude of guest API routes (/api/g/<key>/…, S-05 and later S-06..S-08): the middleware has already checked
@@ -9,11 +10,11 @@ import type { DbClient } from "@/lib/supabase-client";
 export function guestApi(locals: App.Locals): { access: GuestAccess; db: DbClient } | Response {
   const access = accessFor(locals, "guest");
   if (!access) {
-    return jsonError(404, "Brak dostępu");
+    return jsonError(404, noAccessMessages(locals.locale).title);
   }
   const db = getDb();
   if (!db) {
-    return jsonError(503, "Baza danych nie jest skonfigurowana.");
+    return jsonError(503, httpMessages(locals.locale).noDatabase);
   }
   return { access, db };
 }

@@ -40,6 +40,7 @@ async function request(path, { method = "GET", json, rawBody, extraHeaders = {} 
     location: response.headers.get("location") ?? "",
     cacheControl: response.headers.get("cache-control") ?? "",
     referrerPolicy: response.headers.get("referrer-policy") ?? "",
+    setCookie: response.headers.get("set-cookie") ?? "",
     body: text,
     data,
   };
@@ -2837,7 +2838,15 @@ if (!restaurantKey) finish();
 const tvPageNoRestaurant = await request(`/tv/${tvKey}`);
 check("the TV page never contains the restaurant key", !tvPageNoRestaurant.body.includes(restaurantKey));
 
-const restaurantDeniedBody = [...deniedBodies][0];
+// The restaurant's pages start in English (i18n): its denials are the English no-access page, still one body for
+// every reason; the other prefixes keep the Polish one.
+const restaurantDeniedBody = (await request("/r/garbage")).body;
+check(
+  "restaurant denial page is the English no-access page",
+  restaurantDeniedBody.includes('lang="en"') &&
+    restaurantDeniedBody.includes("This page is only available through a link from the organizer.") &&
+    restaurantDeniedBody !== deniedBody,
+);
 for (const path of [
   "/r/garbage",
   `/r/${unknownKey}`,
@@ -2856,7 +2865,9 @@ for (const path of [
       .replace(tvKey, "<tv>")
       .replace(restaurantKey, "<restaurant>")
       .replace(aniaNewKey, "<guest>")}`,
-    res.status === 404 && res.body === restaurantDeniedBody && res.cacheControl.includes("no-store"),
+    res.status === 404 &&
+      res.body === (path.startsWith("/r/") ? restaurantDeniedBody : deniedBody) &&
+      res.cacheControl.includes("no-store"),
     String(res.status),
   );
 }
@@ -2879,7 +2890,9 @@ for (const [method, path] of [
       .replace(tvKey, "<tv>")
       .replace(restaurantKey, "<restaurant>")
       .replace(aniaNewKey, "<guest>")}`,
-    noAccessJson(res),
+    path.startsWith("/api/r/")
+      ? res.status === 404 && res.body === JSON.stringify({ error: "No access" })
+      : noAccessJson(res),
     `${res.status} ${res.body}`,
   );
 }
@@ -2984,7 +2997,8 @@ check(
     restaurantPage.cacheControl.includes("no-store") &&
     restaurantPage.referrerPolicy === "no-referrer" &&
     restaurantPage.body.includes("Schabowy Smoke") &&
-    restaurantPage.body.includes("Do przygotowania") &&
+    restaurantPage.body.includes('lang="en"') &&
+    restaurantPage.body.includes("To prepare") &&
     !restaurantPage.body.includes("zł") &&
     !restaurantPage.body.includes("49,90") &&
     !restaurantPage.body.includes("4990") &&
@@ -2992,6 +3006,32 @@ check(
     !restaurantPage.body.includes(tvKey),
   String(restaurantPage.status),
 );
+// The language switch (i18n): `?lang=pl` stores the restaurant's own cookie and redirects to the clean address; with it
+// the page and the API answer in Polish, and the organizer's pages are not affected by it.
+const toPolish = await request(`/r/${restaurantKey}?lang=pl`);
+check(
+  "restaurant language switch: cookie and redirect to the same address",
+  toPolish.status === 303 &&
+    toPolish.location === `/r/${restaurantKey}` &&
+    /(^|, )kp-lang-r=pl;/.test(toPolish.setCookie) &&
+    /HttpOnly/i.test(toPolish.setCookie),
+  `${toPolish.status} ${toPolish.location.replace(restaurantKey, "<restaurant>")}`,
+);
+const polishCookie = { Cookie: "kp-lang-r=pl" };
+const restaurantPagePl = await request(`/r/${restaurantKey}`, { extraHeaders: polishCookie });
+const restaurantDeniedApiPl = await request(`/api/r/${tvKey}/orders`, { extraHeaders: polishCookie });
+const organizerWithRestaurantCookie = await request(`/o/${organizerKey}`, {
+  extraHeaders: { Cookie: "kp-lang-r=en" },
+});
+check(
+  "restaurant in Polish with its cookie; the organizer stays Polish",
+  restaurantPagePl.body.includes('lang="pl"') &&
+    restaurantPagePl.body.includes("Do przygotowania") &&
+    noAccessJson(restaurantDeniedApiPl) &&
+    organizerWithRestaurantCookie.body.includes('lang="pl"'),
+);
+const organizerInEnglish = await request(`/o/${organizerKey}`, { extraHeaders: { Cookie: "kp-lang=en" } });
+check("organizer in English with its cookie", organizerInEnglish.body.includes('lang="en"'));
 const restaurantView = await request(`${restaurantApiBase}/orders`);
 const servedTable = restaurantView.data?.placement?.tables?.find((table) => table.name === seatedGuest?.seat?.table);
 check(
@@ -3087,7 +3127,8 @@ check(
     newRestaurantKey !== restaurantKey &&
     oldRestaurantPage.status === 404 &&
     oldRestaurantPage.body === restaurantDeniedBody &&
-    noAccessJson(oldRestaurantApi) &&
+    oldRestaurantApi.status === 404 &&
+    oldRestaurantApi.body === JSON.stringify({ error: "No access" }) &&
     newRestaurantPage?.status === 200 &&
     shellAfterRotation.body.includes(`/r/${newRestaurantKey}`) &&
     !shellAfterRotation.body.includes(`/r/${restaurantKey}`),

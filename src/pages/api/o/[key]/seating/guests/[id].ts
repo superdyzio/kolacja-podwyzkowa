@@ -39,7 +39,7 @@ export const PUT: APIRoute = async ({ locals, params, request }) => {
   if (guestId === null) {
     return jsonError(404, GUEST_NOT_FOUND_MESSAGE);
   }
-  const body = await readJsonBody(request, SeatBody);
+  const body = await readJsonBody(request, SeatBody, locals.locale);
   if (!body.ok) {
     return body.response;
   }
@@ -70,7 +70,7 @@ export const PATCH: APIRoute = async ({ locals, params, request }) => {
   if (guestId === null) {
     return jsonError(404, GUEST_NOT_FOUND_MESSAGE);
   }
-  const body = await readJsonBody(request, PinBody);
+  const body = await readJsonBody(request, PinBody, locals.locale);
   if (!body.ok) {
     return body.response;
   }

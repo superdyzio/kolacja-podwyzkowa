@@ -1,3 +1,4 @@
+import { noAccessMessages } from "@/lib/access/messages";
 import type { APIRoute } from "astro";
 import { jsonError, jsonResponse, readJsonBody } from "@/lib/http";
 import { organizerApi } from "@/lib/organizer-api";
@@ -15,7 +16,7 @@ export const GET: APIRoute = async ({ locals }) => {
     return api;
   }
   const preview = await getResetPreview(api.db);
-  return preview ? jsonResponse(preview) : jsonError(404, "Brak dostępu");
+  return preview ? jsonResponse(preview) : jsonError(404, noAccessMessages(locals.locale).title);
 };
 
 export const POST: APIRoute = async ({ locals, request }) => {
@@ -23,10 +24,12 @@ export const POST: APIRoute = async ({ locals, request }) => {
   if (api instanceof Response) {
     return api;
   }
-  const body = await readJsonBody(request, ResetRequestBody);
+  const body = await readJsonBody(request, ResetRequestBody, locals.locale);
   if (!body.ok) {
     return body.response;
   }
   const outcome = await resetEvent(api.db, body.data.parts);
-  return outcome.status === "reset" ? jsonResponse(outcome.result) : jsonError(404, "Brak dostępu");
+  return outcome.status === "reset"
+    ? jsonResponse(outcome.result)
+    : jsonError(404, noAccessMessages(locals.locale).title);
 };

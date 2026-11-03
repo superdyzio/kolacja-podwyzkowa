@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { useGuestState } from "@/components/hooks/useGuestState";
 import { Button } from "@/components/ui/button";
 import { VenueDrawing, type VenueDrawingTable } from "@/components/venue-drawing/VenueDrawing";
-import { NO_ACCESS_HINT, NO_ACCESS_TEXT, NO_ACCESS_TITLE } from "@/lib/access/messages";
+import { noAccessMessages } from "@/lib/access/messages";
 import { GUEST_UNPUBLISHED_MESSAGE, GUEST_UNSEATED_MESSAGE, describeGuestSeat } from "@/lib/guest-links/state";
 import { pluralPl } from "@/lib/guests/summary";
 import { planImagePath } from "@/lib/venue/pin";
@@ -155,9 +155,9 @@ export function GuestSeatView({ apiBase, initial }: Props) {
   if (!state) {
     return (
       <div role="alert" className="flex flex-col gap-3 rounded-2xl border p-5 text-center">
-        <p className="text-2xl font-bold">{NO_ACCESS_TITLE}</p>
-        <p className="text-muted-foreground">{NO_ACCESS_TEXT}</p>
-        <p className="text-muted-foreground text-sm">{NO_ACCESS_HINT}</p>
+        <p className="text-2xl font-bold">{noAccessMessages().title}</p>
+        <p className="text-muted-foreground">{noAccessMessages().text}</p>
+        <p className="text-muted-foreground text-sm">{noAccessMessages().hint}</p>
       </div>
     );
   }

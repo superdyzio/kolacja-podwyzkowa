@@ -1,7 +1,8 @@
+import { noAccessMessages } from "@/lib/access/messages";
 import type { APIRoute } from "astro";
 import { accessFor } from "@/lib/access";
 import { getDb } from "@/lib/db";
-import { jsonError, jsonResponse } from "@/lib/http";
+import { httpMessages, jsonError, jsonResponse } from "@/lib/http";
 import { getTvScreen, getTvScreenVersion } from "@/lib/tv-spotlight";
 
 export const prerender = false;
@@ -16,11 +17,11 @@ const MAX_VERSION_LENGTH = 64;
 
 export const GET: APIRoute = async ({ locals, url }) => {
   if (!accessFor(locals, "tv")) {
-    return jsonError(404, "Brak dostępu");
+    return jsonError(404, noAccessMessages(locals.locale).title);
   }
   const db = getDb();
   if (!db) {
-    return jsonError(503, "Baza danych nie jest skonfigurowana.");
+    return jsonError(503, httpMessages(locals.locale).noDatabase);
   }
   const since = url.searchParams.get("since");
   if (since !== null && since.length <= MAX_VERSION_LENGTH && since === (await getTvScreenVersion(db))) {

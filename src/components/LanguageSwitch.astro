@@ -1,0 +1,55 @@
+---
+import { LOCALE_LABELS, LOCALE_PARAM, LOCALES } from "@/lib/i18n";
+
+// The PL / EN switch in the page corner (i18n): plain links, no script. The middleware stores the choice in a cookie
+// and redirects back to the same address, so it also works before the islands load. The links are query-only
+// ("?lang=en"): the page never echoes its own path (with the key), and every denial page stays byte-identical.
+const current = Astro.locals.locale;
+const links = LOCALES.map((locale) => ({ locale, href: `?${LOCALE_PARAM}=${locale}`, label: LOCALE_LABELS[locale] }));
+---
+
+<nav class="language-switch print:hidden" aria-label={current === "en" ? "Language" : "Język"}>
+  {links.map((link) => (
+    <a
+      href={link.href}
+      lang={link.locale}
+      hreflang={link.locale}
+      aria-current={link.locale === current ? "true" : undefined}
+      class:list={["language-switch__link", { "language-switch__link--current": link.locale === current }]}
+    >
+      <span aria-hidden="true">{link.locale.toUpperCase()}</span>
+      <span class="sr-only">{link.label}</span>
+    </a>
+  ))}
+</nav>
+
+<style>
+  .language-switch {
+    position: absolute;
+    top: 0.5rem;
+    right: 0.5rem;
+    z-index: 10;
+    display: flex;
+    gap: 0.125rem;
+    border: 1px solid var(--border);
+    border-radius: 9999px;
+    background: var(--background);
+    padding: 0.125rem;
+    font-size: 0.75rem;
+  }
+  .language-switch__link {
+    display: inline-flex;
+    min-width: 2.25rem;
+    min-height: 2rem;
+    align-items: center;
+    justify-content: center;
+    border-radius: 9999px;
+    color: var(--muted-foreground);
+    text-decoration: none;
+  }
+  .language-switch__link--current {
+    background: var(--foreground);
+    color: var(--background);
+    font-weight: 600;
+  }
+</style>

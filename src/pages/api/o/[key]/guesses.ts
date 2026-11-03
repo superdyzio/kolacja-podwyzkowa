@@ -31,7 +31,7 @@ export const PATCH: APIRoute = async ({ locals, request }) => {
   if (api instanceof Response) {
     return api;
   }
-  const body = await readJsonBody(request, UpdateGuessesBody);
+  const body = await readJsonBody(request, UpdateGuessesBody, locals.locale);
   if (!body.ok) {
     return body.response;
   }

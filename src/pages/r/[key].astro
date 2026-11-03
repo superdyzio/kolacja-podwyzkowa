@@ -5,10 +5,12 @@ import Layout from "@/layouts/Layout.astro";
 import { accessFor, restaurantPath } from "@/lib/access";
 import { getDb } from "@/lib/db";
 import { getRestaurantView } from "@/lib/orders";
+import { restaurantMessages } from "@/lib/orders/messages";
 
 // The restaurant's read-only page (restaurant-orders): the prep list and where to serve each dish, by the published
 // seating. RestaurantAccess carries no keys and the view has no prices, ids or absences, so nothing here can leak
 // another link or the organizer's data. The middleware has already checked the key; this is the second check.
+const locale = Astro.locals.locale;
 const access = accessFor(Astro.locals, "restaurant");
 const db = access ? getDb() : null;
 if (!access || !db) {
@@ -26,9 +28,9 @@ const view =
 ---
 
 {view ? (
-  <Layout title={`${view.name} — zamówienie dla restauracji`}>
+  <Layout title={restaurantMessages(locale).pageTitle(view.name)}>
     <main class="mx-auto flex max-w-4xl flex-col gap-6 p-4 sm:p-8">
-      <RestaurantView client:load apiBase={view.apiBase} initial={view.initial} eventName={view.name} />
+      <RestaurantView client:load apiBase={view.apiBase} initial={view.initial} eventName={view.name} locale={locale} />
     </main>
   </Layout>
 ) : (

@@ -29,7 +29,7 @@ export const POST: APIRoute = async ({ locals, request }) => {
   if (api instanceof Response) {
     return api;
   }
-  const body = await readJsonBody(request, AddOrderItemBody);
+  const body = await readJsonBody(request, AddOrderItemBody, locals.locale);
   if (!body.ok) {
     return body.response;
   }

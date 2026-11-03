@@ -36,7 +36,7 @@ export const PATCH: APIRoute = async ({ locals, params, request }) => {
   if (id === null) {
     return jsonError(404, ROOM_NOT_FOUND_MESSAGE);
   }
-  const body = await readJsonBody(request, UpdateRoomBody);
+  const body = await readJsonBody(request, UpdateRoomBody, locals.locale);
   if (!body.ok) {
     return body.response;
   }

@@ -1,17 +1,21 @@
 ---
 import "../styles/global.css";
 import Banner from "@/components/Banner.astro";
+import LanguageSwitch from "@/components/LanguageSwitch.astro";
 import { missingConfigs } from "@/lib/config-status";
 
 interface Props {
   title?: string;
+  // The PL / EN switch in the top right corner (i18n); off on the TV and on the print sheet.
+  languageSwitch?: boolean;
 }
 
-const { title = "Kolacja podwyżkowa" } = Astro.props;
+const locale = Astro.locals.locale;
+const { title = locale === "en" ? "Raise dinner" : "Kolacja podwyżkowa", languageSwitch = true } = Astro.props;
 ---
 
 <!doctype html>
-<html lang="pl">
+<html lang={locale}>
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width" />
@@ -22,9 +26,10 @@ const { title = "Kolacja podwyżkowa" } = Astro.props;
   <body>
     {missingConfigs.map((cfg) => (
       <Banner variant="error">
-        <strong>Uwaga:</strong> {cfg.message}
+        <strong>{locale === "en" ? "Warning:" : "Uwaga:"}</strong> {cfg.message[locale]}
       </Banner>
     ))}
+    {languageSwitch && <LanguageSwitch />}
     <slot />
   </body>
 </html>
@@ -32,6 +37,7 @@ const { title = "Kolacja podwyżkowa" } = Astro.props;
 <style>
   html,
   body {
+    position: relative;
     margin: 0;
     width: 100%;
     height: 100%;
