@@ -1,6 +1,7 @@
 import { generateAccessKey } from "@/lib/access/keys";
 import { EVENT_ID } from "@/lib/event";
 import { getGuestList } from "@/lib/guests/service";
+import { toTvSeating } from "@/lib/seating/published";
 import { getLatestSnapshot, getPlanVersion } from "@/lib/seating/service";
 import type { DbClient } from "@/lib/supabase-client";
 import { getVenue } from "@/lib/venue/service";
@@ -94,6 +95,7 @@ export function toOrderBoard(
       published: publishedTableIds.has(table.id),
     })),
     published: snapshot !== null,
+    seating: toTvSeating(snapshot, venue.plan?.version ?? null),
     placement: placeOrders(items, source, (item) => item),
     prep: organizerPrepList(items),
     totals: orderTotals(items),

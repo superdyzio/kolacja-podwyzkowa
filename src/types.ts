@@ -669,6 +669,8 @@ export interface OrderBoardDto {
   guests: OrderGuestOptionDto[];
   tables: OrderTableOptionDto[];
   published: boolean;
+  // serving-highlight: the published drawing (what the restaurant sees), for lighting up where a dish goes.
+  seating: TvSeatingDto;
   placement: OrderPlacementDto<OrderItemDto>;
   prep: OrganizerPrepLineDto[];
   totals: OrderTotalsDto;

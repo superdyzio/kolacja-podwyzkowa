@@ -80,6 +80,8 @@ Na `/o/<klucz>/zamowienia` organizator prowadzi zamówienie jedzenia: każda poz
 
 Link dla restauracji (`/r/<klucz>`, w panelu i w `npm run links`) działa zawsze, domyślnie jest po angielsku i nie ma cen: lista dań do przygotowania (z uwagami i tym, co jeszcze do wydania), rysunek sali jak na TV oraz, stolik po stoliku, co podać na które miejsce i co na środek stołu. Wydane pozycje są przekreślone. Strona sama odświeża się co 15 s. Miejsca biorą się z **opublikowanego** rozsadzenia: osoba albo stolik spoza opublikowanego planu trafia do „Do ustalenia z organizatorem”. „Wymień link” od razu unieważnia stary link — wyślij restauracji nowy.
 
+Na obu stronach (u organizatora i w restauracji) obok list jest plan sali. Kliknięcie dania na liście „Do przygotowania” zapala na planie wszystkie miejsca, gdzie ma trafić — krzesła gości albo środek stołu, z numerami sztuk — i rozwija listę sztuk: każdą sztukę (np. „3 · Dąb · m. 7 · Darek”) można wybrać osobno, wtedy świeci tylko jej miejsce. Kliknięcie pojedynczej pozycji przy stoliku zapala jej miejsce. Nad planem jest podpis słowami („Rosół 3/9 → Stolik Dąb · miejsce 7 · Darek”), wydane sztuki są szare, a „Wyczyść” albo Esc gasi zaznaczenie. Na wąskim ekranie plan jest nad listami i przypina się u góry, dopóki coś jest zaznaczone.
+
 Na produkcji ta zmiana wymaga migracji bazy **przed** wdrożeniem kodu: bez niej każda strona organizatora kończy się błędem 500 (panel czyta link restauracji). Kolejność: kopia danych (`npx supabase db dump --data-only -f ~/kolacja-backup-<data>.sql`), `npx supabase db push` (wgrywa też migrację planu sali, jeśli jeszcze jej nie było), potem `npm run deploy:aws`. Migracja tylko dodaje: istniejące linki organizatora, TV i gości się nie zmieniają.
 
 ## Skrypty

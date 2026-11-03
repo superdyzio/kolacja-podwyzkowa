@@ -2919,6 +2919,15 @@ check(
   Boolean(seatedGuest) && Boolean(unseatedGuest) && Boolean(publishedTable),
   ordersBefore.body.slice(0, 300),
 );
+// serving-highlight: the organizer's board carries the published drawing (what the restaurant sees) for the plan.
+const boardSeating = ordersBefore.data?.seating;
+check(
+  "orders: the board carries the published drawing for the plan",
+  typeof boardSeating?.publishedAt === "string" &&
+    Array.isArray(boardSeating.tables) &&
+    boardSeating.tables.some((table) => table.name === publishedTable?.name),
+  JSON.stringify(boardSeating ?? null).slice(0, 200),
+);
 
 const addLine = (json) => request(ordersApi, { method: "POST", json });
 const schabowy = await addLine({
@@ -2999,6 +3008,7 @@ check(
     restaurantPage.body.includes("Schabowy Smoke") &&
     restaurantPage.body.includes('lang="en"') &&
     restaurantPage.body.includes("To prepare") &&
+    restaurantPage.body.includes("Tap a dish or a line and its place lights up on the plan.") &&
     !restaurantPage.body.includes("zł") &&
     !restaurantPage.body.includes("49,90") &&
     !restaurantPage.body.includes("4990") &&
@@ -3027,6 +3037,7 @@ check(
   "restaurant in Polish with its cookie; the organizer stays Polish",
   restaurantPagePl.body.includes('lang="pl"') &&
     restaurantPagePl.body.includes("Do przygotowania") &&
+    restaurantPagePl.body.includes("Kliknij danie albo pozycję") &&
     noAccessJson(restaurantDeniedApiPl) &&
     organizerWithRestaurantCookie.body.includes('lang="pl"'),
 );

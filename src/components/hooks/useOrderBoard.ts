@@ -24,6 +24,8 @@ function isBoard(data: unknown): data is OrderBoardDto {
     Array.isArray(candidate.guests) &&
     Array.isArray(candidate.tables) &&
     Array.isArray(candidate.prep) &&
+    typeof candidate.seating === "object" &&
+    candidate.seating !== null &&
     typeof candidate.placement === "object" &&
     candidate.placement !== null &&
     typeof candidate.totals === "object" &&

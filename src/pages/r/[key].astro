@@ -29,7 +29,7 @@ const view =
 
 {view ? (
   <Layout title={restaurantMessages(locale).pageTitle(view.name)}>
-    <main class="mx-auto flex max-w-4xl flex-col gap-6 p-4 sm:p-8">
+    <main class="mx-auto flex max-w-4xl flex-col gap-6 p-4 sm:p-8 lg:max-w-7xl">
       <RestaurantView client:load apiBase={view.apiBase} initial={view.initial} eventName={view.name} locale={locale} />
     </main>
   </Layout>
