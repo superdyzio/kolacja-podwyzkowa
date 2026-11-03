@@ -1,6 +1,6 @@
 import type { APIRoute } from "astro";
 import { z } from "astro/zod";
-import { createGroup, getGuestList, MAX_GROUP_SIZE, MIN_GROUP_SIZE } from "@/lib/guests";
+import { createGroup, getGuestList, guestsMessages, MAX_GROUP_SIZE, MIN_GROUP_SIZE } from "@/lib/guests";
 import { jsonError, jsonResponse, readJsonBody } from "@/lib/http";
 import { organizerApi } from "@/lib/organizer-api";
 
@@ -20,14 +20,15 @@ export const POST: APIRoute = async ({ locals, request }) => {
     return body.response;
   }
 
+  const messages = guestsMessages(locals.locale);
   const result = await createGroup(api.db, body.data.guestIds);
   switch (result.status) {
     case "invalid-size":
-      return jsonError(400, `Grupa musi mieć od ${MIN_GROUP_SIZE} do ${MAX_GROUP_SIZE} osób.`);
+      return jsonError(400, messages.groupSize(MIN_GROUP_SIZE, MAX_GROUP_SIZE));
     case "not-found":
-      return jsonError(404, "Nie znaleziono gościa.");
+      return jsonError(404, messages.guestNotFound);
     case "already-grouped":
-      return jsonError(409, "Ktoś z zaznaczonych jest już w grupie.");
+      return jsonError(409, messages.alreadyGrouped);
     case "created":
       return jsonResponse(await getGuestList(api.db), 201);
   }

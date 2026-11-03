@@ -1,7 +1,7 @@
 import type { APIRoute } from "astro";
 import { jsonError, jsonResponse, readJsonBody } from "@/lib/http";
 import { organizerApi } from "@/lib/organizer-api";
-import { getTvSpotlight, hideTvSpotlight, INVALID_SPOTLIGHT_MESSAGE, showOnTv, ShowOnTvBody } from "@/lib/tv-spotlight";
+import { getTvSpotlight, hideTvSpotlight, showOnTv, ShowOnTvBody, tvSpotlightMessages } from "@/lib/tv-spotlight";
 import type { TvSpotlightAnswerDto } from "@/types";
 
 export const prerender = false;
@@ -30,7 +30,7 @@ export const PUT: APIRoute = async ({ locals, request }) => {
   }
   const result = await showOnTv(api.db, body.data.kind, body.data.text);
   if (result.status === "invalid") {
-    return jsonError(400, INVALID_SPOTLIGHT_MESSAGE);
+    return jsonError(400, tvSpotlightMessages(locals.locale).invalid);
   }
   const answer: TvSpotlightAnswerDto = { spotlight: result.spotlight };
   return jsonResponse(answer);

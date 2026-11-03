@@ -1,5 +1,7 @@
 import { Button } from "@/components/ui/button";
 import { formatAmount } from "@/lib/guesses/amount";
+import { guessUiMessages } from "@/lib/guesses/messages";
+import type { Locale } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 import type { GuessGuestDto } from "@/types";
 import { AmountForm } from "./AmountForm";
@@ -13,11 +15,13 @@ interface Props {
   // Resolves to true when saved.
   onSave: (amount: string) => Promise<boolean>;
   onDelete: () => void;
+  locale: Locale;
 }
 
 // One guest on the organizer's guesses page (S-06, FR-018): their guess or „brak strzału”, entering or correcting it
 // for them (also after intake closed) and deleting a mistaken one.
-export function GuessGuestRow({ guest, editing, pending, onEdit, onCancel, onSave, onDelete }: Props) {
+export function GuessGuestRow({ guest, editing, pending, onEdit, onCancel, onSave, onDelete, locale }: Props) {
+  const t = guessUiMessages(locale);
   const hasGuess = guest.amountGrosze !== null;
   return (
     <li className={cn("flex flex-col gap-2 rounded-lg border p-3", guest.isAbsent && "bg-muted")}>
@@ -25,29 +29,30 @@ export function GuessGuestRow({ guest, editing, pending, onEdit, onCancel, onSav
         <div className="flex min-w-0 flex-col">
           <span className="font-medium break-words">{guest.displayName}</span>
           <span className="text-muted-foreground flex flex-wrap gap-1 text-xs">
-            {guest.isAbsent && <span className="rounded-full border px-2 py-0.5">nieobecny</span>}
+            {guest.isAbsent && <span className="rounded-full border px-2 py-0.5">{t.absent}</span>}
             {guest.enteredBy === "organizer" && (
               <span className="bg-secondary text-secondary-foreground rounded-full px-2 py-0.5">
-                wpisany przez organizatora
+                {t.enteredByOrganizer}
               </span>
             )}
           </span>
         </div>
         <span className={cn("text-lg whitespace-nowrap", hasGuess ? "font-semibold" : "text-muted-foreground")}>
-          {guest.amountGrosze === null ? "brak strzału" : formatAmount(guest.amountGrosze)}
+          {guest.amountGrosze === null ? t.noGuess : formatAmount(guest.amountGrosze)}
         </span>
       </div>
 
       {editing ? (
         <AmountForm
-          label={`Strzał dla: ${guest.displayName}`}
+          label={t.guessFor(guest.displayName)}
           hideLabel
           initialGrosze={guest.amountGrosze}
-          submitLabel="Zapisz"
+          submitLabel={t.save}
           pending={pending}
           autoFocus
           onSubmit={onSave}
           onCancel={onCancel}
+          locale={locale}
         />
       ) : (
         <div className="flex flex-wrap gap-2">
@@ -57,9 +62,9 @@ export function GuessGuestRow({ guest, editing, pending, onEdit, onCancel, onSav
             className="h-10"
             disabled={pending}
             onClick={onEdit}
-            aria-label={`${hasGuess ? "Popraw strzał" : "Wpisz strzał"}: ${guest.displayName}`}
+            aria-label={hasGuess ? t.correctGuessLabel(guest.displayName) : t.enterGuessLabel(guest.displayName)}
           >
-            {hasGuess ? "Popraw" : "Wpisz"}
+            {hasGuess ? t.correctGuess : t.enterGuess}
           </Button>
           {hasGuess && (
             <Button
@@ -68,9 +73,9 @@ export function GuessGuestRow({ guest, editing, pending, onEdit, onCancel, onSav
               className="text-destructive hover:text-destructive h-10"
               disabled={pending}
               onClick={onDelete}
-              aria-label={`Usuń strzał: ${guest.displayName}`}
+              aria-label={t.deleteGuessLabel(guest.displayName)}
             >
-              Usuń strzał
+              {t.deleteGuess}
             </Button>
           )}
         </div>

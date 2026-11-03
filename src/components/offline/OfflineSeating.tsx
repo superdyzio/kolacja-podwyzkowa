@@ -1,6 +1,7 @@
 import { useId, useMemo, useState } from "react";
 import { Input } from "@/components/ui/input";
-import { pluralPl } from "@/lib/guests/summary";
+import type { Locale } from "@/lib/i18n";
+import { offlineMessages } from "@/lib/offline/messages";
 import type { OfflineSeatingEntry } from "@/lib/offline/cache";
 import {
   findGuestSeats,
@@ -17,11 +18,11 @@ interface Props {
   headingId: string;
   entry: OfflineSeatingEntry | null;
   now: Date;
+  locale: Locale;
 }
 
-const SHAPE_LABELS = { round: "okrągły", rectangular: "prostokątny" } as const;
-
-function SeatingSearch({ seating }: { seating: PublishedSeatingDto }) {
+function SeatingSearch({ seating, locale }: { seating: PublishedSeatingDto; locale: Locale }) {
+  const t = offlineMessages(locale);
   const searchId = useId();
   const [query, setQuery] = useState("");
   const matches = useMemo(() => findGuestSeats(seating, query), [seating, query]);
@@ -30,14 +31,14 @@ function SeatingSearch({ seating }: { seating: PublishedSeatingDto }) {
   return (
     <div className="flex flex-col gap-2">
       <label htmlFor={searchId} className="font-medium">
-        Gdzie siedzi…?
+        {t.whereSits}
       </label>
       <Input
         id={searchId}
         type="search"
         autoComplete="off"
         enterKeyHint="search"
-        placeholder="Wpisz imię"
+        placeholder={t.searchPlaceholder}
         value={query}
         onChange={(event) => {
           setQuery(event.target.value);
@@ -47,12 +48,12 @@ function SeatingSearch({ seating }: { seating: PublishedSeatingDto }) {
       <div aria-live="polite">
         {searching &&
           (matches.length === 0 ? (
-            <p className="text-muted-foreground text-sm">Nie znaleziono.</p>
+            <p className="text-muted-foreground text-sm">{t.notFound}</p>
           ) : (
             <ul className="flex flex-col gap-1">
               {matches.map((match) => (
                 <li key={`${match.table}\u0000${match.seat}`} className="rounded-lg border px-3 py-2">
-                  <strong className="break-words">{match.name}</strong> — {seatLabel(match.table, match.seat)} ·{" "}
+                  <strong className="break-words">{match.name}</strong> — {seatLabel(match.table, match.seat, locale)} ·{" "}
                   <span className="text-muted-foreground">{match.room}</span>
                 </li>
               ))}
@@ -65,28 +66,29 @@ function SeatingSearch({ seating }: { seating: PublishedSeatingDto }) {
 
 // The published seating as saved on this device (S-09): when it was saved and published, a name search, then every
 // room, table and seat in order (empty seats „—”). The same arrangement the TV and the guests' phones show.
-export function OfflineSeating({ headingId, entry, now }: Props) {
+export function OfflineSeating({ headingId, entry, now, locale }: Props) {
+  const t = offlineMessages(locale);
   const seating = entry?.data ?? null;
   const rooms = useMemo(() => (seating ? seatingByRoom(seating) : []), [seating]);
 
   return (
     <section aria-labelledby={headingId} className="flex scroll-mt-4 flex-col gap-4">
       <h2 id={headingId} className="text-xl font-semibold">
-        Rozsadzenie (opublikowane)
+        {t.seatingHeading}
       </h2>
       {entry === null ? (
-        <p className="text-muted-foreground text-sm">Na tym urządzeniu nie ma zapisanego rozsadzenia.</p>
+        <p className="text-muted-foreground text-sm">{t.noSavedSeating}</p>
       ) : (
         <p className="text-muted-foreground text-sm">
-          {formatSavedAt(entry.savedAt, now)}
-          {seating && ` · ${formatPublishedLabel(seating.publishedAt, now)}`}
+          {formatSavedAt(entry.savedAt, now, locale)}
+          {seating && ` · ${formatPublishedLabel(seating.publishedAt, now, locale)}`}
         </p>
       )}
-      {entry !== null && seating === null && <p>Nic jeszcze nie opublikowano.</p>}
-      {seating?.tables.length === 0 && <p>Opublikowany rozkład nie ma stolików.</p>}
+      {entry !== null && seating === null && <p>{t.nothingPublished}</p>}
+      {seating?.tables.length === 0 && <p>{t.noTables}</p>}
       {seating && seating.tables.length > 0 && (
         <>
-          <SeatingSearch seating={seating} />
+          <SeatingSearch seating={seating} locale={locale} />
           {rooms.map((room, index) => (
             <section key={`${index}\u0000${room.room}`} aria-label={room.room} className="flex flex-col gap-3">
               <h3 className="text-lg font-semibold break-words">{room.room}</h3>
@@ -96,8 +98,7 @@ export function OfflineSeating({ headingId, entry, now }: Props) {
                     <div>
                       <h4 className="font-semibold break-words">{table.name}</h4>
                       <p className="text-muted-foreground text-xs">
-                        {SHAPE_LABELS[table.shape]}, {table.seatCount}{" "}
-                        {pluralPl(table.seatCount, "miejsce", "miejsca", "miejsc")}
+                        {t.shapes[table.shape]}, {t.seats(table.seatCount)}
                       </p>
                     </div>
                     <ol className="flex flex-col gap-1 text-sm">

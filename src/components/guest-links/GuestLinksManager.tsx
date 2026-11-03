@@ -1,8 +1,10 @@
 import { useEffect, useState } from "react";
 import { useGuestLinks } from "@/components/hooks/useGuestLinks";
 import { Button } from "@/components/ui/button";
-import { LOCAL_ORIGIN_WARNING, guestUrl, isLocalOrigin } from "@/lib/guest-links/links";
+import { guestUrl, isLocalOrigin } from "@/lib/guest-links/links";
+import { guestLinksMessages } from "@/lib/guest-links/messages";
 import { formatGuestAccess } from "@/lib/guest-links/summary";
+import type { Locale } from "@/lib/i18n";
 import type { GuestLinkDto, GuestLinksDto } from "@/types";
 
 interface Props {
@@ -15,22 +17,18 @@ interface Props {
   // Organizer guest list page (when there are no guests yet).
   guestsPath: string;
   initial: GuestLinksDto;
+  locale: Locale;
 }
 
 type CopyStatus = { guestId: number; copied: boolean } | null;
 
 const COPY_STATUS_MS = 4_000;
 
-const TURN_OFF_QUESTION = "Wyłączyć dostęp gości? Otwarte telefony gości od razu przestaną pokazywać miejsca.";
-
-function revokeQuestion(name: string): string {
-  return `Unieważnić link „${name}”? ${name} dostanie nowy link, a stara karteczka i stary link przestaną działać od razu. Potem wydrukuj nową karteczkę.`;
-}
-
 // Organizer links page island (S-05, FR-011, FR-012): the guest-access switch, every guest's personal link with copy,
 // print and revoke.
-export function GuestLinksManager({ apiBase, origin, cardsPath, guestsPath, initial }: Props) {
-  const { links, pending, failure, send, dismissFailure } = useGuestLinks(apiBase, initial);
+export function GuestLinksManager({ apiBase, origin, cardsPath, guestsPath, initial, locale }: Props) {
+  const t = guestLinksMessages(locale);
+  const { links, pending, failure, send, dismissFailure } = useGuestLinks(apiBase, initial, locale);
   const [copyStatus, setCopyStatus] = useState<CopyStatus>(null);
   const [revokedName, setRevokedName] = useState<{ id: number; name: string } | null>(null);
 
@@ -68,14 +66,14 @@ export function GuestLinksManager({ apiBase, origin, cardsPath, guestsPath, init
   }
 
   async function toggleAccess() {
-    if (links.enabled && !window.confirm(TURN_OFF_QUESTION)) {
+    if (links.enabled && !window.confirm(t.turnOffQuestion)) {
       return;
     }
     await send({ method: "PATCH", path: "/guest-links", body: { enabled: !links.enabled } });
   }
 
   async function revoke(guest: GuestLinkDto) {
-    if (!window.confirm(revokeQuestion(guest.displayName))) {
+    if (!window.confirm(t.revokeQuestion(guest.displayName))) {
       return;
     }
     if (await send({ method: "POST", path: `/guest-links/${guest.id}/revoke` })) {
@@ -88,7 +86,7 @@ export function GuestLinksManager({ apiBase, origin, cardsPath, guestsPath, init
     <div className="flex flex-col gap-6">
       {isLocalOrigin(origin) && (
         <p role="note" className="rounded-lg border border-amber-500/60 bg-amber-50 p-3 text-sm text-amber-900">
-          <strong>Uwaga:</strong> {LOCAL_ORIGIN_WARNING}
+          <strong>{t.warning}</strong> {t.localOriginWarning}
         </p>
       )}
 
@@ -96,22 +94,18 @@ export function GuestLinksManager({ apiBase, origin, cardsPath, guestsPath, init
         <div role="alert" className="border-destructive/50 bg-destructive/5 flex flex-col gap-2 rounded-lg border p-3">
           <p className="text-destructive font-medium">{failure.message}</p>
           <Button type="button" variant="ghost" className="h-10 self-start" onClick={dismissFailure}>
-            Zamknij
+            {t.close}
           </Button>
         </div>
       )}
 
       <section aria-labelledby="access-heading" className="flex flex-col gap-3 rounded-xl border p-4">
         <h2 id="access-heading" className="text-lg font-semibold">
-          Dostęp gości
+          {t.accessHeading}
         </h2>
         <p aria-live="polite">
-          <strong>{formatGuestAccess(links.enabled)}.</strong>{" "}
-          <span className="text-muted-foreground">
-            {links.enabled
-              ? "Goście po otwarciu linku lub zeskanowaniu karteczki widzą swój stolik i miejsce."
-              : "Linki i kody QR gości pokazują tylko „Brak dostępu”. Włącz dostęp, gdy goście mają już z nich korzystać."}
-          </span>
+          <strong>{formatGuestAccess(links.enabled, locale)}.</strong>{" "}
+          <span className="text-muted-foreground">{links.enabled ? t.accessOnText : t.accessOffText}</span>
         </p>
         <Button
           type="button"
@@ -120,18 +114,18 @@ export function GuestLinksManager({ apiBase, origin, cardsPath, guestsPath, init
           disabled={pending}
           onClick={() => void toggleAccess()}
         >
-          {links.enabled ? "Wyłącz dostęp gości" : "Włącz dostęp gości"}
+          {links.enabled ? t.turnOff : t.turnOn}
         </Button>
       </section>
 
       <section aria-labelledby="links-list-heading" className="flex flex-col gap-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h2 id="links-list-heading" className="text-lg font-semibold">
-            Osobiste linki ({links.guests.length})
+            {t.linksHeading(links.guests.length)}
           </h2>
           {links.guests.length > 0 && (
             <Button asChild className="h-11">
-              <a href={cardsPath}>Drukuj karteczki</a>
+              <a href={cardsPath}>{t.printCards}</a>
             </Button>
           )}
         </div>
@@ -141,9 +135,9 @@ export function GuestLinksManager({ apiBase, origin, cardsPath, guestsPath, init
             role="status"
             className="rounded-lg border border-emerald-600/40 bg-emerald-50 p-3 text-sm text-emerald-900"
           >
-            {revokedName.name} ma nowy link — stara karteczka już nie działa.{" "}
+            {t.revokedNotice(revokedName.name)}{" "}
             <a className="font-medium underline" href={`${cardsPath}?guest=${revokedName.id}`}>
-              Wydrukuj nową karteczkę
+              {t.printNewCard}
             </a>
             .
           </p>
@@ -151,11 +145,11 @@ export function GuestLinksManager({ apiBase, origin, cardsPath, guestsPath, init
 
         {links.guests.length === 0 ? (
           <p className="text-muted-foreground text-sm">
-            Nie ma jeszcze gości.{" "}
+            {t.noGuestsYet}{" "}
             <a className="underline" href={guestsPath}>
-              Dodaj gości
+              {t.addGuests}
             </a>
-            , a ich linki pojawią się tutaj.
+            {t.linksAppearHere}
           </p>
         ) : (
           <ul className="flex flex-col gap-3">
@@ -179,10 +173,10 @@ export function GuestLinksManager({ apiBase, origin, cardsPath, guestsPath, init
                   />
                   <div className="flex flex-wrap items-center gap-2">
                     <Button type="button" variant="outline" className="h-10" onClick={() => void copyLink(guest)}>
-                      Kopiuj
+                      {t.copy}
                     </Button>
                     <Button asChild variant="outline" className="h-10">
-                      <a href={`${cardsPath}?guest=${guest.id}`}>Drukuj karteczkę</a>
+                      <a href={`${cardsPath}?guest=${guest.id}`}>{t.printCard}</a>
                     </Button>
                     <Button
                       type="button"
@@ -191,14 +185,14 @@ export function GuestLinksManager({ apiBase, origin, cardsPath, guestsPath, init
                       disabled={pending}
                       onClick={() => void revoke(guest)}
                     >
-                      Unieważnij link
+                      {t.revoke}
                     </Button>
                     <span aria-live="polite" className="text-sm">
                       {status &&
                         (status.copied ? (
-                          <span className="text-emerald-700">Skopiowano</span>
+                          <span className="text-emerald-700">{t.copied}</span>
                         ) : (
-                          <span className="text-amber-800">Zaznaczono link — skopiuj go ręcznie.</span>
+                          <span className="text-amber-800">{t.selectedCopyByHand}</span>
                         ))}
                     </span>
                   </div>

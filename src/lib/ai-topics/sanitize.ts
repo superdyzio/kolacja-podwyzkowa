@@ -1,7 +1,7 @@
 import { normalizeQuestionText } from "@/lib/questions/text";
 
 // Turns what the AI wrote into one clean topic, or null (S-08), pure. Models sometimes add quotes, markdown, a label
-// („Temat:”) or spread the question over lines; the topic is shown as plain text, so all of that goes. An empty
+// („Temat:”, "Topic:") or spread the question over lines; the topic is shown as plain text, so all of that goes. An empty
 // result is a failed attempt (it does not consume the limit).
 
 export const MIN_TOPIC_LENGTH = 5;
@@ -11,7 +11,8 @@ const CODE_FENCE = /```[^\n]*\n?/g;
 const LINE_BREAK = /\r\n|\n|\r/;
 const HEADING = /^#{1,6}\s*/u;
 const LIST_MARKER = /^(?:[-*•–—]|\d{1,3}[.)])\s+/u;
-const LABEL = /^(?:temat(?:\s+do\s+rozmowy)?|pytanie(?:\s+do\s+rozmowy)?)\s*[:–—-]\s*/iu;
+const LABEL =
+  /^(?:temat(?:\s+do\s+rozmowy)?|pytanie(?:\s+do\s+rozmowy)?|(?:conversation\s+)?(?:topic|question))\s*[:–—-]\s*/iu;
 const EMPHASIS = /\*\*|__|[*`]|(?<=^|\s)_+|_+(?=\s|$|[?.!,])/gu;
 const QUOTES = new Set(["„", "“", "”", '"', "«", "»", "'", "‚", "‘", "’"]);
 const SENTENCE_END = /[.?!…]/u;

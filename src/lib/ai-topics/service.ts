@@ -1,4 +1,5 @@
 import { EVENT_ID } from "@/lib/event";
+import type { Locale } from "@/lib/i18n/locale";
 import { deniedIn } from "@/lib/questions/bounds";
 import { secureRandom } from "@/lib/questions/draw";
 import type { DbClient } from "@/lib/supabase-client";
@@ -6,6 +7,7 @@ import type { AiTopicDto, AiTopicUsageDto, GuestAiQuotaDto, QuestionCategory } f
 import { estimateSpend } from "./cost";
 import { AI_PROVIDER_TIMEOUT_MS, MAX_EVENT_TOPICS, MAX_GUEST_TOPICS, toGuestQuota, toUsage } from "./limits";
 import type { AiTopicUsageRow } from "./limits";
+import { aiTopicMessages } from "./messages";
 import { pickCategory, pickTheme } from "./prompt";
 import {
   AiProviderError,
@@ -30,6 +32,8 @@ export interface GenerateTopicRequest {
   guestId: number | null;
   // null = „Wszystkie”: a random category.
   category: QuestionCategory | null;
+  // The requester's language (i18n): the topic is written in it and checked against its content bounds. Default "pl".
+  locale?: Locale;
 }
 
 export interface GenerateTopicOptions {
@@ -121,7 +125,7 @@ async function finish(
 // the signal.
 async function callWithDeadline(
   provider: AiTopicProvider,
-  request: { category: QuestionCategory; theme: string },
+  request: { category: QuestionCategory; theme: string; locale: Locale },
   timeoutMs: number,
   simulateFailure: boolean,
 ): Promise<AiGeneration> {
@@ -159,6 +163,7 @@ export async function generateTopic(
   const random = options.random ?? secureRandom;
   const category = request.category ?? pickCategory(random);
   const theme = pickTheme(random);
+  const locale = request.locale ?? "pl";
 
   const reservation = await reserve(
     db,
@@ -178,7 +183,7 @@ export async function generateTopic(
   try {
     const generation = await callWithDeadline(
       provider,
-      { category, theme },
+      { category, theme, locale },
       options.timeoutMs ?? AI_PROVIDER_TIMEOUT_MS,
       options.simulateFailure ?? false,
     );
@@ -187,7 +192,7 @@ export async function generateTopic(
     if (clean === null) {
       throw new AiProviderError("empty");
     }
-    if (deniedIn(clean).length > 0) {
+    if (deniedIn(clean, locale).length > 0) {
       throw new AiProviderError("off-limits");
     }
     text = clean;
@@ -223,7 +228,7 @@ async function readTokens(
 
 // Why the latest finished attempt failed, for the organizer; null when it succeeded or nothing finished yet. A failed
 // attempt without a kind expired while pending (the server was cut off mid-call) or predates the ai-spend migration.
-async function readLastFailureHint(db: DbClient): Promise<string | null> {
+async function readLastFailureHint(db: DbClient, locale: Locale): Promise<string | null> {
   const { data, error } = await db
     .from("ai_topic")
     .select("status, failure_kind, http_status")
@@ -240,18 +245,19 @@ async function readLastFailureHint(db: DbClient): Promise<string | null> {
     return null;
   }
   if (last.failure_kind === null) {
-    return "Przyczyna nie została zapisana.";
+    return aiTopicMessages(locale).hintNotRecorded;
   }
   const kind = isAiFailureKind(last.failure_kind) ? last.failure_kind : "unavailable";
-  return describeFailureForOrganizer(kind, last.http_status ?? undefined);
+  return describeFailureForOrganizer(kind, last.http_status ?? undefined, locale);
 }
 
-// The evening's usage for the organizer: the counts, the billed tokens with the estimate, and the latest failure.
-export async function getAiTopicUsage(db: DbClient): Promise<AiTopicUsageDto> {
+// The evening's usage for the organizer: the counts, the billed tokens with the estimate, and the latest failure (its
+// hint in `locale`).
+export async function getAiTopicUsage(db: DbClient, locale: Locale = "pl"): Promise<AiTopicUsageDto> {
   const [row, tokens, lastFailureHint] = await Promise.all([
     readUsage(db, null),
     readTokens(db),
-    readLastFailureHint(db),
+    readLastFailureHint(db, locale),
   ]);
   return toUsage(row, { ...estimateSpend(tokens), lastFailureHint });
 }

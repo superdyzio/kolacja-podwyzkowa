@@ -53,6 +53,16 @@ describe("AI provider failures", () => {
     );
   });
 
+  it("explains failures in English (i18n)", () => {
+    for (const kind of KINDS) {
+      expect(describeFailureForOrganizer(kind, undefined, "en")).not.toBe(describeFailureForOrganizer(kind));
+    }
+    expect(describeFailureForOrganizer("timeout", undefined, "en")).toBe("Timed out after 9 s.");
+    expect(describeFailureForOrganizer("auth", 401, "en")).toBe(
+      "API key rejected (HTTP 401) — check ANTHROPIC_API_KEY.",
+    );
+  });
+
   it("recognizes aborts", () => {
     const controller = new AbortController();
     controller.abort();

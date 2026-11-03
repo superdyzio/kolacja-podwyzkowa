@@ -8,7 +8,8 @@ export const prerender = false;
 
 // The organizer's „Reset danych”. GET: fresh counts of what each part would remove (ResetPreviewDto) for the modal.
 // POST { parts }: resets the chosen parts (implied ones added) in one DB transaction → 200 ResetResultDto with the
-// Polish summary. Organizer only: the TV and guest keys get the guard's 404. The organizer and TV keys never change.
+// summary in the request's language. Organizer only: the TV and guest keys get the guard's 404. The organizer and TV
+// keys never change.
 
 export const GET: APIRoute = async ({ locals }) => {
   const api = organizerApi(locals);
@@ -28,7 +29,7 @@ export const POST: APIRoute = async ({ locals, request }) => {
   if (!body.ok) {
     return body.response;
   }
-  const outcome = await resetEvent(api.db, body.data.parts);
+  const outcome = await resetEvent(api.db, body.data.parts, locals.locale);
   return outcome.status === "reset"
     ? jsonResponse(outcome.result)
     : jsonError(404, noAccessMessages(locals.locale).title);

@@ -1,5 +1,6 @@
-import { pluralPl } from "@/lib/guests/summary";
+import type { Locale } from "@/lib/i18n/locale";
 import type { VenueDto } from "@/types";
+import { venueMessages } from "./messages";
 
 // Counts for the organizer views (pure; used by the organizer shell and the rooms-and-tables island).
 
@@ -19,12 +20,13 @@ export function summarizeVenue(venue: VenueDto): VenueSummary {
   };
 }
 
-// "Plan wgrany · 3 sale · 7 stolików · 52 miejsca"
-export function formatVenueSummary(summary: VenueSummary): string {
+// "Plan wgrany · 3 sale · 7 stolików · 52 miejsca" / "Plan uploaded · 3 rooms · 7 tables · 52 seats"
+export function formatVenueSummary(summary: VenueSummary, locale: Locale = "pl"): string {
+  const messages = venueMessages(locale);
   return [
-    summary.hasPlan ? "Plan wgrany" : "Brak planu",
-    `${summary.rooms} ${pluralPl(summary.rooms, "sala", "sale", "sal")}`,
-    `${summary.tables} ${pluralPl(summary.tables, "stolik", "stoliki", "stolików")}`,
-    `${summary.seats} ${pluralPl(summary.seats, "miejsce", "miejsca", "miejsc")}`,
+    summary.hasPlan ? messages.planUploaded : messages.planNotUploaded,
+    messages.rooms(summary.rooms),
+    messages.tables(summary.tables),
+    messages.seats(summary.seats),
   ].join(" · ");
 }

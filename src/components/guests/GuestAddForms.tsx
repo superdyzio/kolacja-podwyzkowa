@@ -2,16 +2,20 @@ import { useId, useState, type SubmitEvent } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { guestManagerMessages } from "@/lib/guests/messages";
 import { MAX_DISPLAY_NAME_LENGTH } from "@/lib/guests/names";
+import type { Locale } from "@/lib/i18n";
 
 interface Props {
   pending: boolean;
   // Adds the guests from the text (one per line); resolves to true when they were saved.
   onAdd: (text: string) => Promise<boolean>;
+  locale: Locale;
 }
 
 // Adding guests: one name at a time, or a pasted list (FR-001). A failed paste keeps the text so it can be fixed.
-export function GuestAddForms({ pending, onAdd }: Props) {
+export function GuestAddForms({ pending, onAdd, locale }: Props) {
+  const t = guestManagerMessages(locale);
   const singleId = useId();
   const pasteId = useId();
   const [name, setName] = useState("");
@@ -36,12 +40,12 @@ export function GuestAddForms({ pending, onAdd }: Props) {
   return (
     <section aria-labelledby="add-heading" className="flex flex-col gap-4 rounded-xl border p-4">
       <h2 id="add-heading" className="text-lg font-semibold">
-        Dodaj gości
+        {t.addHeading}
       </h2>
 
       <form onSubmit={submitSingle} className="flex flex-col gap-2">
         <label htmlFor={singleId} className="text-sm font-medium">
-          Imię lub ksywka
+          {t.nameLabel}
         </label>
         <div className="flex gap-2">
           <Input
@@ -53,11 +57,11 @@ export function GuestAddForms({ pending, onAdd }: Props) {
             maxLength={MAX_DISPLAY_NAME_LENGTH}
             autoComplete="off"
             enterKeyHint="done"
-            placeholder="np. Kasia M."
+            placeholder={t.namePlaceholder}
             className="h-10"
           />
           <Button type="submit" disabled={pending || name.trim() === ""} className="h-10">
-            Dodaj
+            {t.add}
           </Button>
         </div>
       </form>
@@ -65,7 +69,7 @@ export function GuestAddForms({ pending, onAdd }: Props) {
       {showPaste ? (
         <form onSubmit={submitPaste} className="flex flex-col gap-2">
           <label htmlFor={pasteId} className="text-sm font-medium">
-            Wklej listę — jedna osoba na linię
+            {t.pasteLabel}
           </label>
           <Textarea
             id={pasteId}
@@ -74,16 +78,13 @@ export function GuestAddForms({ pending, onAdd }: Props) {
               setPasted(event.target.value);
             }}
             rows={8}
-            placeholder={"Ania\nKuba\nKasia M."}
+            placeholder={t.pastePlaceholder}
             className="max-h-[50vh]"
           />
-          <p className="text-muted-foreground text-sm">
-            Puste linie są pomijane. Jeśli coś się nie zgadza (powtórzone imię, za długa linia), nic nie zostanie
-            dodane, a lista zostanie w polu do poprawienia.
-          </p>
+          <p className="text-muted-foreground text-sm">{t.pasteHint}</p>
           <div className="flex flex-wrap gap-2">
             <Button type="submit" disabled={pending || pasted.trim() === ""} className="h-10">
-              Dodaj gości z listy
+              {t.addFromList}
             </Button>
             <Button
               type="button"
@@ -93,7 +94,7 @@ export function GuestAddForms({ pending, onAdd }: Props) {
                 setShowPaste(false);
               }}
             >
-              Anuluj
+              {t.cancel}
             </Button>
           </div>
         </form>
@@ -106,7 +107,7 @@ export function GuestAddForms({ pending, onAdd }: Props) {
             setShowPaste(true);
           }}
         >
-          Wklej listę gości
+          {t.pasteList}
         </Button>
       )}
     </section>

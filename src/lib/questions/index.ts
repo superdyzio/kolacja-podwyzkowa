@@ -1,10 +1,14 @@
 export {
   ALL_CATEGORIES_LABEL,
+  allCategoriesLabel,
   isQuestionCategory,
   QUESTION_CATEGORIES,
   QUESTION_CATEGORY_HINTS,
   QUESTION_CATEGORY_LABELS,
+  questionCategoryHints,
+  questionCategoryLabels,
 } from "./categories";
+export { categoryMessages, questionMessages, questionUiMessages } from "./messages";
 export { EMPTY_BASE_MESSAGE, EMPTY_CATEGORY_MESSAGE, MAX_RECENT, pickQuestion, pushRecent, secureRandom } from "./draw";
 export {
   EMPTY_DRAW_MEMORY,

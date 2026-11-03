@@ -6,8 +6,7 @@ import {
   deleteQuestion,
   describeQuestionProblem,
   getQuestionList,
-  QUESTION_DUPLICATE_MESSAGE,
-  QUESTION_NOT_FOUND_MESSAGE,
+  questionMessages,
   updateQuestion,
 } from "@/lib/questions";
 import { QuestionCategorySchema } from "@/lib/questions/api";
@@ -28,7 +27,7 @@ export const PATCH: APIRoute = async ({ locals, params, request }) => {
   }
   const id = parseId(params.id);
   if (id === null) {
-    return jsonError(404, QUESTION_NOT_FOUND_MESSAGE);
+    return jsonError(404, questionMessages(locals.locale).notFound);
   }
   const body = await readJsonBody(request, UpdateQuestionBody, locals.locale);
   if (!body.ok) {
@@ -38,11 +37,11 @@ export const PATCH: APIRoute = async ({ locals, params, request }) => {
   const result = await updateQuestion(api.db, id, body.data);
   switch (result.status) {
     case "invalid":
-      return jsonError(400, describeQuestionProblem(result.reason));
+      return jsonError(400, describeQuestionProblem(result.reason, locals.locale));
     case "duplicate":
-      return jsonError(409, QUESTION_DUPLICATE_MESSAGE);
+      return jsonError(409, questionMessages(locals.locale).duplicate);
     case "not-found":
-      return jsonError(404, QUESTION_NOT_FOUND_MESSAGE);
+      return jsonError(404, questionMessages(locals.locale).notFound);
     case "updated":
       return jsonResponse(await getQuestionList(api.db));
   }
@@ -55,11 +54,11 @@ export const DELETE: APIRoute = async ({ locals, params }) => {
   }
   const id = parseId(params.id);
   if (id === null) {
-    return jsonError(404, QUESTION_NOT_FOUND_MESSAGE);
+    return jsonError(404, questionMessages(locals.locale).notFound);
   }
   const result = await deleteQuestion(api.db, id);
   if (result.status === "not-found") {
-    return jsonError(404, QUESTION_NOT_FOUND_MESSAGE);
+    return jsonError(404, questionMessages(locals.locale).notFound);
   }
   return jsonResponse(await getQuestionList(api.db));
 };

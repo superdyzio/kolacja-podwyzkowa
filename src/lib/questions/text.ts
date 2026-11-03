@@ -1,6 +1,7 @@
 import { normalizeDisplayName, stripListMarker } from "@/lib/guests/names";
-import { pluralPl } from "@/lib/guests/summary";
+import type { Locale } from "@/lib/i18n/locale";
 import type { QuestionSkipDto, QuestionSkipReason } from "@/types";
+import { questionMessages } from "./messages";
 
 // Question text rules shared by the DB service, the API routes and the organizer UI (PRD FR-014). Pure.
 //
@@ -85,12 +86,13 @@ export function parseQuestionPaste(text: string): ParsedQuestionPaste {
   return { items, skipped };
 }
 
-export function describeQuestionProblem(problem: QuestionTextProblem): string {
+export function describeQuestionProblem(problem: QuestionTextProblem, locale: Locale = "pl"): string {
+  const t = questionMessages(locale);
   switch (problem) {
     case "too-short":
-      return `Pytanie musi mieć co najmniej ${MIN_QUESTION_LENGTH} znaków.`;
+      return t.tooShort(MIN_QUESTION_LENGTH);
     case "too-long":
-      return `Pytanie może mieć najwyżej ${MAX_QUESTION_LENGTH} znaków.`;
+      return t.tooLong(MAX_QUESTION_LENGTH);
   }
 }
 
@@ -99,36 +101,37 @@ function preview(text: string): string {
   return characters.length > PREVIEW_LENGTH ? `${characters.slice(0, PREVIEW_LENGTH).join("")}…` : text;
 }
 
-const SKIP_REASONS: Record<QuestionSkipReason, string> = {
-  duplicate: "już jest w bazie.",
-  repeated: "powtarza się we wklejce.",
-  "too-short": `za krótkie (min. ${MIN_QUESTION_LENGTH} znaków).`,
-  "too-long": `za długie (maks. ${MAX_QUESTION_LENGTH} znaków).`,
-};
+function skipReason(reason: QuestionSkipReason, locale: Locale): string {
+  const t = questionMessages(locale);
+  switch (reason) {
+    case "duplicate":
+      return t.skipDuplicate;
+    case "repeated":
+      return t.skipRepeated;
+    case "too-short":
+      return t.skipTooShort(MIN_QUESTION_LENGTH);
+    case "too-long":
+      return t.skipTooLong(MAX_QUESTION_LENGTH);
+  }
+}
 
 // „Linia 3: „Czy…” — już jest w bazie.”
-export function describeSkip(skip: QuestionSkipDto): string {
-  return `Linia ${skip.line}: „${preview(skip.text)}” — ${SKIP_REASONS[skip.reason]}`;
-}
-
-function questionCount(count: number): string {
-  return `${count} ${pluralPl(count, "pytanie", "pytania", "pytań")}`;
-}
-
-function lineCount(count: number): string {
-  return `${count} ${pluralPl(count, "linię", "linie", "linii")}`;
+export function describeSkip(skip: QuestionSkipDto, locale: Locale = "pl"): string {
+  return questionMessages(locale).skipLine(skip.line, preview(skip.text), skipReason(skip.reason, locale));
 }
 
 // „Dodano 12 pytań.” / „Dodano 1 pytanie. Pominięto 2 linie.” / „Nic nie dodano — pominięto 3 linie.”
-export function describePasteResult(added: number, skippedCount: number): string {
+export function describePasteResult(added: number, skippedCount: number, locale: Locale = "pl"): string {
+  const t = questionMessages(locale);
   if (added === 0) {
-    return skippedCount === 0 ? "Nic nie dodano." : `Nic nie dodano — pominięto ${lineCount(skippedCount)}.`;
+    return skippedCount === 0 ? t.nothingAdded : t.nothingAddedSkipped(skippedCount);
   }
-  const addedText = `Dodano ${questionCount(added)}.`;
-  return skippedCount === 0 ? addedText : `${addedText} Pominięto ${lineCount(skippedCount)}.`;
+  const addedText = t.added(added);
+  return skippedCount === 0 ? addedText : `${addedText} ${t.skipped(skippedCount)}`;
 }
 
 // „Dodano 3 pytania.” for the starter load and similar counts.
-export function describeAdded(added: number): string {
-  return added === 0 ? "Nic nie dodano." : `Dodano ${questionCount(added)}.`;
+export function describeAdded(added: number, locale: Locale = "pl"): string {
+  const t = questionMessages(locale);
+  return added === 0 ? t.nothingAdded : t.added(added);
 }

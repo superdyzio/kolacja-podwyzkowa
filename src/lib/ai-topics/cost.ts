@@ -1,4 +1,5 @@
-import { pluralPl } from "@/lib/guests/summary";
+import type { Locale } from "@/lib/i18n/locale";
+import { aiTopicMessages } from "./messages";
 
 // Estimated cost of the evening's AI topics (ai-spend), pure. The provider reports the tokens of every answer it bills
 // (ai_topic.input_tokens / output_tokens); this turns them into dollars at Anthropic's list prices. It is an estimate
@@ -61,13 +62,15 @@ export function estimateSpend(rows: readonly ModelTokens[]): AiSpend {
 }
 
 // „0,0123 USD”: 4 decimals below a dollar (a topic costs hundredths of a cent), 2 from a dollar up; a non-zero amount
-// that would round to nothing is „< 0,0001 USD”. Hand-rolled (no Intl), so the server and the browser agree.
-export function formatUsd(nanoUsd: number): string {
+// that would round to nothing is „< 0,0001 USD”. Hand-rolled (no Intl), so the server and the browser agree. English
+// writes a decimal point („0.0123 USD”).
+export function formatUsd(nanoUsd: number, locale: Locale = "pl"): string {
+  const point = aiTopicMessages(locale).decimalSeparator;
   if (nanoUsd === 0) {
     return `0${NBSP}USD`;
   }
   if (nanoUsd < 50_000) {
-    return `<${NBSP}0,0001${NBSP}USD`;
+    return `<${NBSP}0${point}0001${NBSP}USD`;
   }
   // Integer rounding (half up) instead of toFixed, which rounds the binary float (0.00165 → „0,0016”).
   // Anything that rounds to a whole dollar at 4 decimals (≥ 0,99995) already counts as a dollar: „1,00”, not „1,0000”.
@@ -75,19 +78,20 @@ export function formatUsd(nanoUsd: number): string {
   const scale = 10 ** decimals;
   const units = Math.round((nanoUsd * scale) / NANO_USD_PER_USD);
   const fraction = String(units % scale).padStart(decimals, "0");
-  return `${String(Math.floor(units / scale))},${fraction}${NBSP}USD`;
+  return `${String(Math.floor(units / scale))}${point}${fraction}${NBSP}USD`;
 }
 
-// „12 400 tokenów” (non-breaking spaces).
-export function formatTokens(count: number): string {
-  const digits = String(count).replace(/\B(?=(\d{3})+(?!\d))/g, NBSP);
-  return `${digits}${NBSP}${pluralPl(count, "token", "tokeny", "tokenów")}`;
+// „12 400 tokenów” (non-breaking spaces; English „12,400 tokens”).
+export function formatTokens(count: number, locale: Locale = "pl"): string {
+  const t = aiTopicMessages(locale);
+  const digits = String(count).replace(/\B(?=(\d{3})+(?!\d))/g, t.groupSeparator);
+  return `${digits}${NBSP}${t.tokens(count)}`;
 }
 
 // The organizer's cost line: „≈ 0,0123 USD (12 400 tokenów)”, or the tokens alone when the model has no price here.
-export function formatSpend(spend: AiSpend): string {
-  const tokens = formatTokens(spend.inputTokens + spend.outputTokens);
+export function formatSpend(spend: AiSpend, locale: Locale = "pl"): string {
+  const tokens = formatTokens(spend.inputTokens + spend.outputTokens, locale);
   return spend.costNanoUsd === null
-    ? `${tokens} — brak cennika dla tego modelu`
-    : `≈${NBSP}${formatUsd(spend.costNanoUsd)} (${tokens})`;
+    ? `${tokens} — ${aiTopicMessages(locale).noPricing}`
+    : `≈${NBSP}${formatUsd(spend.costNanoUsd, locale)} (${tokens})`;
 }

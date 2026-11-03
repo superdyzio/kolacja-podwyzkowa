@@ -1,5 +1,7 @@
 import { describeFailureForOrganizer, type AiFailureKind, type AiGeneration } from "@/lib/ai-topics/provider";
+import type { Locale } from "@/lib/i18n/locale";
 import type { AiProviderKind, TableShape } from "@/types";
+import { venueAiMessages } from "./messages";
 
 // The contract of a venue-layout provider (venue-drawing): one call that reads the plan image and returns the raw
 // JSON text of a proposal (schema.ts), plus the tokens it was billed for. The mock (default) and Claude over the
@@ -35,14 +37,10 @@ export interface VenueVisionProvider {
   ): Promise<AiGeneration>;
 }
 
-export const LAYOUT_FAILED_MESSAGE = "Nie udało się odczytać układu ze zdjęcia.";
-export const LAYOUT_BAD_OUTPUT_HINT = "AI zwróciło układ w nieczytelnej formie — spróbuj ponownie.";
-export const LAYOUT_IMAGE_TOO_LARGE_MESSAGE = "Zdjęcie jest za duże — najwyżej 1,5 MB.";
-
 // The organizer's hint for a failed read; the timeout names this call's own limit.
-export function describeLayoutFailure(kind: AiFailureKind, status?: number): string {
+export function describeLayoutFailure(kind: AiFailureKind, status?: number, locale: Locale = "pl"): string {
   if (kind === "timeout") {
-    return `Przekroczono czas ${String(VENUE_VISION_TIMEOUT_MS / 1000)} s — spróbuj ponownie.`;
+    return venueAiMessages(locale).timeout(VENUE_VISION_TIMEOUT_MS / 1000);
   }
-  return describeFailureForOrganizer(kind, status);
+  return describeFailureForOrganizer(kind, status, locale);
 }

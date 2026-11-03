@@ -55,6 +55,14 @@ describe("seatingHint", () => {
     );
     expect(seatingHint(pinnedAnia)).toMatch(/^„Ania” ma przypięte miejsce/);
   });
+
+  it("says it in English", () => {
+    expect(seatingHint(ania, "en")).toBe("Click a seat for “Ania”. A taken seat means a swap.");
+    expect(seatClick(null, null, "en")).toEqual({
+      kind: "refuse",
+      reason: "First choose a person from the “No seat” list or click a taken seat.",
+    });
+  });
 });
 
 describe("seatRows", () => {

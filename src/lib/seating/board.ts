@@ -1,12 +1,15 @@
+import type { Locale } from "@/lib/i18n/locale";
 import { sideALength } from "@/lib/venue/seats";
 import type { SeatAssignmentDto, TableShape } from "@/types";
+import { seatingMessages } from "./messages";
 import { guestPinnedMessage, seatPinnedMessage } from "./rules";
 
 // The organizer seating page's interaction rules (pure): what a click on a seat does, the hint line, the layout of
 // a table card and who lost their seat after a move. The server enforces the same locks; these only give a quicker,
 // clearer answer.
 
-export const PICK_GUEST_FIRST_MESSAGE = "Najpierw wybierz osobę z listy „Bez miejsca” albo kliknij zajęte miejsce.";
+// The Polish text (tests); the page uses seatingMessages(locale).pickGuestFirst through seatClick.
+export const PICK_GUEST_FIRST_MESSAGE = seatingMessages("pl").pickGuestFirst;
 
 // The guest chosen on the page (pinned: locked to their current seat).
 export interface SelectedGuest {
@@ -28,11 +31,15 @@ export type SeatClick =
 // Nothing selected: a taken seat selects its occupant. The selected guest's own seat clears the selection. A pinned
 // selected guest cannot move, so another taken seat switches the selection instead. Otherwise the click seats the
 // selected guest there (empty → move, taken → swap or replace) — unless the occupant is pinned.
-export function seatClick(selected: SelectedGuest | null, occupant: SeatOccupant | null): SeatClick {
+export function seatClick(
+  selected: SelectedGuest | null,
+  occupant: SeatOccupant | null,
+  locale: Locale = "pl",
+): SeatClick {
   if (!selected) {
     return occupant
       ? { kind: "select", guestId: occupant.guestId }
-      : { kind: "refuse", reason: PICK_GUEST_FIRST_MESSAGE };
+      : { kind: "refuse", reason: seatingMessages(locale).pickGuestFirst };
   }
   if (occupant?.guestId === selected.guestId) {
     return { kind: "deselect" };
@@ -40,25 +47,24 @@ export function seatClick(selected: SelectedGuest | null, occupant: SeatOccupant
   if (selected.pinned) {
     return occupant
       ? { kind: "select", guestId: occupant.guestId }
-      : { kind: "refuse", reason: guestPinnedMessage(selected.name) };
+      : { kind: "refuse", reason: guestPinnedMessage(selected.name, locale) };
   }
   if (occupant?.pinned) {
-    return { kind: "refuse", reason: seatPinnedMessage(occupant.name) };
+    return { kind: "refuse", reason: seatPinnedMessage(occupant.name, locale) };
   }
   return { kind: "seat" };
 }
 
 // The line above the tables that says what a click does now.
-export function seatingHint(selected: SelectedGuest | null): string {
+export function seatingHint(selected: SelectedGuest | null, locale: Locale = "pl"): string {
+  const messages = seatingMessages(locale);
   if (!selected) {
-    return "Wybierz osobę z listy „Bez miejsca” albo kliknij zajęte miejsce, a potem kliknij miejsce, na którym ma siedzieć.";
+    return messages.hintNone;
   }
   if (selected.pinned) {
-    return `„${selected.name}” ma przypięte miejsce — odepnij je, żeby przesadzić tę osobę.`;
+    return messages.hintPinned(selected.name);
   }
-  return selected.seated
-    ? `Kliknij miejsce dla „${selected.name}”. Zajęte miejsce — zamiana.`
-    : `Kliknij miejsce dla „${selected.name}”. Osoba z zajętego miejsca zostanie bez miejsca.`;
+  return selected.seated ? messages.hintSeated(selected.name) : messages.hintUnseated(selected.name);
 }
 
 // The seats of a table card, row by row: a rectangular table shows side A and side B next to each other (row p =
@@ -88,6 +94,6 @@ export function displacedGuest(
   return occupant.guestId;
 }
 
-export function lostSeatMessage(name: string): string {
-  return `„${name}” nie ma teraz miejsca.`;
+export function lostSeatMessage(name: string, locale: Locale = "pl"): string {
+  return seatingMessages(locale).lostSeat(name);
 }

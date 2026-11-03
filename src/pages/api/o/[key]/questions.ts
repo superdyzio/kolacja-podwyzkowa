@@ -9,6 +9,7 @@ import {
   MAX_QUESTIONS,
   parseQuestionPaste,
   questionKey,
+  questionMessages,
 } from "@/lib/questions";
 import { QuestionCategorySchema } from "@/lib/questions/api";
 import type { QuestionPasteResultDto, QuestionSkipDto } from "@/types";
@@ -41,7 +42,7 @@ export const POST: APIRoute = async ({ locals, request }) => {
 
   const parsed = parseQuestionPaste(body.data.text);
   if (parsed.items.length === 0 && parsed.skipped.length === 0) {
-    return jsonError(400, "Wpisz co najmniej jedno pytanie.");
+    return jsonError(400, questionMessages(locals.locale).pasteEmpty);
   }
 
   const result = await addQuestions(
@@ -50,10 +51,7 @@ export const POST: APIRoute = async ({ locals, request }) => {
     parsed.items.map((item) => item.text),
   );
   if (result.status === "too-many") {
-    return jsonError(
-      400,
-      `Baza może mieć najwyżej ${MAX_QUESTIONS} pytań (jest już ${result.existing}). Nic nie zostało dodane.`,
-    );
+    return jsonError(400, questionMessages(locals.locale).tooMany(MAX_QUESTIONS, result.existing));
   }
 
   const lineByKey = new Map(parsed.items.map((item) => [questionKey(item.text), item.line]));

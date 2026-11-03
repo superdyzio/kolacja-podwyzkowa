@@ -1,26 +1,14 @@
 export {
-  CHAIR_PITCH_MESSAGE,
   DEFAULT_CHAIR_PITCH,
   DEFAULT_SEATS,
   MAX_CHAIR_PITCH,
   MIN_CHAIR_PITCH,
-  NO_PLAN_MESSAGE,
-  OUTLINE_MESSAGE,
-  ROTATION_MESSAGE,
   MAX_ROOMS,
   MAX_ROOM_NAME_LENGTH,
   MAX_SEATS,
   MAX_TABLES,
   MAX_TABLE_NAME_LENGTH,
   MIN_SEATS,
-  POSITION_MESSAGE,
-  ROOMS_LIMIT_MESSAGE,
-  ROOM_DUPLICATE_MESSAGE,
-  ROOM_NOT_FOUND_MESSAGE,
-  SEAT_COUNT_MESSAGE,
-  TABLES_LIMIT_MESSAGE,
-  TABLE_DUPLICATE_MESSAGE,
-  TABLE_NOT_FOUND_MESSAGE,
   TABLE_SHAPES,
   TABLE_SHAPE_LABELS,
   compareTableNames,
@@ -33,6 +21,9 @@ export {
   isValidOutline,
   isValidSeatCount,
   nextTableName,
+  roomsLimitMessage,
+  seatCountMessage,
+  tablesLimitMessage,
   normalizeRotation,
   normalizeVenueName,
   roundChairPitch,
@@ -49,10 +40,7 @@ export {
 } from "./rules";
 export {
   MAX_PLAN_BYTES,
-  PLAN_EMPTY_MESSAGE,
   PLAN_IMAGE_TYPES,
-  PLAN_TOO_LARGE_MESSAGE,
-  PLAN_UNSUPPORTED_MESSAGE,
   base64ToBytes,
   bytesToBase64,
   formatMegabytes,
@@ -99,3 +87,4 @@ export {
   type VenueLayout,
 } from "./service";
 export { formatVenueSummary, summarizeVenue, type VenueSummary } from "./summary";
+export { venueEditorMessages, venueMessages } from "./messages";

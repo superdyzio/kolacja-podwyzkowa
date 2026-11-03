@@ -1,6 +1,7 @@
 import { useCallback, useRef, useState } from "react";
+import type { Locale } from "@/lib/i18n";
 import type { OrderBoardDto } from "@/types";
-import { NETWORK_FAILURE, readJson, toFailure, type ApiFailure } from "./api-failure";
+import { networkFailure, readJson, toFailure, type ApiFailure } from "./api-failure";
 
 // Order state of the organizer's order page (restaurant-orders). Every change goes through the API and the board is
 // replaced with the one the server returns. Changes run one after another (quick „Wydane” ticks may overlap), so each
@@ -30,7 +31,7 @@ function isBoard(data: unknown): data is OrderBoardDto {
   );
 }
 
-export function useOrderBoard(apiBase: string, initial: OrderBoardDto) {
+export function useOrderBoard(apiBase: string, initial: OrderBoardDto, locale: Locale) {
   const [board, setBoard] = useState<OrderBoardDto>(initial);
   const [pending, setPending] = useState(false);
   const [failure, setFailure] = useState<ApiFailure | null>(null);
@@ -59,18 +60,18 @@ export function useOrderBoard(apiBase: string, initial: OrderBoardDto) {
           }
           return true;
         }
-        setFailure(toFailure(data));
+        setFailure(toFailure(data, locale));
         // The board may be stale (a line deleted or a guest removed in another tab): start again from the truth.
         if (response.status === 404 || response.status === 409) {
           await refresh();
         }
         return false;
       } catch {
-        setFailure(NETWORK_FAILURE);
+        setFailure(networkFailure(locale));
         return false;
       }
     },
-    [apiBase, refresh],
+    [apiBase, refresh, locale],
   );
 
   // Resolves to true when the change was saved; starts after every change asked for before it has answered.

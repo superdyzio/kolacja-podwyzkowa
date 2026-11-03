@@ -29,4 +29,11 @@ describe("question summary", () => {
     ];
     expect(formatQuestionSummary(ninety)).toBe("90 pytań · kontrowersyjne 30 · generyczne 30 · refleksyjne 30");
   });
+
+  it("formats the shell card line in English with English category names", () => {
+    expect(formatQuestionSummary([], "en")).toBe("The question base is empty");
+    expect(formatQuestionSummary(of("refleksyjne"), "en")).toBe(
+      "1 question · controversial 0 · general 0 · reflective 1",
+    );
+  });
 });

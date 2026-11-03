@@ -1,13 +1,15 @@
+import type { Locale } from "@/lib/i18n/locale";
 import { oppositeSeat, sideNeighbours } from "@/lib/venue/seats";
 import type { GuestDrawingDto, GuestGuessDto, GuestSeatDto, GuestStateDto, TableShape, TablemateDto } from "@/types";
+import { guestPhoneMessages } from "./messages";
 
 // What a guest's phone shows (S-05), pure: the polling token and the mapping of "latest snapshot + the guest's own
 // seat row in it" to the three states. The seat comes from the PUBLISHED snapshot (same truth as the TV); the name is
 // the guest's current display name.
 
-export const GUEST_UNPUBLISHED_MESSAGE =
-  "Organizator jeszcze nie opublikował rozsadzenia. Twoje miejsce pojawi się tutaj samo.";
-export const GUEST_UNSEATED_MESSAGE = "Nie masz miejsca w aktualnym rozsadzeniu. Zapytaj organizatora.";
+// The Polish texts of the two seatless states (the islands use guestPhoneMessages(locale)).
+export const GUEST_UNPUBLISHED_MESSAGE = guestPhoneMessages("pl").unpublished;
+export const GUEST_UNSEATED_MESSAGE = guestPhoneMessages("pl").unseated;
 
 // FNV-1a (32 bit) of the name in base36: short, stable, cheap. Only used to notice a rename between polls.
 function nameHash(name: string): string {
@@ -83,10 +85,12 @@ export function toTablemates(
     .sort((a, b) => a.seat - b.seat);
 }
 
-// One sentence for screen readers (announced when the seat changes).
-export function describeGuestSeat(state: GuestStateDto): string {
+// One sentence for screen readers (announced when the seat changes). The phone's store also compares it (in the
+// default locale) to notice a new seat.
+export function describeGuestSeat(state: GuestStateDto, locale: Locale = "pl"): string {
+  const messages = guestPhoneMessages(locale);
   if (state.status === "seated" && state.seat) {
-    return `Twoje miejsce: stolik ${state.seat.table}, sala ${state.seat.room}, miejsce ${state.seat.seat}.`;
+    return messages.seatSentence(state.seat.table, state.seat.room, state.seat.seat);
   }
-  return state.status === "unpublished" ? GUEST_UNPUBLISHED_MESSAGE : GUEST_UNSEATED_MESSAGE;
+  return state.status === "unpublished" ? messages.unpublished : messages.unseated;
 }

@@ -1,6 +1,6 @@
 import { useCallback, useState, useSyncExternalStore } from "react";
 import { readJson, toFailure } from "@/components/hooks/api-failure";
-import { AI_CLIENT_TIMEOUT_MS, FAILED_MESSAGE } from "@/lib/ai-topics/limits";
+import { AI_CLIENT_TIMEOUT_MS, aiTopicLimitMessages } from "@/lib/ai-topics/limits";
 import {
   EMPTY_TOPIC_MEMORY,
   parseTopic,
@@ -8,6 +8,7 @@ import {
   serializeTopicMemory,
   type TopicMemory,
 } from "@/lib/ai-topics/topic-memory";
+import type { Locale } from "@/lib/i18n";
 import type { QuestionCategory } from "@/types";
 import { createLocalStore } from "./local-store";
 
@@ -26,8 +27,13 @@ export interface AiTopicCallbacks {
 // (category and the last topic) lives in this browser's localStorage under `storageKey`: the server render and
 // hydration use the empty memory, the browser then shows what it remembered. A generation is a POST of { category }
 // to `generateUrl`; the browser gives up after AI_CLIENT_TIMEOUT_MS (the server aborts the AI at 9 s). On any failure
-// the previous topic stays and the server's Polish message shows.
-export function useAiTopic(generateUrl: string, storageKey: string, { onAnswer, onNoAccess }: AiTopicCallbacks = {}) {
+// the previous topic stays and the server's message shows (the request's language; the fallbacks in `locale`).
+export function useAiTopic(
+  generateUrl: string,
+  storageKey: string,
+  locale: Locale,
+  { onAnswer, onNoAccess }: AiTopicCallbacks = {},
+) {
   const subscribe = useCallback((listener: () => void) => memoryStore.subscribe(storageKey, listener), [storageKey]);
   const getSnapshot = useCallback(() => memoryStore.read(storageKey), [storageKey]);
   const memory = useSyncExternalStore(subscribe, getSnapshot, () => EMPTY_TOPIC_MEMORY);
@@ -77,18 +83,18 @@ export function useAiTopic(generateUrl: string, storageKey: string, { onAnswer, 
         update((current) => ({ ...current, last: topic }));
         return;
       }
-      setMessage(response.ok ? FAILED_MESSAGE : toFailure(data).message);
+      setMessage(response.ok ? aiTopicLimitMessages(locale).failed : toFailure(data, locale).message);
       if (response.status === 404) {
         onNoAccess?.();
       }
     } catch {
       // Offline or the browser's own deadline: the previous topic stays on screen.
-      setMessage(FAILED_MESSAGE);
+      setMessage(aiTopicLimitMessages(locale).failed);
     } finally {
       clearTimeout(timer);
       setPending(false);
     }
-  }, [generateUrl, onAnswer, onNoAccess, storageKey, update]);
+  }, [generateUrl, locale, onAnswer, onNoAccess, storageKey, update]);
 
   return { category: memory.category, setCategory, topic: memory.last, message, pending, ready, generate };
 }

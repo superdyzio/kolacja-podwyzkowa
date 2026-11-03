@@ -2,7 +2,7 @@ import type { APIRoute } from "astro";
 import { z } from "astro/zod";
 import { jsonError, jsonResponse, readJsonBody } from "@/lib/http";
 import { organizerApi } from "@/lib/organizer-api";
-import { CHAIR_PITCH_MESSAGE, NO_PLAN_MESSAGE, getVenue, setChairPitch } from "@/lib/venue";
+import { getVenue, setChairPitch, venueMessages } from "@/lib/venue";
 
 export const prerender = false;
 
@@ -28,12 +28,13 @@ export const PATCH: APIRoute = async ({ locals, request }) => {
   if (!body.ok) {
     return body.response;
   }
+  const messages = venueMessages(locals.locale);
   const result = await setChairPitch(api.db, body.data.chairPitch);
   switch (result.status) {
     case "invalid":
-      return jsonError(400, CHAIR_PITCH_MESSAGE);
+      return jsonError(400, messages.chairPitch);
     case "no-plan":
-      return jsonError(409, NO_PLAN_MESSAGE);
+      return jsonError(409, messages.noPlan);
     case "updated":
       return jsonResponse(await getVenue(api.db));
   }

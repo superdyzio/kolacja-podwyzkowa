@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { ResetCountsDto } from "@/types";
 import { RESET_PARTS } from "./parts";
-import { describeResetCount, describeResetResult, joinPl, NOTHING_TO_RESET } from "./summary";
+import { describeResetCount, describeResetResult, joinList, joinPl, NOTHING_TO_RESET } from "./summary";
 
 const EMPTY: ResetCountsDto = {
   guesses: 0,
@@ -156,5 +156,40 @@ describe("describeResetResult", () => {
     expect(
       describeResetResult({ parts: ["questions"], before: EMPTY, questionsAdded: 90, guestKeysReplaced: 0 }),
     ).toEqual(["Pytania: wczytano 90 startowych."]);
+  });
+});
+
+describe("English texts", () => {
+  it("joins with „and”", () => {
+    expect(joinList(["a", "b", "c"], "en")).toBe("a, b and c");
+  });
+
+  it("counts in English", () => {
+    for (const part of RESET_PARTS) {
+      expect(describeResetCount(part, DEMO, 90, "en")).not.toMatch(/[ąćęłńóśźż]/i);
+    }
+    expect(describeResetCount("guests", { ...EMPTY, guests: 1, groups: 2 }, 90, "en")).toBe("1 guest · 2 groups");
+    expect(describeResetCount("orders", { ...EMPTY, orders: 3 }, 90, "en")).toBe("3 order lines");
+    expect(describeResetCount("questions", EMPTY, 90, "en")).toBe("no questions → 90 starter questions will be loaded");
+    expect(describeResetCount("venue", EMPTY, 90, "en")).toBe("nothing to remove");
+  });
+
+  it("summarizes a reset in English", () => {
+    expect(
+      describeResetResult(
+        {
+          parts: ["guesses", "aiUsage", "guests", "guestLinks"],
+          before: { ...EMPTY, guesses: 1, correctAmountSet: true, guests: 2, groups: 1 },
+          questionsAdded: 0,
+          guestKeysReplaced: 2,
+        },
+        "en",
+      ),
+    ).toEqual([
+      "Guesses: removed 1 guess and the correct amount; guessing is open.",
+      "AI topic counter: reset (0 of 1000), every guest again has 15.",
+      "Guests and groups: removed 2 guests and 1 group.",
+      "Guest links: new links for 2 guests, guest access off — print new cards.",
+    ]);
   });
 });

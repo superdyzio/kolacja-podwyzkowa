@@ -28,6 +28,7 @@ export {
 export {
   AI_CLIENT_TIMEOUT_MS,
   AI_PROVIDER_TIMEOUT_MS,
+  aiTopicLimitMessages,
   BUSY_MESSAGE,
   EVENT_LIMIT_MESSAGE,
   FAILED_MESSAGE,
@@ -46,8 +47,16 @@ export {
   type AiUsageExtras,
 } from "./limits";
 export { createMockProvider, mockFailureRequested, MOCK_FAILURE_HEADER, MOCK_FAILURE_VALUE } from "./mock-provider";
-export { MOCK_TOPICS } from "./mock-topics";
-export { AI_CATEGORY_DESCRIPTIONS, AI_TOPIC_SYSTEM_PROMPT, buildTopicPrompt, pickCategory, pickTheme } from "./prompt";
+export { aiTopicMessages, aiTopicUiMessages } from "./messages";
+export { MOCK_TOPICS, MOCK_TOPICS_EN } from "./mock-topics";
+export {
+  AI_CATEGORY_DESCRIPTIONS,
+  AI_TOPIC_SYSTEM_PROMPT,
+  buildTopicPrompt,
+  pickCategory,
+  pickTheme,
+  topicSystemPrompt,
+} from "./prompt";
 export {
   AI_FAILURE_KINDS,
   AiProviderError,

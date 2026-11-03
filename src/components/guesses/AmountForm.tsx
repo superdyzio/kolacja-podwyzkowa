@@ -2,6 +2,8 @@ import { useId, useState, type SubmitEvent } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { formatAmountInput, parseAmount } from "@/lib/guesses/amount";
+import { guessUiMessages } from "@/lib/guesses/messages";
+import type { Locale } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 
 interface Props {
@@ -17,6 +19,7 @@ interface Props {
   onSubmit: (amount: string) => Promise<boolean>;
   onCancel?: () => void;
   className?: string;
+  locale: Locale;
 }
 
 // An amount field for the organizer (S-06): the correct amount and guesses entered for guests. Accepts the same Polish
@@ -32,7 +35,9 @@ export function AmountForm({
   onSubmit,
   onCancel,
   className,
+  locale,
 }: Props) {
+  const t = guessUiMessages(locale);
   const inputId = useId();
   const problemId = useId();
   const [draft, setDraft] = useState(initialGrosze === null ? "" : formatAmountInput(initialGrosze));
@@ -40,7 +45,7 @@ export function AmountForm({
 
   async function submit(event: SubmitEvent<HTMLFormElement>) {
     event.preventDefault();
-    const parsed = parseAmount(draft);
+    const parsed = parseAmount(draft, locale);
     if (!parsed.ok) {
       setProblem(parsed.message);
       return;
@@ -64,7 +69,7 @@ export function AmountForm({
             inputMode="decimal"
             autoComplete="off"
             enterKeyHint="done"
-            placeholder="np. 1500 albo 1499,99"
+            placeholder={t.amountPlaceholder}
             autoFocus={autoFocus}
             value={draft}
             aria-invalid={problem !== null}
@@ -87,7 +92,7 @@ export function AmountForm({
           </Button>
           {onCancel && (
             <Button type="button" variant="ghost" className="h-11" onClick={onCancel}>
-              Anuluj
+              {t.cancel}
             </Button>
           )}
         </div>

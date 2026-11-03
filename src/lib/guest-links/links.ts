@@ -18,6 +18,3 @@ export function isLocalOrigin(origin: string): boolean {
     return false;
   }
 }
-
-export const LOCAL_ORIGIN_WARNING =
-  "Ten adres działa tylko na tym komputerze — telefony gości go nie otworzą. Linki i karteczki przygotuj z publicznego adresu aplikacji.";

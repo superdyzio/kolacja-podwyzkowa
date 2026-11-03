@@ -8,6 +8,7 @@ import {
   pickCategory,
   pickTheme,
   TOPIC_THEMES,
+  topicSystemPrompt,
 } from "./prompt";
 
 describe("AI topic prompt", () => {
@@ -36,6 +37,16 @@ describe("AI topic prompt", () => {
       expect(prompt).toContain("podróże");
       expect(prompt).not.toMatch(/[{}]/);
     }
+  });
+
+  it("asks for an English topic for an English request (i18n)", () => {
+    const system = topicSystemPrompt("en");
+    expect(system).toContain("po angielsku");
+    expect(system).not.toContain("po polsku");
+    expect(system).toContain("polityki partyjnej");
+    expect(topicSystemPrompt()).toBe(AI_TOPIC_SYSTEM_PROMPT);
+    expect(buildTopicPrompt({ category: "generyczne", theme: "podróże", locale: "en" })).toContain("po angielsku");
+    expect(buildTopicPrompt({ category: "generyczne", theme: "podróże" })).not.toContain("angielsku");
   });
 
   it("uses only inspirations within the content bounds", () => {

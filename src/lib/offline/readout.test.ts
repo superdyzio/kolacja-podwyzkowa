@@ -158,6 +158,15 @@ describe("labels", () => {
     );
   });
 
+  it("speaks English when asked", () => {
+    expect(formatSavedAt(new Date(2026, 10, 8, 21, 34).toISOString(), now, "en")).toBe("Saved at 21:34");
+    expect(formatSavedAt(new Date(2026, 10, 6, 21, 34).toISOString(), now, "en")).toBe("Saved on 6 November, 21:34");
+    expect(formatPublishedLabel(new Date(2026, 10, 8, 21, 5).toISOString(), now, "en")).toBe("Published at 21:05");
+    expect(formatPublishedLabel(new Date(2026, 8, 30, 9, 0).toISOString(), now, "en")).toBe(
+      "Published on 30 September at 9:00",
+    );
+  });
+
   it("picks the later of two save times", () => {
     const early = "2026-11-08T20:00:00.000Z";
     const late = "2026-11-08T21:00:00.000Z";

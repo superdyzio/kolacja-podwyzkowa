@@ -1,4 +1,6 @@
+import type { Locale } from "@/lib/i18n/locale";
 import { fromStage, type StagePoint } from "./drawing";
+import { venueMessages } from "./messages";
 import { normalizeRotation, roundFraction, type OutlineFields } from "./rules";
 import type { PinPosition } from "./pin";
 
@@ -23,9 +25,9 @@ export const MIN_OUTLINE_SIZE = 0.01;
 export const MIN_CHAIR_PITCH_SLIDER = 0.005;
 export const MAX_CHAIR_PITCH_SLIDER = 0.1;
 
-// „3,5%” — the chair pitch as a share of the plan's width.
-export function formatChairPitch(pitch: number): string {
-  return `${(Math.round(pitch * 1000) / 10).toFixed(1).replace(".", ",")}%`;
+// „3,5%” / "3.5%" — the chair pitch as a share of the plan's width.
+export function formatChairPitch(pitch: number, locale: Locale = "pl"): string {
+  return `${(Math.round(pitch * 1000) / 10).toFixed(1).replace(".", venueMessages(locale).decimalSeparator)}%`;
 }
 
 // A stage point → pin fractions, clamped to the plan and rounded like every stored pin.

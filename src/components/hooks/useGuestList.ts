@@ -1,6 +1,7 @@
 import { useCallback, useState } from "react";
+import type { Locale } from "@/lib/i18n";
 import type { GuestListDto } from "@/types";
-import { NETWORK_FAILURE, readJson, toFailure, type ApiFailure } from "./api-failure";
+import { networkFailure, readJson, toFailure, type ApiFailure } from "./api-failure";
 
 // Guest list state of the organizer page. Every change goes through the API, and the list is replaced with the one
 // the server returns, so the page never drifts from the database.
@@ -22,7 +23,7 @@ function isGuestList(data: unknown): data is GuestListDto {
   return Array.isArray(candidate.guests) && Array.isArray(candidate.groups);
 }
 
-export function useGuestList(apiBase: string, initialList: GuestListDto) {
+export function useGuestList(apiBase: string, initialList: GuestListDto, locale: Locale) {
   const [list, setList] = useState<GuestListDto>(initialList);
   const [pending, setPending] = useState(false);
   const [failure, setFailure] = useState<GuestListFailure | null>(null);
@@ -45,7 +46,7 @@ export function useGuestList(apiBase: string, initialList: GuestListDto) {
           }
           return true;
         }
-        setFailure(toFailure(data));
+        setFailure(toFailure(data, locale));
         // The list may be stale (e.g. changed in another tab): reload it so the next try starts from the truth.
         if (response.status === 404 || response.status === 409) {
           const fresh = await fetch(`${apiBase}/guests`).then(readJson, () => null);
@@ -55,13 +56,13 @@ export function useGuestList(apiBase: string, initialList: GuestListDto) {
         }
         return false;
       } catch {
-        setFailure(NETWORK_FAILURE);
+        setFailure(networkFailure(locale));
         return false;
       } finally {
         setPending(false);
       }
     },
-    [apiBase],
+    [apiBase, locale],
   );
 
   const dismissFailure = useCallback(() => {

@@ -1,7 +1,7 @@
 import { z } from "astro/zod";
 
 // Request bodies of the organizer order API (restaurant-orders). Strict: any extra key is 400 „Nieprawidłowe dane.”.
-// Texts are checked by the rules (rules.ts) afterwards, so their Polish messages reach the form; the caps here only
+// Texts are checked by the rules (rules.ts) afterwards, so their messages (in the request's language) reach the form; the caps here only
 // keep absurd bodies out.
 
 const Id = z.number().int().positive();

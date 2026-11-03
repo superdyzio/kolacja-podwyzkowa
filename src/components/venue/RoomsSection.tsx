@@ -1,7 +1,8 @@
 import { useId, useState, type SubmitEvent } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { pluralPl } from "@/lib/guests/summary";
+import type { Locale } from "@/lib/i18n";
+import { venueEditorMessages } from "@/lib/venue/messages";
 import { MAX_ROOM_NAME_LENGTH, MAX_ROOMS } from "@/lib/venue/rules";
 import type { RoomDto } from "@/types";
 
@@ -16,13 +17,12 @@ interface Props {
   onDelete: (roomId: number) => void;
   // Opens the outline of the room on the plan („Kontur”); absent while there is no plan to draw on.
   onOutline?: (roomId: number) => void;
+  locale: Locale;
 }
 
-function deleteRoomQuestion(room: RoomDto, tableCount: number): string {
-  if (tableCount === 0) {
-    return `Usunąć salę „${room.name}”?`;
-  }
-  return `Usunąć salę „${room.name}” i jej ${tableCount} ${pluralPl(tableCount, "stolik", "stoliki", "stolików")}?`;
+function deleteRoomQuestion(room: RoomDto, tableCount: number, locale: Locale): string {
+  const t = venueEditorMessages(locale);
+  return tableCount === 0 ? t.deleteRoomQuestion(room.name) : t.deleteRoomWithTablesQuestion(room.name, tableCount);
 }
 
 function RoomRow({
@@ -32,6 +32,7 @@ function RoomRow({
   onRename,
   onDelete,
   onOutline,
+  locale,
 }: {
   room: RoomDto;
   tableCount: number;
@@ -39,7 +40,9 @@ function RoomRow({
   onRename: (name: string) => Promise<boolean>;
   onDelete: () => void;
   onOutline?: () => void;
+  locale: Locale;
 }) {
+  const t = venueEditorMessages(locale);
   const inputId = useId();
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(room.name);
@@ -56,7 +59,7 @@ function RoomRow({
       <li className="rounded-lg border p-2">
         <form onSubmit={submit} className="flex flex-wrap items-center gap-2">
           <label htmlFor={inputId} className="sr-only">
-            Nowa nazwa sali: {room.name}
+            {t.newRoomName(room.name)}
           </label>
           <Input
             id={inputId}
@@ -69,7 +72,7 @@ function RoomRow({
             className="h-10 min-w-0 flex-1 basis-40"
           />
           <Button type="submit" disabled={pending || draft.trim() === ""} className="h-10">
-            Zapisz
+            {t.save}
           </Button>
           <Button
             type="button"
@@ -79,7 +82,7 @@ function RoomRow({
               setEditing(false);
             }}
           >
-            Anuluj
+            {t.cancel}
           </Button>
         </form>
       </li>
@@ -91,13 +94,13 @@ function RoomRow({
       <div className="flex min-w-0 flex-1 flex-col pl-1">
         <span className="truncate font-medium">{room.name}</span>
         <span className="text-muted-foreground text-xs">
-          {tableCount} {pluralPl(tableCount, "stolik", "stoliki", "stolików")}
-          {room.outline ? " · ma kontur" : ""}
+          {t.tableCount(tableCount)}
+          {room.outline ? t.hasOutline : ""}
         </span>
       </div>
       {onOutline && (
         <Button type="button" variant="outline" className="h-10" disabled={pending} onClick={onOutline}>
-          Kontur
+          {t.outlineButton}
         </Button>
       )}
       <Button
@@ -110,7 +113,7 @@ function RoomRow({
           setEditing(true);
         }}
       >
-        Zmień nazwę
+        {t.rename}
       </Button>
       <Button
         type="button"
@@ -119,7 +122,7 @@ function RoomRow({
         disabled={pending}
         onClick={onDelete}
       >
-        Usuń
+        {t.delete}
       </Button>
     </li>
   );
@@ -136,7 +139,9 @@ export function RoomsSection({
   seatLoss,
   onDelete,
   onOutline,
+  locale,
 }: Props) {
+  const t = venueEditorMessages(locale);
   const inputId = useId();
   const [name, setName] = useState("");
 
@@ -150,10 +155,10 @@ export function RoomsSection({
   return (
     <section aria-labelledby="rooms-heading" className="flex flex-col gap-3 rounded-xl border p-4">
       <h2 id="rooms-heading" className="text-lg font-semibold">
-        Sale
+        {t.roomsHeading}
       </h2>
       {rooms.length === 0 ? (
-        <p className="text-muted-foreground text-sm">Nie ma jeszcze sal. Dodaj sale, w których stoją stoliki.</p>
+        <p className="text-muted-foreground text-sm">{t.noRooms}</p>
       ) : (
         <ul className="flex flex-col gap-2">
           {rooms.map((room) => (
@@ -163,6 +168,7 @@ export function RoomsSection({
               tableCount={tableCountByRoom.get(room.id) ?? 0}
               pending={pending}
               onRename={(newName) => onRename(room.id, newName)}
+              locale={locale}
               onOutline={
                 onOutline
                   ? () => {
@@ -171,7 +177,11 @@ export function RoomsSection({
                   : undefined
               }
               onDelete={() => {
-                if (window.confirm(deleteRoomQuestion(room, tableCountByRoom.get(room.id) ?? 0) + seatLoss(room.id))) {
+                if (
+                  window.confirm(
+                    deleteRoomQuestion(room, tableCountByRoom.get(room.id) ?? 0, locale) + seatLoss(room.id),
+                  )
+                ) {
                   onDelete(room.id);
                 }
               }}
@@ -182,7 +192,7 @@ export function RoomsSection({
       {rooms.length < MAX_ROOMS && (
         <form onSubmit={submit} className="flex flex-col gap-2">
           <label htmlFor={inputId} className="text-sm font-medium">
-            Nazwa sali
+            {t.roomName}
           </label>
           <div className="flex gap-2">
             <Input
@@ -194,11 +204,11 @@ export function RoomsSection({
               maxLength={MAX_ROOM_NAME_LENGTH}
               autoComplete="off"
               enterKeyHint="done"
-              placeholder="np. Sala kominkowa"
+              placeholder={t.roomNamePlaceholder}
               className="h-10"
             />
             <Button type="submit" disabled={pending || name.trim() === ""} className="h-10 shrink-0">
-              Dodaj salę
+              {t.addRoom}
             </Button>
           </div>
         </form>

@@ -5,10 +5,12 @@ import { GuestManager } from "@/components/guests/GuestManager";
 import Layout from "@/layouts/Layout.astro";
 import { accessFor, organizerPath } from "@/lib/access";
 import { getDb } from "@/lib/db";
-import { getGuestList } from "@/lib/guests";
+import { getGuestList, guestManagerMessages } from "@/lib/guests";
 
 // Organizer guest page (S-01, FR-001..FR-003): guest list, inseparable groups and absences.
 // The middleware has already checked the key; this is the second, role-specific check.
+const locale = Astro.locals.locale;
+const t = guestManagerMessages(locale);
 const access = accessFor(Astro.locals, "organizer");
 const db = access ? getDb() : null;
 if (!access || !db) {
@@ -27,23 +29,20 @@ const view =
 ---
 
 {view ? (
-  <Layout title={`Goście i grupy — ${view.name}`}>
+  <Layout title={t.pageTitle(view.name)}>
     <main class="mx-auto flex max-w-3xl flex-col gap-6 p-4 sm:p-8">
       <header class="flex flex-col gap-2">
         <a
           href={view.panelPath}
           class="self-start py-2 text-sm text-muted-foreground underline-offset-4 hover:underline"
         >
-          ← Panel organizatora
+          {t.backToPanel}
         </a>
-        <h1 class="text-3xl font-bold">Goście i grupy</h1>
-        <p class="text-sm text-muted-foreground">
-          Wyświetlana nazwa to imię lub ksywka, którą zobaczą wszyscy na TV i karteczkach. Pary i grupy zawsze siedzą
-          razem; nieobecni nie dostaną miejsca.
-        </p>
+        <h1 class="text-3xl font-bold">{t.heading}</h1>
+        <p class="text-sm text-muted-foreground">{t.intro}</p>
       </header>
-      <OfflineSync client:load apiBase={view.apiBase} />
-      <GuestManager client:load apiBase={view.apiBase} initialList={view.list} />
+      <OfflineSync client:load apiBase={view.apiBase} locale={locale} />
+      <GuestManager client:load apiBase={view.apiBase} initialList={view.list} locale={locale} />
     </main>
   </Layout>
 ) : (

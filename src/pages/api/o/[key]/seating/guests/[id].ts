@@ -3,17 +3,16 @@ import { z } from "astro/zod";
 import { jsonError, jsonResponse, parseId, readJsonBody } from "@/lib/http";
 import { organizerApi } from "@/lib/organizer-api";
 import {
-  GUEST_NOT_FOUND_MESSAGE,
-  NOT_SEATED_MESSAGE,
   getSeatingBoard,
   guestPinnedMessage,
   seatGuest,
   seatOutOfRangeMessage,
   seatPinnedMessage,
+  seatingMessages,
   setPinned,
   unseatGuest,
 } from "@/lib/seating";
-import { TABLE_NOT_FOUND_MESSAGE } from "@/lib/venue";
+import { venueMessages } from "@/lib/venue";
 
 export const prerender = false;
 
@@ -37,7 +36,7 @@ export const PUT: APIRoute = async ({ locals, params, request }) => {
   }
   const guestId = parseId(params.id);
   if (guestId === null) {
-    return jsonError(404, GUEST_NOT_FOUND_MESSAGE);
+    return jsonError(404, seatingMessages(locals.locale).guestNotFound);
   }
   const body = await readJsonBody(request, SeatBody, locals.locale);
   if (!body.ok) {
@@ -47,15 +46,15 @@ export const PUT: APIRoute = async ({ locals, params, request }) => {
   const result = await seatGuest(api.db, guestId, body.data.tableId, body.data.seat);
   switch (result.status) {
     case "guest-not-found":
-      return jsonError(404, GUEST_NOT_FOUND_MESSAGE);
+      return jsonError(404, seatingMessages(locals.locale).guestNotFound);
     case "table-not-found":
-      return jsonError(404, TABLE_NOT_FOUND_MESSAGE);
+      return jsonError(404, venueMessages(locals.locale).tableNotFound);
     case "seat-out-of-range":
-      return jsonError(400, seatOutOfRangeMessage(body.data.seat));
+      return jsonError(400, seatOutOfRangeMessage(body.data.seat, locals.locale));
     case "guest-pinned":
-      return jsonError(409, guestPinnedMessage(result.guestName));
+      return jsonError(409, guestPinnedMessage(result.guestName, locals.locale));
     case "seat-pinned":
-      return jsonError(409, seatPinnedMessage(result.occupantName));
+      return jsonError(409, seatPinnedMessage(result.occupantName, locals.locale));
     case "seated":
       return jsonResponse(await getSeatingBoard(api.db));
   }
@@ -68,7 +67,7 @@ export const PATCH: APIRoute = async ({ locals, params, request }) => {
   }
   const guestId = parseId(params.id);
   if (guestId === null) {
-    return jsonError(404, GUEST_NOT_FOUND_MESSAGE);
+    return jsonError(404, seatingMessages(locals.locale).guestNotFound);
   }
   const body = await readJsonBody(request, PinBody, locals.locale);
   if (!body.ok) {
@@ -78,9 +77,9 @@ export const PATCH: APIRoute = async ({ locals, params, request }) => {
   const result = await setPinned(api.db, guestId, body.data.pinned);
   switch (result.status) {
     case "guest-not-found":
-      return jsonError(404, GUEST_NOT_FOUND_MESSAGE);
+      return jsonError(404, seatingMessages(locals.locale).guestNotFound);
     case "not-seated":
-      return jsonError(409, NOT_SEATED_MESSAGE);
+      return jsonError(409, seatingMessages(locals.locale).notSeated);
     case "updated":
       return jsonResponse(await getSeatingBoard(api.db));
   }
@@ -93,15 +92,15 @@ export const DELETE: APIRoute = async ({ locals, params }) => {
   }
   const guestId = parseId(params.id);
   if (guestId === null) {
-    return jsonError(404, GUEST_NOT_FOUND_MESSAGE);
+    return jsonError(404, seatingMessages(locals.locale).guestNotFound);
   }
 
   const result = await unseatGuest(api.db, guestId);
   switch (result.status) {
     case "guest-not-found":
-      return jsonError(404, GUEST_NOT_FOUND_MESSAGE);
+      return jsonError(404, seatingMessages(locals.locale).guestNotFound);
     case "pinned":
-      return jsonError(409, guestPinnedMessage(result.guestName));
+      return jsonError(409, guestPinnedMessage(result.guestName, locals.locale));
     case "unseated":
       return jsonResponse(await getSeatingBoard(api.db));
   }

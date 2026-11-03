@@ -7,9 +7,12 @@ import Layout from "@/layouts/Layout.astro";
 import { accessFor, organizerPath, restaurantPath } from "@/lib/access";
 import { getDb } from "@/lib/db";
 import { getOrderBoard } from "@/lib/orders";
+import { orderMessages } from "@/lib/orders/messages";
 
 // Organizer order page (restaurant-orders): the evening's food order with prices, totals, „Wydane” ticks and where
 // each line is served. The middleware has already checked the key; this is the second, role-specific check.
+const locale = Astro.locals.locale;
+const t = orderMessages(locale);
 const access = accessFor(Astro.locals, "organizer");
 const db = access ? getDb() : null;
 if (!access || !db) {
@@ -30,24 +33,27 @@ const view =
 ---
 
 {view ? (
-  <Layout title={`Zamówienia i restauracja — ${view.name}`}>
+  <Layout title={t.pageTitle(view.name)}>
     <main class="mx-auto flex max-w-3xl flex-col gap-6 p-4 sm:p-8">
       <header class="flex flex-col gap-2">
         <a
           href={view.panelPath}
           class="self-start py-2 text-sm text-muted-foreground underline-offset-4 hover:underline"
         >
-          ← Panel organizatora
+          {t.backToPanel}
         </a>
-        <h1 class="text-3xl font-bold">Zamówienia i restauracja</h1>
-        <p class="text-sm text-muted-foreground">
-          Co kto zamówił, za ile i co już wydano. Restauracja dostaje osobny link: widzi listę do przygotowania i gdzie
-          co podać, bez cen.
-        </p>
+        <h1 class="text-3xl font-bold">{t.heading}</h1>
+        <p class="text-sm text-muted-foreground">{t.intro}</p>
       </header>
-      <OfflineSync client:load apiBase={view.apiBase} />
-      <RestaurantLinkCard client:load apiBase={view.apiBase} origin={view.origin} initialPath={view.restaurantPath} />
-      <OrderManager client:load apiBase={view.apiBase} initial={view.board} />
+      <OfflineSync client:load apiBase={view.apiBase} locale={locale} />
+      <RestaurantLinkCard
+        client:load
+        apiBase={view.apiBase}
+        origin={view.origin}
+        initialPath={view.restaurantPath}
+        locale={locale}
+      />
+      <OrderManager client:load apiBase={view.apiBase} initial={view.board} locale={locale} />
     </main>
   </Layout>
 ) : (

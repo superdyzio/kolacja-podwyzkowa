@@ -93,6 +93,23 @@ describe("describeWarnings", () => {
       "Brakuje 1 miejsca dla obecnych gości.",
     ]);
   });
+
+  it("writes the lines in English", () => {
+    expect(
+      describeWarnings(
+        {
+          groups: [{ groupId: 2, memberNames: ["Ola", "Ewa", "Jan"], problem: "partly-seated" }],
+          absentSeated: ["Kasia"],
+          missingSeats: 2,
+        },
+        "en",
+      ),
+    ).toEqual([
+      "Ola, Ewa and Jan — not all of them have a seat.",
+      "Absent guests with a seat (they will not appear on the TV): Kasia.",
+      "2 seats short for the present guests.",
+    ]);
+  });
 });
 
 describe("summaries and labels", () => {
@@ -115,6 +132,20 @@ describe("summaries and labels", () => {
 
   it("formats times in Polish time", () => {
     expect(formatPublishedAt("2026-11-08T08:05:00.000Z")).toBe("8.11, 09:05");
+    expect(formatPublishedAt("2026-11-08T08:05:00.000Z", "en")).toBe("08/11, 09:05");
+  });
+
+  it("formats the summary and labels in English", () => {
+    const summary = { present: 38, seatedPresent: 32, seats: 52, pinned: 1 };
+    const published = { snapshotId: 3, publishedAt: "2026-10-27T18:42:00.000Z" };
+    expect(formatSeatingSummary(summary, published, true, "en")).toBe(
+      "32 of 38 present guests have a seat · published 27/10, 19:42",
+    );
+    expect(formatSeatingSummary(summary, null, false, "en")).toBe(
+      "32 of 38 present guests have a seat · not published yet",
+    );
+    expect(seatLabel("Okno", 2, "en")).toBe("Okno, seat 2");
+    expect(guestPinnedMessage("Ola", "en")).toBe("“Ola” has a pinned seat — unpin it first.");
   });
 
   it("builds labels and messages", () => {

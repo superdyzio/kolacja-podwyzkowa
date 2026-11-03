@@ -66,6 +66,16 @@ describe("describeTvSpotlight", () => {
     );
   });
 
+  it("says what the TV shows in English (i18n)", () => {
+    expect(describeTvSpotlight(null, "en")).toBe("The TV shows the seating plan.");
+    expect(describeTvSpotlight({ kind: "question", text: "Kim chciałeś zostać?", shownAt: SHOWN_AT }, "en")).toBe(
+      "The TV shows the question: “Kim chciałeś zostać?”",
+    );
+    expect(describeTvSpotlight({ kind: "person", text: "Ola", shownAt: SHOWN_AT }, "en")).toBe(
+      "The TV shows the drawn person: Ola",
+    );
+  });
+
   it("has a caption for every kind", () => {
     expect(Object.keys(TV_SPOTLIGHT_LABELS).sort()).toEqual(["person", "question", "topic"]);
     expect(isTvSpotlightKind("person")).toBe(true);

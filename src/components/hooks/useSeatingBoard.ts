@@ -1,17 +1,11 @@
 import { useCallback, useState } from "react";
+import type { Locale } from "@/lib/i18n";
 import { displacedGuest, lostSeatMessage } from "@/lib/seating/board";
-import {
-  DRAW_INFEASIBLE_MESSAGE,
-  createRandom,
-  describeDrawProblem,
-  drawSeating,
-  drawnMessage,
-  randomSeed,
-} from "@/lib/seating/draw";
+import { createRandom, describeDrawProblem, drawSeating, drawnMessage, randomSeed } from "@/lib/seating/draw";
+import { seatingMessages } from "@/lib/seating/messages";
 import { repeatedNeighbours } from "@/lib/seating/neighbours";
-import { PUBLISHED_MESSAGE, PUBLISH_UNCHANGED_MESSAGE } from "@/lib/seating/rules";
 import type { NeighbourHistoryDto, SeatingBoardDto } from "@/types";
-import { NETWORK_FAILURE, readJson, toFailure, type ApiFailure } from "./api-failure";
+import { networkFailure, readJson, toFailure, type ApiFailure } from "./api-failure";
 
 // Board state of the seating page. Every change goes through the API, and the board is replaced with the one the
 // server returns, so the page never drifts from the database (or from what the TV was last given).
@@ -76,7 +70,12 @@ function nextFrame(): Promise<void> {
   });
 }
 
-export function useSeatingBoard(apiBase: string, initialBoard: SeatingBoardDto, initialHistory: NeighbourHistoryDto) {
+export function useSeatingBoard(
+  apiBase: string,
+  initialBoard: SeatingBoardDto,
+  initialHistory: NeighbourHistoryDto,
+  locale: Locale,
+) {
   const [board, setBoard] = useState<SeatingBoardDto>(initialBoard);
   const [history, setHistory] = useState<NeighbourHistoryDto>(initialHistory);
   const [origin, setOrigin] = useState<BoardOrigin>(null);
@@ -101,7 +100,7 @@ export function useSeatingBoard(apiBase: string, initialBoard: SeatingBoardDto, 
           setOrigin(null);
           return { board: next, status: response.status, data };
         }
-        setFailure(toFailure(data));
+        setFailure(toFailure(data, locale));
         // The board may be stale (changed in another tab, a guest or table deleted meanwhile, a table with fewer
         // seats now): reload it so the next try starts from the truth.
         if (response.status === 400 || response.status === 404 || response.status === 409) {
@@ -112,11 +111,11 @@ export function useSeatingBoard(apiBase: string, initialBoard: SeatingBoardDto, 
         }
         return null;
       } catch {
-        setFailure(NETWORK_FAILURE);
+        setFailure(networkFailure(locale));
         return null;
       }
     },
-    [apiBase],
+    [apiBase, locale],
   );
 
   const run = useCallback(
@@ -144,11 +143,11 @@ export function useSeatingBoard(apiBase: string, initialBoard: SeatingBoardDto, 
       const lost = displacedGuest(before, saved.board.assignments, { guestId, tableId, seat: seatNumber });
       if (lost !== null) {
         const name = saved.board.guestList.guests.find((guest) => guest.id === lost)?.displayName ?? "?";
-        setNotice(lostSeatMessage(name));
+        setNotice(lostSeatMessage(name, locale));
       }
       return true;
     },
-    [board.assignments, run],
+    [board.assignments, locale, run],
   );
 
   const unseat = useCallback(async (guestId: number) => (await run("DELETE", `/guests/${guestId}`)) !== null, [run]);
@@ -168,14 +167,15 @@ export function useSeatingBoard(apiBase: string, initialBoard: SeatingBoardDto, 
   const publish = useCallback(async () => {
     const saved = await run("POST", "/publish");
     if (saved) {
-      setNotice(saved.status === 201 ? PUBLISHED_MESSAGE : PUBLISH_UNCHANGED_MESSAGE);
+      const messages = seatingMessages(locale);
+      setNotice(saved.status === 201 ? messages.published : messages.publishUnchanged);
       if (saved.status === 201) {
         // The new snapshot joins the history the next draw avoids.
         await refreshHistory();
       }
     }
     return saved !== null;
-  }, [run, refreshHistory]);
+  }, [locale, run, refreshHistory]);
 
   // Draws a new arrangement from fresh data and saves it as the working arrangement. An infeasible draw explains
   // why and changes nothing.
@@ -191,7 +191,7 @@ export function useSeatingBoard(apiBase: string, initialBoard: SeatingBoardDto, 
       ]);
       const [freshBoard, freshHistory] = await Promise.all([readJson(boardResponse), readJson(historyResponse)]);
       if (!isBoard(freshBoard) || !isHistory(freshHistory)) {
-        setFailure(toFailure(isBoard(freshBoard) ? freshHistory : freshBoard));
+        setFailure(toFailure(isBoard(freshBoard) ? freshHistory : freshBoard, locale));
         return false;
       }
       setBoard(pick(freshBoard));
@@ -200,7 +200,10 @@ export function useSeatingBoard(apiBase: string, initialBoard: SeatingBoardDto, 
 
       const result = drawSeating(freshBoard, freshHistory.pairs, { random: createRandom(randomSeed()) });
       if (result.status === "infeasible") {
-        setFailure({ message: DRAW_INFEASIBLE_MESSAGE, details: result.problems.map(describeDrawProblem) });
+        setFailure({
+          message: seatingMessages(locale).drawInfeasible,
+          details: result.problems.map((problem) => describeDrawProblem(problem, locale)),
+        });
         return false;
       }
       const saved = await send("POST", "/draft", { seats: result.seats });
@@ -208,16 +211,16 @@ export function useSeatingBoard(apiBase: string, initialBoard: SeatingBoardDto, 
         return false;
       }
       setOrigin("draw");
-      setNotice(drawnMessage(repeatedNeighbours(saved.board, freshHistory.pairs).length));
+      setNotice(drawnMessage(repeatedNeighbours(saved.board, freshHistory.pairs).length, locale));
       return true;
     } catch {
-      setFailure(NETWORK_FAILURE);
+      setFailure(networkFailure(locale));
       return false;
     } finally {
       setPending(false);
       setDrawing(false);
     }
-  }, [apiBase, send]);
+  }, [apiBase, locale, send]);
 
   // Puts a published arrangement back into the working arrangement (not published until the organizer says so).
   const restore = useCallback(

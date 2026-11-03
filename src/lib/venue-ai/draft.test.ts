@@ -48,6 +48,16 @@ describe("layout proposal review", () => {
     expect(describeCost(null)).toBe("Koszt odczytu nieznany.");
   });
 
+  it("words the lines in English", () => {
+    expect(describeUpdate(answer.proposal.updates[0], "en")).toBe("Stolik 3: moved, rotated 90°");
+    expect(describeRoomOutline("Sala A", null, "en")).toBe("Sala A: outline");
+    expect(describePitch(answer, "en")).toBe("Chair scale: 3.5% → 4.0%");
+    expect(describeCost(null, "en")).toBe("Cost of the read unknown.");
+    expect(describeCost(21_000_000, "en")).toMatch(
+      /^Cost of the read: ≈ .*USD \(not counted in the AI topics' cost\)\.$/,
+    );
+  });
+
   it("sends every line by default", () => {
     expect(applyBody(answer, EMPTY_SELECTION)).toEqual({
       tables: [

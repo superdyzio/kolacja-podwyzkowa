@@ -1,7 +1,8 @@
 import { useCallback, useState } from "react";
 import { isTvSpotlightKind } from "@/lib/tv-spotlight/rules";
+import type { Locale } from "@/lib/i18n";
 import type { TvSpotlightDto } from "@/types";
-import { NETWORK_FAILURE, readJson, toFailure, type ApiFailure } from "./api-failure";
+import { networkFailure, readJson, toFailure, type ApiFailure } from "./api-failure";
 
 // The organizer's TV controls (tv-spotlight): what is on the TV over the seating, and the three actions — show a
 // question or an AI topic, draw a person, hide. Every answer is { spotlight } and replaces the state.
@@ -23,7 +24,7 @@ function parseSpotlightAnswer(data: unknown): { spotlight: TvSpotlightDto | null
     : null;
 }
 
-export function useTvSpotlight(apiBase: string, initial: TvSpotlightDto | null) {
+export function useTvSpotlight(apiBase: string, initial: TvSpotlightDto | null, locale: Locale) {
   const [spotlight, setSpotlight] = useState(initial);
   const [pending, setPending] = useState(false);
   const [failure, setFailure] = useState<ApiFailure | null>(null);
@@ -44,15 +45,15 @@ export function useTvSpotlight(apiBase: string, initial: TvSpotlightDto | null) 
         if (answer) {
           setSpotlight(answer.spotlight);
         } else {
-          setFailure(toFailure(data));
+          setFailure(toFailure(data, locale));
         }
       } catch {
-        setFailure(NETWORK_FAILURE);
+        setFailure(networkFailure(locale));
       } finally {
         setPending(false);
       }
     },
-    [url],
+    [locale, url],
   );
 
   const show = useCallback((kind: "question" | "topic", text: string) => send("PUT", "", { kind, text }), [send]);

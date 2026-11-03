@@ -1,6 +1,7 @@
 import { useId } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import type { Locale } from "@/lib/i18n";
 import {
   PITCH_KEY,
   applyBody,
@@ -21,6 +22,7 @@ import {
   type ApplyLayoutBody,
   type ProposalSelection,
 } from "@/lib/venue-ai/draft";
+import { venueAiMessages } from "@/lib/venue-ai/messages";
 import { MAX_SEATS, MAX_TABLE_NAME_LENGTH, MIN_SEATS } from "@/lib/venue/rules";
 import type { RoomDto, VenueLayoutProposalAnswerDto } from "@/types";
 
@@ -32,6 +34,7 @@ interface Props {
   pending: boolean;
   onApply: (body: ApplyLayoutBody) => void;
   onDiscard: () => void;
+  locale: Locale;
 }
 
 function Line({ checked, onToggle, children }: { checked: boolean; onToggle: () => void; children: React.ReactNode }) {
@@ -53,7 +56,17 @@ function Line({ checked, onToggle, children }: { checked: boolean; onToggle: () 
 // The draft of an AI layout read (venue-drawing): one line per change, all ticked; the kept lines show dashed on the
 // plan. New tables can be renamed, moved to another room and given another seat count before applying. Applying
 // changes only the working venue; the TV and phones follow after „Opublikuj” on the seating page.
-export function LayoutProposal({ answer, rooms, selection, onSelectionChange, pending, onApply, onDiscard }: Props) {
+export function LayoutProposal({
+  answer,
+  rooms,
+  selection,
+  onSelectionChange,
+  pending,
+  onApply,
+  onDiscard,
+  locale,
+}: Props) {
+  const t = venueAiMessages(locale);
   const formId = useId();
   const { proposal } = answer;
   const kept = (key: string) => !selection.dropped.has(key);
@@ -73,10 +86,10 @@ export function LayoutProposal({ answer, rooms, selection, onSelectionChange, pe
   return (
     <section aria-labelledby={`${formId}-heading`} className="flex flex-col gap-3 rounded-xl border p-4">
       <h3 id={`${formId}-heading`} className="font-semibold">
-        Propozycja układu z AI
+        {t.heading}
       </h3>
       {nothing ? (
-        <p className="text-sm">AI nie znalazło nic do zmiany.</p>
+        <p className="text-sm">{t.nothingToChange}</p>
       ) : (
         <ul className="flex max-h-[60vh] flex-col gap-2 overflow-y-auto">
           {proposal.updates.map((update) => (
@@ -87,7 +100,7 @@ export function LayoutProposal({ answer, rooms, selection, onSelectionChange, pe
                 toggle(updateKey(update));
               }}
             >
-              {describeUpdate(update)}
+              {describeUpdate(update, locale)}
             </Line>
           ))}
           {proposal.newTables.map((table, index) => {
@@ -105,14 +118,12 @@ export function LayoutProposal({ answer, rooms, selection, onSelectionChange, pe
                     }}
                     className="accent-primary mt-0.5 size-4 shrink-0"
                   />
-                  <span>
-                    Nowy stolik „{values.name}” ({describeSeats(values.seatCount)}, {room?.name ?? "?"})
-                  </span>
+                  <span>{t.newTable(values.name, describeSeats(values.seatCount, locale), room?.name ?? "?")}</span>
                 </label>
                 {kept(key) && (
                   <div className="grid grid-cols-[1fr_4.5rem] gap-2 pl-6">
                     <Input
-                      aria-label="Nazwa nowego stolika"
+                      aria-label={t.newTableName}
                       value={values.name}
                       maxLength={MAX_TABLE_NAME_LENGTH}
                       onChange={(event) => {
@@ -121,7 +132,7 @@ export function LayoutProposal({ answer, rooms, selection, onSelectionChange, pe
                       className="h-9"
                     />
                     <Input
-                      aria-label="Liczba miejsc nowego stolika"
+                      aria-label={t.newTableSeats}
                       type="number"
                       inputMode="numeric"
                       min={MIN_SEATS}
@@ -135,7 +146,7 @@ export function LayoutProposal({ answer, rooms, selection, onSelectionChange, pe
                       className="h-9"
                     />
                     <select
-                      aria-label="Sala nowego stolika"
+                      aria-label={t.newTableRoom}
                       value={values.roomId}
                       onChange={(event) => {
                         onSelectionChange(
@@ -163,7 +174,7 @@ export function LayoutProposal({ answer, rooms, selection, onSelectionChange, pe
                 toggle(roomKey(room.roomId));
               }}
             >
-              {describeRoomOutline(room.name, room.previous)}
+              {describeRoomOutline(room.name, room.previous, locale)}
             </Line>
           ))}
           {pitchChanged(answer) && (
@@ -173,19 +184,14 @@ export function LayoutProposal({ answer, rooms, selection, onSelectionChange, pe
                 toggle(PITCH_KEY);
               }}
             >
-              {describePitch(answer)}
+              {describePitch(answer, locale)}
             </Line>
           )}
         </ul>
       )}
-      {proposal.skipped > 0 && (
-        <p className="text-muted-foreground text-xs">
-          Pominięto stoliki bez sali albo ponad limit: {proposal.skipped}.
-        </p>
-      )}
+      {proposal.skipped > 0 && <p className="text-muted-foreground text-xs">{t.skipped(proposal.skipped)}</p>}
       <p className="text-muted-foreground text-xs">
-        Przerywane linie na planie pokazują zaznaczone zmiany. Przypisania gości do miejsc zostają. TV i telefony pokażą
-        nowy rysunek po publikacji rozsadzenia. {describeCost(answer.costNanoUsd)}
+        {t.explanation} {describeCost(answer.costNanoUsd, locale)}
       </p>
       <div className="flex flex-wrap gap-2">
         <Button
@@ -196,10 +202,10 @@ export function LayoutProposal({ answer, rooms, selection, onSelectionChange, pe
             onApply(body);
           }}
         >
-          Zastosuj zaznaczone
+          {t.apply}
         </Button>
         <Button type="button" variant="ghost" className="h-10" onClick={onDiscard}>
-          Odrzuć
+          {t.discard}
         </Button>
       </div>
     </section>

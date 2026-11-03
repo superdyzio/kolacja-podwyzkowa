@@ -1,6 +1,7 @@
 import { useCallback, useState } from "react";
+import type { Locale } from "@/lib/i18n";
 import type { GuestLinksDto } from "@/types";
-import { NETWORK_FAILURE, readJson, toFailure, type ApiFailure } from "./api-failure";
+import { networkFailure, readJson, toFailure, type ApiFailure } from "./api-failure";
 
 // State of the organizer's guest links page (S-05). Every change goes through the API and the whole list is replaced
 // with the one the server returns, so the page never drifts from the database.
@@ -20,7 +21,7 @@ function isGuestLinks(data: unknown): data is GuestLinksDto {
   return typeof candidate.enabled === "boolean" && Array.isArray(candidate.guests);
 }
 
-export function useGuestLinks(apiBase: string, initial: GuestLinksDto) {
+export function useGuestLinks(apiBase: string, initial: GuestLinksDto, locale: Locale) {
   const [links, setLinks] = useState<GuestLinksDto>(initial);
   const [pending, setPending] = useState(false);
   const [failure, setFailure] = useState<ApiFailure | null>(null);
@@ -41,7 +42,7 @@ export function useGuestLinks(apiBase: string, initial: GuestLinksDto) {
           setLinks(data);
           return true;
         }
-        setFailure(toFailure(data));
+        setFailure(toFailure(data, locale));
         // The list may be stale (e.g. a guest deleted in another tab): reload it.
         if (response.status === 404) {
           const fresh = await fetch(`${apiBase}/guest-links`).then(readJson, () => null);
@@ -51,13 +52,13 @@ export function useGuestLinks(apiBase: string, initial: GuestLinksDto) {
         }
         return false;
       } catch {
-        setFailure(NETWORK_FAILURE);
+        setFailure(networkFailure(locale));
         return false;
       } finally {
         setPending(false);
       }
     },
-    [apiBase],
+    [apiBase, locale],
   );
 
   const dismissFailure = useCallback(() => {

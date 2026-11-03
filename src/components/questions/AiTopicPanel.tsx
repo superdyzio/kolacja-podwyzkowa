@@ -1,7 +1,9 @@
 import type { ReactNode } from "react";
 import { useAiTopic, type AiTopicCallbacks } from "@/components/hooks/useAiTopic";
 import { Button } from "@/components/ui/button";
-import { QUESTION_CATEGORY_HINTS, QUESTION_CATEGORY_LABELS } from "@/lib/questions/categories";
+import { aiTopicUiMessages } from "@/lib/ai-topics/messages";
+import type { Locale } from "@/lib/i18n";
+import { questionCategoryHints, questionCategoryLabels } from "@/lib/questions/categories";
 import { CategoryChips } from "./CategoryChips";
 
 interface Props extends AiTopicCallbacks {
@@ -15,9 +17,8 @@ interface Props extends AiTopicCallbacks {
   status?: ReactNode;
   // Extra action under the topic — the organizer's „Pokaż na TV” (tv-spotlight); the guest's phone has none.
   renderAction?: (text: string) => ReactNode;
+  locale: Locale;
 }
-
-const ALL_HINT = "Kategorię wybierze AI.";
 
 // The AI topic generator (S-08, US-03, FR-016), the same on the guest's phone and the organizer's questions page:
 // pick a category (or all), generate, read the topic in large type. Only this browser sees the topic.
@@ -29,18 +30,30 @@ export function AiTopicPanel({
   onAnswer,
   onNoAccess,
   renderAction,
+  locale,
 }: Props) {
-  const { category, setCategory, topic, message, pending, ready, generate } = useAiTopic(generateUrl, storageKey, {
-    onAnswer,
-    onNoAccess,
-  });
+  const t = aiTopicUiMessages(locale);
+  const { category, setCategory, topic, message, pending, ready, generate } = useAiTopic(
+    generateUrl,
+    storageKey,
+    locale,
+    { onAnswer, onNoAccess },
+  );
   const blocked = blockedMessage !== null;
 
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-col gap-2">
-        <CategoryChips label="Kategoria tematu" value={category} onChange={setCategory} disabled={pending} />
-        <p className="text-muted-foreground text-sm">{category ? QUESTION_CATEGORY_HINTS[category] : ALL_HINT}</p>
+        <CategoryChips
+          label={t.categoryLabel}
+          value={category}
+          onChange={setCategory}
+          disabled={pending}
+          locale={locale}
+        />
+        <p className="text-muted-foreground text-sm">
+          {category ? questionCategoryHints(locale)[category] : t.allHint}
+        </p>
       </div>
 
       <div className="flex flex-col gap-2">
@@ -50,7 +63,7 @@ export function AiTopicPanel({
           disabled={!ready || pending || blocked}
           onClick={() => void generate()}
         >
-          {pending ? "Generuję…" : topic ? "Wygeneruj kolejny" : "Wygeneruj temat z AI"}
+          {pending ? t.generating : topic ? t.generateNext : t.generate}
         </Button>
         {status && <p className="text-muted-foreground text-center text-sm">{status}</p>}
       </div>
@@ -64,7 +77,7 @@ export function AiTopicPanel({
         {topic && (
           <figure className="flex flex-col gap-2 rounded-2xl border-2 p-5">
             <figcaption className="text-muted-foreground text-sm font-medium tracking-wide uppercase">
-              {QUESTION_CATEGORY_LABELS[topic.category]} · temat od AI
+              {t.topicCaption(questionCategoryLabels(locale)[topic.category])}
             </figcaption>
             <blockquote className="text-2xl leading-snug font-semibold text-balance">{topic.text}</blockquote>
           </figure>

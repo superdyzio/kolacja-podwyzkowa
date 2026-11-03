@@ -1,11 +1,11 @@
 import { useCallback, useState, useSyncExternalStore } from "react";
 import { readJson, toFailure } from "@/components/hooks/api-failure";
-import { EMPTY_BASE_MESSAGE, EMPTY_CATEGORY_MESSAGE, pushRecent } from "@/lib/questions/draw";
+import type { Locale } from "@/lib/i18n";
+import { pushRecent } from "@/lib/questions/draw";
 import { EMPTY_DRAW_MEMORY, parseDrawAnswer, type DrawMemory } from "@/lib/questions/draw-memory";
+import { questionMessages, questionUiMessages } from "@/lib/questions/messages";
 import type { QuestionCategory } from "@/types";
 import { readDrawMemory, subscribeDrawMemory, writeDrawMemory } from "./draw-memory-store";
-
-const OFFLINE_MESSAGE = "Brak połączenia — spróbuj ponownie.";
 
 const noSubscription = () => () => undefined;
 
@@ -16,7 +16,8 @@ const noSubscription = () => () => undefined;
 // shared.
 //
 // `onNoAccess` runs on a 404 (access switched off or the link revoked): the guest page refreshes its shared state.
-export function useQuestionDraw(drawUrl: string, storageKey: string, onNoAccess?: () => void) {
+// Messages are in `locale` (i18n).
+export function useQuestionDraw(drawUrl: string, storageKey: string, locale: Locale, onNoAccess?: () => void) {
   const subscribe = useCallback((listener: () => void) => subscribeDrawMemory(storageKey, listener), [storageKey]);
   const getSnapshot = useCallback(() => readDrawMemory(storageKey), [storageKey]);
   const memory = useSyncExternalStore(subscribe, getSnapshot, () => EMPTY_DRAW_MEMORY);
@@ -62,21 +63,22 @@ export function useQuestionDraw(drawUrl: string, storageKey: string, onNoAccess?
           update((current) => ({ ...current, recent: pushRecent(current.recent, question.id), last: question }));
         } else {
           update((current) => ({ ...current, last: null }));
-          setMessage(category ? EMPTY_CATEGORY_MESSAGE : EMPTY_BASE_MESSAGE);
+          const t = questionMessages(locale);
+          setMessage(category ? t.emptyCategory : t.emptyBase);
         }
         return;
       }
-      setMessage(toFailure(data).message);
+      setMessage(toFailure(data, locale).message);
       if (response.status === 404) {
         onNoAccess?.();
       }
     } catch {
       // The previous question stays on screen.
-      setMessage(OFFLINE_MESSAGE);
+      setMessage(questionUiMessages(locale).offline);
     } finally {
       setPending(false);
     }
-  }, [drawUrl, onNoAccess, storageKey, update]);
+  }, [drawUrl, locale, onNoAccess, storageKey, update]);
 
   return { category: memory.category, setCategory, question: memory.last, message, pending, ready, draw };
 }

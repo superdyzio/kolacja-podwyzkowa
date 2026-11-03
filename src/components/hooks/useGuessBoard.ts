@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import type { Locale } from "@/lib/i18n";
 import type { GuessBoardDto } from "@/types";
-import { NETWORK_FAILURE, readJson, toFailure, type ApiFailure } from "./api-failure";
+import { networkFailure, readJson, toFailure, type ApiFailure } from "./api-failure";
 
 // State of the organizer's guesses page (S-06). Every change goes through the API and the whole board is replaced
 // with the one the server returns. Guests save from their phones meanwhile, so the board is also re-read every 5 s
@@ -33,7 +34,7 @@ export function isGuessBoard(data: unknown): data is GuessBoardDto {
   );
 }
 
-export function useGuessBoard(apiBase: string, initial: GuessBoardDto) {
+export function useGuessBoard(apiBase: string, initial: GuessBoardDto, locale: Locale) {
   const [board, setBoard] = useState<GuessBoardDto>(initial);
   const [pending, setPending] = useState(false);
   const [failure, setFailure] = useState<ApiFailure | null>(null);
@@ -125,7 +126,7 @@ export function useGuessBoard(apiBase: string, initial: GuessBoardDto) {
           setFailures(0);
           return true;
         }
-        setFailure(toFailure(data));
+        setFailure(toFailure(data, locale));
         // The board may be stale (e.g. a guest deleted in another tab): reload it.
         if (response.status === 404) {
           const fresh = await fetch(`${apiBase}/guesses`, { cache: "no-store" }).then(readJson, () => null);
@@ -135,14 +136,14 @@ export function useGuessBoard(apiBase: string, initial: GuessBoardDto) {
         }
         return false;
       } catch {
-        setFailure(NETWORK_FAILURE);
+        setFailure(networkFailure(locale));
         return false;
       } finally {
         saving.current = false;
         setPending(false);
       }
     },
-    [apiBase],
+    [apiBase, locale],
   );
 
   const dismissFailure = useCallback(() => {

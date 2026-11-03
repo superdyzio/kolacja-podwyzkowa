@@ -3,7 +3,8 @@ import type { APIRoute } from "astro";
 import { z } from "astro/zod";
 import { getGuestState } from "@/lib/guest-links";
 import { guestApi } from "@/lib/guest-api";
-import { GUESS_INTAKE_CLOSED_MESSAGE, parseAmount, submitGuestGuess } from "@/lib/guesses";
+import { parseAmount, submitGuestGuess } from "@/lib/guesses";
+import { guessMessages } from "@/lib/guesses/messages";
 import { jsonError, jsonResponse, readJsonBody } from "@/lib/http";
 
 export const prerender = false;
@@ -24,7 +25,7 @@ export const PUT: APIRoute = async ({ locals, request }) => {
   if (!body.ok) {
     return body.response;
   }
-  const parsed = parseAmount(body.data.amount);
+  const parsed = parseAmount(body.data.amount, locals.locale);
   if (!parsed.ok) {
     return jsonError(400, parsed.message);
   }
@@ -33,7 +34,7 @@ export const PUT: APIRoute = async ({ locals, request }) => {
   const result = await submitGuestGuess(api.db, guest.id, parsed.grosze);
   switch (result.status) {
     case "closed":
-      return jsonError(409, GUESS_INTAKE_CLOSED_MESSAGE);
+      return jsonError(409, guessMessages(locals.locale).intakeClosed);
     case "not-found":
       return jsonError(404, noAccessMessages(locals.locale).title);
     case "saved":

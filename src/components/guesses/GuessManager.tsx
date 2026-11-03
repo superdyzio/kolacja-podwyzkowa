@@ -5,6 +5,8 @@ import { useOfflineSync } from "@/components/hooks/useOfflineSync";
 import { OfflineFallback } from "@/components/offline/OfflineFallback";
 import { Button } from "@/components/ui/button";
 import { formatAmount } from "@/lib/guesses/amount";
+import { guessUiMessages } from "@/lib/guesses/messages";
+import type { Locale } from "@/lib/i18n";
 import type { GuessBoardDto, GuessGuestDto, GuessRankingDto } from "@/types";
 import { AmountForm } from "./AmountForm";
 import { GuessGuestRow } from "./GuessGuestRow";
@@ -17,19 +19,21 @@ interface Props {
   // Organizer guest list page (when there are no guests yet).
   guestsPath: string;
   initial: GuessBoardDto;
+  locale: Locale;
 }
 
-function deleteQuestion(guest: GuessGuestDto): string {
+function deleteQuestion(guest: GuessGuestDto, locale: Locale): string {
   const amount = guest.amountGrosze === null ? "" : ` (${formatAmount(guest.amountGrosze)})`;
-  return `Usunąć strzał „${guest.displayName}”${amount}? Gość będzie mógł oddać nowy, dopóki przyjmowanie jest otwarte.`;
+  return guessUiMessages(locale).deleteConfirm(guest.displayName, amount);
 }
 
 // Organizer guesses page island (S-06, FR-018..FR-020), ordered for the evening's last act (< 1 minute from closing
 // intake to reading the last place): intake, the correct amount, the ranking with „Czytaj od końca”, who is missing,
 // then every guest with entering/correcting/deleting a guess for them. The board refreshes every 5 s while visible.
 // Every board the server confirms is also saved on this device for the offline readout (S-09).
-export function GuessManager({ apiBase, guestsPath, initial }: Props) {
-  const { board, pending, failure, offline, send, dismissFailure } = useGuessBoard(apiBase, initial);
+export function GuessManager({ apiBase, guestsPath, initial, locale }: Props) {
+  const t = guessUiMessages(locale);
+  const { board, pending, failure, offline, send, dismissFailure } = useGuessBoard(apiBase, initial, locale);
   const { offline: syncOffline } = useOfflineSync(apiBase);
   const [editingGuestId, setEditingGuestId] = useState<number | null>(null);
   const [editingCorrect, setEditingCorrect] = useState(false);
@@ -70,7 +74,7 @@ export function GuessManager({ apiBase, guestsPath, initial }: Props) {
   }
 
   async function removeGuess(guest: GuessGuestDto) {
-    if (!window.confirm(deleteQuestion(guest))) {
+    if (!window.confirm(deleteQuestion(guest, locale))) {
       return;
     }
     await send({ method: "DELETE", path: `/guesses/${guest.id}` });
@@ -82,27 +86,21 @@ export function GuessManager({ apiBase, guestsPath, initial }: Props) {
         <div role="alert" className="border-destructive/50 bg-destructive/5 flex flex-col gap-2 rounded-lg border p-3">
           <p className="text-destructive font-medium">{failure.message}</p>
           <Button type="button" variant="ghost" className="h-10 self-start" onClick={dismissFailure}>
-            Zamknij
+            {t.close}
           </Button>
         </div>
       )}
-      <OfflineFallback apiBase={apiBase} offline={offline || syncOffline} />
+      <OfflineFallback apiBase={apiBase} offline={offline || syncOffline} locale={locale} />
 
       <section aria-labelledby="intake-heading" className="flex flex-col gap-3 rounded-xl border p-4">
         <h2 id="intake-heading" className="text-lg font-semibold">
-          Przyjmowanie strzałów
+          {t.intakeHeading}
         </h2>
         <p aria-live="polite">
-          <strong>{board.intakeOpen ? "Otwarte" : "Zamknięte"}.</strong>{" "}
-          <span className="text-muted-foreground">
-            {board.intakeOpen
-              ? "Goście wpisują i zmieniają strzały na swoich telefonach."
-              : "Goście widzą tylko swój strzał. Ty nadal możesz wpisywać i poprawiać strzały za gości."}
-          </span>
+          <strong>{board.intakeOpen ? t.intakeOpen : t.intakeClosed}.</strong>{" "}
+          <span className="text-muted-foreground">{board.intakeOpen ? t.intakeOpenText : t.intakeClosedText}</span>
         </p>
-        <p className="text-2xl font-bold">
-          Strzały: {guessCount} z {board.guests.length}
-        </p>
+        <p className="text-2xl font-bold">{t.guessCount(guessCount, board.guests.length)}</p>
         <Button
           type="button"
           variant={board.intakeOpen ? "default" : "outline"}
@@ -110,19 +108,19 @@ export function GuessManager({ apiBase, guestsPath, initial }: Props) {
           disabled={pending}
           onClick={() => void toggleIntake()}
         >
-          {board.intakeOpen ? "Zamknij przyjmowanie" : "Otwórz ponownie"}
+          {board.intakeOpen ? t.closeIntake : t.reopenIntake}
         </Button>
       </section>
 
       <section aria-labelledby="correct-heading" className="flex flex-col gap-3 rounded-xl border p-4">
         <h2 id="correct-heading" className="text-lg font-semibold">
-          Prawidłowa kwota
+          {t.correctHeading}
         </h2>
         {showCorrectForm ? (
           <AmountForm
-            label="Ile kosztowała cała kolacja (z napiwkiem)?"
+            label={t.correctLabel}
             initialGrosze={board.correctAmountGrosze}
-            submitLabel="Zapisz prawidłową kwotę"
+            submitLabel={t.saveCorrect}
             pending={pending}
             autoFocus={editingCorrect}
             onSubmit={saveCorrect}
@@ -133,6 +131,7 @@ export function GuessManager({ apiBase, guestsPath, initial }: Props) {
                   }
                 : undefined
             }
+            locale={locale}
           />
         ) : (
           <div className="flex flex-col gap-3">
@@ -149,7 +148,7 @@ export function GuessManager({ apiBase, guestsPath, initial }: Props) {
                   setEditingCorrect(true);
                 }}
               >
-                Zmień
+                {t.change}
               </Button>
               <Button
                 type="button"
@@ -158,26 +157,26 @@ export function GuessManager({ apiBase, guestsPath, initial }: Props) {
                 disabled={pending}
                 onClick={() => void send({ method: "PATCH", path: "/guesses", body: { correctAmount: null } })}
               >
-                Usuń
+                {t.remove}
               </Button>
             </div>
           </div>
         )}
         {board.correctAmountGrosze !== null && board.intakeOpen && (
           <p role="note" className="rounded-lg border border-amber-500/60 bg-amber-50 p-3 text-sm text-amber-900">
-            Goście nadal mogą zmieniać strzały — ranking może się zmienić. Zamknij przyjmowanie przed odczytem.
+            {t.stillOpenNote}
           </p>
         )}
       </section>
 
       <section aria-labelledby="ranking-heading" className="flex flex-col gap-3">
         <h2 id="ranking-heading" className="text-lg font-semibold">
-          Ranking
+          {t.rankingHeading}
         </h2>
         {board.ranking === null ? (
-          <p className="text-muted-foreground text-sm">Ranking pojawi się po wpisaniu prawidłowej kwoty.</p>
+          <p className="text-muted-foreground text-sm">{t.rankingAfterCorrect}</p>
         ) : board.ranking.entries.length === 0 ? (
-          <p className="text-muted-foreground text-sm">Brak strzałów do rankingu.</p>
+          <p className="text-muted-foreground text-sm">{t.rankingEmpty}</p>
         ) : (
           <>
             <Button
@@ -188,41 +187,38 @@ export function GuessManager({ apiBase, guestsPath, initial }: Props) {
                 setReadout(board.ranking);
               }}
             >
-              Czytaj od końca
+              {t.readFromLast}
             </Button>
-            <RankingTable entries={board.ranking.entries} />
+            <RankingTable entries={board.ranking.entries} locale={locale} />
           </>
         )}
       </section>
 
       <section aria-labelledby="missing-heading" className="flex flex-col gap-3">
         <h2 id="missing-heading" className="text-lg font-semibold">
-          Brakuje strzałów ({board.missing.length})
+          {t.missingHeading(board.missing.length)}
         </h2>
         {board.guests.length === 0 ? (
           <p className="text-muted-foreground text-sm">
-            Nie ma jeszcze gości.{" "}
+            {t.noGuestsYet}{" "}
             <a className="underline" href={guestsPath}>
-              Dodaj gości
+              {t.addGuests}
             </a>
-            , a pojawią się tutaj.
+            {t.noGuestsAfter}
           </p>
         ) : board.missing.length === 0 ? (
-          <p className="text-sm">Wszyscy goście oddali strzał.</p>
+          <p className="text-sm">{t.allGuessed}</p>
         ) : (
           <>
             <ul className="flex flex-wrap gap-2">
               {board.missing.map((guest) => (
                 <li key={guest.id} className="rounded-full border px-3 py-1 text-sm">
                   {guest.displayName}
-                  {guest.isAbsent && <span className="text-muted-foreground"> · nieobecny</span>}
+                  {guest.isAbsent && <span className="text-muted-foreground">{t.absentSuffix}</span>}
                 </li>
               ))}
             </ul>
-            <p className="text-muted-foreground text-xs">
-              Jeśli jesteś na liście gości, Ty nie strzelasz — zostaniesz tutaj. Strzał gościa bez telefonu wpisz
-              poniżej.
-            </p>
+            <p className="text-muted-foreground text-xs">{t.missingNote}</p>
           </>
         )}
       </section>
@@ -230,7 +226,7 @@ export function GuessManager({ apiBase, guestsPath, initial }: Props) {
       {board.guests.length > 0 && (
         <section aria-labelledby="all-guesses-heading" className="flex flex-col gap-3">
           <h2 id="all-guesses-heading" className="text-lg font-semibold">
-            Wszyscy goście ({board.guests.length})
+            {t.allGuestsHeading(board.guests.length)}
           </h2>
           <ul className="flex flex-col gap-2">
             {board.guests.map((guest) => (
@@ -247,13 +243,14 @@ export function GuessManager({ apiBase, guestsPath, initial }: Props) {
                 }}
                 onSave={(amount) => saveGuess(guest, amount)}
                 onDelete={() => void removeGuess(guest)}
+                locale={locale}
               />
             ))}
           </ul>
         </section>
       )}
 
-      {readout && <RankingReadout ranking={readout} onClose={closeReadout} />}
+      {readout && <RankingReadout ranking={readout} onClose={closeReadout} locale={locale} />}
     </div>
   );
 }

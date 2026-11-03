@@ -7,9 +7,12 @@ import { accessFor, organizerPath } from "@/lib/access";
 import { getDb } from "@/lib/db";
 import { getSeatOccupancy } from "@/lib/seating";
 import { getVenue } from "@/lib/venue";
+import { venueEditorMessages } from "@/lib/venue/messages";
 
 // Organizer rooms-and-tables page (S-02, FR-005, FR-006): venue plan, named rooms, tables pinned on the plan.
 // The middleware has already checked the key; this is the second, role-specific check.
+const locale = Astro.locals.locale;
+const t = venueEditorMessages(locale);
 const access = accessFor(Astro.locals, "organizer");
 const db = access ? getDb() : null;
 if (!access || !db) {
@@ -30,24 +33,26 @@ const view =
 ---
 
 {view ? (
-  <Layout title={`Sale i stoliki — ${view.name}`}>
+  <Layout title={t.pageTitle(view.name)}>
     <main class="mx-auto flex max-w-6xl flex-col gap-6 p-4 sm:p-8">
       <header class="flex flex-col gap-2">
         <a
           href={view.panelPath}
           class="self-start py-2 text-sm text-muted-foreground underline-offset-4 hover:underline"
         >
-          ← Panel organizatora
+          {t.backToPanel}
         </a>
-        <h1 class="text-3xl font-bold">Sale i stoliki</h1>
-        <p class="max-w-3xl text-sm text-muted-foreground">
-          Wgraj jeden zrzut planu całego lokalu, dodaj sale, a potem odrysuj na nim stoliki: kliknij, gdzie stoi stolik,
-          przeciągnij go na miejsce i obróć uchwytem. Każdy stolik ma salę, nazwę, liczbę miejsc i typ; TV pokaże ten
-          rysunek z imionami gości przy krzesłach.
-        </p>
+        <h1 class="text-3xl font-bold">{t.heading}</h1>
+        <p class="max-w-3xl text-sm text-muted-foreground">{t.intro}</p>
       </header>
-      <OfflineSync client:load apiBase={view.apiBase} />
-      <VenueEditor client:load apiBase={view.apiBase} initialVenue={view.venue} initialOccupancy={view.occupancy} />
+      <OfflineSync client:load apiBase={view.apiBase} locale={locale} />
+      <VenueEditor
+        client:load
+        apiBase={view.apiBase}
+        initialVenue={view.venue}
+        initialOccupancy={view.occupancy}
+        locale={locale}
+      />
     </main>
   </Layout>
 ) : (

@@ -16,6 +16,7 @@ export {
   type GuestListProblem,
   type ParsedGuestList,
 } from "./names";
+export { guestManagerMessages, guestsMessages } from "./messages";
 export {
   addGuests,
   createGroup,

@@ -2,37 +2,43 @@ import { useEffect, useId, useRef, useState } from "react";
 import { useEventReset } from "@/components/hooks/useEventReset";
 import { clearOfflineCache } from "@/components/hooks/offline-cache-store";
 import { Button } from "@/components/ui/button";
+import type { Locale } from "@/lib/i18n";
+import { resetMessages } from "@/lib/reset/messages";
 import {
   expandResetParts,
   isEveryResetPartSelected,
   requiredBy,
-  RESET_PART_DESCRIPTIONS,
-  RESET_PART_LABELS,
   RESET_PARTS,
+  resetPartDescriptions,
+  resetPartLabels,
   selectAllResetParts,
   toggleResetPart,
 } from "@/lib/reset/parts";
-import { describeResetCount, GUEST_LINKS_WITH_GUESTS_NOTE } from "@/lib/reset/summary";
+import { describeResetCount } from "@/lib/reset/summary";
 import { cn } from "@/lib/utils";
 import type { ResetPart } from "@/types";
 
 interface Props {
   // The organizer API base, /api/o/<key>.
   apiBase: string;
+  locale: Locale;
 }
 
 // „Reset danych” on the organizer shell: „Resetuj…” opens a modal (native <dialog>: the page behind is inert, Esc
 // closes it) listing the parts with fresh counts. Parts pulled in by another chosen part are ticked and locked. One
 // click on „Resetuj zaznaczone” resets — the modal is the confirmation. Afterwards it shows the summary, and closing it
 // reloads the shell so every card shows the new state. While the reset runs, nothing closes the modal.
-export function ResetPanel({ apiBase }: Props) {
+export function ResetPanel({ apiBase, locale }: Props) {
+  const t = resetMessages(locale);
+  const labels = resetPartLabels(locale);
+  const descriptions = resetPartDescriptions(locale);
   const dialog = useRef<HTMLDialogElement>(null);
   const opener = useRef<HTMLButtonElement>(null);
   const closeAfterReset = useRef<HTMLButtonElement>(null);
   const titleId = useId();
   const [open, setOpen] = useState(false);
   const [explicit, setExplicit] = useState<ResetPart[]>([]);
-  const { preview, loading, pending, failure, result, load, reset, forget } = useEventReset(apiBase);
+  const { preview, loading, pending, failure, result, load, reset, forget } = useEventReset(apiBase, locale);
   const selected = expandResetParts(explicit);
   const everything = isEveryResetPartSelected(explicit);
 
@@ -93,7 +99,7 @@ export function ResetPanel({ apiBase }: Props) {
   return (
     <>
       <Button ref={opener} type="button" variant="outline" className="h-11 self-start" onClick={openDialog}>
-        Resetuj…
+        {t.open}
       </Button>
 
       <dialog
@@ -111,31 +117,29 @@ export function ResetPanel({ apiBase }: Props) {
           <div className="flex flex-col gap-4 p-4 sm:p-6">
             <header className="flex flex-col gap-1">
               <h2 id={titleId} className="text-xl font-semibold">
-                Reset danych
+                {t.title}
               </h2>
-              <p className="text-muted-foreground text-sm">
-                Zaznacz, co wyczyścić. Link organizatora i adres TV zostają bez zmian.
-              </p>
+              <p className="text-muted-foreground text-sm">{t.intro}</p>
             </header>
 
             {result ? (
               <div className="flex flex-col gap-4" aria-live="polite">
-                <p className="font-semibold">Zresetowano.</p>
+                <p className="font-semibold">{t.done}</p>
                 <ul className="flex list-disc flex-col gap-2 pl-5 text-sm">
                   {result.summary.map((line) => (
                     <li key={line}>{line}</li>
                   ))}
                 </ul>
                 <Button ref={closeAfterReset} type="button" className="h-11" onClick={closeDialog}>
-                  Zamknij
+                  {t.close}
                 </Button>
               </div>
             ) : (
               <>
-                {loading && !preview && <p className="text-muted-foreground text-sm">Liczę dane…</p>}
+                {loading && !preview && <p className="text-muted-foreground text-sm">{t.counting}</p>}
 
                 <fieldset className="flex flex-col gap-2" disabled={pending}>
-                  <legend className="sr-only">Co zresetować</legend>
+                  <legend className="sr-only">{t.legend}</legend>
                   <div className="flex justify-end">
                     <Button
                       type="button"
@@ -145,7 +149,7 @@ export function ResetPanel({ apiBase }: Props) {
                         setExplicit(everything ? [] : selectAllResetParts());
                       }}
                     >
-                      {everything ? "Odznacz wszystko" : "Zaznacz wszystko"}
+                      {everything ? t.deselectAll : t.selectAll}
                     </Button>
                   </div>
                   <ul className="flex flex-col gap-2">
@@ -171,22 +175,22 @@ export function ResetPanel({ apiBase }: Props) {
                               }}
                             />
                             <span className="flex min-w-0 flex-col gap-1">
-                              <span className="font-medium">{RESET_PART_LABELS[part]}</span>
-                              <span className="text-muted-foreground text-sm">{RESET_PART_DESCRIPTIONS[part]}</span>
+                              <span className="font-medium">{labels[part]}</span>
+                              <span className="text-muted-foreground text-sm">{descriptions[part]}</span>
                               {lockedBy.length > 0 && (
                                 <span className="text-sm">
-                                  wymagane przez: {lockedBy.map((other) => RESET_PART_LABELS[other]).join(", ")}
+                                  {t.requiredBy(lockedBy.map((other) => labels[other]).join(", "))}
                                 </span>
                               )}
                               {part === "guestLinks" && selected.includes("guests") && (
-                                <span className="text-sm">{GUEST_LINKS_WITH_GUESTS_NOTE}</span>
+                                <span className="text-sm">{t.guestLinksWithGuestsNote}</span>
                               )}
                               <span className="text-sm font-medium break-words">
                                 {preview
-                                  ? describeResetCount(part, preview.counts, preview.starterQuestions)
+                                  ? describeResetCount(part, preview.counts, preview.starterQuestions, locale)
                                   : loading
                                     ? "…"
-                                    : "liczby niedostępne"}
+                                    : t.countsUnavailable}
                               </span>
                             </span>
                           </label>
@@ -215,7 +219,7 @@ export function ResetPanel({ apiBase }: Props) {
                           void load();
                         }}
                       >
-                        Spróbuj ponownie
+                        {t.retry}
                       </Button>
                     )}
                   </div>
@@ -223,7 +227,7 @@ export function ResetPanel({ apiBase }: Props) {
 
                 <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
                   <Button type="button" variant="outline" className="h-11" disabled={pending} onClick={closeDialog}>
-                    Anuluj
+                    {t.cancel}
                   </Button>
                   <Button
                     type="button"
@@ -234,7 +238,7 @@ export function ResetPanel({ apiBase }: Props) {
                       void reset(selected);
                     }}
                   >
-                    {pending ? "Resetuję…" : "Resetuj zaznaczone"}
+                    {pending ? t.resetting : t.resetSelected}
                   </Button>
                 </div>
               </>

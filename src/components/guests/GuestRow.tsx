@@ -1,7 +1,9 @@
 import { useId, useState, type SubmitEvent } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { guestManagerMessages } from "@/lib/guests/messages";
 import { MAX_DISPLAY_NAME_LENGTH } from "@/lib/guests/names";
+import type { Locale } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 import type { GuestDto } from "@/types";
 
@@ -15,6 +17,7 @@ interface Props {
   onRename: (displayName: string) => Promise<boolean>;
   onToggleAbsent: () => void;
   onDelete: () => void;
+  locale: Locale;
 }
 
 // One guest on the organizer list: select for a group, rename, mark absent/present, delete.
@@ -27,7 +30,9 @@ export function GuestRow({
   onRename,
   onToggleAbsent,
   onDelete,
+  locale,
 }: Props) {
+  const t = guestManagerMessages(locale);
   const inputId = useId();
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(guest.displayName);
@@ -53,7 +58,7 @@ export function GuestRow({
             "flex size-10 shrink-0 items-center justify-center rounded-md",
             grouped ? "cursor-not-allowed opacity-40" : "hover:bg-accent cursor-pointer",
           )}
-          title={grouped ? "Ta osoba jest już w grupie" : "Zaznacz do grupy"}
+          title={grouped ? t.alreadyInGroup : t.selectForGroup}
         >
           <input
             type="checkbox"
@@ -61,14 +66,14 @@ export function GuestRow({
             checked={selected}
             disabled={grouped || pending}
             onChange={onToggleSelected}
-            aria-label={`Zaznacz do grupy: ${guest.displayName}`}
+            aria-label={t.selectForGroupLabel(guest.displayName)}
           />
         </label>
 
         {editing ? (
           <form onSubmit={submitRename} className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
             <label htmlFor={inputId} className="sr-only">
-              Nowa nazwa dla: {guest.displayName}
+              {t.newNameFor(guest.displayName)}
             </label>
             <Input
               id={inputId}
@@ -82,7 +87,7 @@ export function GuestRow({
             />
             <div className="flex gap-2">
               <Button type="submit" disabled={pending || draft.trim() === ""} className="h-10">
-                Zapisz
+                {t.save}
               </Button>
               <Button
                 type="button"
@@ -92,7 +97,7 @@ export function GuestRow({
                   setEditing(false);
                 }}
               >
-                Anuluj
+                {t.cancel}
               </Button>
             </div>
           </form>
@@ -102,10 +107,10 @@ export function GuestRow({
               {guest.displayName}
             </span>
             <span className="text-muted-foreground flex flex-wrap gap-1 text-xs">
-              {guest.isAbsent && <span className="rounded-full border px-2 py-0.5">nieobecny</span>}
+              {guest.isAbsent && <span className="rounded-full border px-2 py-0.5">{t.absentBadge}</span>}
               {groupPartners.length > 0 && (
                 <span className="bg-secondary text-secondary-foreground rounded-full px-2 py-0.5">
-                  {groupPartners.length === 1 ? "Para z: " : "Grupa z: "}
+                  {groupPartners.length === 1 ? t.pairWith : t.groupWith}
                   {groupPartners.join(", ")}
                 </span>
               )}
@@ -124,7 +129,7 @@ export function GuestRow({
             disabled={pending}
             onClick={onToggleAbsent}
           >
-            {guest.isAbsent ? "Jednak obecny" : "Nieobecny"}
+            {guest.isAbsent ? t.presentAfterAll : t.absent}
           </Button>
           <Button
             type="button"
@@ -136,7 +141,7 @@ export function GuestRow({
               setEditing(true);
             }}
           >
-            Zmień nazwę
+            {t.rename}
           </Button>
           <Button
             type="button"
@@ -145,7 +150,7 @@ export function GuestRow({
             disabled={pending}
             onClick={onDelete}
           >
-            Usuń
+            {t.remove}
           </Button>
         </div>
       )}

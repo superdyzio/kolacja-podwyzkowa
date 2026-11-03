@@ -5,11 +5,13 @@ import { GuestLinksManager } from "@/components/guest-links/GuestLinksManager";
 import Layout from "@/layouts/Layout.astro";
 import { accessFor, organizerPath } from "@/lib/access";
 import { getDb } from "@/lib/db";
-import { getGuestLinks } from "@/lib/guest-links";
+import { getGuestLinks, guestLinksMessages } from "@/lib/guest-links";
 
 // Organizer guest links page (S-05, FR-011, FR-012): the guest-access switch and every guest's personal link (copy,
 // print one card, revoke). Links are built from this request's origin. The middleware has already checked the key;
 // this is the second, role-specific check.
+const locale = Astro.locals.locale;
+const t = guestLinksMessages(locale);
 const access = accessFor(Astro.locals, "organizer");
 const db = access ? getDb() : null;
 if (!access || !db) {
@@ -31,22 +33,19 @@ const view =
 ---
 
 {view ? (
-  <Layout title={`Linki gości i karteczki — ${view.name}`}>
+  <Layout title={t.pageTitle(view.name)}>
     <main class="mx-auto flex max-w-3xl flex-col gap-6 p-4 sm:p-8">
       <header class="flex flex-col gap-2">
         <a
           href={view.panelPath}
           class="self-start py-2 text-sm text-muted-foreground underline-offset-4 hover:underline"
         >
-          ← Panel organizatora
+          {t.backToPanel}
         </a>
-        <h1 class="text-3xl font-bold">Linki gości i karteczki</h1>
-        <p class="text-sm text-muted-foreground">
-          Każdy gość ma własny link i kod QR: po otwarciu widzi swój stolik i miejsce. Nie da się go odgadnąć ani
-          przerobić na cudzy. Zgubiona albo przekazana dalej karteczka? Unieważnij link i wydrukuj nową.
-        </p>
+        <h1 class="text-3xl font-bold">{t.heading}</h1>
+        <p class="text-sm text-muted-foreground">{t.intro}</p>
       </header>
-      <OfflineSync client:load apiBase={view.apiBase} />
+      <OfflineSync client:load apiBase={view.apiBase} locale={locale} />
       <GuestLinksManager
         client:load
         apiBase={view.apiBase}
@@ -54,6 +53,7 @@ const view =
         cardsPath={view.cardsPath}
         guestsPath={view.guestsPath}
         initial={view.links}
+        locale={locale}
       />
     </main>
   </Layout>

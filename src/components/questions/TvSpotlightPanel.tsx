@@ -1,19 +1,23 @@
 import type { TvSpotlightControls } from "@/components/hooks/useTvSpotlight";
 import { Button } from "@/components/ui/button";
+import type { Locale } from "@/lib/i18n";
+import { tvSpotlightMessages } from "@/lib/tv-spotlight/messages";
 import { describeTvSpotlight } from "@/lib/tv-spotlight/rules";
 
 interface Props {
   tv: TvSpotlightControls;
+  locale: Locale;
 }
 
 // The organizer's TV controls on the questions page (tv-spotlight): what the TV shows now, drawing a present guest
 // onto the TV (the TV spins through the names, then reveals), and back to the plan. Questions and AI topics go to the
 // TV with „Pokaż na TV” under them (ShowOnTvButton).
-export function TvSpotlightPanel({ tv }: Props) {
+export function TvSpotlightPanel({ tv, locale }: Props) {
+  const t = tvSpotlightMessages(locale);
   return (
     <div className="flex flex-col gap-4">
       <p aria-live="polite" className="font-medium break-words">
-        {describeTvSpotlight(tv.spotlight)}
+        {describeTvSpotlight(tv.spotlight, locale)}
       </p>
       <div className="flex flex-col gap-2 sm:flex-row">
         <Button
@@ -22,7 +26,7 @@ export function TvSpotlightPanel({ tv }: Props) {
           disabled={tv.pending}
           onClick={() => void tv.drawPerson()}
         >
-          {tv.spotlight?.kind === "person" ? "Wylosuj kolejną osobę" : "Wylosuj osobę na TV"}
+          {tv.spotlight?.kind === "person" ? t.drawAnother : t.drawPerson}
         </Button>
         {tv.spotlight && (
           <Button
@@ -32,7 +36,7 @@ export function TvSpotlightPanel({ tv }: Props) {
             disabled={tv.pending}
             onClick={() => void tv.hide()}
           >
-            Schowaj z TV
+            {t.hide}
           </Button>
         )}
       </div>
@@ -41,10 +45,7 @@ export function TvSpotlightPanel({ tv }: Props) {
           {tv.failure.message}
         </p>
       )}
-      <p className="text-muted-foreground text-sm">
-        Losujemy spośród obecnych gości. Pytanie albo temat od AI wyślesz na TV przyciskiem „Pokaż na TV” pod nim —
-        zostaje tam, dopóki go nie schowasz albo nie pokażesz czegoś innego.
-      </p>
+      <p className="text-muted-foreground text-sm">{t.panelHint}</p>
     </div>
   );
 }

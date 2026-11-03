@@ -123,4 +123,16 @@ describe("messages", () => {
     expect(describeAdded(0)).toBe("Nic nie dodano.");
     expect(describeAdded(90)).toBe("Dodano 90 pytań.");
   });
+
+  it("speaks English", () => {
+    expect(describeQuestionProblem("too-short", "en")).toBe("A question needs at least 5 characters.");
+    expect(describeSkip({ line: 3, text: "Coffee or tea?", reason: "duplicate" }, "en")).toBe(
+      "Line 3: “Coffee or tea?” — already in the base.",
+    );
+    expect(describePasteResult(1, 0, "en")).toBe("Added 1 question.");
+    expect(describePasteResult(22, 1, "en")).toBe("Added 22 questions. Skipped 1 line.");
+    expect(describePasteResult(0, 5, "en")).toBe("Nothing added — skipped 5 lines.");
+    expect(describeAdded(0, "en")).toBe("Nothing added.");
+    expect(describeAdded(90, "en")).toBe("Added 90 questions.");
+  });
 });

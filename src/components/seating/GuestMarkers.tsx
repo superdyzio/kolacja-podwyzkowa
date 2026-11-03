@@ -1,30 +1,34 @@
 import { Pin } from "lucide-react";
+import type { Locale } from "@/lib/i18n";
+import { seatingEditorMessages } from "@/lib/seating/messages";
 
 interface Props {
   pinned?: boolean;
   absent?: boolean;
   // The other present-or-absent members of the guest's inseparable group.
   partners: string[];
+  locale: Locale;
 }
 
 // Small text markers next to a name: pinned (with a pin icon — never colour alone), absent, member of a group.
-export function GuestMarkers({ pinned = false, absent = false, partners }: Props) {
+export function GuestMarkers({ pinned = false, absent = false, partners, locale }: Props) {
   if (!pinned && !absent && partners.length === 0) {
     return null;
   }
+  const t = seatingEditorMessages(locale);
   return (
     <span className="flex flex-wrap gap-x-2 gap-y-0.5 text-xs">
       {pinned && (
         <span className="text-primary inline-flex items-center gap-0.5 font-medium">
           <Pin aria-hidden className="size-3" />
-          przypięty
+          {t.pinned}
         </span>
       )}
-      {absent && <span className="text-muted-foreground">nieobecny</span>}
+      {absent && <span className="text-muted-foreground">{t.absent}</span>}
       {partners.length > 0 && (
-        <span className="text-muted-foreground" title={`Razem z: ${partners.join(", ")}`}>
-          {partners.length === 1 ? "para" : "grupa"}
-          <span className="sr-only"> z: {partners.join(", ")}</span>
+        <span className="text-muted-foreground" title={t.together(partners.join(", "))}>
+          {partners.length === 1 ? t.pair : t.group}
+          <span className="sr-only">{t.withNames(partners.join(", "))}</span>
         </span>
       )}
     </span>

@@ -28,7 +28,9 @@ export {
   PLACE_GONE_MESSAGE,
   PRICE_TOO_LARGE_MESSAGE,
   QUANTITY_MESSAGE,
+  quantityMessage,
   TOO_MANY_ITEMS_MESSAGE,
+  tooManyItemsMessage,
   type DishSuggestion,
 } from "./rules";
 export {
@@ -46,4 +48,5 @@ export {
   type OrderItemPatch,
   type UpdateOrderItemResult,
 } from "./service";
+export { orderMessages, restaurantMessages } from "./messages";
 export { describeLines, describeToServe, formatOrderSummary } from "./summary";

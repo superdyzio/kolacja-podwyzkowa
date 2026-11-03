@@ -31,6 +31,11 @@ describe("sanitizeTopic", () => {
     expect(sanitizeTopic(`- *${TOPIC}*`)).toBe(TOPIC);
     expect(sanitizeTopic("```\n" + TOPIC + "\n```")).toBe(TOPIC);
     expect(sanitizeTopic(`_${TOPIC}_`)).toBe(TOPIC);
+    // English labels (i18n: English topics).
+    const english = "Coffee or tea for the rest of your life?";
+    expect(sanitizeTopic(`**Topic:** ${english}`)).toBe(english);
+    expect(sanitizeTopic(`Conversation topic: "${english}"`)).toBe(english);
+    expect(sanitizeTopic(`Question — ${english}`)).toBe(english);
   });
 
   it("joins a topic spread over lines and normalizes spaces", () => {

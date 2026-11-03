@@ -4,23 +4,25 @@ import { isGuestState } from "@/components/hooks/guest-state-store";
 import { useGuestState } from "@/components/hooks/useGuestState";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { guestPhoneMessages } from "@/lib/guest-links/messages";
 import { formatAmount, formatAmountInput, parseAmount } from "@/lib/guesses/amount";
+import type { Locale } from "@/lib/i18n";
 import type { GuestStateDto } from "@/types";
 
 interface Props {
   // Guest API base, e.g. "/api/g/<key>".
   apiBase: string;
   initial: GuestStateDto;
+  locale: Locale;
 }
 
-const OFFLINE_MESSAGE = "Brak połączenia — spróbuj ponownie.";
-
-// The guest's guess of the final raise amount on the phone (S-06, FR-017, NFR-001): enter it, change it until the
+// The guest's guess of what the whole dinner cost (the bill, tip included) on the phone (S-06, FR-017, NFR-001): enter it, change it until the
 // organizer closes intake, and see ONLY the own guess. Reads the page's shared live state (one poll per phone), so a
 // close, a reopen or the organizer typing the guess in for this guest shows up within one poll; a refreshed state
 // never overwrites what the guest is typing. Without access (switched off, link revoked) it shows nothing: the seat
 // section above already says why.
-export function GuestGuessView({ apiBase, initial }: Props) {
+export function GuestGuessView({ apiBase, initial, locale }: Props) {
+  const t = guestPhoneMessages(locale);
   const { state, push, refresh } = useGuestState(apiBase, initial);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
@@ -49,7 +51,7 @@ export function GuestGuessView({ apiBase, initial }: Props) {
 
   async function save(event: SubmitEvent<HTMLFormElement>) {
     event.preventDefault();
-    const parsed = parseAmount(draft);
+    const parsed = parseAmount(draft, locale);
     if (!parsed.ok) {
       setProblem(parsed.message);
       return;
@@ -75,21 +77,21 @@ export function GuestGuessView({ apiBase, initial }: Props) {
         refresh();
         return;
       }
-      setProblem(toFailure(data).message);
+      setProblem(toFailure(data, locale).message);
       if (response.status === 409) {
         refresh();
       }
     } catch {
-      setProblem(OFFLINE_MESSAGE);
+      setProblem(t.guessOffline);
     } finally {
       setSaving(false);
     }
   }
 
   const announcement = !intakeOpen
-    ? "Przyjmowanie strzałów jest zamknięte."
+    ? t.intakeClosed
     : justSaved && amountGrosze !== null
-      ? `Zapisano Twój strzał: ${formatAmount(amountGrosze)}.`
+      ? t.guessSaved(formatAmount(amountGrosze))
       : "";
 
   return (
@@ -100,25 +102,25 @@ export function GuestGuessView({ apiBase, initial }: Props) {
 
       {!intakeOpen ? (
         <div className="flex flex-col gap-3">
-          <p className="text-lg font-semibold">Przyjmowanie strzałów jest zamknięte.</p>
-          {editing && <p className="text-muted-foreground text-sm">Zmiana nie została zapisana.</p>}
+          <p className="text-lg font-semibold">{t.intakeClosed}</p>
+          {editing && <p className="text-muted-foreground text-sm">{t.notSaved}</p>}
           {amountGrosze === null ? (
-            <p className="text-muted-foreground">Nie oddano strzału.</p>
+            <p className="text-muted-foreground">{t.noGuess}</p>
           ) : (
             <div>
-              <p className="text-muted-foreground text-sm font-medium tracking-wide uppercase">Twój strzał</p>
+              <p className="text-muted-foreground text-sm font-medium tracking-wide uppercase">{t.yourGuess}</p>
               <p className="text-4xl leading-tight font-bold">{formatAmount(amountGrosze)}</p>
             </div>
           )}
-          <p className="text-muted-foreground text-sm">Wyniki ogłosi organizator.</p>
+          <p className="text-muted-foreground text-sm">{t.resultsByOrganizer}</p>
         </div>
       ) : formOpen ? (
         <form className="flex flex-col gap-3" noValidate onSubmit={(event) => void save(event)}>
           <label htmlFor="guess-amount" className="text-lg font-medium">
-            Ile kosztowała cała kolacja? Wpisz swój strzał w złotych.
+            {t.guessLabel}
           </label>
           <p id="guess-hint" className="text-muted-foreground -mt-2 text-sm">
-            Liczymy cały rachunek razem z napiwkiem.
+            {t.guessHint}
           </p>
           <div className="relative">
             <Input
@@ -128,7 +130,7 @@ export function GuestGuessView({ apiBase, initial }: Props) {
               inputMode="decimal"
               autoComplete="off"
               enterKeyHint="done"
-              placeholder="np. 1500 albo 1499,99"
+              placeholder={t.guessPlaceholder}
               // Only when the guest asked to change an existing guess: never pop the keyboard on page load.
               autoFocus={amountGrosze !== null}
               value={draft}
@@ -156,36 +158,32 @@ export function GuestGuessView({ apiBase, initial }: Props) {
           )}
           <div className="flex flex-wrap gap-2">
             <Button type="submit" className="h-12 text-base" disabled={saving}>
-              {saving ? "Zapisuję…" : "Zapisz strzał"}
+              {saving ? t.saving : t.saveGuess}
             </Button>
             {editing && amountGrosze !== null && (
               <Button type="button" variant="ghost" className="h-12 text-base" onClick={cancelEditing}>
-                Anuluj
+                {t.cancel}
               </Button>
             )}
           </div>
-          <p className="text-muted-foreground text-sm">
-            Strzał widzisz tylko Ty. Możesz go zmieniać, dopóki organizator nie zamknie przyjmowania.
-          </p>
+          <p className="text-muted-foreground text-sm">{t.onlyYouSeeGuess}</p>
         </form>
       ) : (
         <div className="flex flex-col gap-3">
           <div>
-            <p className="text-muted-foreground text-sm font-medium tracking-wide uppercase">Twój strzał</p>
+            <p className="text-muted-foreground text-sm font-medium tracking-wide uppercase">{t.yourGuess}</p>
             <p className="text-4xl leading-tight font-bold">
               {amountGrosze === null ? "" : formatAmount(amountGrosze)}
             </p>
           </div>
           {justSaved && (
             <p role="status" className="font-medium text-emerald-700">
-              Zapisano.
+              {t.saved}
             </p>
           )}
-          <p className="text-muted-foreground text-sm">
-            Widzisz go tylko Ty. Możesz go zmienić, dopóki organizator nie zamknie przyjmowania.
-          </p>
+          <p className="text-muted-foreground text-sm">{t.onlyYouSeeIt}</p>
           <Button type="button" variant="outline" className="h-12 self-start text-base" onClick={startEditing}>
-            Zmień strzał
+            {t.changeGuess}
           </Button>
         </div>
       )}

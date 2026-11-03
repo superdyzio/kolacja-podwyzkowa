@@ -1,16 +1,17 @@
 import { useId, useState, type SubmitEvent } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import type { Locale } from "@/lib/i18n";
 import { fromPercent, toPercent, type TableGeometry } from "@/lib/venue/editor";
+import { venueEditorMessages, venueMessages } from "@/lib/venue/messages";
 import {
   DEFAULT_SEATS,
   MAX_SEATS,
   MAX_TABLE_NAME_LENGTH,
   MIN_SEATS,
-  SEAT_COUNT_MESSAGE,
   TABLE_SHAPES,
-  TABLE_SHAPE_LABELS,
   isValidSeatCount,
+  seatCountMessage,
 } from "@/lib/venue/rules";
 import type { RoomDto, TableDto, TableShape } from "@/types";
 
@@ -42,10 +43,8 @@ interface Props {
   onCancel: () => void;
   onMove?: () => void;
   onDelete?: () => void;
+  locale: Locale;
 }
-
-const NUMBERING_HINT =
-  "Miejsca numerujemy od 1. Przy okrągłym — zgodnie z ruchem wskazówek zegara; przy prostokątnym najpierw jedna strona, potem druga, w tym samym kierunku.";
 
 interface PlacementFields {
   source: string;
@@ -71,7 +70,10 @@ export function TableForm({
   onCancel,
   onMove,
   onDelete,
+  locale,
 }: Props) {
+  const t = venueEditorMessages(locale);
+  const shapes = venueMessages(locale).shapes;
   const formId = useId();
   const [roomId, setRoomId] = useState(table?.roomId ?? defaultRoomId);
   const [name, setName] = useState(table?.name ?? suggestedName);
@@ -108,12 +110,12 @@ export function TableForm({
   return (
     <form onSubmit={submit} aria-labelledby={`${formId}-heading`} className="flex flex-col gap-3 rounded-xl border p-4">
       <h3 id={`${formId}-heading`} className="font-semibold">
-        {table ? `Stolik „${table.name}”` : "Nowy stolik"}
+        {table ? t.tableHeading(table.name) : t.newTable}
       </h3>
 
       <div className="flex flex-col gap-1">
         <label htmlFor={`${formId}-room`} className="text-sm font-medium">
-          Sala
+          {t.room}
         </label>
         <select
           id={`${formId}-room`}
@@ -133,7 +135,7 @@ export function TableForm({
 
       <div className="flex flex-col gap-1">
         <label htmlFor={`${formId}-name`} className="text-sm font-medium">
-          Nazwa stolika
+          {t.tableName}
         </label>
         <Input
           id={`${formId}-name`}
@@ -149,7 +151,7 @@ export function TableForm({
 
       <div className="flex flex-col gap-1">
         <label htmlFor={`${formId}-seats`} className="text-sm font-medium">
-          Liczba miejsc
+          {t.seats}
         </label>
         <Input
           id={`${formId}-seats`}
@@ -170,12 +172,12 @@ export function TableForm({
           id={`${formId}-seats-hint`}
           className={seatsValid ? "text-muted-foreground text-xs" : "text-destructive text-xs"}
         >
-          {SEAT_COUNT_MESSAGE}
+          {seatCountMessage(locale)}
         </p>
       </div>
 
       <fieldset className="flex flex-col gap-1">
-        <legend className="text-sm font-medium">Typ stolika</legend>
+        <legend className="text-sm font-medium">{t.tableType}</legend>
         <div className="flex flex-wrap gap-2">
           {TABLE_SHAPES.map((option) => (
             <label
@@ -192,21 +194,21 @@ export function TableForm({
                 }}
                 className="accent-primary size-4"
               />
-              {TABLE_SHAPE_LABELS[option]}
+              {shapes[option]}
             </label>
           ))}
         </div>
-        <p className="text-muted-foreground text-xs">{NUMBERING_HINT}</p>
+        <p className="text-muted-foreground text-xs">{t.numberingHint}</p>
       </fieldset>
 
       <fieldset className="flex flex-col gap-1">
-        <legend className="text-sm font-medium">Położenie na planie</legend>
+        <legend className="text-sm font-medium">{t.placement}</legend>
         <div className="grid grid-cols-3 gap-2">
           {(
             [
-              ["x", "Od lewej (%)", "0.1"],
-              ["y", "Od góry (%)", "0.1"],
-              ["rotation", "Obrót (°)", "1"],
+              ["x", t.placementFields.x, "0.1"],
+              ["y", t.placementFields.y, "0.1"],
+              ["rotation", t.placementFields.rotation, "1"],
             ] as const
           ).map(([field, text, step]) => (
             <div key={field} className="flex flex-col gap-1">
@@ -230,7 +232,7 @@ export function TableForm({
           ))}
         </div>
         <p className={placementValid ? "text-muted-foreground text-xs" : "text-destructive text-xs"}>
-          Na komputerze wygodniej przeciągnąć stolik na planie; uchwyt nad nim obraca.
+          {t.placementHint}
         </p>
       </fieldset>
 
@@ -240,17 +242,17 @@ export function TableForm({
           className="h-10"
           disabled={pending || !seatsValid || !placementValid || name.trim() === ""}
         >
-          {table ? "Zapisz" : "Dodaj stolik"}
+          {table ? t.save : t.addTable}
         </Button>
         <Button type="button" variant="ghost" className="h-10" onClick={onCancel}>
-          Anuluj
+          {t.cancel}
         </Button>
       </div>
 
       {table && (
         <div className="flex flex-wrap gap-2 border-t pt-3">
           <Button type="button" variant="outline" className="h-10" disabled={pending} onClick={onMove}>
-            Przestaw pinezkę
+            {t.movePin}
           </Button>
           <Button
             type="button"
@@ -259,7 +261,7 @@ export function TableForm({
             disabled={pending}
             onClick={onDelete}
           >
-            Usuń stolik
+            {t.deleteTable}
           </Button>
         </div>
       )}

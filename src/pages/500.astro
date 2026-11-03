@@ -1,12 +1,15 @@
 ---
 import Layout from "@/layouts/Layout.astro";
+import { shellMessages } from "@/lib/shell/messages";
 
-// Generic error page: never shows error details (they may contain configuration or data).
+// Generic error page: never shows error details (they may contain configuration or data). The locale may be missing
+// when the middleware itself failed; the dictionary then falls back to Polish.
+const t = shellMessages(Astro.locals.locale);
 ---
 
-<Layout title="Błąd">
+<Layout title={t.errorTitle}>
   <main class="mx-auto flex min-h-screen max-w-xl flex-col justify-center gap-4 p-6 text-center">
-    <h1 class="text-3xl font-bold">Coś poszło nie tak</h1>
-    <p class="text-muted-foreground">Spróbuj odświeżyć stronę za chwilę.</p>
+    <h1 class="text-3xl font-bold">{t.errorHeading}</h1>
+    <p class="text-muted-foreground">{t.errorText}</p>
   </main>
 </Layout>

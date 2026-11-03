@@ -119,3 +119,25 @@ describe("describeDifference", () => {
     expect(describeDifference(1)).toBe(`o 0,01${NBSP}zł za dużo`);
   });
 });
+
+describe("English (i18n)", () => {
+  it("describes the difference in English", () => {
+    expect(describeDifference(0, "en")).toBe("spot on!");
+    expect(describeDifference(-5_000, "en")).toBe(`50,00${NBSP}zł too low`);
+    expect(describeDifference(150_001, "en")).toBe(`1${NBSP}500,01${NBSP}zł too high`);
+  });
+
+  it("accepts the same inputs and explains problems in English", () => {
+    expect(parseAmount("1 499,99 zł", "en")).toEqual({ ok: true, grosze: 149_999 });
+    expect(parseAmount("", "en")).toEqual({ ok: false, message: "Enter an amount." });
+    expect(parseAmount("-5", "en")).toEqual({ ok: false, message: "The amount cannot be negative." });
+    expect(parseAmount("1.500", "en")).toEqual({
+      ok: false,
+      message: "Enter an amount in złoty, e.g. 1500 or 1499,99.",
+    });
+    expect(parseAmount("10000000,01", "en")).toEqual({
+      ok: false,
+      message: "The amount can be at most 10 000 000 zł.",
+    });
+  });
+});

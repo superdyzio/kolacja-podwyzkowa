@@ -1,6 +1,8 @@
 import { useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { formatAmount } from "@/lib/guesses/amount";
+import type { Locale } from "@/lib/i18n";
+import { orderMessages } from "@/lib/orders/messages";
 import { lineTotal, type DishSuggestion } from "@/lib/orders/rules";
 import { cn } from "@/lib/utils";
 import type { OrderGuestOptionDto, OrderItemDto, OrderTableOptionDto } from "@/types";
@@ -13,6 +15,7 @@ interface Props {
   guests: readonly OrderGuestOptionDto[];
   tables: readonly OrderTableOptionDto[];
   dishes: readonly DishSuggestion[];
+  locale: Locale;
   onEdit: () => void;
   onCancel: () => void;
   onSave: (values: OrderItemFormValues) => Promise<boolean>;
@@ -30,6 +33,7 @@ export function OrderLineRow({
   guests,
   tables,
   dishes,
+  locale,
   onEdit,
   onCancel,
   onSave,
@@ -41,6 +45,7 @@ export function OrderLineRow({
   const [ticked, setTicked] = useState<boolean | null>(null);
   const inFlight = useRef(0);
   const delivered = ticked ?? item.delivered;
+  const t = orderMessages(locale);
 
   function tick(value: boolean) {
     setTicked(value);
@@ -62,7 +67,8 @@ export function OrderLineRow({
           tables={tables}
           dishes={dishes}
           pending={pending}
-          submitLabel="Zapisz"
+          locale={locale}
+          submitLabel={t.save}
           onSubmit={onSave}
           onCancel={onCancel}
         />
@@ -80,7 +86,7 @@ export function OrderLineRow({
           }}
           className="size-5 accent-emerald-600"
         />
-        <span className="text-sm">Wydane</span>
+        <span className="text-sm">{t.delivered}</span>
       </label>
       <div className="flex min-w-0 flex-1 basis-48 flex-col">
         <span className={cn("font-medium break-words", delivered && "text-muted-foreground line-through")}>
@@ -103,9 +109,9 @@ export function OrderLineRow({
           className="h-10"
           disabled={pending}
           onClick={onEdit}
-          aria-label={`Zmień: ${item.name}`}
+          aria-label={t.editLabel(item.name)}
         >
-          Zmień
+          {t.edit}
         </Button>
         <Button
           type="button"
@@ -113,9 +119,9 @@ export function OrderLineRow({
           className="text-destructive h-10"
           disabled={pending}
           onClick={onDelete}
-          aria-label={`Usuń: ${item.name}`}
+          aria-label={t.removeLabel(item.name)}
         >
-          Usuń
+          {t.remove}
         </Button>
       </div>
     </li>

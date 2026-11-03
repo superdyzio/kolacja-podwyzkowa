@@ -1,3 +1,6 @@
+import type { Locale } from "@/lib/i18n/locale";
+import { guestsMessages } from "./messages";
+
 // Guest-name rules shared by the DB service, the API routes and the organizer UI (PRD FR-001, FR-002).
 // Pure functions only: no DB, no `astro:*`.
 //
@@ -99,27 +102,30 @@ function preview(text: string): string {
   return characters.length > PREVIEW_LENGTH ? `${characters.slice(0, PREVIEW_LENGTH).join("")}…` : text;
 }
 
-export function describeGuestListProblem(problem: GuestListProblem): string {
+export function describeGuestListProblem(problem: GuestListProblem, locale: Locale = "pl"): string {
+  const messages = guestsMessages(locale);
   switch (problem.reason) {
     case "too-long":
-      return `Linia ${problem.line}: „${preview(problem.text)}” — za długa nazwa (najwyżej ${MAX_DISPLAY_NAME_LENGTH} znaków).`;
+      return messages.lineTooLong(problem.line, preview(problem.text), MAX_DISPLAY_NAME_LENGTH);
     case "duplicate":
-      return `Linia ${problem.line}: „${problem.text}” — powtarza linię ${problem.firstLine}.`;
+      return messages.lineDuplicate(problem.line, problem.text, problem.firstLine);
   }
 }
 
-export function describeDisplayNameProblem(problem: DisplayNameProblem): string {
+export function describeDisplayNameProblem(problem: DisplayNameProblem, locale: Locale = "pl"): string {
+  const messages = guestsMessages(locale);
   switch (problem) {
     case "empty":
-      return "Wpisz imię lub ksywkę.";
+      return messages.nameEmpty;
     case "too-long":
-      return `Nazwa może mieć najwyżej ${MAX_DISPLAY_NAME_LENGTH} znaków.`;
+      return messages.nameTooLong(MAX_DISPLAY_NAME_LENGTH);
   }
 }
 
-// „Ania”, „Kuba” — for messages that list names.
-export function quoteNames(names: readonly string[]): string {
-  return names.map((name) => `„${name}”`).join(", ");
+// „Ania”, „Kuba” (Polish) / “Ann”, “Jake” (English) — for messages that list names.
+export function quoteNames(names: readonly string[], locale: Locale = "pl"): string {
+  const { quote } = guestsMessages(locale);
+  return names.map((name) => quote(name)).join(", ");
 }
 
 export function isValidGroupSize(count: number): boolean {

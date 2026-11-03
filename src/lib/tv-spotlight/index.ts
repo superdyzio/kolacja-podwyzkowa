@@ -1,5 +1,6 @@
 export { ShowOnTvBody } from "./api";
 export { pickPerson, ROULETTE_STEPS, rouletteSteps, type RouletteStep } from "./draw";
+export { tvScreenMessages, tvSpotlightMessages } from "./messages";
 export {
   describeTvSpotlight,
   INVALID_SPOTLIGHT_MESSAGE,

@@ -1,55 +1,56 @@
-import { pluralPl } from "@/lib/guests/summary";
+import type { Locale } from "@/lib/i18n/locale";
 import { areConsecutiveSeats } from "@/lib/venue/seats";
 import type { GuestListDto, PublicationDto, SeatAssignmentDto, VenueDto } from "@/types";
+import { seatingMessages } from "./messages";
 
-// Seating rules shared by the DB service, the API routes and the organizer UI (PRD FR-004, FR-007): Polish
-// messages, seat labels, warnings and summaries. Pure functions only: no DB, no `astro:*`.
+// Seating rules shared by the DB service, the API routes and the organizer UI (PRD FR-004, FR-007): messages
+// (seatingMessages, both languages), seat labels, warnings and summaries. Pure functions only: no DB, no `astro:*`.
 //
 // Manual seating may split an inseparable group or keep an absent guest seated — the page warns about it instead of
 // refusing (the hard group rule belongs to the S-04 draw). Absent guests never reach the TV: publishing leaves them
 // out.
 
-export const GUEST_NOT_FOUND_MESSAGE = "Nie znaleziono gościa.";
-export const NOT_SEATED_MESSAGE = "Najpierw posadź tę osobę, potem przypnij miejsce.";
-export const PUBLISHED_MESSAGE = "Opublikowano — TV pokaże rozkład w ciągu kilku sekund.";
-export const PUBLISH_UNCHANGED_MESSAGE = "Nic się nie zmieniło od ostatniej publikacji.";
-
-export function seatOutOfRangeMessage(seat: number): string {
-  return `Ten stolik nie ma miejsca nr ${seat}.`;
+export function seatOutOfRangeMessage(seat: number, locale: Locale = "pl"): string {
+  return seatingMessages(locale).seatOutOfRange(seat);
 }
 
-export function guestPinnedMessage(name: string): string {
-  return `„${name}” ma przypięte miejsce — najpierw je odepnij.`;
+export function guestPinnedMessage(name: string, locale: Locale = "pl"): string {
+  return seatingMessages(locale).guestPinned(name);
 }
 
-export function seatPinnedMessage(name: string): string {
-  return `To miejsce zajmuje przypięta osoba „${name}” — najpierw ją odepnij.`;
+export function seatPinnedMessage(name: string, locale: Locale = "pl"): string {
+  return seatingMessages(locale).seatPinned(name);
 }
 
-// „Okno, miejsce 2”
-export function seatLabel(tableName: string, seat: number): string {
-  return `${tableName}, miejsce ${seat}`;
+// „Okno, miejsce 2” / "Okno, seat 2"
+export function seatLabel(tableName: string, seat: number, locale: Locale = "pl"): string {
+  return seatingMessages(locale).seatLabel(tableName, seat);
 }
 
-// „Ania”, „Ania i Kuba”, „Ania, Kuba i Ola”
-export function formatNameList(names: readonly string[]): string {
+// „Ania”, „Ania i Kuba”, „Ania, Kuba i Ola” / "Ania, Kuba and Ola"
+export function formatNameList(names: readonly string[], locale: Locale = "pl"): string {
   if (names.length <= 1) {
     return names.join("");
   }
-  return `${names.slice(0, -1).join(", ")} i ${names[names.length - 1] ?? ""}`;
+  return `${names.slice(0, -1).join(", ")} ${seatingMessages(locale).and} ${names[names.length - 1] ?? ""}`;
 }
 
-const publishedAtFormat = new Intl.DateTimeFormat("pl-PL", {
-  timeZone: "Europe/Warsaw",
-  day: "numeric",
-  month: "numeric",
-  hour: "2-digit",
-  minute: "2-digit",
-});
+const publishedAtFormats = new Map<Locale, Intl.DateTimeFormat>();
 
-// „27.10, 19:42” (Polish time, whatever the server's time zone).
-export function formatPublishedAt(iso: string): string {
-  return publishedAtFormat.format(new Date(iso));
+// „27.10, 19:42” / "27/10, 19:42" (Polish time, whatever the server's time zone).
+export function formatPublishedAt(iso: string, locale: Locale = "pl"): string {
+  let format = publishedAtFormats.get(locale);
+  if (!format) {
+    format = new Intl.DateTimeFormat(seatingMessages(locale).dateLocale, {
+      timeZone: "Europe/Warsaw",
+      day: "numeric",
+      month: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+    publishedAtFormats.set(locale, format);
+  }
+  return format.format(new Date(iso));
 }
 
 // The organizer's working data the rules look at.
@@ -128,24 +129,17 @@ export function seatingWarnings({ guestList, venue, assignments }: SeatingInput)
   return { groups, absentSeated, missingSeats: Math.max(0, present - seats) };
 }
 
-const GROUP_PROBLEM_TEXT: Record<GroupProblem, string> = {
-  "different-tables": "siedzą przy różnych stolikach",
-  "not-adjacent": "siedzą przy jednym stoliku, ale nie obok siebie",
-  "partly-seated": "nie wszyscy mają miejsce",
-};
-
-// One Polish line per warning.
-export function describeWarnings(warnings: SeatingWarnings): string[] {
-  const lines = warnings.groups.map(
-    (warning) => `${formatNameList(warning.memberNames)} — ${GROUP_PROBLEM_TEXT[warning.problem]}.`,
+// One line per warning.
+export function describeWarnings(warnings: SeatingWarnings, locale: Locale = "pl"): string[] {
+  const messages = seatingMessages(locale);
+  const lines = warnings.groups.map((warning) =>
+    messages.groupWarning(formatNameList(warning.memberNames, locale), messages.groupProblems[warning.problem]),
   );
   if (warnings.absentSeated.length > 0) {
-    lines.push(`Nieobecni z miejscem (nie pojawią się na TV): ${warnings.absentSeated.join(", ")}.`);
+    lines.push(messages.absentSeated(warnings.absentSeated.join(", ")));
   }
   if (warnings.missingSeats > 0) {
-    lines.push(
-      `Brakuje ${warnings.missingSeats} ${pluralPl(warnings.missingSeats, "miejsca", "miejsc", "miejsc")} dla obecnych gości.`,
-    );
+    lines.push(messages.missingSeats(warnings.missingSeats));
   }
   return lines;
 }
@@ -169,8 +163,8 @@ export function summarizeSeating({ guestList, venue, assignments }: SeatingInput
 }
 
 // „32 z 38 obecnych ma miejsce”
-export function formatSeatedCount(summary: SeatingSummary): string {
-  return `${summary.seatedPresent} z ${summary.present} obecnych ma miejsce`;
+export function formatSeatedCount(summary: SeatingSummary, locale: Locale = "pl"): string {
+  return seatingMessages(locale).seatedCount(summary.seatedPresent, summary.present);
 }
 
 // „32 z 38 obecnych ma miejsce · opublikowano 27.10, 19:42” / „… · nieopublikowane zmiany” /
@@ -179,12 +173,14 @@ export function formatSeatingSummary(
   summary: SeatingSummary,
   published: PublicationDto | null,
   upToDate: boolean,
+  locale: Locale = "pl",
 ): string {
+  const messages = seatingMessages(locale);
   const status =
     published === null
-      ? "jeszcze nie opublikowano"
+      ? messages.notPublishedYet
       : upToDate
-        ? `opublikowano ${formatPublishedAt(published.publishedAt)}`
-        : "nieopublikowane zmiany";
-  return `${formatSeatedCount(summary)} · ${status}`;
+        ? messages.publishedAt(formatPublishedAt(published.publishedAt, locale))
+        : messages.unpublishedChanges;
+  return `${formatSeatedCount(summary, locale)} · ${status}`;
 }

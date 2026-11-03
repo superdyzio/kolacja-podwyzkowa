@@ -1,4 +1,6 @@
 import { Button } from "@/components/ui/button";
+import type { Locale } from "@/lib/i18n";
+import { seatingEditorMessages } from "@/lib/seating/messages";
 import { describeRepeat, formatHistoryCount, formatRepeatCount, type RepeatedPair } from "@/lib/seating/neighbours";
 import { formatPublishedAt } from "@/lib/seating/rules";
 import type { PublicationDto } from "@/types";
@@ -18,21 +20,27 @@ interface Props {
   onDraw: () => void;
   onDiscard: () => void;
   onRestorePrevious: () => void;
+  locale: Locale;
 }
 
 const wrapping = "h-auto min-h-10 whitespace-normal text-left";
 
-function statsLine(repeats: number, snapshotCount: number, upToDate: boolean, published: boolean): string {
+function statsLine(
+  repeats: number,
+  snapshotCount: number,
+  upToDate: boolean,
+  published: boolean,
+  locale: Locale,
+): string {
+  const t = seatingEditorMessages(locale);
   if (snapshotCount === 0) {
-    return "Brak historii — to będzie pierwszy opublikowany rozkład.";
+    return t.noHistory;
   }
   // Right after a publish every pair of the arrangement is in the history by definition; counting them says nothing.
   if (upToDate && published) {
-    return "Na TV jest ten rozkład. Wylosuj projekt, żeby zmienić sąsiadów.";
+    return t.onTvNow;
   }
-  return repeats === 0
-    ? `${formatRepeatCount(0)}. Nikt nie siedzi obok tych samych osób co wcześniej.`
-    : `${formatRepeatCount(repeats)}:`;
+  return repeats === 0 ? t.noRepeats(formatRepeatCount(0, locale)) : t.repeats(formatRepeatCount(repeats, locale));
 }
 
 // Draw (FR-009) and going back (FR-010): draw a draft, redraw, see how many neighbour pairs repeat, discard the
@@ -50,47 +58,48 @@ export function DrawPanel({
   onDraw,
   onDiscard,
   onRestorePrevious,
+  locale,
 }: Props) {
+  const t = seatingEditorMessages(locale);
   const showPairs = snapshotCount > 0 && !(upToDate && published !== null) && repeats.length > 0;
   return (
     <section aria-labelledby="draw-heading" className="flex flex-col gap-3 rounded-xl border p-4">
       <div className="flex flex-col gap-1">
         <h2 id="draw-heading" className="font-semibold">
-          Losowanie
+          {t.drawHeading}
         </h2>
-        <p className="text-muted-foreground text-xs">
-          Grupy razem na kolejnych miejscach, przypięci zostają, nieobecni bez miejsca, jak najmniej tych samych
-          sąsiadów.
-        </p>
+        <p className="text-muted-foreground text-xs">{t.drawRules}</p>
       </div>
 
       <div className="flex flex-wrap gap-2">
         <Button type="button" className="h-10" disabled={pending || !canDraw} onClick={onDraw}>
-          {drawing ? "Losuję…" : drawn ? "Losuj ponownie" : "Wylosuj projekt"}
+          {drawing ? t.drawing : drawn ? t.redraw : t.draw}
         </Button>
         {published !== null && !upToDate && (
           <Button type="button" variant="outline" className={wrapping} disabled={pending} onClick={onDiscard}>
-            Odrzuć zmiany — wróć do tego, co jest na TV
+            {t.discardChanges}
           </Button>
         )}
         {previous !== null && (
           <Button type="button" variant="outline" className={wrapping} disabled={pending} onClick={onRestorePrevious}>
-            Wróć do poprzedniego rozkładu (z {formatPublishedAt(previous.publishedAt)})
+            {t.restorePrevious(formatPublishedAt(previous.publishedAt, locale))}
           </Button>
         )}
       </div>
 
       <div aria-live="polite" className="flex flex-col gap-1">
-        <p className="text-sm font-medium">{statsLine(repeats.length, snapshotCount, upToDate, published !== null)}</p>
+        <p className="text-sm font-medium">
+          {statsLine(repeats.length, snapshotCount, upToDate, published !== null, locale)}
+        </p>
         {showPairs && (
           <ul className="max-h-48 list-disc overflow-y-auto pl-5 text-sm">
             {repeats.map((pair) => (
-              <li key={`${pair.guestIds[0]}-${pair.guestIds[1]}`}>{describeRepeat(pair)}</li>
+              <li key={`${pair.guestIds[0]}-${pair.guestIds[1]}`}>{describeRepeat(pair, locale)}</li>
             ))}
           </ul>
         )}
       </div>
-      <p className="text-muted-foreground text-xs">{formatHistoryCount(snapshotCount)}</p>
+      <p className="text-muted-foreground text-xs">{formatHistoryCount(snapshotCount, locale)}</p>
     </section>
   );
 }

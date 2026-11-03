@@ -1,6 +1,7 @@
 import { useCallback, useState } from "react";
+import type { Locale } from "@/lib/i18n";
 import type { ResetPart, ResetPreviewDto, ResetResultDto } from "@/types";
-import { NETWORK_FAILURE, readJson, toFailure, type ApiFailure } from "./api-failure";
+import { networkFailure, readJson, toFailure, type ApiFailure } from "./api-failure";
 import { clearOfflineCache } from "./offline-cache-store";
 
 // State of the organizer's „Reset danych” modal: the fresh counts (GET <apiBase>/reset) and the reset itself
@@ -25,7 +26,7 @@ function isResult(data: unknown): data is ResetResultDto {
   );
 }
 
-export function useEventReset(apiBase: string) {
+export function useEventReset(apiBase: string, locale: Locale) {
   const [preview, setPreview] = useState<ResetPreviewDto | null>(null);
   const [loading, setLoading] = useState(false);
   const [pending, setPending] = useState(false);
@@ -40,11 +41,11 @@ export function useEventReset(apiBase: string) {
         setPreview(data);
         return null;
       }
-      return toFailure(data);
+      return toFailure(data, locale);
     } catch {
-      return NETWORK_FAILURE;
+      return networkFailure(locale);
     }
-  }, [apiBase]);
+  }, [apiBase, locale]);
 
   // Fresh counts each time the modal opens.
   const load = useCallback(async () => {
@@ -72,9 +73,9 @@ export function useEventReset(apiBase: string) {
           setResult(data);
           return true;
         }
-        setFailure(toFailure(data));
+        setFailure(toFailure(data, locale));
       } catch {
-        setFailure(NETWORK_FAILURE);
+        setFailure(networkFailure(locale));
       } finally {
         setPending(false);
       }
@@ -82,7 +83,7 @@ export function useEventReset(apiBase: string) {
       await readPreview();
       return false;
     },
-    [apiBase, readPreview],
+    [apiBase, readPreview, locale],
   );
 
   const forget = useCallback(() => {

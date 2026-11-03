@@ -1,20 +1,23 @@
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { describeDifference, formatAmount } from "@/lib/guesses/amount";
+import { guessUiMessages } from "@/lib/guesses/messages";
 import { placesFromLast } from "@/lib/guesses/ranking";
-import { pluralPl } from "@/lib/guests/summary";
+import type { Locale } from "@/lib/i18n";
 import type { GuessRankingDto } from "@/types";
 
 interface Props {
   // A frozen copy taken when the readout was opened: board refreshes never shift the steps.
   ranking: GuessRankingDto;
   onClose: () => void;
+  locale: Locale;
 }
 
 // "Czytaj od końca" (S-06, FR-020): the ranking read aloud from the LAST place on the organizer's phone, one place
 // per step, tied guests together, big enough to read at arm's length. „Dalej” (or →, Space, Enter) moves on,
 // „Wstecz” (←) goes back, „Zamknij” (Esc) closes; after the winner „Dalej” becomes „Zakończ”.
-export function RankingReadout({ ranking, onClose }: Props) {
+export function RankingReadout({ ranking, onClose, locale }: Props) {
+  const t = guessUiMessages(locale);
   const [steps] = useState(() => placesFromLast(ranking));
   const [index, setIndex] = useState(0);
   const nextButton = useRef<HTMLButtonElement>(null);
@@ -60,7 +63,7 @@ export function RankingReadout({ ranking, onClose }: Props) {
   }
 
   const winners = step.place === 1;
-  const title = winners ? (step.entries.length > 1 ? "Zwycięzcy!" : "Zwycięzca!") : `Miejsce ${step.place}`;
+  const title = winners ? (step.entries.length > 1 ? t.winners : t.winner) : t.placeTitle(step.place);
 
   return (
     <div
@@ -71,15 +74,13 @@ export function RankingReadout({ ranking, onClose }: Props) {
     >
       <header className="flex items-center justify-between gap-3 border-b p-3 sm:p-4">
         <div className="flex min-w-0 flex-col">
-          <p className="text-muted-foreground text-sm">
-            Krok {index + 1} z {steps.length}
-          </p>
+          <p className="text-muted-foreground text-sm">{t.step(index + 1, steps.length)}</p>
           <p className="truncate font-semibold sm:text-lg">
-            Prawidłowa kwota: {formatAmount(ranking.correctAmountGrosze)}
+            {t.correctAmount} {formatAmount(ranking.correctAmountGrosze)}
           </p>
         </div>
         <Button type="button" variant="outline" className="h-11 shrink-0" onClick={onClose}>
-          Zamknij
+          {t.close}
         </Button>
       </header>
 
@@ -89,10 +90,10 @@ export function RankingReadout({ ranking, onClose }: Props) {
             {title}
           </h2>
           <p className="flex flex-wrap items-center gap-2 text-2xl font-semibold sm:text-3xl">
-            {winners && <span>Miejsce 1</span>}
+            {winners && <span>{t.placeTitle(1)}</span>}
             {step.tied && (
               <span className="rounded-full bg-amber-100 px-3 py-1 text-xl text-amber-900 sm:text-2xl">
-                remis: {step.entries.length} {pluralPl(step.entries.length, "osoba", "osoby", "osób")}
+                {t.tiePeople(step.entries.length)}
               </span>
             )}
           </p>
@@ -102,10 +103,12 @@ export function RankingReadout({ ranking, onClose }: Props) {
             <li key={entry.guestId} className="flex flex-col gap-1">
               <p className="text-[2.75rem] leading-tight font-bold break-words sm:text-6xl">{entry.displayName}</p>
               <p className="text-2xl sm:text-3xl">
-                strzał: <strong>{formatAmount(entry.amountGrosze)}</strong>
+                {t.guessLabel} <strong>{formatAmount(entry.amountGrosze)}</strong>
               </p>
-              <p className="text-muted-foreground text-xl sm:text-2xl">{describeDifference(entry.differenceGrosze)}</p>
-              {entry.isAbsent && <p className="text-muted-foreground text-lg">nieobecny</p>}
+              <p className="text-muted-foreground text-xl sm:text-2xl">
+                {describeDifference(entry.differenceGrosze, locale)}
+              </p>
+              {entry.isAbsent && <p className="text-muted-foreground text-lg">{t.absent}</p>}
             </li>
           ))}
         </ul>
@@ -121,7 +124,7 @@ export function RankingReadout({ ranking, onClose }: Props) {
             setIndex((current) => Math.max(current - 1, 0));
           }}
         >
-          Wstecz
+          {t.back}
         </Button>
         <Button
           ref={nextButton}
@@ -135,7 +138,7 @@ export function RankingReadout({ ranking, onClose }: Props) {
             }
           }}
         >
-          {last ? "Zakończ" : "Dalej"}
+          {last ? t.finish : t.next}
         </Button>
       </footer>
     </div>

@@ -132,6 +132,18 @@ describe("messages", () => {
     expect(describeDisplayNameProblem("too-long")).toBe("Nazwa może mieć najwyżej 40 znaków.");
     expect(quoteNames(["Ania", "Kuba"])).toBe("„Ania”, „Kuba”");
   });
+
+  it("speaks English when asked", () => {
+    expect(describeGuestListProblem({ line: 7, text: "Kasia", reason: "duplicate", firstLine: 2 }, "en")).toBe(
+      "Line 7: “Kasia” — repeats line 2.",
+    );
+    expect(describeGuestListProblem({ line: 3, text: "Ania", reason: "too-long" }, "en")).toBe(
+      "Line 3: “Ania” — name too long (at most 40 characters).",
+    );
+    expect(describeDisplayNameProblem("empty", "en")).toBe("Enter a name or nickname.");
+    expect(describeDisplayNameProblem("too-long", "en")).toBe("A name can have at most 40 characters.");
+    expect(quoteNames(["Ania", "Kuba"], "en")).toBe("“Ania”, “Kuba”");
+  });
 });
 
 describe("isValidGroupSize", () => {

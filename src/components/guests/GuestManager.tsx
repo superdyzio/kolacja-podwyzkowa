@@ -1,8 +1,10 @@
 import { useMemo, useState } from "react";
 import { useGuestList } from "@/components/hooks/useGuestList";
 import { Button } from "@/components/ui/button";
+import { guestManagerMessages } from "@/lib/guests/messages";
 import { MAX_GROUP_SIZE, MIN_GROUP_SIZE, isValidGroupSize } from "@/lib/guests/names";
 import { formatGuestSummary, summarizeGuestList } from "@/lib/guests/summary";
+import type { Locale } from "@/lib/i18n";
 import type { GuestDto, GuestListDto } from "@/types";
 import { GuestAddForms } from "./GuestAddForms";
 import { GuestGroups } from "./GuestGroups";
@@ -12,29 +14,33 @@ interface Props {
   // Organizer API base, e.g. "/api/o/<key>".
   apiBase: string;
   initialList: GuestListDto;
+  locale: Locale;
 }
 
-function groupButtonLabel(count: number): string {
+function groupButtonLabel(count: number, locale: Locale): string {
+  const t = guestManagerMessages(locale);
   if (count < MIN_GROUP_SIZE) {
-    return `Zaznacz co najmniej ${MIN_GROUP_SIZE} osoby`;
+    return t.selectAtLeast(MIN_GROUP_SIZE);
   }
   if (count > MAX_GROUP_SIZE) {
-    return `Grupa ma najwyżej ${MAX_GROUP_SIZE} osób`;
+    return t.groupAtMost(MAX_GROUP_SIZE);
   }
-  return count === 2 ? "Utwórz parę" : `Utwórz grupę (${count})`;
+  return count === 2 ? t.createPair : t.createGroup(count);
 }
 
-function deleteQuestion(guest: GuestDto, partners: string[]): string {
-  const question = `Usunąć „${guest.displayName}” z listy gości?`;
+function deleteQuestion(guest: GuestDto, partners: string[], locale: Locale): string {
+  const t = guestManagerMessages(locale);
+  const question = t.deleteQuestion(guest.displayName);
   if (partners.length === 1) {
-    return `${question} Para z „${partners[0]}” zostanie rozwiązana.`;
+    return `${question} ${t.pairDissolved(partners[0])}`;
   }
   return question;
 }
 
 // Organizer guest page island (FR-001..FR-003): add/paste, rename, delete, absent/present, groups of 2–5.
-export function GuestManager({ apiBase, initialList }: Props) {
-  const { list, pending, failure, send, dismissFailure } = useGuestList(apiBase, initialList);
+export function GuestManager({ apiBase, initialList, locale }: Props) {
+  const t = guestManagerMessages(locale);
+  const { list, pending, failure, send, dismissFailure } = useGuestList(apiBase, initialList, locale);
   const [selection, setSelection] = useState<number[]>([]);
 
   const nameById = useMemo(() => new Map(list.guests.map((guest) => [guest.id, guest.displayName])), [list.guests]);
@@ -57,7 +63,7 @@ export function GuestManager({ apiBase, initialList }: Props) {
     return selection.filter((id) => ungrouped.has(id));
   }, [list.guests, selection]);
 
-  const summary = formatGuestSummary(summarizeGuestList(list));
+  const summary = formatGuestSummary(summarizeGuestList(list), locale);
 
   function toggleSelected(id: number) {
     setSelection((current) => (current.includes(id) ? current.filter((other) => other !== id) : [...current, id]));
@@ -86,26 +92,31 @@ export function GuestManager({ apiBase, initialList }: Props) {
             </ul>
           )}
           <Button type="button" variant="ghost" className="h-10 self-start" onClick={dismissFailure}>
-            Zamknij
+            {t.close}
           </Button>
         </div>
       )}
 
-      <GuestAddForms pending={pending} onAdd={(text) => send({ method: "POST", path: "/guests", body: { text } })} />
+      <GuestAddForms
+        locale={locale}
+        pending={pending}
+        onAdd={(text) => send({ method: "POST", path: "/guests", body: { text } })}
+      />
 
       <GuestGroups
         groups={list.groups}
         nameById={nameById}
         pending={pending}
+        locale={locale}
         onDissolve={(groupId) => void send({ method: "DELETE", path: `/groups/${groupId}` })}
       />
 
       <section aria-labelledby="list-heading" className="flex flex-col gap-3">
         <h2 id="list-heading" className="text-lg font-semibold">
-          Lista gości
+          {t.listHeading}
         </h2>
         {list.guests.length === 0 ? (
-          <p className="text-muted-foreground text-sm">Lista jest pusta. Dodaj gości powyżej.</p>
+          <p className="text-muted-foreground text-sm">{t.listEmpty}</p>
         ) : (
           <ul className="flex flex-col gap-2">
             {list.guests.map((guest) => {
@@ -117,6 +128,7 @@ export function GuestManager({ apiBase, initialList }: Props) {
                   groupPartners={partners}
                   selected={selectedIds.includes(guest.id)}
                   pending={pending}
+                  locale={locale}
                   onToggleSelected={() => {
                     toggleSelected(guest.id);
                   }}
@@ -127,7 +139,7 @@ export function GuestManager({ apiBase, initialList }: Props) {
                     void send({ method: "PATCH", path: `/guests/${guest.id}`, body: { isAbsent: !guest.isAbsent } })
                   }
                   onDelete={() => {
-                    if (window.confirm(deleteQuestion(guest, partners))) {
+                    if (window.confirm(deleteQuestion(guest, partners, locale))) {
                       void send({ method: "DELETE", path: `/guests/${guest.id}` });
                     }
                   }}
@@ -142,9 +154,9 @@ export function GuestManager({ apiBase, initialList }: Props) {
         <div className="bg-background/95 fixed inset-x-0 bottom-0 z-10 border-t p-3 shadow-lg backdrop-blur">
           <div className="mx-auto flex max-w-3xl flex-wrap items-center justify-between gap-2">
             <p className="text-sm">
-              Zaznaczono: <strong>{selectedIds.length}</strong>
+              {t.selected} <strong>{selectedIds.length}</strong>
               <span className="text-muted-foreground block text-xs">
-                Grupa ma od {MIN_GROUP_SIZE} do {MAX_GROUP_SIZE} osób
+                {t.groupSizeHint(MIN_GROUP_SIZE, MAX_GROUP_SIZE)}
               </span>
             </p>
             <div className="flex gap-2">
@@ -156,7 +168,7 @@ export function GuestManager({ apiBase, initialList }: Props) {
                   setSelection([]);
                 }}
               >
-                Wyczyść
+                {t.clearSelection}
               </Button>
               <Button
                 type="button"
@@ -164,7 +176,7 @@ export function GuestManager({ apiBase, initialList }: Props) {
                 disabled={pending || !isValidGroupSize(selectedIds.length)}
                 onClick={() => void createGroup()}
               >
-                {groupButtonLabel(selectedIds.length)}
+                {groupButtonLabel(selectedIds.length, locale)}
               </Button>
             </div>
           </div>

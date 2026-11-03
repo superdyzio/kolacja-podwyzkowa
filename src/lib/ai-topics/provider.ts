@@ -1,5 +1,7 @@
+import type { Locale } from "@/lib/i18n/locale";
 import type { AiProviderKind, QuestionCategory } from "@/types";
 import { AI_PROVIDER_TIMEOUT_MS } from "./limits";
+import { aiTopicMessages } from "./messages";
 
 // The contract every AI topic provider fulfils (S-08): the mock (default) and Claude over the Anthropic Messages API.
 // A provider returns the raw text and the tokens it was billed for; sanitizing, the content check and the limits are
@@ -8,6 +10,8 @@ import { AI_PROVIDER_TIMEOUT_MS } from "./limits";
 export interface AiTopicRequest {
   category: QuestionCategory;
   theme: string;
+  // The language the topic is written in (i18n): the requester's. Default "pl".
+  locale?: Locale;
 }
 
 // The provider's own token counts for one answer (what it bills); feeds the organizer's cost estimate.
@@ -75,42 +79,38 @@ export class AiProviderError extends Error {
   }
 }
 
-function withStatus(text: string, status: number | undefined): string {
-  return status === undefined ? text : `${text} (HTTP ${String(status)})`;
-}
-
-// Why the last attempt failed, in Polish, for the organizer only (guests see FAILED_MESSAGE). Never contains the key.
-export function describeFailureForOrganizer(kind: AiFailureKind, status?: number): string {
+// Why the last attempt failed, for the organizer only (guests see the `failed` message), in `locale`. Never contains
+// the key.
+export function describeFailureForOrganizer(kind: AiFailureKind, status?: number, locale: Locale = "pl"): string {
+  const t = aiTopicMessages(locale);
   switch (kind) {
     case "not-configured":
-      return "Brak ANTHROPIC_API_KEY — dodaj klucz albo ustaw AI_PROVIDER=mock.";
+      return t.missingKey;
     case "timeout":
-      return `Przekroczono czas ${String(AI_PROVIDER_TIMEOUT_MS / 1000)} s.`;
+      return t.hintTimeout(AI_PROVIDER_TIMEOUT_MS / 1000);
     case "network":
-      return "Brak połączenia z dostawcą AI.";
+      return t.hintNetwork;
     case "auth":
-      return `${withStatus("Klucz API odrzucony", status)} — sprawdź ANTHROPIC_API_KEY.`;
+      return t.hintAuth(status);
     case "no-credits":
-      return `${withStatus("Skończyły się kredyty API Anthropic albo zadziałał limit wydatków", status)} — doładuj je w konsoli: platform.claude.com → Billing.`;
+      return t.hintNoCredits(status);
     case "bad-request":
       // A 400 is also what a spend limit (or a billing block whose text we did not recognize) looks like.
-      return status === 400
-        ? `${withStatus("Model niedostępny, złe parametry albo blokada rozliczeń", status)} — sprawdź AI_MODEL i Billing na platform.claude.com.`
-        : `${withStatus("Model niedostępny lub złe parametry", status)} — sprawdź AI_MODEL.`;
+      return status === 400 ? t.hintBadRequestBilling(status) : t.hintBadRequest(status);
     case "rate-limit":
-      return `${withStatus("Limit zapytań u dostawcy", status)}.`;
+      return t.hintRateLimit(status);
     case "overloaded":
-      return `${withStatus("Dostawca przeciążony", status)}.`;
+      return t.hintOverloaded(status);
     case "unavailable":
-      return `${withStatus("Dostawca AI niedostępny", status)}.`;
+      return t.hintUnavailable(status);
     case "refusal":
-      return "AI odmówiło odpowiedzi.";
+      return t.hintRefusal;
     case "truncated":
-      return "Odpowiedź AI była za długa i została ucięta.";
+      return t.hintTruncated;
     case "empty":
-      return "AI zwróciło pustą odpowiedź.";
+      return t.hintEmpty;
     case "off-limits":
-      return "Temat wykraczał poza granice treści — odrzucony.";
+      return t.hintOffLimits;
   }
 }
 

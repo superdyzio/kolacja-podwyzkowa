@@ -3,7 +3,7 @@ import NoAccess from "@/components/NoAccess.astro";
 import Layout from "@/layouts/Layout.astro";
 import { accessFor, organizerPath } from "@/lib/access";
 import { getDb } from "@/lib/db";
-import { LOCAL_ORIGIN_WARNING, getGuestLinks, guestUrl, isLocalOrigin } from "@/lib/guest-links";
+import { getGuestLinks, guestLinksMessages, guestUrl, isLocalOrigin } from "@/lib/guest-links";
 import { parseId } from "@/lib/http";
 
 // Card sheet (S-05, FR-011, US-01 AC): A4 pages of 2 × 4 personal cards — display name, QR code of the personal link,
@@ -13,6 +13,8 @@ import { parseId } from "@/lib/http";
 // second, role-specific check.
 const CARDS_PER_PAGE = 8;
 
+const locale = Astro.locals.locale;
+const t = guestLinksMessages(locale);
 const access = accessFor(Astro.locals, "organizer");
 const db = access ? getDb() : null;
 if (!access || !db) {
@@ -46,28 +48,25 @@ const view =
 ---
 
 {view ? (
-  <Layout title={`Karteczki gości — ${view.name}`}>
+  <Layout title={t.cardsPageTitle(view.name)} languageSwitch={false}>
     <main class="flex flex-col gap-6 p-4 sm:p-8 print:p-0">
       <header class="mx-auto flex w-full max-w-3xl flex-col gap-3 print:hidden">
         <a
           href={view.linksPath}
           class="self-start py-2 text-sm text-muted-foreground underline-offset-4 hover:underline"
         >
-          ← Linki gości
+          {t.backToLinks}
         </a>
-        <h1 class="text-3xl font-bold">{view.single ? "Karteczka gościa" : "Karteczki gości"}</h1>
-        <p class="text-sm text-muted-foreground">
-          A4, 8 karteczek na stronie, linie cięcia przerywane. W oknie drukowania wybierz skalę 100% i wyłącz „Nagłówki
-          i stopki”.
-        </p>
+        <h1 class="text-3xl font-bold">{view.single ? t.cardHeading : t.cardsHeading}</h1>
+        <p class="text-sm text-muted-foreground">{t.printHint}</p>
         {!view.enabled && (
           <p class="rounded-lg border border-amber-500/60 bg-amber-50 p-3 text-sm text-amber-900">
-            Dostęp gości jest wyłączony: kody zadziałają dopiero, gdy włączysz go na stronie linków.
+            {t.accessOffOnCards}
           </p>
         )}
         {view.localOrigin && (
           <p role="note" class="rounded-lg border border-amber-500/60 bg-amber-50 p-3 text-sm text-amber-900">
-            <strong>Uwaga:</strong> {LOCAL_ORIGIN_WARNING}
+            <strong>{t.warning}</strong> {t.localOriginWarning}
           </p>
         )}
         {view.cards.length > 0 ? (
@@ -76,13 +75,13 @@ const view =
             data-print
             class="h-11 self-start rounded-md bg-primary px-6 text-sm font-medium text-primary-foreground hover:bg-primary/90 focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
           >
-            Drukuj
+            {t.print}
           </button>
         ) : (
           <p class="text-sm">
-            {view.single ? "Nie znaleziono tego gościa." : "Nie ma jeszcze gości."}{" "}
+            {view.single ? t.guestNotFoundOnCards : t.noGuestsYet}{" "}
             <a class="underline" href={view.linksPath}>
-              Wróć do linków
+              {t.backToLinksLink}
             </a>
             .
           </p>
@@ -91,15 +90,21 @@ const view =
 
       <div class="overflow-x-auto print:overflow-visible">
         {view.pages.map((page) => (
-          <section class="card-sheet" aria-label="Strona karteczek">
+          <section class="card-sheet" aria-label={t.sheetLabel}>
             {page.map((card) => (
               <article class="card" data-guest-card>
-                <div class="card-qr" data-qr={card.url} role="img" aria-label={`Kod QR: ${card.name}`}></div>
+                <div
+                  class="card-qr"
+                  data-qr={card.url}
+                  data-qr-error={t.qrFailed}
+                  role="img"
+                  aria-label={t.qrLabel(card.name)}
+                ></div>
                 <div class="card-text">
                   <p class="card-event">{view.name}</p>
                   <h2 class="card-name">{card.name}</h2>
-                  <p class="card-hint">Zeskanuj kod aparatem telefonu, żeby zobaczyć swój stolik i miejsce.</p>
-                  <p class="card-hint">To Twój osobisty link — nie przekazuj go dalej.</p>
+                  <p class="card-hint">{t.cardScanHint}</p>
+                  <p class="card-hint">{t.cardPersonalHint}</p>
                   <p class="card-url">{card.url}</p>
                 </div>
               </article>

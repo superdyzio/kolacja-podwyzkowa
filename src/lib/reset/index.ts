@@ -10,14 +10,18 @@ export {
   RESET_PART_DESCRIPTIONS,
   RESET_PART_LABELS,
   RESET_PARTS,
+  resetPartDescriptions,
+  resetPartLabels,
   selectAllResetParts,
   toggleResetPart,
 } from "./parts";
+export { resetMessages } from "./messages";
 export { getResetPreview, resetEvent, type ResetEventResult } from "./service";
 export {
   describeResetCount,
   describeResetResult,
   GUEST_LINKS_WITH_GUESTS_NOTE,
+  joinList,
   joinPl,
   NOTHING_TO_RESET,
   type ResetOutcome,

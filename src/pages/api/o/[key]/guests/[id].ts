@@ -1,6 +1,6 @@
 import type { APIRoute } from "astro";
 import { z } from "astro/zod";
-import { deleteGuest, describeDisplayNameProblem, getGuestList, updateGuest } from "@/lib/guests";
+import { deleteGuest, describeDisplayNameProblem, getGuestList, guestsMessages, updateGuest } from "@/lib/guests";
 import { jsonError, jsonResponse, parseId, readJsonBody } from "@/lib/http";
 import { organizerApi } from "@/lib/organizer-api";
 
@@ -8,8 +8,6 @@ export const prerender = false;
 
 // PATCH { displayName?, isAbsent? }: rename and/or mark absent/present. DELETE: remove the guest (a pair they were in
 // is dissolved). Both answer with the whole refreshed list. Group membership cannot be changed here.
-
-const NOT_FOUND = "Nie znaleziono gościa.";
 
 const UpdateGuestBody = z
   .strictObject({ displayName: z.string().max(1_000).optional(), isAbsent: z.boolean().optional() })
@@ -20,9 +18,10 @@ export const PATCH: APIRoute = async ({ locals, params, request }) => {
   if (api instanceof Response) {
     return api;
   }
+  const messages = guestsMessages(locals.locale);
   const id = parseId(params.id);
   if (id === null) {
-    return jsonError(404, NOT_FOUND);
+    return jsonError(404, messages.guestNotFound);
   }
   const body = await readJsonBody(request, UpdateGuestBody, locals.locale);
   if (!body.ok) {
@@ -32,11 +31,11 @@ export const PATCH: APIRoute = async ({ locals, params, request }) => {
   const result = await updateGuest(api.db, id, body.data);
   switch (result.status) {
     case "invalid":
-      return jsonError(400, describeDisplayNameProblem(result.reason));
+      return jsonError(400, describeDisplayNameProblem(result.reason, locals.locale));
     case "duplicate":
-      return jsonError(409, "Gość o tej nazwie już jest na liście.");
+      return jsonError(409, messages.duplicateName);
     case "not-found":
-      return jsonError(404, NOT_FOUND);
+      return jsonError(404, messages.guestNotFound);
     case "updated":
       return jsonResponse(await getGuestList(api.db));
   }
@@ -47,14 +46,15 @@ export const DELETE: APIRoute = async ({ locals, params }) => {
   if (api instanceof Response) {
     return api;
   }
+  const notFound = guestsMessages(locals.locale).guestNotFound;
   const id = parseId(params.id);
   if (id === null) {
-    return jsonError(404, NOT_FOUND);
+    return jsonError(404, notFound);
   }
 
   const result = await deleteGuest(api.db, id);
   if (result.status === "not-found") {
-    return jsonError(404, NOT_FOUND);
+    return jsonError(404, notFound);
   }
   return jsonResponse(await getGuestList(api.db));
 };

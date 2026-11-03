@@ -2,7 +2,7 @@ import type { APIRoute } from "astro";
 import { z } from "astro/zod";
 import { jsonError, jsonResponse, readJsonBody } from "@/lib/http";
 import { organizerApi } from "@/lib/organizer-api";
-import { ROOMS_LIMIT_MESSAGE, ROOM_DUPLICATE_MESSAGE, addRoom, describeRoomNameProblem, getVenue } from "@/lib/venue";
+import { addRoom, describeRoomNameProblem, getVenue, roomsLimitMessage, venueMessages } from "@/lib/venue";
 
 export const prerender = false;
 
@@ -23,11 +23,11 @@ export const POST: APIRoute = async ({ locals, request }) => {
   const result = await addRoom(api.db, body.data.name);
   switch (result.status) {
     case "invalid":
-      return jsonError(400, describeRoomNameProblem(result.reason));
+      return jsonError(400, describeRoomNameProblem(result.reason, locals.locale));
     case "duplicate":
-      return jsonError(409, ROOM_DUPLICATE_MESSAGE);
+      return jsonError(409, venueMessages(locals.locale).roomDuplicate);
     case "too-many":
-      return jsonError(400, ROOMS_LIMIT_MESSAGE);
+      return jsonError(400, roomsLimitMessage(locals.locale));
     case "added":
       return jsonResponse(await getVenue(api.db), 201);
   }

@@ -1,16 +1,9 @@
 import { noAccessMessages } from "@/lib/access/messages";
 import type { APIRoute } from "astro";
 import { getAiProvider } from "@/lib/ai";
-import {
-  BUSY_MESSAGE,
-  EVENT_LIMIT_MESSAGE,
-  FAILED_MESSAGE,
-  generateTopic,
-  getGuestAiQuota,
-  GUEST_LIMIT_MESSAGE,
-  mockFailureRequested,
-} from "@/lib/ai-topics";
+import { generateTopic, getGuestAiQuota, mockFailureRequested } from "@/lib/ai-topics";
 import { GenerateTopicBody } from "@/lib/ai-topics/api";
+import { aiTopicLimitMessages } from "@/lib/ai-topics/limits";
 import { guestApi } from "@/lib/guest-api";
 import { jsonError, jsonResponse, readJsonBody } from "@/lib/http";
 import type { GuestAiTopicAnswerDto } from "@/types";
@@ -35,25 +28,26 @@ export const POST: APIRoute = async ({ locals, request }) => {
   const result = await generateTopic(
     api.db,
     provider,
-    { guestId, category: body.data.category },
+    { guestId, category: body.data.category, locale: locals.locale },
     { simulateFailure: mockFailureRequested(provider, request.headers) },
   );
   if (result.status === "not-found") {
     return jsonError(404, noAccessMessages(locals.locale).title);
   }
   const quota = await getGuestAiQuota(api.db, guestId);
+  const messages = aiTopicLimitMessages(locals.locale);
   switch (result.status) {
     case "generated": {
       const answer: GuestAiTopicAnswerDto = { topic: result.topic, quota };
       return jsonResponse(answer);
     }
     case "guest-limit":
-      return jsonError(429, GUEST_LIMIT_MESSAGE, { quota });
+      return jsonError(429, messages.guestLimit, { quota });
     case "event-limit":
-      return jsonError(429, EVENT_LIMIT_MESSAGE, { quota });
+      return jsonError(429, messages.eventLimit, { quota });
     case "busy":
-      return jsonError(409, BUSY_MESSAGE, { quota });
+      return jsonError(409, messages.busy, { quota });
     case "failed":
-      return jsonError(503, FAILED_MESSAGE, { quota });
+      return jsonError(503, messages.failed, { quota });
   }
 };

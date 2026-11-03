@@ -182,6 +182,10 @@ describe("occupantsRemovedBy", () => {
     expect(describeRemovedOccupants(many, tableNames)).toMatch(
       /^Miejsce stracą: G1 \(Kominek, miejsce 1\), .* i 3 inne osoby\.$/,
     );
+    expect(describeRemovedOccupants([occupancy[0]], tableNames, "en")).toBe(
+      "Will lose their seat: Kuba (Okno, seat 7).",
+    );
+    expect(describeRemovedOccupants(many, tableNames, "en")).toMatch(/, G12 \(Kominek, seat 12\) and 3 others\.$/);
   });
 });
 

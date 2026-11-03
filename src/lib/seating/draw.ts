@@ -1,8 +1,9 @@
-import { pluralPl } from "@/lib/guests/summary";
+import type { Locale } from "@/lib/i18n/locale";
 import { neighbours, sideALength } from "@/lib/venue/seats";
 import type { TableShape } from "@/types";
 import type { DraftSeat } from "./draft";
 import { formatRepeatCount, type GuestPair } from "./neighbours";
+import { seatingMessages } from "./messages";
 import { formatNameList, type SeatingInput } from "./rules";
 
 // The draw (PRD FR-009, NFR-007): a draft of a new seating computed in the organizer's browser. Pure, no DB, no
@@ -24,11 +25,9 @@ import { formatNameList, type SeatingInput } from "./rules";
 // `maxIterations`, or when the time budget is used up (the clock is read every 256 iterations).
 
 export const DEFAULT_DRAW_BUDGET_MS = 1200;
-export const DRAW_INFEASIBLE_MESSAGE = "Nie da się wylosować rozkładu.";
-
 // Notice after a draw was saved as the working arrangement.
-export function drawnMessage(repeats: number): string {
-  return `Wylosowano projekt — ${formatRepeatCount(repeats)}. Przejrzyj, popraw i opublikuj.`;
+export function drawnMessage(repeats: number, locale: Locale = "pl"): string {
+  return seatingMessages(locale).drawn(formatRepeatCount(repeats, locale));
 }
 
 export interface DrawOptions {
@@ -53,23 +52,20 @@ export type DrawResult =
   | { status: "drawn"; seats: DraftSeat[]; repeats: number; iterations: number }
   | { status: "infeasible"; problems: DrawProblem[] };
 
-function people(count: number): string {
-  return `${count} ${pluralPl(count, "osoba", "osoby", "osób")}`;
-}
-
-// One Polish line per cause, saying what to change.
-export function describeDrawProblem(problem: DrawProblem): string {
+// One line per cause, saying what to change.
+export function describeDrawProblem(problem: DrawProblem, locale: Locale = "pl"): string {
+  const messages = seatingMessages(locale);
   switch (problem.kind) {
     case "too-many-guests":
-      return `Obecnych gości jest ${problem.present}, a dostępnych miejsc ${problem.seats} — dodaj miejsca albo oznacz kogoś jako nieobecnego.`;
+      return messages.drawTooManyGuests(problem.present, problem.seats);
     case "group-too-large":
-      return `Grupa ${formatNameList(problem.names)} (${people(problem.names.length)}) nie zmieści się na kolejnych miejscach przy żadnym stoliku — potrzeba ${problem.names.length} wolnych miejsc obok siebie (przy prostokątnym po jednej stronie).`;
+      return messages.drawGroupTooLarge(formatNameList(problem.names, locale), problem.names.length);
     case "pinned-group-split":
-      return `Grupa ${formatNameList(problem.names)}: przypięte osoby z tej grupy nie siedzą obok siebie przy jednym stoliku — odepnij je albo przypnij obok siebie.`;
+      return messages.drawPinnedGroupSplit(formatNameList(problem.names, locale));
     case "pinned-group-no-room":
-      return `Grupa ${formatNameList(problem.names)}: obok przypiętego miejsca nie ma dość wolnych miejsc dla całej grupy — odepnij tę osobę albo kogoś z sąsiednich miejsc.`;
+      return messages.drawPinnedGroupNoRoom(formatNameList(problem.names, locale));
     case "groups-do-not-fit":
-      return "Wszystkie grupy naraz nie mieszczą się na kolejnych miejscach przy stolikach — dodaj miejsca, zmień stoliki albo odepnij kogoś.";
+      return messages.drawGroupsDoNotFit;
   }
 }
 

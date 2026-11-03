@@ -2,6 +2,7 @@ import { EVENT_ID } from "@/lib/event";
 import type { DbClient } from "@/lib/supabase-client";
 import type { GuessBoardDto, GuessEnteredBy, GuestGuessDto } from "@/types";
 import { toGuessBoard } from "./board";
+import { guessMessages } from "./messages";
 
 // Guesses of the raise amount (S-06, PRD FR-017..FR-020) for the singleton event. Functions take the client as a
 // parameter (no `astro:*`), so they are tested against the local DB. Supabase errors always throw; expected outcomes
@@ -12,8 +13,9 @@ import { toGuessBoard } from "./board";
 // save_guest_guess(), atomic against a concurrent close), and reads only their own guess + the intake flag
 // (getGuestGuess, folded into the guest's live state).
 
-export const GUESS_INTAKE_CLOSED_MESSAGE = "Przyjmowanie strzałów jest zamknięte.";
-export const GUESS_GUEST_NOT_FOUND_MESSAGE = "Nie znaleziono gościa.";
+// The Polish answers (older callers); routes use guessMessages(locals.locale).intakeClosed / .guestNotFound.
+export const GUESS_INTAKE_CLOSED_MESSAGE = guessMessages("pl").intakeClosed;
+export const GUESS_GUEST_NOT_FOUND_MESSAGE = guessMessages("pl").guestNotFound;
 
 const FOREIGN_KEY_VIOLATION = "23503";
 

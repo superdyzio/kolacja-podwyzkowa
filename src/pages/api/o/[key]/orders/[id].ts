@@ -3,8 +3,7 @@ import { jsonError, jsonResponse, parseId, readJsonBody } from "@/lib/http";
 import {
   deleteOrderItem,
   getOrderBoard,
-  ORDER_ITEM_NOT_FOUND_MESSAGE,
-  PLACE_GONE_MESSAGE,
+  orderMessages,
   toOrderItemPatch,
   UpdateOrderItemBody,
   updateOrderItem,
@@ -24,22 +23,22 @@ export const PATCH: APIRoute = async ({ locals, params, request }) => {
   }
   const id = parseId(params.id);
   if (id === null) {
-    return jsonError(404, ORDER_ITEM_NOT_FOUND_MESSAGE);
+    return jsonError(404, orderMessages(locals.locale).itemNotFound);
   }
   const body = await readJsonBody(request, UpdateOrderItemBody, locals.locale);
   if (!body.ok) {
     return body.response;
   }
-  const patch = toOrderItemPatch(body.data);
+  const patch = toOrderItemPatch(body.data, locals.locale);
   if (!patch.ok) {
     return jsonError(400, patch.message);
   }
   const result = await updateOrderItem(api.db, id, patch.value);
   switch (result.status) {
     case "not-found":
-      return jsonError(404, ORDER_ITEM_NOT_FOUND_MESSAGE);
+      return jsonError(404, orderMessages(locals.locale).itemNotFound);
     case "place-gone":
-      return jsonError(409, PLACE_GONE_MESSAGE);
+      return jsonError(409, orderMessages(locals.locale).placeGone);
     case "updated":
       return jsonResponse(await getOrderBoard(api.db));
   }
@@ -52,11 +51,11 @@ export const DELETE: APIRoute = async ({ locals, params }) => {
   }
   const id = parseId(params.id);
   if (id === null) {
-    return jsonError(404, ORDER_ITEM_NOT_FOUND_MESSAGE);
+    return jsonError(404, orderMessages(locals.locale).itemNotFound);
   }
   const result = await deleteOrderItem(api.db, id);
   if (result.status === "not-found") {
-    return jsonError(404, ORDER_ITEM_NOT_FOUND_MESSAGE);
+    return jsonError(404, orderMessages(locals.locale).itemNotFound);
   }
   return jsonResponse(await getOrderBoard(api.db));
 };

@@ -1,0 +1,176 @@
+import { MAX_EVENT_TOPICS, MAX_GUEST_TOPICS } from "@/lib/ai-topics/limits";
+import { defineMessages } from "@/lib/i18n/locale";
+import { pluralEn, pluralPl } from "@/lib/i18n/plural";
+
+// Texts of the organizer reset („Reset danych”), both languages (i18n): part labels and descriptions, the count line
+// under each part, the summary after a reset and the modal. Pure; summary.ts puts the pieces together.
+
+const pl = (n: number, one: string, few: string, many: string) => `${n} ${pluralPl(n, one, few, many)}`;
+const en = (n: number, one: string, other: string) => `${n} ${pluralEn(n, one, other)}`;
+
+export const resetMessages = defineMessages(
+  {
+    partLabels: {
+      guesses: "Strzały",
+      aiUsage: "Licznik tematów AI",
+      seating: "Rozsadzenie i historia",
+      guests: "Goście i grupy",
+      venue: "Plan, sale i stoliki",
+      orders: "Zamówienia",
+      questions: "Pytania",
+      guestLinks: "Linki gości",
+    },
+    partDescriptions: {
+      guesses: "Usuwa wszystkie strzały i prawidłową kwotę, otwiera przyjmowanie strzałów.",
+      aiUsage: `Zeruje licznik: każdy gość znów ma ${pl(MAX_GUEST_TOPICS, "temat", "tematy", "tematów")}, cały wieczór ${MAX_EVENT_TOPICS}. Szacunek kosztu AI też liczy się od nowa.`,
+      seating:
+        "Usuwa rozsadzenie (z przypięciami) i wszystkie publikacje: TV nic nie pokazuje, historia sąsiadów zaczyna się od zera.",
+      guests: "Usuwa wszystkich gości i grupy, a razem z nimi strzały, licznik tematów AI i rozsadzenie.",
+      venue: "Usuwa plan lokalu, sale i stoliki, a razem z nimi rozsadzenie.",
+      orders: "Usuwa wszystkie pozycje zamówienia. Link restauracji zostaje bez zmian.",
+      questions: "Usuwa wszystkie pytania i wczytuje od nowa bazę startową.",
+      guestLinks:
+        "Nowy link dla każdego gościa i wyłączony dostęp gości: wydrukowane karteczki i wysłane linki przestają działać.",
+    },
+    guestLinksWithGuestsNote: "Goście zostaną usunięci, więc zostanie tylko wyłączenie dostępu gości.",
+    // Counts (what would go away) and, where Polish needs it, the accusative after „usunięto”.
+    and: "i",
+    nothingToReset: "nic do usunięcia",
+    guesses: (n: number) => pl(n, "strzał", "strzały", "strzałów"),
+    seats: (n: number) => pl(n, "miejsce", "miejsca", "miejsc"),
+    snapshots: (n: number) => pl(n, "publikacja", "publikacje", "publikacji"),
+    snapshotsAcc: (n: number) => pl(n, "publikację", "publikacje", "publikacji"),
+    guests: (n: number) => pl(n, "gość", "gości", "gości"),
+    // Also the genitive after „dla”.
+    guestsAcc: (n: number) => pl(n, "gościa", "gości", "gości"),
+    groups: (n: number) => pl(n, "grupa", "grupy", "grup"),
+    groupsAcc: (n: number) => pl(n, "grupę", "grupy", "grup"),
+    rooms: (n: number) => pl(n, "sala", "sale", "sal"),
+    roomsAcc: (n: number) => pl(n, "salę", "sale", "sal"),
+    tables: (n: number) => pl(n, "stolik", "stoliki", "stolików"),
+    questions: (n: number) => pl(n, "pytanie", "pytania", "pytań"),
+    orderLines: (n: number) => `${pl(n, "pozycja", "pozycje", "pozycji")} zamówienia`,
+    orderLinesAcc: (n: number) => `${pl(n, "pozycję", "pozycje", "pozycji")} zamówienia`,
+    links: (n: number) => pl(n, "link", "linki", "linków"),
+    starter: (n: number) => pl(n, "startowe", "startowe", "startowych"),
+    correctAmountSet: "prawidłowa kwota",
+    intakeClosed: "przyjmowanie zamknięte",
+    aiUsed: (used: number, limit: number) => `wykorzystano ${used} z ${limit}`,
+    aiFailed: (failed: number) => `nieudane: ${failed}`,
+    seatsPinned: (seats: string, pinned: number) => `${seats} (przypięte: ${pinned})`,
+    plan: "plan",
+    noQuestions: "brak pytań",
+    questionsComeBack: (current: string, starter: number) =>
+      `${current} → ${pluralPl(starter, "zostanie", "zostaną", "zostanie")} ${pl(starter, "startowe", "startowe", "startowych")}`,
+    guestAccessOn: "dostęp gości włączony",
+    // The summary after a reset.
+    removed: (items: string) => `usunięto ${items}`,
+    nothingRemoved: "nie było nic do usunięcia",
+    correctAmountAcc: "prawidłową kwotę",
+    intakeOpened: "przyjmowanie strzałów otwarte",
+    aiReset: (label: string, limit: number, guestLimit: number) =>
+      `${label}: wyzerowany (0 z ${limit}), każdy gość znów ma ${guestLimit}.`,
+    seatingTail: "TV nie pokazuje rozsadzenia do następnej publikacji",
+    questionsReset: (label: string, removed: string | null, starter: string) =>
+      `${label}: ${removed ? `usunięto ${removed}, ` : ""}wczytano ${starter}.`,
+    newGuestLinks: (label: string, guests: string) =>
+      `${label}: nowe linki dla ${guests}, dostęp gości wyłączony — wydrukuj nowe karteczki.`,
+    guestAccessOff: (label: string) => `${label}: dostęp gości wyłączony.`,
+    // The modal (ResetPanel).
+    open: "Resetuj…",
+    title: "Reset danych",
+    intro: "Zaznacz, co wyczyścić. Link organizatora i adres TV zostają bez zmian.",
+    done: "Zresetowano.",
+    close: "Zamknij",
+    counting: "Liczę dane…",
+    legend: "Co zresetować",
+    selectAll: "Zaznacz wszystko",
+    deselectAll: "Odznacz wszystko",
+    requiredBy: (parts: string) => `wymagane przez: ${parts}`,
+    countsUnavailable: "liczby niedostępne",
+    retry: "Spróbuj ponownie",
+    cancel: "Anuluj",
+    resetting: "Resetuję…",
+    resetSelected: "Resetuj zaznaczone",
+  },
+  {
+    partLabels: {
+      guesses: "Guesses",
+      aiUsage: "AI topic counter",
+      seating: "Seating and history",
+      guests: "Guests and groups",
+      venue: "Plan, rooms and tables",
+      orders: "Orders",
+      questions: "Questions",
+      guestLinks: "Guest links",
+    },
+    partDescriptions: {
+      guesses: "Deletes every guess and the correct amount, and opens guessing again.",
+      aiUsage: `Resets the counter: every guest again has ${en(MAX_GUEST_TOPICS, "topic", "topics")}, the whole evening ${MAX_EVENT_TOPICS}. The AI cost estimate starts over too.`,
+      seating:
+        "Deletes the seating (with pins) and every publication: the TV shows nothing and the neighbour history starts from zero.",
+      guests: "Deletes every guest and group, and with them the guesses, the AI topic counter and the seating.",
+      venue: "Deletes the venue plan, the rooms and the tables, and with them the seating.",
+      orders: "Deletes every order line. The restaurant link stays the same.",
+      questions: "Deletes every question and loads the starter base again.",
+      guestLinks:
+        "A new link for every guest and guest access turned off: printed cards and links already sent stop working.",
+    },
+    guestLinksWithGuestsNote: "The guests will be deleted, so only turning guest access off is left.",
+    and: "and",
+    nothingToReset: "nothing to remove",
+    guesses: (n: number) => en(n, "guess", "guesses"),
+    seats: (n: number) => en(n, "seat", "seats"),
+    snapshots: (n: number) => en(n, "publication", "publications"),
+    snapshotsAcc: (n: number) => en(n, "publication", "publications"),
+    guests: (n: number) => en(n, "guest", "guests"),
+    guestsAcc: (n: number) => en(n, "guest", "guests"),
+    groups: (n: number) => en(n, "group", "groups"),
+    groupsAcc: (n: number) => en(n, "group", "groups"),
+    rooms: (n: number) => en(n, "room", "rooms"),
+    roomsAcc: (n: number) => en(n, "room", "rooms"),
+    tables: (n: number) => en(n, "table", "tables"),
+    questions: (n: number) => en(n, "question", "questions"),
+    orderLines: (n: number) => en(n, "order line", "order lines"),
+    orderLinesAcc: (n: number) => en(n, "order line", "order lines"),
+    links: (n: number) => en(n, "link", "links"),
+    starter: (n: number) => en(n, "starter question", "starter questions"),
+    correctAmountSet: "correct amount set",
+    intakeClosed: "guessing closed",
+    aiUsed: (used: number, limit: number) => `used ${used} of ${limit}`,
+    aiFailed: (failed: number) => `failed: ${failed}`,
+    seatsPinned: (seats: string, pinned: number) => `${seats} (pinned: ${pinned})`,
+    plan: "plan",
+    noQuestions: "no questions",
+    questionsComeBack: (current: string, starter: number) =>
+      `${current} → ${en(starter, "starter question", "starter questions")} will be loaded`,
+    guestAccessOn: "guest access on",
+    removed: (items: string) => `removed ${items}`,
+    nothingRemoved: "there was nothing to remove",
+    correctAmountAcc: "the correct amount",
+    intakeOpened: "guessing is open",
+    aiReset: (label: string, limit: number, guestLimit: number) =>
+      `${label}: reset (0 of ${limit}), every guest again has ${guestLimit}.`,
+    seatingTail: "the TV shows no seating until the next publish",
+    questionsReset: (label: string, removed: string | null, starter: string) =>
+      `${label}: ${removed ? `removed ${removed}, ` : ""}loaded ${starter}.`,
+    newGuestLinks: (label: string, guests: string) =>
+      `${label}: new links for ${guests}, guest access off — print new cards.`,
+    guestAccessOff: (label: string) => `${label}: guest access off.`,
+    open: "Reset…",
+    title: "Reset data",
+    intro: "Choose what to clear. The organizer link and the TV address stay the same.",
+    done: "Reset done.",
+    close: "Close",
+    counting: "Counting…",
+    legend: "What to reset",
+    selectAll: "Select all",
+    deselectAll: "Deselect all",
+    requiredBy: (parts: string) => `required by: ${parts}`,
+    countsUnavailable: "counts unavailable",
+    retry: "Try again",
+    cancel: "Cancel",
+    resetting: "Resetting…",
+    resetSelected: "Reset selected",
+  },
+);

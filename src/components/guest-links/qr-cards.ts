@@ -1,7 +1,8 @@
 import { qrMatrix, qrSvgPath, qrViewBox } from "@/lib/guest-links/qr";
 
 // Client script of the card sheet (/o/<key>/karteczki, S-05): fills every `[data-qr="<url>"]` placeholder with the
-// QR code of that URL as an inline SVG. Runs only in the organizer's browser — the server never builds QR codes
+// QR code of that URL as an inline SVG. When that fails, the placeholder shows its `data-qr-error` text (rendered by
+// the page in the organizer's language). Runs only in the organizer's browser — the server never builds QR codes
 // (keeps every server request short) and never bundles `qrcode`.
 
 const SVG_NS = "http://www.w3.org/2000/svg";
@@ -37,7 +38,7 @@ export function fillQrCodes(root: ParentNode): void {
       placeholder.replaceChildren(qrSvg(text));
       placeholder.dataset.qrReady = "true";
     } catch {
-      placeholder.textContent = "Nie udało się utworzyć kodu QR — użyj linku poniżej.";
+      placeholder.textContent = placeholder.dataset.qrError ?? "";
     }
   }
 }

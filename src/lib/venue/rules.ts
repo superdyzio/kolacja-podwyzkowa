@@ -1,5 +1,7 @@
 import { displayNameKey, displayNameLength, normalizeDisplayName } from "@/lib/guests/names";
+import type { Locale } from "@/lib/i18n/locale";
 import type { TableShape } from "@/types";
+import { venueMessages } from "./messages";
 
 // Room and table rules shared by the DB service, the API routes and the organizer UI (PRD FR-005, FR-006).
 // Pure functions only: no DB, no `astro:*`. The DB enforces the same limits (check constraints, unique indexes on
@@ -19,16 +21,13 @@ export const DEFAULT_SEATS = 8;
 
 export const TABLE_SHAPES = ["round", "rectangular"] as const satisfies readonly TableShape[];
 
-export const TABLE_SHAPE_LABELS: Record<TableShape, string> = {
-  round: "okrągły",
-  rectangular: "prostokątny",
-};
+// The Polish labels (tests); views use venueMessages(locale).shapes.
+export const TABLE_SHAPE_LABELS: Record<TableShape, string> = venueMessages("pl").shapes;
 
 export type VenueNameProblem = "empty" | "too-long";
 
 const FRACTION_DECIMALS = 4;
 const FRACTION_SCALE = 10 ** FRACTION_DECIMALS;
-const TABLE_NAME_PREFIX = "Stolik";
 
 export function normalizeVenueName(raw: string): string {
   return normalizeDisplayName(raw);
@@ -55,25 +54,27 @@ export function validateTableName(name: string): VenueNameProblem | null {
   return validateName(name, MAX_TABLE_NAME_LENGTH);
 }
 
-export function describeRoomNameProblem(problem: VenueNameProblem): string {
-  return problem === "empty" ? "Wpisz nazwę sali." : `Nazwa sali może mieć najwyżej ${MAX_ROOM_NAME_LENGTH} znaków.`;
+export function describeRoomNameProblem(problem: VenueNameProblem, locale: Locale = "pl"): string {
+  const messages = venueMessages(locale);
+  return problem === "empty" ? messages.roomNameEmpty : messages.roomNameTooLong(MAX_ROOM_NAME_LENGTH);
 }
 
-export function describeTableNameProblem(problem: VenueNameProblem): string {
-  return problem === "empty"
-    ? "Wpisz nazwę stolika."
-    : `Nazwa stolika może mieć najwyżej ${MAX_TABLE_NAME_LENGTH} znaków.`;
+export function describeTableNameProblem(problem: VenueNameProblem, locale: Locale = "pl"): string {
+  const messages = venueMessages(locale);
+  return problem === "empty" ? messages.tableNameEmpty : messages.tableNameTooLong(MAX_TABLE_NAME_LENGTH);
 }
 
-export const SEAT_COUNT_MESSAGE = `Stolik ma od ${MIN_SEATS} do ${MAX_SEATS} miejsc.`;
-export const POSITION_MESSAGE = "Kliknij na planie, gdzie stoi stolik.";
-export const ROTATION_MESSAGE = "Obrót stolika musi być liczbą stopni.";
-export const ROOM_DUPLICATE_MESSAGE = "Sala o tej nazwie już jest.";
-export const ROOM_NOT_FOUND_MESSAGE = "Nie znaleziono sali.";
-export const ROOMS_LIMIT_MESSAGE = `Można mieć najwyżej ${MAX_ROOMS} sal.`;
-export const TABLE_DUPLICATE_MESSAGE = "Stolik o tej nazwie już jest.";
-export const TABLE_NOT_FOUND_MESSAGE = "Nie znaleziono stolika.";
-export const TABLES_LIMIT_MESSAGE = `Można mieć najwyżej ${MAX_TABLES} stolików.`;
+export function seatCountMessage(locale: Locale = "pl"): string {
+  return venueMessages(locale).seatCount(MIN_SEATS, MAX_SEATS);
+}
+
+export function roomsLimitMessage(locale: Locale = "pl"): string {
+  return venueMessages(locale).roomsLimit(MAX_ROOMS);
+}
+
+export function tablesLimitMessage(locale: Locale = "pl"): string {
+  return venueMessages(locale).tablesLimit(MAX_TABLES);
+}
 
 export function isValidSeatCount(count: number): boolean {
   return Number.isInteger(count) && count >= MIN_SEATS && count <= MAX_SEATS;
@@ -137,18 +138,19 @@ export function validateTableFields(fields: Partial<TableFields>): TableFieldPro
   return null;
 }
 
-export function describeTableFieldProblem(problem: TableFieldProblem): string {
+export function describeTableFieldProblem(problem: TableFieldProblem, locale: Locale = "pl"): string {
+  const messages = venueMessages(locale);
   switch (problem.field) {
     case "name":
-      return describeTableNameProblem(problem.reason);
+      return describeTableNameProblem(problem.reason, locale);
     case "seatCount":
-      return SEAT_COUNT_MESSAGE;
+      return seatCountMessage(locale);
     case "shape":
-      return "Wybierz typ stolika: okrągły albo prostokątny.";
+      return messages.shapeRequired;
     case "position":
-      return POSITION_MESSAGE;
+      return messages.position;
     case "rotation":
-      return ROTATION_MESSAGE;
+      return messages.rotation;
   }
 }
 
@@ -157,10 +159,6 @@ export function describeTableFieldProblem(problem: TableFieldProblem): string {
 export const DEFAULT_CHAIR_PITCH = 0.035;
 export const MIN_CHAIR_PITCH = 0.005;
 export const MAX_CHAIR_PITCH = 0.2;
-
-export const CHAIR_PITCH_MESSAGE = "Skala krzeseł jest poza zakresem.";
-export const OUTLINE_MESSAGE = "Kontur sali musi leżeć na planie i mieć niezerowy rozmiar.";
-export const NO_PLAN_MESSAGE = "Najpierw wgraj plan sali.";
 
 export function isValidChairPitch(pitch: number): boolean {
   return Number.isFinite(pitch) && pitch >= MIN_CHAIR_PITCH && pitch <= MAX_CHAIR_PITCH;
@@ -223,11 +221,12 @@ export function roundFraction(value: number): number {
   return Math.round(clamped * FRACTION_SCALE) / FRACTION_SCALE;
 }
 
-// The first free „Stolik N” (N = 1, 2, …), compared like the unique index.
-export function nextTableName(existingNames: readonly string[]): string {
+// The first free „Stolik N” / "Table N" (N = 1, 2, …), compared like the unique index.
+export function nextTableName(existingNames: readonly string[], locale: Locale = "pl"): string {
   const taken = new Set(existingNames.map(venueNameKey));
+  const prefix = venueMessages(locale).tableNamePrefix;
   for (let number = 1; ; number++) {
-    const name = `${TABLE_NAME_PREFIX} ${number}`;
+    const name = `${prefix} ${number}`;
     if (!taken.has(venueNameKey(name))) {
       return name;
     }

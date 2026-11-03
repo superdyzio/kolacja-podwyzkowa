@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { formatAmount } from "@/lib/guesses/amount";
 import type { OrderItemDto } from "@/types";
 import { toOrderItemInput, toOrderItemPatch } from "./input";
 import {
@@ -94,6 +95,24 @@ describe("dish suggestions", () => {
     expect(findDish(suggestions, " SCHABOWY ")).toEqual({ name: "schabowy", unitPriceGrosze: 5_200 });
     expect(findDish(suggestions, "")).toBeNull();
     expect(findDish(suggestions, "Pierogi")).toBeNull();
+  });
+});
+
+describe("English messages", () => {
+  it("refuses in the request's language", () => {
+    expect(parseDishName(" ", "en")).toEqual({ ok: false, message: "Enter the dish name." });
+    expect(parseNote("x".repeat(121), "en")).toEqual({
+      ok: false,
+      message: "A note can be at most 120 characters long.",
+    });
+    expect(toOrderItemPatch({ quantity: 0 }, "en")).toEqual({
+      ok: false,
+      message: "The quantity is a number from 1 to 99.",
+    });
+    expect(parseUnitPrice("100000,01", "en")).toEqual({
+      ok: false,
+      message: `The price can be at most ${formatAmount(10_000_000)}.`,
+    });
   });
 });
 

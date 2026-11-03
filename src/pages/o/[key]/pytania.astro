@@ -8,6 +8,7 @@ import { getAiProviderStatus } from "@/lib/ai";
 import { getAiTopicUsage } from "@/lib/ai-topics/service";
 import { getDb } from "@/lib/db";
 import { getQuestionList } from "@/lib/questions";
+import { questionUiMessages } from "@/lib/questions/messages";
 import { getTvSpotlight } from "@/lib/tv-spotlight";
 
 // Organizer questions page (S-07, US-03, FR-014, FR-015): the TV controls (tv-spotlight, #ekran-tv: a question or an
@@ -16,13 +17,15 @@ import { getTvSpotlight } from "@/lib/tv-spotlight";
 // edit and delete. Organizer only — guests get just the question they draw (and the AI topic they generate) on their
 // phone; the TV only what the organizer explicitly sends there. The middleware has already checked the key; this is the second,
 // role-specific check.
+const locale = Astro.locals.locale;
+const t = questionUiMessages(locale);
 const access = accessFor(Astro.locals, "organizer");
 const db = access ? getDb() : null;
 if (!access || !db) {
   Astro.response.status = 404;
 }
 
-const loaded = db ? await Promise.all([getQuestionList(db), getAiTopicUsage(db), getTvSpotlight(db)]) : null;
+const loaded = db ? await Promise.all([getQuestionList(db), getAiTopicUsage(db, locale), getTvSpotlight(db)]) : null;
 const view =
   access && loaded
     ? {
@@ -30,34 +33,33 @@ const view =
         panelPath: organizerPath(access.event.organizerKey),
         apiBase: `/api${organizerPath(access.event.organizerKey)}`,
         list: loaded[0],
-        aiBoard: { usage: loaded[1], provider: getAiProviderStatus() },
+        aiBoard: { usage: loaded[1], provider: getAiProviderStatus(locale) },
         tv: loaded[2],
       }
     : null;
 ---
 
 {view ? (
-  <Layout title={`Pytania do rozmowy — ${view.name}`}>
+  <Layout title={t.pageTitle(view.name)}>
     <main class="mx-auto flex max-w-3xl flex-col gap-6 p-4 sm:p-8">
       <header class="flex flex-col gap-2">
         <a
           href={view.panelPath}
           class="self-start py-2 text-sm text-muted-foreground underline-offset-4 hover:underline"
         >
-          ← Panel organizatora
+          {t.backToPanel}
         </a>
-        <h1 class="text-3xl font-bold">Pytania do rozmowy</h1>
-        <p class="text-sm text-muted-foreground">
-          Gość widzi tylko pytanie, które sam wylosuje. Listę widzisz tylko Ty.
-        </p>
+        <h1 class="text-3xl font-bold">{t.heading}</h1>
+        <p class="text-sm text-muted-foreground">{t.intro}</p>
       </header>
-      <OfflineSync client:load apiBase={view.apiBase} />
+      <OfflineSync client:load apiBase={view.apiBase} locale={locale} />
       <QuestionManager
         client:load
         apiBase={view.apiBase}
         initial={view.list}
         aiInitial={view.aiBoard}
         tvInitial={view.tv}
+        locale={locale}
       />
     </main>
   </Layout>

@@ -1,23 +1,38 @@
+import type { Locale } from "@/lib/i18n/locale";
 import { QUESTION_CATEGORIES, QUESTION_CATEGORY_LABELS } from "@/lib/questions/categories";
 import type { QuestionCategory } from "@/types";
 
-// The prompt for AI conversation topics (S-08, PRD FR-016, NFR-010), pure. Polish only; the content bounds come from
-// shape-notes (`AI topics`): bold, but no party politics, religion, health or personal jabs, and nobody is asked
-// about their own salary. No guest name or other guest data ever goes into the prompt.
+// The prompt for AI conversation topics (S-08, PRD FR-016, NFR-010), pure. The instructions are Polish; the topic is
+// written in the requester's language (i18n: a guest or organizer using the app in English gets an English topic —
+// only the language rule changes). The content bounds come from shape-notes (`AI topics`): bold, but no party
+// politics, religion, health or personal jabs, and nobody is asked about their own salary. No guest name or other
+// guest data ever goes into the prompt.
 
-export const AI_TOPIC_SYSTEM_PROMPT = [
-  "Jesteś gospodarzem corocznej „kolacji podwyżkowej” — wieczoru, na którym grupa przyjaciół spotyka się przy jedzeniu i rozmowach.",
-  "Twoje zadanie: wymyśl JEDEN temat do rozmowy przy stoliku, sformułowany jako pytanie do wszystkich przy stoliku.",
-  "",
-  "Zasady:",
-  "- Pisz wyłącznie po polsku.",
-  "- Najwyżej dwa krótkie zdania (do 200 znaków), zakończone znakiem zapytania.",
-  "- Trzymaj się podanej kategorii.",
-  "- Temat może być odważny i dzielić rozmówców, ale nie dotyczy polityki partyjnej, religii ani zdrowia (także alkoholu, diet, chorób, snu, starzenia się i śmierci).",
-  "- Żadnych przytyków ani pytań wymierzonych w konkretne osoby; nie odwołuj się do nikogo z obecnych.",
-  "- Nie pytaj nikogo o jego własne zarobki, pensję ani podwyżkę.",
-  "- Odpowiedz samą treścią pytania: bez cudzysłowów, wstępu, nagłówka, numeracji i formatowania.",
-].join("\n");
+// The one rule that differs by the topic's language.
+const LANGUAGE_RULES: Readonly<Record<Locale, string>> = {
+  pl: "- Pisz wyłącznie po polsku.",
+  en: "- Pisz wyłącznie po angielsku (naturalny, swobodny angielski) — ten gość korzysta z aplikacji po angielsku.",
+};
+
+// The system prompt for a topic in `locale`.
+export function topicSystemPrompt(locale: Locale = "pl"): string {
+  return [
+    "Jesteś gospodarzem corocznej „kolacji podwyżkowej” — wieczoru, na którym grupa przyjaciół spotyka się przy jedzeniu i rozmowach.",
+    "Twoje zadanie: wymyśl JEDEN temat do rozmowy przy stoliku, sformułowany jako pytanie do wszystkich przy stoliku.",
+    "",
+    "Zasady:",
+    LANGUAGE_RULES[locale],
+    "- Najwyżej dwa krótkie zdania (do 200 znaków), zakończone znakiem zapytania.",
+    "- Trzymaj się podanej kategorii.",
+    "- Temat może być odważny i dzielić rozmówców, ale nie dotyczy polityki partyjnej, religii ani zdrowia (także alkoholu, diet, chorób, snu, starzenia się i śmierci).",
+    "- Żadnych przytyków ani pytań wymierzonych w konkretne osoby; nie odwołuj się do nikogo z obecnych.",
+    "- Nie pytaj nikogo o jego własne zarobki, pensję ani podwyżkę.",
+    "- Odpowiedz samą treścią pytania: bez cudzysłowów, wstępu, nagłówka, numeracji i formatowania.",
+  ].join("\n");
+}
+
+// The Polish system prompt.
+export const AI_TOPIC_SYSTEM_PROMPT = topicSystemPrompt("pl");
 
 // What each category asks of the topic (the labels are the S-07 ones).
 export const AI_CATEGORY_DESCRIPTIONS: Readonly<Record<QuestionCategory, string>> = {
@@ -68,11 +83,19 @@ export function pickTheme(random: () => number): string {
   return pickOne(TOPIC_THEMES, random);
 }
 
-// The user message of one request.
-export function buildTopicPrompt({ category, theme }: { category: QuestionCategory; theme: string }): string {
+// The user message of one request. A Polish request reads exactly as before; an English one asks for English.
+export function buildTopicPrompt({
+  category,
+  theme,
+  locale = "pl",
+}: {
+  category: QuestionCategory;
+  theme: string;
+  locale?: Locale;
+}): string {
   return [
     `Kategoria: ${QUESTION_CATEGORY_LABELS[category]} — ${AI_CATEGORY_DESCRIPTIONS[category]}.`,
     `Inspiracja (nie musisz trzymać się jej dosłownie): ${theme}.`,
-    "Napisz jedno pytanie.",
+    locale === "en" ? "Napisz jedno pytanie, po angielsku." : "Napisz jedno pytanie.",
   ].join("\n");
 }

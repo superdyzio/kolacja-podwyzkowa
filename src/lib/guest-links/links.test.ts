@@ -55,3 +55,13 @@ describe("formatGuestLinksSummary", () => {
     expect(formatGuestLinksSummary({ enabled, guestCount })).toBe(expected);
   });
 });
+
+describe("formatGuestLinksSummary in English", () => {
+  it.each([
+    [true, 38, "Guest access: on · 38 links"],
+    [false, 1, "Guest access: off · 1 link"],
+    [false, 0, "Guest access: off · no guests"],
+  ])("enabled %s, %i guests → %s", (enabled, guestCount, expected) => {
+    expect(formatGuestLinksSummary({ enabled, guestCount }, "en")).toBe(expected);
+  });
+});

@@ -31,4 +31,13 @@ describe("formatVenueSummary", () => {
   ])("formats %j", (summary, text) => {
     expect(formatVenueSummary(summary)).toBe(text);
   });
+
+  it("formats in English", () => {
+    expect(formatVenueSummary({ hasPlan: true, rooms: 1, tables: 7, seats: 52 }, "en")).toBe(
+      "Plan uploaded · 1 room · 7 tables · 52 seats",
+    );
+    expect(formatVenueSummary({ hasPlan: false, rooms: 0, tables: 1, seats: 1 }, "en")).toBe(
+      "No plan · 0 rooms · 1 table · 1 seat",
+    );
+  });
 });

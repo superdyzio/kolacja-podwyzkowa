@@ -164,6 +164,19 @@ describe("describeGuestSeat", () => {
     expect(describeGuestSeat(toGuestState({ ...common, snapshotId: 2 }))).toBe(GUEST_UNSEATED_MESSAGE);
   });
 
+  it("speaks English when asked", () => {
+    const common = { seatingVersion: "4.0", planVersion: null, name: "A", guess: OPEN };
+    expect(describeGuestSeat(toGuestState({ ...common, snapshotId: 4, seat: SEAT }), "en")).toBe(
+      "Your seat: table Okno, room Sala A, seat 3.",
+    );
+    expect(describeGuestSeat(toGuestState({ ...common, snapshotId: null, seat: null }), "en")).toBe(
+      "The organizer has not published the seating yet. Your seat will show up here by itself.",
+    );
+    expect(describeGuestSeat(toGuestState({ ...common, snapshotId: 2, seat: null }), "en")).toBe(
+      "You have no seat in the current seating. Ask the organizer.",
+    );
+  });
+
   it("does not depend on the guess, so a guess change never looks like a new seat", () => {
     const common = { seatingVersion: "4.0", planVersion: null, name: "A", snapshotId: 4, seat: SEAT };
     expect(describeGuestSeat(toGuestState({ ...common, guess: OPEN }))).toBe(

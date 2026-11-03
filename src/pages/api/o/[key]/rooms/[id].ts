@@ -2,15 +2,7 @@ import type { APIRoute } from "astro";
 import { z } from "astro/zod";
 import { jsonError, jsonResponse, parseId, readJsonBody } from "@/lib/http";
 import { organizerApi } from "@/lib/organizer-api";
-import {
-  OUTLINE_MESSAGE,
-  ROOM_DUPLICATE_MESSAGE,
-  ROOM_NOT_FOUND_MESSAGE,
-  deleteRoom,
-  describeRoomNameProblem,
-  getVenue,
-  updateRoom,
-} from "@/lib/venue";
+import { deleteRoom, describeRoomNameProblem, getVenue, updateRoom, venueMessages } from "@/lib/venue";
 
 export const prerender = false;
 
@@ -34,7 +26,7 @@ export const PATCH: APIRoute = async ({ locals, params, request }) => {
   }
   const id = parseId(params.id);
   if (id === null) {
-    return jsonError(404, ROOM_NOT_FOUND_MESSAGE);
+    return jsonError(404, venueMessages(locals.locale).roomNotFound);
   }
   const body = await readJsonBody(request, UpdateRoomBody, locals.locale);
   if (!body.ok) {
@@ -44,13 +36,13 @@ export const PATCH: APIRoute = async ({ locals, params, request }) => {
   const result = await updateRoom(api.db, id, body.data);
   switch (result.status) {
     case "invalid":
-      return jsonError(400, describeRoomNameProblem(result.reason));
+      return jsonError(400, describeRoomNameProblem(result.reason, locals.locale));
     case "invalid-outline":
-      return jsonError(400, OUTLINE_MESSAGE);
+      return jsonError(400, venueMessages(locals.locale).outline);
     case "duplicate":
-      return jsonError(409, ROOM_DUPLICATE_MESSAGE);
+      return jsonError(409, venueMessages(locals.locale).roomDuplicate);
     case "not-found":
-      return jsonError(404, ROOM_NOT_FOUND_MESSAGE);
+      return jsonError(404, venueMessages(locals.locale).roomNotFound);
     case "updated":
       return jsonResponse(await getVenue(api.db));
   }
@@ -63,12 +55,12 @@ export const DELETE: APIRoute = async ({ locals, params }) => {
   }
   const id = parseId(params.id);
   if (id === null) {
-    return jsonError(404, ROOM_NOT_FOUND_MESSAGE);
+    return jsonError(404, venueMessages(locals.locale).roomNotFound);
   }
 
   const result = await deleteRoom(api.db, id);
   if (result.status === "not-found") {
-    return jsonError(404, ROOM_NOT_FOUND_MESSAGE);
+    return jsonError(404, venueMessages(locals.locale).roomNotFound);
   }
   return jsonResponse(await getVenue(api.db));
 };

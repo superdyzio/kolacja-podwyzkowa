@@ -58,6 +58,7 @@ function createStore(apiBase: string, initial: GuestStateDto): GuestStateStore {
   let snapshot: GuestStateSnapshot = { state: initial, offline: false, seatChanged: false };
   let failures = 0;
   let version = initial.version;
+  // The seat sentence in the default locale, only compared (never shown): the store is shared by every island.
   let shownSeat = describeGuestSeat(initial);
   // Bumped by push(): a poll that started before it may carry an older state and is ignored.
   let generation = 0;

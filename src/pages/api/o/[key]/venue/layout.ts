@@ -2,18 +2,7 @@ import type { APIRoute } from "astro";
 import { z } from "astro/zod";
 import { jsonError, jsonResponse, readJsonBody } from "@/lib/http";
 import { organizerApi } from "@/lib/organizer-api";
-import {
-  CHAIR_PITCH_MESSAGE,
-  NO_PLAN_MESSAGE,
-  OUTLINE_MESSAGE,
-  ROOM_NOT_FOUND_MESSAGE,
-  TABLES_LIMIT_MESSAGE,
-  TABLE_DUPLICATE_MESSAGE,
-  TABLE_NOT_FOUND_MESSAGE,
-  applyVenueLayout,
-  describeTableFieldProblem,
-  getVenue,
-} from "@/lib/venue";
+import { applyVenueLayout, describeTableFieldProblem, getVenue, tablesLimitMessage, venueMessages } from "@/lib/venue";
 
 export const prerender = false;
 
@@ -54,6 +43,7 @@ export const POST: APIRoute = async ({ locals, request }) => {
     return body.response;
   }
 
+  const messages = venueMessages(locals.locale);
   const result = await applyVenueLayout(api.db, body.data);
   switch (result.status) {
     case "applied":
@@ -62,20 +52,20 @@ export const POST: APIRoute = async ({ locals, request }) => {
       return jsonError(
         400,
         result.problem === "outline"
-          ? OUTLINE_MESSAGE
+          ? messages.outline
           : result.problem === "chairPitch"
-            ? CHAIR_PITCH_MESSAGE
-            : describeTableFieldProblem(result.problem),
+            ? messages.chairPitch
+            : describeTableFieldProblem(result.problem, locals.locale),
       );
     case "table-not-found":
-      return jsonError(409, TABLE_NOT_FOUND_MESSAGE);
+      return jsonError(409, messages.tableNotFound);
     case "room-not-found":
-      return jsonError(409, ROOM_NOT_FOUND_MESSAGE);
+      return jsonError(409, messages.roomNotFound);
     case "duplicate":
-      return jsonError(409, TABLE_DUPLICATE_MESSAGE);
+      return jsonError(409, messages.tableDuplicate);
     case "too-many":
-      return jsonError(409, TABLES_LIMIT_MESSAGE);
+      return jsonError(409, tablesLimitMessage(locals.locale));
     case "no-plan":
-      return jsonError(409, NO_PLAN_MESSAGE);
+      return jsonError(409, messages.noPlan);
   }
 };

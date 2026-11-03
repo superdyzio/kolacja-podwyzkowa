@@ -1,6 +1,7 @@
-import { pluralPl } from "@/lib/guests/summary";
+import type { Locale } from "@/lib/i18n/locale";
 import type { QuestionCategory, QuestionDto } from "@/types";
 import { QUESTION_CATEGORIES } from "./categories";
+import { questionMessages } from "./messages";
 
 // Counts for the organizer shell card and the category filter (pure).
 
@@ -15,13 +16,18 @@ export function countQuestions(questions: readonly Pick<QuestionDto, "category">
 }
 
 // „90 pytań · kontrowersyjne 30 · generyczne 30 · refleksyjne 30” / „Baza pytań jest pusta”
-export function formatQuestionSummary(questions: readonly Pick<QuestionDto, "category">[]): string {
+// (English: "90 questions · controversial 30 · general 30 · reflective 30").
+export function formatQuestionSummary(
+  questions: readonly Pick<QuestionDto, "category">[],
+  locale: Locale = "pl",
+): string {
+  const t = questionMessages(locale);
   const counts = countQuestions(questions);
   if (counts.all === 0) {
-    return "Baza pytań jest pusta";
+    return t.summaryEmpty;
   }
   return [
-    `${counts.all} ${pluralPl(counts.all, "pytanie", "pytania", "pytań")}`,
-    ...QUESTION_CATEGORIES.map((category) => `${category} ${counts[category]}`),
+    t.summaryCount(counts.all),
+    ...QUESTION_CATEGORIES.map((category) => t.summaryCategory(category, counts[category])),
   ].join(" · ");
 }

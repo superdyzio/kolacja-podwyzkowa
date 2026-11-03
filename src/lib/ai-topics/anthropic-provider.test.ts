@@ -5,7 +5,7 @@ import {
   createAnthropicProvider,
   type FetchLike,
 } from "./anthropic-provider";
-import { AI_TOPIC_SYSTEM_PROMPT, buildTopicPrompt } from "./prompt";
+import { AI_TOPIC_SYSTEM_PROMPT, buildTopicPrompt, topicSystemPrompt } from "./prompt";
 import type { AiProviderError } from "./provider";
 
 // Every call here goes to a stub: no request ever leaves the process (and tests/setup/no-ai-network.ts would block it).
@@ -92,6 +92,17 @@ describe("Anthropic AI provider", () => {
     for (const sampling of ["temperature", "top_p", "top_k"]) {
       expect(body).not.toHaveProperty(sampling);
     }
+  });
+
+  it("asks for an English topic for an English request (i18n)", async () => {
+    const fetch = stub(message([{ type: "text", text: "Coffee or tea?" }]));
+    const english = { ...request, locale: "en" as const };
+    await createAnthropicProvider({ apiKey: KEY, model: "claude-haiku-5-5", fetch }).generate(english, live());
+    const body = bodyOf(firstCall(fetch)[1]);
+    expect(body).toMatchObject({
+      system: topicSystemPrompt("en"),
+      messages: [{ role: "user", content: buildTopicPrompt(english) }],
+    });
   });
 
   it("runs another model on its own defaults", async () => {

@@ -1,6 +1,8 @@
 import { useId, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { NETWORK_FAILURE, readJson, toFailure } from "@/components/hooks/api-failure";
+import { networkFailure, readJson, toFailure } from "@/components/hooks/api-failure";
+import type { Locale } from "@/lib/i18n";
+import { orderMessages } from "@/lib/orders/messages";
 
 interface Props {
   // Organizer API base, e.g. "/api/o/<key>".
@@ -9,11 +11,13 @@ interface Props {
   origin: string;
   // "/r/<key>".
   initialPath: string;
+  locale: Locale;
 }
 
 // The restaurant's link on the organizer's order page (restaurant-orders): always on; „Kopiuj” and „Wymień link”
 // (asks first; the old link stops working at once).
-export function RestaurantLinkCard({ apiBase, origin, initialPath }: Props) {
+export function RestaurantLinkCard({ apiBase, origin, initialPath, locale }: Props) {
+  const t = orderMessages(locale);
   const fieldId = useId();
   const field = useRef<HTMLInputElement>(null);
   const [path, setPath] = useState(initialPath);
@@ -29,17 +33,15 @@ export function RestaurantLinkCard({ apiBase, origin, initialPath }: Props) {
         throw new Error("no clipboard");
       }
       await clipboard.writeText(url);
-      setStatus("Skopiowano link.");
+      setStatus(t.copied);
     } catch {
       field.current?.select();
-      setStatus("Link jest zaznaczony — skopiuj go (Ctrl+C / Cmd+C).");
+      setStatus(t.copySelected);
     }
   }
 
   async function rotate() {
-    if (
-      !window.confirm("Wymienić link restauracji? Stary link przestanie działać od razu — wyślij restauracji nowy.")
-    ) {
+    if (!window.confirm(t.confirmRotate)) {
       return;
     }
     setPending(true);
@@ -50,12 +52,12 @@ export function RestaurantLinkCard({ apiBase, origin, initialPath }: Props) {
       const next = (data as { path?: unknown } | null)?.path;
       if (response.ok && typeof next === "string") {
         setPath(next);
-        setStatus("Nowy link gotowy. Stary już nie działa.");
+        setStatus(t.rotated);
       } else {
-        setStatus(toFailure(data).message);
+        setStatus(toFailure(data, locale).message);
       }
     } catch {
-      setStatus(NETWORK_FAILURE.message);
+      setStatus(networkFailure(locale).message);
     } finally {
       setPending(false);
     }
@@ -64,14 +66,11 @@ export function RestaurantLinkCard({ apiBase, origin, initialPath }: Props) {
   return (
     <section aria-labelledby={`${fieldId}-heading`} className="flex flex-col gap-3 rounded-xl border p-4 sm:p-6">
       <h2 id={`${fieldId}-heading`} className="text-xl font-semibold">
-        Link dla restauracji
+        {t.linkHeading}
       </h2>
-      <p className="text-muted-foreground text-sm">
-        Wyślij go restauracji: zobaczy listę dań do przygotowania i plan sali z tym, co gdzie podać — bez cen. Co
-        odhaczysz jako wydane, u nich też jest oznaczone.
-      </p>
+      <p className="text-muted-foreground text-sm">{t.linkIntro}</p>
       <label htmlFor={fieldId} className="sr-only">
-        Link dla restauracji
+        {t.linkHeading}
       </label>
       <input
         id={fieldId}
@@ -86,15 +85,15 @@ export function RestaurantLinkCard({ apiBase, origin, initialPath }: Props) {
       />
       <div className="flex flex-wrap gap-2">
         <Button type="button" className="h-10" onClick={() => void copy()}>
-          Kopiuj
+          {t.copy}
         </Button>
         <Button variant="outline" className="h-10" asChild>
           <a href={url} target="_blank" rel="noreferrer">
-            Otwórz podgląd
+            {t.openPreview}
           </a>
         </Button>
         <Button type="button" variant="ghost" className="h-10" disabled={pending} onClick={() => void rotate()}>
-          Wymień link
+          {t.rotate}
         </Button>
       </div>
       {status && (

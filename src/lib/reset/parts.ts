@@ -1,6 +1,6 @@
-import { MAX_EVENT_TOPICS, MAX_GUEST_TOPICS } from "@/lib/ai-topics/limits";
-import { pluralPl } from "@/lib/guests/summary";
+import type { Locale } from "@/lib/i18n/locale";
 import type { ResetPart } from "@/types";
+import { resetMessages } from "./messages";
 
 // The organizer reset („Reset danych”), pure: which parts exist, what they are called, what they imply and how the
 // modal's selection behaves. The DB function reset_event (migration 20261030120000_reset_event.sql) uses the same
@@ -22,34 +22,18 @@ export function isResetPart(value: unknown): value is ResetPart {
   return typeof value === "string" && (RESET_PARTS as readonly string[]).includes(value);
 }
 
-export const RESET_PART_LABELS: Readonly<Record<ResetPart, string>> = {
-  guesses: "Strzały",
-  aiUsage: "Licznik tematów AI",
-  seating: "Rozsadzenie i historia",
-  guests: "Goście i grupy",
-  venue: "Plan, sale i stoliki",
-  orders: "Zamówienia",
-  questions: "Pytania",
-  guestLinks: "Linki gości",
-};
-
-function topics(count: number): string {
-  return `${count} ${pluralPl(count, "temat", "tematy", "tematów")}`;
+// Labels and one-line descriptions (under each label in the modal) in the chosen language; the constants are the
+// Polish ones.
+export function resetPartLabels(locale: Locale = "pl"): Readonly<Record<ResetPart, string>> {
+  return resetMessages(locale).partLabels;
 }
 
-// One line per part under its label in the modal.
-export const RESET_PART_DESCRIPTIONS: Readonly<Record<ResetPart, string>> = {
-  guesses: "Usuwa wszystkie strzały i prawidłową kwotę, otwiera przyjmowanie strzałów.",
-  aiUsage: `Zeruje licznik: każdy gość znów ma ${topics(MAX_GUEST_TOPICS)}, cały wieczór ${MAX_EVENT_TOPICS}. Szacunek kosztu AI też liczy się od nowa.`,
-  seating:
-    "Usuwa rozsadzenie (z przypięciami) i wszystkie publikacje: TV nic nie pokazuje, historia sąsiadów zaczyna się od zera.",
-  guests: "Usuwa wszystkich gości i grupy, a razem z nimi strzały, licznik tematów AI i rozsadzenie.",
-  venue: "Usuwa plan lokalu, sale i stoliki, a razem z nimi rozsadzenie.",
-  orders: "Usuwa wszystkie pozycje zamówienia. Link restauracji zostaje bez zmian.",
-  questions: "Usuwa wszystkie pytania i wczytuje od nowa bazę startową.",
-  guestLinks:
-    "Nowy link dla każdego gościa i wyłączony dostęp gości: wydrukowane karteczki i wysłane linki przestają działać.",
-};
+export function resetPartDescriptions(locale: Locale = "pl"): Readonly<Record<ResetPart, string>> {
+  return resetMessages(locale).partDescriptions;
+}
+
+export const RESET_PART_LABELS = resetPartLabels("pl");
+export const RESET_PART_DESCRIPTIONS = resetPartDescriptions("pl");
 
 // What a part takes with it: without guests there are no guesses, AI attempts or seats; without tables no seats.
 export const RESET_IMPLIES: Readonly<Record<ResetPart, readonly ResetPart[]>> = {

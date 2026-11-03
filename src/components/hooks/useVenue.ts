@@ -1,13 +1,9 @@
 import { useCallback, useRef, useState } from "react";
-import {
-  MAX_PLAN_BYTES,
-  PLAN_TOO_LARGE_MESSAGE,
-  PLAN_UNSUPPORTED_MESSAGE,
-  formatMegabytes,
-  isPlanImageType,
-} from "@/lib/venue/image";
+import type { Locale } from "@/lib/i18n";
+import { MAX_PLAN_BYTES, formatMegabytes, isPlanImageType } from "@/lib/venue/image";
+import { venueEditorMessages, venueMessages } from "@/lib/venue/messages";
 import type { VenueDto } from "@/types";
-import { NETWORK_FAILURE, readJson, toFailure, type ApiFailure } from "./api-failure";
+import { networkFailure, readJson, toFailure, type ApiFailure } from "./api-failure";
 
 // Venue state of the rooms-and-tables page. Every change goes through the API, and the venue is replaced with the
 // one the server returns, so the page never drifts from the database. Changes run one after another (venue-drawing:
@@ -38,7 +34,7 @@ function pick(venue: VenueDto): VenueDto {
   return { plan: venue.plan, rooms: venue.rooms, tables: venue.tables, chairPitch: venue.chairPitch };
 }
 
-export function useVenue(apiBase: string, initialVenue: VenueDto) {
+export function useVenue(apiBase: string, initialVenue: VenueDto, locale: Locale) {
   const [venue, setVenue] = useState<VenueDto>(initialVenue);
   const [pending, setPending] = useState(false);
   const [failure, setFailure] = useState<ApiFailure | null>(null);
@@ -56,7 +52,7 @@ export function useVenue(apiBase: string, initialVenue: VenueDto) {
           }
           return true;
         }
-        setFailure(toFailure(data));
+        setFailure(toFailure(data, locale));
         // The venue may be stale (e.g. changed in another tab): reload it so the next try starts from the truth.
         if (response.status === 404 || response.status === 409) {
           const fresh = await fetch(`${apiBase}/venue`).then(readJson, () => null);
@@ -66,11 +62,11 @@ export function useVenue(apiBase: string, initialVenue: VenueDto) {
         }
         return false;
       } catch {
-        setFailure(NETWORK_FAILURE);
+        setFailure(networkFailure(locale));
         return false;
       }
     },
-    [apiBase],
+    [apiBase, locale],
   );
 
   // Resolves to true when the change was saved; starts after every change asked for before it has answered.
@@ -109,12 +105,14 @@ export function useVenue(apiBase: string, initialVenue: VenueDto) {
   // The server decides the type from the file's bytes; these checks only give a quicker answer.
   const uploadPlan = useCallback(
     async (file: File): Promise<boolean> => {
+      const messages = venueMessages(locale);
       if (file.type !== "" && !isPlanImageType(file.type)) {
-        setFailure({ message: PLAN_UNSUPPORTED_MESSAGE, details: [] });
+        setFailure({ message: messages.planUnsupported, details: [] });
         return false;
       }
       if (file.size > MAX_PLAN_BYTES) {
-        setFailure({ message: `${PLAN_TOO_LARGE_MESSAGE} Ten plik ma ${formatMegabytes(file.size)}.`, details: [] });
+        const size = venueEditorMessages(locale).planFileSize(formatMegabytes(file.size, locale));
+        setFailure({ message: `${messages.planTooLarge} ${size}`, details: [] });
         return false;
       }
       return run(() =>
@@ -125,7 +123,7 @@ export function useVenue(apiBase: string, initialVenue: VenueDto) {
         }),
       );
     },
-    [apiBase, run],
+    [apiBase, locale, run],
   );
 
   const showFailure = useCallback((message: string) => {

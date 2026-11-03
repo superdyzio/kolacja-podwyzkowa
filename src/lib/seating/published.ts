@@ -1,4 +1,4 @@
-import { pluralPl } from "@/lib/guests/summary";
+import type { Locale } from "@/lib/i18n/locale";
 import { DEFAULT_CHAIR_PITCH, compareTableNames } from "@/lib/venue/rules";
 import type {
   DrawingRoomDto,
@@ -9,6 +9,7 @@ import type {
   TvSeatingDto,
   TvTableDto,
 } from "@/types";
+import { seatingMessages } from "./messages";
 import { seatLabel, type SeatingInput } from "./rules";
 
 // The published side of seating (pure): is the latest snapshot still what a publish would write now, what the TV
@@ -227,16 +228,19 @@ const LISTED_OCCUPANTS = 12;
 export function describeRemovedOccupants(
   removed: readonly SeatOccupantDto[],
   tableNameById: ReadonlyMap<number, string>,
+  locale: Locale = "pl",
 ): string {
   if (removed.length === 0) {
     return "";
   }
+  const messages = seatingMessages(locale);
   const listed = removed
     .slice(0, LISTED_OCCUPANTS)
     .map(
-      (occupant) => `${occupant.guestName} (${seatLabel(tableNameById.get(occupant.tableId) ?? "?", occupant.seat)})`,
+      (occupant) =>
+        `${occupant.guestName} (${seatLabel(tableNameById.get(occupant.tableId) ?? "?", occupant.seat, locale)})`,
     );
   const rest = removed.length - listed.length;
-  const more = rest > 0 ? ` i ${rest} ${pluralPl(rest, "inna osoba", "inne osoby", "innych osób")}` : "";
-  return `Miejsce ${removed.length === 1 ? "straci" : "stracą"}: ${listed.join(", ")}${more}.`;
+  const more = rest > 0 ? messages.andOthers(rest) : "";
+  return messages.removedOccupants(removed.length, `${listed.join(", ")}${more}`);
 }

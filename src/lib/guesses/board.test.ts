@@ -76,4 +76,11 @@ describe("formatGuessSummary", () => {
     const empty = toGuessBoard({ intakeOpen: true, correctAmountGrosze: null, guests: [], guesses: [] });
     expect(formatGuessSummary(empty)).toBe("Przyjmowanie otwarte · brak gości");
   });
+
+  it("speaks English", () => {
+    const closed = toGuessBoard({ guests, guesses: [], intakeOpen: false, correctAmountGrosze: 5 });
+    expect(formatGuessSummary(closed, "en")).toBe("Guessing closed · guesses: 0 of 4 · ranking ready");
+    const empty = toGuessBoard({ intakeOpen: true, correctAmountGrosze: null, guests: [], guesses: [] });
+    expect(formatGuessSummary(empty, "en")).toBe("Guessing open · no guests");
+  });
 });

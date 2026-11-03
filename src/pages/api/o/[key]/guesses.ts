@@ -40,7 +40,7 @@ export const PATCH: APIRoute = async ({ locals, request }) => {
   // Validate everything before writing anything.
   let correctGrosze: number | null | undefined;
   if (typeof correctAmount === "string") {
-    const parsed = parseAmount(correctAmount);
+    const parsed = parseAmount(correctAmount, locals.locale);
     if (!parsed.ok) {
       return jsonError(400, parsed.message);
     }

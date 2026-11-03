@@ -1,9 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
+  allCategoriesLabel,
   isQuestionCategory,
   QUESTION_CATEGORIES,
   QUESTION_CATEGORY_HINTS,
   QUESTION_CATEGORY_LABELS,
+  questionCategoryHints,
+  questionCategoryLabels,
 } from "./categories";
 
 describe("question categories", () => {
@@ -16,6 +19,19 @@ describe("question categories", () => {
       expect(QUESTION_CATEGORY_LABELS[category]).toMatch(/^[A-ZŻŹĆĄŚĘŁÓŃ]/);
       expect(QUESTION_CATEGORY_HINTS[category].length).toBeGreaterThan(0);
     }
+  });
+
+  it("has an English label and hint for each (i18n)", () => {
+    expect(questionCategoryLabels("en")).toEqual({
+      kontrowersyjne: "Controversial",
+      generyczne: "General",
+      refleksyjne: "Reflective",
+    });
+    expect(questionCategoryLabels()).toBe(QUESTION_CATEGORY_LABELS);
+    for (const category of QUESTION_CATEGORIES) {
+      expect(questionCategoryHints("en")[category].length).toBeGreaterThan(0);
+    }
+    expect(allCategoriesLabel("en")).toBe("All");
   });
 
   it("guards unknown values", () => {

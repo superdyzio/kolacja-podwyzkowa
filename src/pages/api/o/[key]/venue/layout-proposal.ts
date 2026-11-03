@@ -2,15 +2,8 @@ import type { APIRoute } from "astro";
 import { getVenueVisionProvider } from "@/lib/ai";
 import { jsonError, jsonResponse, readBodyBytes } from "@/lib/http";
 import { organizerApi } from "@/lib/organizer-api";
-import {
-  LAYOUT_BAD_OUTPUT_HINT,
-  LAYOUT_FAILED_MESSAGE,
-  LAYOUT_IMAGE_TOO_LARGE_MESSAGE,
-  MAX_LAYOUT_IMAGE_BYTES,
-  describeLayoutFailure,
-  proposeVenueLayout,
-} from "@/lib/venue-ai";
-import { NO_PLAN_MESSAGE, PLAN_EMPTY_MESSAGE, PLAN_UNSUPPORTED_MESSAGE, sniffImageType } from "@/lib/venue";
+import { MAX_LAYOUT_IMAGE_BYTES, describeLayoutFailure, proposeVenueLayout, venueAiMessages } from "@/lib/venue-ai";
+import { sniffImageType, venueMessages } from "@/lib/venue";
 import type { VenueLayoutProposalAnswerDto } from "@/types";
 
 export const prerender = false;
@@ -25,39 +18,48 @@ export const POST: APIRoute = async ({ locals, request }) => {
     return api;
   }
 
+  const { locale } = locals;
+  const messages = venueMessages(locale);
+  const aiMessages = venueAiMessages(locale);
   const body = await readBodyBytes(request, MAX_LAYOUT_IMAGE_BYTES);
   switch (body.status) {
     case "empty":
-      return jsonError(400, PLAN_EMPTY_MESSAGE);
+      return jsonError(400, messages.planEmpty);
     case "too-large":
-      return jsonError(413, LAYOUT_IMAGE_TOO_LARGE_MESSAGE);
+      return jsonError(413, aiMessages.imageTooLarge);
     case "ok":
       break;
   }
 
   // Not an image → 415 whatever the provider (the same order as PUT /plan).
   if (sniffImageType(body.bytes) === null) {
-    return jsonError(415, PLAN_UNSUPPORTED_MESSAGE);
+    return jsonError(415, messages.planUnsupported);
   }
 
   const provider = getVenueVisionProvider();
   if (!provider.ready) {
-    return jsonError(503, LAYOUT_FAILED_MESSAGE, { hint: describeLayoutFailure("not-configured"), costNanoUsd: 0 });
+    return jsonError(503, aiMessages.layoutFailed, {
+      hint: describeLayoutFailure("not-configured", undefined, locale),
+      costNanoUsd: 0,
+    });
   }
 
   const result = await proposeVenueLayout(api.db, provider, body.bytes);
   switch (result.status) {
     case "unsupported-type":
-      return jsonError(415, PLAN_UNSUPPORTED_MESSAGE);
+      return jsonError(415, messages.planUnsupported);
     case "no-plan":
-      return jsonError(409, NO_PLAN_MESSAGE);
+      return jsonError(409, messages.noPlan);
     case "failed":
-      return jsonError(503, LAYOUT_FAILED_MESSAGE, {
-        hint: describeLayoutFailure(result.kind, result.httpStatus),
+      return jsonError(503, aiMessages.layoutFailed, {
+        hint: describeLayoutFailure(result.kind, result.httpStatus, locale),
         costNanoUsd: result.costNanoUsd,
       });
     case "bad-output":
-      return jsonError(503, LAYOUT_FAILED_MESSAGE, { hint: LAYOUT_BAD_OUTPUT_HINT, costNanoUsd: result.costNanoUsd });
+      return jsonError(503, aiMessages.layoutFailed, {
+        hint: aiMessages.badOutputHint,
+        costNanoUsd: result.costNanoUsd,
+      });
     case "proposed": {
       const answer: VenueLayoutProposalAnswerDto = { proposal: result.proposal, costNanoUsd: result.costNanoUsd };
       return jsonResponse(answer);

@@ -1,6 +1,8 @@
 import { useSyncExternalStore } from "react";
 import { useOfflineSync } from "@/components/hooks/useOfflineSync";
 import { Button } from "@/components/ui/button";
+import type { Locale } from "@/lib/i18n";
+import { offlineMessages } from "@/lib/offline/messages";
 import { OfflineReadout } from "./OfflineReadout";
 
 interface Props {
@@ -8,6 +10,7 @@ interface Props {
   apiBase: string;
   // This page's own path, "/o/<key>/odczyt".
   readoutPath: string;
+  locale: Locale;
 }
 
 const noSubscription = () => () => undefined;
@@ -20,7 +23,8 @@ function reload() {
 // organizer's service worker also serves this page in place of any organizer page that cannot be loaded; then the
 // address is another page's („fallback”): it starts as offline, offers „Spróbuj ponownie”, and says when the server
 // can be reached again.
-export function OfflineReadoutPage({ apiBase, readoutPath }: Props) {
+export function OfflineReadoutPage({ apiBase, readoutPath, locale }: Props) {
+  const t = offlineMessages(locale);
   const { status } = useOfflineSync(apiBase);
   // False in the server render and during hydration.
   const fallback = useSyncExternalStore(
@@ -35,20 +39,20 @@ export function OfflineReadoutPage({ apiBase, readoutPath }: Props) {
       {fallback &&
         (status === "online" ? (
           <div role="status" className="flex flex-col gap-2 rounded-lg border p-3">
-            <p className="font-medium">Połączenie wróciło.</p>
+            <p className="font-medium">{t.reconnected}</p>
             <Button type="button" className="h-11 self-start" onClick={reload}>
-              Odśwież stronę
+              {t.reload}
             </Button>
           </div>
         ) : (
           <div className="flex flex-col gap-2 rounded-lg border p-3 text-sm">
-            <p>Ta strona nie otworzyła się bez połączenia — poniżej ostatni zapisany stan.</p>
+            <p>{t.fallbackText}</p>
             <Button type="button" variant="outline" className="h-11 self-start" onClick={reload}>
-              Spróbuj ponownie
+              {t.retry}
             </Button>
           </div>
         ))}
-      <OfflineReadout apiBase={apiBase} offline={offline} />
+      <OfflineReadout apiBase={apiBase} offline={offline} locale={locale} />
     </div>
   );
 }

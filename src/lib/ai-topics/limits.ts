@@ -1,5 +1,7 @@
+import type { Locale } from "@/lib/i18n/locale";
 import type { AiProviderStatusDto, AiTopicUsageDto, GuestAiQuotaDto } from "@/types";
 import { formatUsd, type AiSpend } from "./cost";
+import { aiTopicMessages } from "./messages";
 
 // Limits and texts of AI conversation topics (S-08, PRD NFR-005), pure. The numbers are passed to the DB function
 // reserve_ai_topic(), which enforces them atomically; the texts are what guests and the organizer read.
@@ -15,11 +17,28 @@ export const AI_CLIENT_TIMEOUT_MS = 13_000;
 // A pending attempt older than this is dead and never counts (mirrors the interval in the migration).
 export const STALE_PENDING_SECONDS = 60;
 
-export const GUEST_LIMIT_MESSAGE = `Wykorzystano już wszystkie tematy AI na ten wieczór (${MAX_GUEST_TOPICS} z ${MAX_GUEST_TOPICS}). Losuj pytania z bazy powyżej.`;
-export const EVENT_LIMIT_MESSAGE = `Tematy AI na ten wieczór się skończyły (${MAX_EVENT_TOPICS} z ${MAX_EVENT_TOPICS}). Losuj pytania z bazy powyżej.`;
-export const BUSY_MESSAGE = "Poprzedni temat jeszcze się generuje — chwilę.";
-export const FAILED_MESSAGE =
-  "Nie udało się wygenerować tematu — ta próba nie zmniejszyła limitu. Spróbuj ponownie albo użyj „Losuj pytanie” powyżej.";
+// What guests and the organizer read when a generation is refused or fails, in `locale` (i18n). Routes answer with
+// aiTopicLimitMessages(locals.locale).guestLimit / .eventLimit / .busy / .failed.
+export function aiTopicLimitMessages(locale: Locale = "pl"): {
+  guestLimit: string;
+  eventLimit: string;
+  busy: string;
+  failed: string;
+} {
+  const t = aiTopicMessages(locale);
+  return {
+    guestLimit: t.guestLimit(MAX_GUEST_TOPICS),
+    eventLimit: t.eventLimit(MAX_EVENT_TOPICS),
+    busy: t.busy,
+    failed: t.failed,
+  };
+}
+
+// The Polish texts (tests and older callers).
+export const GUEST_LIMIT_MESSAGE = aiTopicLimitMessages("pl").guestLimit;
+export const EVENT_LIMIT_MESSAGE = aiTopicLimitMessages("pl").eventLimit;
+export const BUSY_MESSAGE = aiTopicLimitMessages("pl").busy;
+export const FAILED_MESSAGE = aiTopicLimitMessages("pl").failed;
 
 // One row of ai_topic_usage().
 export interface AiTopicUsageRow {
@@ -74,36 +93,43 @@ export function toUsage(
 }
 
 // „Zostało 3 z 15” — the guest's remaining topics.
-export function formatRemaining(quota: GuestAiQuotaDto): string {
-  return `Zostało ${quota.remaining} z ${quota.limit}`;
+export function formatRemaining(quota: GuestAiQuotaDto, locale: Locale = "pl"): string {
+  return aiTopicMessages(locale).remaining(quota.remaining, quota.limit);
 }
 
 // „Wykorzystano 12 z 1000 · nieudane: 2” — the organizer's view of the evening.
-export function formatUsage(usage: AiTopicUsageDto): string {
-  const base = `Wykorzystano ${usage.used} z ${usage.limit}`;
-  return usage.failed > 0 ? `${base} · nieudane: ${usage.failed}` : base;
+export function formatUsage(usage: AiTopicUsageDto, locale: Locale = "pl"): string {
+  const t = aiTopicMessages(locale);
+  const base = t.usage(usage.used, usage.limit);
+  return usage.failed > 0 ? `${base} · ${t.usageFailed(usage.failed)}` : base;
 }
 
 // Short provider name for the organizer: „atrapa AI”, „Claude (claude-haiku-5-5)” or what is wrong.
-export function formatProvider(provider: AiProviderStatusDto): string {
+export function formatProvider(provider: AiProviderStatusDto, locale: Locale = "pl"): string {
+  const t = aiTopicMessages(locale);
   if (!provider.ready) {
-    return provider.kind === "anthropic" ? "brak klucza API" : "błędna konfiguracja AI";
+    return provider.kind === "anthropic" ? t.providerNoKey : t.providerInvalid;
   }
   if (provider.kind === "mock") {
-    return "atrapa AI";
+    return t.providerMock;
   }
   return provider.model ? `Claude (${provider.model})` : "Claude";
 }
 
 // The shell card: „Tematy AI: 12 z 1000 · atrapa AI”, with the estimate once tokens were billed („· ≈ 0,0012 USD”)
 // and a warning while the latest attempt failed.
-export function formatAiTopicSummary(usage: AiTopicUsageDto, provider: AiProviderStatusDto): string {
-  const parts = [`Tematy AI: ${usage.used} z ${usage.limit}`, formatProvider(provider)];
+export function formatAiTopicSummary(
+  usage: AiTopicUsageDto,
+  provider: AiProviderStatusDto,
+  locale: Locale = "pl",
+): string {
+  const t = aiTopicMessages(locale);
+  const parts = [t.summary(usage.used, usage.limit), formatProvider(provider, locale)];
   if (usage.costNanoUsd !== null && usage.inputTokens + usage.outputTokens > 0) {
-    parts.push(`≈\u00a0${formatUsd(usage.costNanoUsd)}`);
+    parts.push(`≈\u00a0${formatUsd(usage.costNanoUsd, locale)}`);
   }
   if (usage.lastFailureHint !== null) {
-    parts.push("ostatnia próba nieudana");
+    parts.push(t.summaryLastFailed);
   }
   return parts.join(" · ");
 }

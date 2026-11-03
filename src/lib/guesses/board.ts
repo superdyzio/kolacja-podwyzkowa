@@ -1,4 +1,6 @@
+import type { Locale } from "@/lib/i18n/locale";
 import type { GuessBoardDto, GuessEnteredBy, GuessGuestDto } from "@/types";
+import { guessMessages } from "./messages";
 import { rankGuesses } from "./ranking";
 
 // The organizer's guesses page from plain rows (S-06, FR-018, FR-020), pure: every guest with their guess, who has
@@ -48,15 +50,16 @@ export function toGuessBoard({ intakeOpen, correctAmountGrosze, guests, guesses 
 }
 
 // The organizer shell card: "Przyjmowanie otwarte · strzały: 32 z 40", "… · ranking gotowy" once it can be read.
-export function formatGuessSummary(board: GuessBoardDto): string {
-  const parts = [board.intakeOpen ? "Przyjmowanie otwarte" : "Przyjmowanie zamknięte"];
+export function formatGuessSummary(board: GuessBoardDto, locale: Locale = "pl"): string {
+  const t = guessMessages(locale);
+  const parts = [board.intakeOpen ? t.summaryOpen : t.summaryClosed];
   if (board.guests.length === 0) {
-    parts.push("brak gości");
+    parts.push(t.summaryNoGuests);
   } else {
-    parts.push(`strzały: ${board.guests.length - board.missing.length} z ${board.guests.length}`);
+    parts.push(t.summaryCount(board.guests.length - board.missing.length, board.guests.length));
   }
   if (board.ranking) {
-    parts.push("ranking gotowy");
+    parts.push(t.summaryRankingReady);
   }
   return parts.join(" · ");
 }

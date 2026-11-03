@@ -1,7 +1,9 @@
 import { useCallback, useRef, useState } from "react";
+import type { Locale } from "@/lib/i18n";
+import { venueAiMessages } from "@/lib/venue-ai/messages";
 import { LAYOUT_IMAGE_MAX_EDGE, MAX_LAYOUT_IMAGE_BYTES, VENUE_VISION_CLIENT_TIMEOUT_MS } from "@/lib/venue-ai/provider";
 import type { VenueLayoutProposalAnswerDto } from "@/types";
-import { NETWORK_FAILURE, readJson, toFailure } from "./api-failure";
+import { networkFailure, readJson, toFailure } from "./api-failure";
 
 // „Zaproponuj układ ze zdjęcia (AI)” (venue-drawing): the browser redraws the uploaded plan into a JPEG whose long
 // edge is at most 1568 px (what Claude reads without resizing, and well under the Lambda's payload limit), posts it,
@@ -13,9 +15,6 @@ export type LayoutProposalState =
   | { kind: "ready"; answer: VenueLayoutProposalAnswerDto }
   // costNanoUsd: what a failed read was billed (a refusal or a cut-off answer), null when nothing was.
   | { kind: "failed"; message: string; hint: string | null; costNanoUsd: number | null };
-
-const TIMEOUT_MESSAGE = "AI nie odpowiedziało w ciągu pół minuty. Spróbuj ponownie.";
-const IMAGE_MESSAGE = "Nie udało się przygotować zdjęcia planu. Odśwież stronę i spróbuj ponownie.";
 
 function isAnswer(data: unknown): data is VenueLayoutProposalAnswerDto {
   if (typeof data !== "object" || data === null || !("proposal" in data)) {
@@ -61,7 +60,7 @@ async function planSnapshot(imageSrc: string): Promise<Blob | null> {
   return null;
 }
 
-export function useLayoutProposal(apiBase: string) {
+export function useLayoutProposal(apiBase: string, locale: Locale) {
   const [state, setState] = useState<LayoutProposalState>({ kind: "idle" });
   // Dropping the proposal while a read runs ignores its answer.
   const generation = useRef(0);
@@ -78,7 +77,7 @@ export function useLayoutProposal(apiBase: string) {
       }
       if (!blob) {
         if (current === generation.current) {
-          setState({ kind: "failed", message: IMAGE_MESSAGE, hint: null, costNanoUsd: null });
+          setState({ kind: "failed", message: venueAiMessages(locale).imageFailed, hint: null, costNanoUsd: null });
         }
         return;
       }
@@ -102,7 +101,7 @@ export function useLayoutProposal(apiBase: string) {
           const { hint, costNanoUsd } = (data ?? {}) as { hint?: unknown; costNanoUsd?: unknown };
           next = {
             kind: "failed",
-            message: toFailure(data).message,
+            message: toFailure(data, locale).message,
             hint: typeof hint === "string" ? hint : null,
             costNanoUsd: typeof costNanoUsd === "number" && costNanoUsd > 0 ? costNanoUsd : null,
           };
@@ -110,7 +109,7 @@ export function useLayoutProposal(apiBase: string) {
       } catch {
         next = {
           kind: "failed",
-          message: controller.signal.aborted ? TIMEOUT_MESSAGE : NETWORK_FAILURE.message,
+          message: controller.signal.aborted ? venueAiMessages(locale).clientTimeout : networkFailure(locale).message,
           hint: null,
           costNanoUsd: null,
         };
@@ -121,7 +120,7 @@ export function useLayoutProposal(apiBase: string) {
         setState(next);
       }
     },
-    [apiBase],
+    [apiBase, locale],
   );
 
   const discard = useCallback(() => {

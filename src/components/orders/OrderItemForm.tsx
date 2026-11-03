@@ -2,6 +2,8 @@ import { useId, useState, type SubmitEvent } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { formatAmountInput } from "@/lib/guesses/amount";
+import type { Locale } from "@/lib/i18n";
+import { orderMessages } from "@/lib/orders/messages";
 import {
   dishKey,
   findDish,
@@ -11,7 +13,7 @@ import {
   parseDishName,
   parseNote,
   parseUnitPrice,
-  QUANTITY_MESSAGE,
+  quantityMessage,
   type DishSuggestion,
 } from "@/lib/orders/rules";
 import { cn } from "@/lib/utils";
@@ -33,6 +35,7 @@ interface Props {
   tables: readonly OrderTableOptionDto[];
   dishes: readonly DishSuggestion[];
   pending: boolean;
+  locale: Locale;
   submitLabel: string;
   // Resolves to true when saved (a new-line form then clears; an edit closes in the parent).
   onSubmit: (values: OrderItemFormValues) => Promise<boolean>;
@@ -63,19 +66,31 @@ function toAssignment(value: string): OrderItemFormValues["assignment"] {
   return null;
 }
 
-function guestLabel(guest: OrderGuestOptionDto): string {
-  const where = guest.seat ? `${guest.seat.table}, miejsce ${guest.seat.seat}` : "bez miejsca na planie";
-  return `${guest.displayName} — ${where}${guest.isAbsent ? " (nieobecny)" : ""}`;
+function guestLabel(guest: OrderGuestOptionDto, locale: Locale): string {
+  const t = orderMessages(locale);
+  const where = guest.seat ? t.guestSeat(guest.seat.table, guest.seat.seat) : t.guestNoSeat;
+  return `${guest.displayName} — ${where}${guest.isAbsent ? t.guestAbsent : ""}`;
 }
 
-function tableLabel(table: OrderTableOptionDto): string {
-  return `${table.name} (${table.room})${table.published ? "" : " — nieopublikowany"}`;
+function tableLabel(table: OrderTableOptionDto, locale: Locale): string {
+  return `${table.name} (${table.room})${table.published ? "" : orderMessages(locale).tableUnpublished}`;
 }
 
 // One order line in a form: the dish (suggesting the dishes already on the order, the price of the newest one filled
 // in while the price field is untouched), price, quantity, note and who it is for. Checked here before sending, so
 // a typo never costs a request. Keeps its own draft, so a board refresh never overwrites what is being typed.
-export function OrderItemForm({ item, guests, tables, dishes, pending, submitLabel, onSubmit, onCancel }: Props) {
+export function OrderItemForm({
+  item,
+  guests,
+  tables,
+  dishes,
+  pending,
+  locale,
+  submitLabel,
+  onSubmit,
+  onCancel,
+}: Props) {
+  const t = orderMessages(locale);
   const formId = useId();
   const [name, setName] = useState(item?.name ?? "");
   const [price, setPrice] = useState(item ? formatAmountInput(item.unitPriceGrosze) : "");
@@ -97,9 +112,9 @@ export function OrderItemForm({ item, guests, tables, dishes, pending, submitLab
 
   async function submit(event: SubmitEvent<HTMLFormElement>) {
     event.preventDefault();
-    const parsedName = parseDishName(name);
-    const parsedPrice = parseUnitPrice(price);
-    const parsedNote = parseNote(note);
+    const parsedName = parseDishName(name, locale);
+    const parsedPrice = parseUnitPrice(price, locale);
+    const parsedNote = parseNote(note, locale);
     const parsedQuantity = Number(quantity);
     for (const result of [parsedName, parsedPrice, parsedNote]) {
       if (!result.ok) {
@@ -108,7 +123,7 @@ export function OrderItemForm({ item, guests, tables, dishes, pending, submitLab
       }
     }
     if (!isValidQuantity(parsedQuantity)) {
-      setProblem(QUANTITY_MESSAGE);
+      setProblem(quantityMessage(locale));
       return;
     }
     setProblem(null);
@@ -137,11 +152,11 @@ export function OrderItemForm({ item, guests, tables, dishes, pending, submitLab
       noValidate
       onSubmit={(event) => void submit(event)}
       className="grid grid-cols-2 gap-3 sm:grid-cols-6"
-      aria-label={item ? `Zmień pozycję: ${item.name}` : "Nowa pozycja zamówienia"}
+      aria-label={item ? t.editFormLabel(item.name) : t.newFormLabel}
     >
       <div className="col-span-2 flex flex-col gap-1 sm:col-span-3">
         <label htmlFor={`${formId}-name`} className="text-sm font-medium">
-          Danie
+          {t.dish}
         </label>
         <Input
           id={`${formId}-name`}
@@ -161,14 +176,14 @@ export function OrderItemForm({ item, guests, tables, dishes, pending, submitLab
       </div>
       <div className="flex flex-col gap-1 sm:col-span-2">
         <label htmlFor={`${formId}-price`} className="text-sm font-medium">
-          Cena za sztukę
+          {t.unitPrice}
         </label>
         <div className="relative">
           <Input
             id={`${formId}-price`}
             inputMode="decimal"
             autoComplete="off"
-            placeholder="np. 49,90"
+            placeholder={t.pricePlaceholder}
             value={price}
             onChange={(event) => {
               setPrice(event.target.value);
@@ -186,7 +201,7 @@ export function OrderItemForm({ item, guests, tables, dishes, pending, submitLab
       </div>
       <div className="flex flex-col gap-1">
         <label htmlFor={`${formId}-quantity`} className="text-sm font-medium">
-          Ilość
+          {t.quantityColumn}
         </label>
         <Input
           id={`${formId}-quantity`}
@@ -203,7 +218,7 @@ export function OrderItemForm({ item, guests, tables, dishes, pending, submitLab
       </div>
       <div className="col-span-2 flex flex-col gap-1 sm:col-span-3">
         <label htmlFor={`${formId}-for`} className="text-sm font-medium">
-          Dla kogo
+          {t.forWhom}
         </label>
         <select
           id={`${formId}-for`}
@@ -213,21 +228,21 @@ export function OrderItemForm({ item, guests, tables, dishes, pending, submitLab
           }}
           className={SELECT_CLASS}
         >
-          <option value="">Nieprzypisane</option>
+          <option value="">{t.unassignedOption}</option>
           {guests.length > 0 && (
-            <optgroup label="Osoba (podanie na jej miejsce)">
+            <optgroup label={t.guestGroup}>
               {guests.map((guest) => (
                 <option key={guest.id} value={`g:${String(guest.id)}`}>
-                  {guestLabel(guest)}
+                  {guestLabel(guest, locale)}
                 </option>
               ))}
             </optgroup>
           )}
           {tables.length > 0 && (
-            <optgroup label="Stolik (na środek stołu)">
+            <optgroup label={t.tableGroup}>
               {tables.map((table) => (
                 <option key={table.id} value={`t:${String(table.id)}`}>
-                  {tableLabel(table)}
+                  {tableLabel(table, locale)}
                 </option>
               ))}
             </optgroup>
@@ -236,12 +251,12 @@ export function OrderItemForm({ item, guests, tables, dishes, pending, submitLab
       </div>
       <div className="col-span-2 flex flex-col gap-1 sm:col-span-3">
         <label htmlFor={`${formId}-note`} className="text-sm font-medium">
-          Uwaga dla kuchni <span className="text-muted-foreground font-normal">(opcjonalnie)</span>
+          {t.note} <span className="text-muted-foreground font-normal">{t.optional}</span>
         </label>
         <Input
           id={`${formId}-note`}
           autoComplete="off"
-          placeholder="np. bez cebuli"
+          placeholder={t.notePlaceholder}
           value={note}
           onChange={(event) => {
             setNote(event.target.value);
@@ -260,7 +275,7 @@ export function OrderItemForm({ item, guests, tables, dishes, pending, submitLab
         </Button>
         {onCancel && (
           <Button type="button" variant="ghost" className="h-10" onClick={onCancel}>
-            Anuluj
+            {t.cancel}
           </Button>
         )}
       </div>

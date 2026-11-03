@@ -1,5 +1,5 @@
 import { formatUsd } from "@/lib/ai-topics/cost";
-import { pluralPl } from "@/lib/guests/summary";
+import type { Locale } from "@/lib/i18n/locale";
 import type { DrawnTable } from "@/lib/venue/drawing";
 import { formatChairPitch } from "@/lib/venue/editor";
 import { MAX_SEATS, MIN_SEATS } from "@/lib/venue/rules";
@@ -10,6 +10,7 @@ import type {
   TableDto,
   VenueLayoutProposalAnswerDto,
 } from "@/types";
+import { venueAiMessages } from "./messages";
 
 // The organizer's review of a layout proposal (venue-drawing), pure: which lines are kept, the edits of the new tables,
 // the texts of the lines, the ghost drawn on the plan and the body sent to POST /venue/layout.
@@ -63,35 +64,39 @@ export function pitchChanged(answer: VenueLayoutProposalAnswerDto): boolean {
 }
 
 // „Stolik 3: przesunięty, obrót 90°”.
-export function describeUpdate(update: LayoutTableUpdateDto): string {
+export function describeUpdate(update: LayoutTableUpdateDto, locale: Locale = "pl"): string {
+  const messages = venueAiMessages(locale);
   const parts: string[] = [];
   if (Math.hypot(update.x - update.previous.x, update.y - update.previous.y) > 0.002) {
-    parts.push("przesunięty");
+    parts.push(messages.moved);
   }
   if (update.rotation !== update.previous.rotation) {
-    parts.push(`obrót ${String(update.rotation)}°`);
+    parts.push(messages.rotation(update.rotation));
   }
   return `${update.name}: ${parts.join(", ")}`;
 }
 
-export function describeSeats(count: number): string {
-  return `${String(count)} ${pluralPl(count, "miejsce", "miejsca", "miejsc")}`;
+export function describeSeats(count: number, locale: Locale = "pl"): string {
+  return venueAiMessages(locale).seats(count);
 }
 
-export function describeRoomOutline(name: string, previous: RoomOutline | null): string {
-  return `${name}: ${previous ? "nowy kontur" : "kontur"}`;
+export function describeRoomOutline(name: string, previous: RoomOutline | null, locale: Locale = "pl"): string {
+  const messages = venueAiMessages(locale);
+  return `${name}: ${previous ? messages.newOutline : messages.outline}`;
 }
 
-export function describePitch(answer: VenueLayoutProposalAnswerDto): string {
+export function describePitch(answer: VenueLayoutProposalAnswerDto, locale: Locale = "pl"): string {
   const { chairPitch, previousChairPitch } = answer.proposal;
-  return `Skala krzeseł: ${formatChairPitch(previousChairPitch)} → ${formatChairPitch(chairPitch)}`;
+  return venueAiMessages(locale).pitch(
+    formatChairPitch(previousChairPitch, locale),
+    formatChairPitch(chairPitch, locale),
+  );
 }
 
 // An estimate for this one read; it is not recorded, so the AI topics' cost line never includes it.
-export function describeCost(costNanoUsd: number | null): string {
-  return costNanoUsd === null
-    ? "Koszt odczytu nieznany."
-    : `Koszt odczytu: ≈ ${formatUsd(costNanoUsd)} (nie wlicza się do kosztu tematów AI).`;
+export function describeCost(costNanoUsd: number | null, locale: Locale = "pl"): string {
+  const messages = venueAiMessages(locale);
+  return costNanoUsd === null ? messages.costUnknown : messages.cost(formatUsd(costNanoUsd, locale));
 }
 
 export function isValidEdit(edit: NewTableEdit): boolean {

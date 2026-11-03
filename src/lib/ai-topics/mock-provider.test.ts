@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createAnthropicProvider } from "./anthropic-provider";
 import { createMockProvider, mockFailureRequested } from "./mock-provider";
-import { MOCK_TOPICS } from "./mock-topics";
+import { MOCK_TOPICS, MOCK_TOPICS_EN } from "./mock-topics";
 import { AiProviderError } from "./provider";
 
 const request = { category: "refleksyjne" as const, theme: "podróże" };
@@ -25,6 +25,14 @@ describe("mock AI provider", () => {
     const last = createMockProvider({ delayMs: () => 0, random: () => 0.999_999 });
     await expect(last.generate({ ...request, category: "generyczne" }, live())).resolves.toEqual({
       text: MOCK_TOPICS.generyczne.at(-1),
+      usage: null,
+    });
+  });
+
+  it("answers in English for an English request (i18n)", async () => {
+    const provider = createMockProvider({ delayMs: () => 0, random: () => 0 });
+    await expect(provider.generate({ ...request, locale: "en" }, live())).resolves.toEqual({
+      text: MOCK_TOPICS_EN.refleksyjne[0],
       usage: null,
     });
   });

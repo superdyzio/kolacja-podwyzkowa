@@ -1,9 +1,8 @@
 import type { APIRoute } from "astro";
 import { getAiProvider, getAiProviderStatus } from "@/lib/ai";
 import {
+  aiTopicLimitMessages,
   describeFailureForOrganizer,
-  EVENT_LIMIT_MESSAGE,
-  FAILED_MESSAGE,
   generateTopic,
   getAiTopicUsage,
   mockFailureRequested,
@@ -21,12 +20,15 @@ export const GET: APIRoute = async ({ locals }) => {
   if (api instanceof Response) {
     return api;
   }
-  const board: AiTopicBoardDto = { usage: await getAiTopicUsage(api.db), provider: getAiProviderStatus() };
+  const board: AiTopicBoardDto = {
+    usage: await getAiTopicUsage(api.db, locals.locale),
+    provider: getAiProviderStatus(locals.locale),
+  };
   return jsonResponse(board);
 };
 
 // POST { category }: the organizer generates a topic for themself, without a personal limit (the evening's 300 still
-// apply). A failure carries a Polish hint about the cause (timeout, rejected key, missing key, …) for the organizer.
+// apply). A failure carries a hint (in the request's language) about the cause (timeout, rejected key, missing key, …) for the organizer.
 export const POST: APIRoute = async ({ locals, request }) => {
   const api = organizerApi(locals);
   if (api instanceof Response) {
@@ -40,10 +42,11 @@ export const POST: APIRoute = async ({ locals, request }) => {
   const result = await generateTopic(
     api.db,
     provider,
-    { guestId: null, category: body.data.category },
+    { guestId: null, category: body.data.category, locale: locals.locale },
     { simulateFailure: mockFailureRequested(provider, request.headers) },
   );
-  const usage = await getAiTopicUsage(api.db);
+  const usage = await getAiTopicUsage(api.db, locals.locale);
+  const messages = aiTopicLimitMessages(locals.locale);
   switch (result.status) {
     case "generated": {
       const answer: OrganizerAiTopicAnswerDto = { topic: result.topic, usage };
@@ -52,16 +55,17 @@ export const POST: APIRoute = async ({ locals, request }) => {
     case "failed": {
       const hint =
         result.kind === "not-configured"
-          ? (getAiProviderStatus().problem ?? describeFailureForOrganizer(result.kind))
-          : describeFailureForOrganizer(result.kind, result.httpStatus);
-      return jsonError(503, FAILED_MESSAGE, { hint, usage });
+          ? (getAiProviderStatus(locals.locale).problem ??
+            describeFailureForOrganizer(result.kind, undefined, locals.locale))
+          : describeFailureForOrganizer(result.kind, result.httpStatus, locals.locale);
+      return jsonError(503, messages.failed, { hint, usage });
     }
     case "event-limit":
-      return jsonError(429, EVENT_LIMIT_MESSAGE, { usage });
+      return jsonError(429, messages.eventLimit, { usage });
     // The organizer has no personal limit and no guest row; these cannot happen for guestId null.
     case "guest-limit":
     case "busy":
     case "not-found":
-      return jsonError(409, FAILED_MESSAGE, { usage });
+      return jsonError(409, messages.failed, { usage });
   }
 };

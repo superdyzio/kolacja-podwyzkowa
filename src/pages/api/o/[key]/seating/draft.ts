@@ -2,7 +2,7 @@ import type { APIRoute } from "astro";
 import { z } from "astro/zod";
 import { jsonError, jsonResponse, readJsonBody } from "@/lib/http";
 import { organizerApi } from "@/lib/organizer-api";
-import { DRAFT_STALE_MESSAGE, getSeatingBoard, saveDraft } from "@/lib/seating";
+import { getSeatingBoard, saveDraft, seatingMessages } from "@/lib/seating";
 
 export const prerender = false;
 
@@ -34,12 +34,13 @@ export const POST: APIRoute = async ({ locals, request }) => {
     return body.response;
   }
 
-  const result = await saveDraft(api.db, body.data.seats);
+  const { draftStale } = seatingMessages(locals.locale);
+  const result = await saveDraft(api.db, body.data.seats, locals.locale);
   switch (result.status) {
     case "invalid":
-      return jsonError(409, DRAFT_STALE_MESSAGE, { problems: result.problems });
+      return jsonError(409, draftStale, { problems: result.problems });
     case "conflict":
-      return jsonError(409, DRAFT_STALE_MESSAGE);
+      return jsonError(409, draftStale);
     case "saved":
       return jsonResponse(await getSeatingBoard(api.db));
   }

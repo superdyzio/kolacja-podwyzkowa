@@ -1,5 +1,6 @@
 import { EVENT_ID } from "@/lib/event";
 import { starterQuestionRows } from "@/lib/questions/seed";
+import type { Locale } from "@/lib/i18n/locale";
 import type { DbClient } from "@/lib/supabase-client";
 import { hideTvSpotlight } from "@/lib/tv-spotlight/service";
 import type { ResetPart, ResetPreviewDto, ResetResultDto } from "@/types";
@@ -37,8 +38,13 @@ export async function getResetPreview(db: DbClient): Promise<ResetPreviewDto | n
   return { counts: counts.data, starterQuestions: starterQuestionRows().length };
 }
 
-// Resets the chosen parts (implied ones added here and again in the DB) in one transaction.
-export async function resetEvent(db: DbClient, parts: readonly ResetPart[]): Promise<ResetEventResult> {
+// Resets the chosen parts (implied ones added here and again in the DB) in one transaction. The summary lines are in
+// `locale` (the request's language).
+export async function resetEvent(
+  db: DbClient,
+  parts: readonly ResetPart[],
+  locale: Locale = "pl",
+): Promise<ResetEventResult> {
   const expanded = expandResetParts(parts);
   if (expanded.length === 0) {
     throw new TypeError("Nie wybrano niczego do resetu.");
@@ -65,5 +71,5 @@ export async function resetEvent(db: DbClient, parts: readonly ResetPart[]): Pro
     // eslint-disable-next-line no-console -- the only trace of it (Lambda logs); the reset itself is done
     console.error("Nie udało się zdjąć treści z ekranu TV po resecie:", spotlightError);
   }
-  return { status: "reset", result: { ...answer.data, summary: describeResetResult(answer.data) } };
+  return { status: "reset", result: { ...answer.data, summary: describeResetResult(answer.data, locale) } };
 }

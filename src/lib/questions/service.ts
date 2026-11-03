@@ -2,6 +2,7 @@ import type { DbClient } from "@/lib/supabase-client";
 import type { QuestionCategory, QuestionDto, QuestionListDto, QuestionRow } from "@/types";
 import { isQuestionCategory, QUESTION_CATEGORIES } from "./categories";
 import { pickQuestion, secureRandom } from "./draw";
+import { questionMessages } from "./messages";
 import { starterQuestionRows } from "./seed";
 import {
   MAX_QUESTIONS,
@@ -19,8 +20,9 @@ import {
 // event across categories, so pastes and the starter load are idempotent, and what was added is counted from the
 // rows the insert returned (never from a pre-check that a concurrent request could have made stale).
 
-export const QUESTION_NOT_FOUND_MESSAGE = "Nie znaleziono pytania.";
-export const QUESTION_DUPLICATE_MESSAGE = "To pytanie już jest w bazie.";
+// Polish; routes use questionMessages(locals.locale).notFound / .duplicate.
+export const QUESTION_NOT_FOUND_MESSAGE = questionMessages("pl").notFound;
+export const QUESTION_DUPLICATE_MESSAGE = questionMessages("pl").duplicate;
 
 const UNIQUE_VIOLATION = "23505";
 const COLUMNS = "id, category, text";

@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent, type ReactNode } from "react";
+import type { Locale } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 import {
   DEFAULT_FONTS,
@@ -54,7 +55,10 @@ interface Props {
   children?: ReactNode;
   // Rendered under everything else, in stage units (editor: the plan photo).
   background?: ReactNode;
+  // Already in the page's language (the drawing itself has no text of its own, only names).
   label: string;
+  // Optional (i18n): only marks the language of the label on the <svg>; callers may leave it out.
+  locale?: Locale;
   className?: string;
 }
 
@@ -157,6 +161,7 @@ export function VenueDrawing({
   children,
   background,
   label,
+  locale,
   className,
 }: Props) {
   const styles = STYLES[variant];
@@ -191,6 +196,7 @@ export function VenueDrawing({
       preserveAspectRatio="xMidYMid meet"
       role="img"
       aria-label={label}
+      lang={locale}
       className={cn("block select-none", className)}
     >
       {background}

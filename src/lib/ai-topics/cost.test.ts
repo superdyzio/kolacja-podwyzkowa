@@ -67,4 +67,18 @@ describe("AI cost estimate", () => {
       `340${NBSP}tokenów — brak cennika dla tego modelu`,
     );
   });
+
+  it("formats dollars and tokens in English (i18n)", () => {
+    expect(formatUsd(10_000, "en")).toBe(`<${NBSP}0.0001${NBSP}USD`);
+    expect(formatUsd(12_345_678, "en")).toBe(`0.0123${NBSP}USD`);
+    expect(formatUsd(1_234_567_890, "en")).toBe(`1.23${NBSP}USD`);
+    expect(formatTokens(1, "en")).toBe(`1${NBSP}token`);
+    expect(formatTokens(12_400, "en")).toBe(`12,400${NBSP}tokens`);
+    expect(formatSpend({ inputTokens: 10_000, outputTokens: 2400, costNanoUsd: 2_200_000 }, "en")).toBe(
+      `≈${NBSP}0.0022${NBSP}USD (12,400${NBSP}tokens)`,
+    );
+    expect(formatSpend({ inputTokens: 300, outputTokens: 40, costNanoUsd: null }, "en")).toBe(
+      `340${NBSP}tokens — no price list for this model`,
+    );
+  });
 });

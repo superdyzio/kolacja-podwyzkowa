@@ -49,6 +49,11 @@ describe("room and table names", () => {
     expect(describeTableNameProblem("empty")).toBe("Wpisz nazwę stolika.");
     expect(describeTableNameProblem("too-long")).toBe("Nazwa stolika może mieć najwyżej 24 znaków.");
   });
+
+  it("describes problems in English", () => {
+    expect(describeRoomNameProblem("too-long", "en")).toBe("A room name can have at most 40 characters.");
+    expect(describeTableFieldProblem({ field: "seatCount" }, "en")).toBe("A table has 2 to 20 seats.");
+  });
 });
 
 describe("seats and shapes", () => {
@@ -141,6 +146,10 @@ describe("nextTableName", () => {
   it("fills the first gap, ignoring letter case", () => {
     expect(nextTableName(["stolik 1", "Stolik 3"])).toBe("Stolik 2");
     expect(nextTableName(["Stolik 1", "Stolik 2", "Okno"])).toBe("Stolik 3");
+  });
+
+  it("suggests English names in English", () => {
+    expect(nextTableName(["Table 1"], "en")).toBe("Table 2");
   });
 });
 

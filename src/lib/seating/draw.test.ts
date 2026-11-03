@@ -154,7 +154,7 @@ describe("drawSeating — infeasible", () => {
     const data = { ...base, guestList: { ...base.guestList, guests: [...guests, guest(41, "Gość 41")] } };
     const problems = problemsOf(drawSeating(data, [], seeded(1)));
     expect(problems).toEqual([{ kind: "too-many-guests", present: 41, seats: 40 }]);
-    expect(problems.map(describeDrawProblem)).toEqual([
+    expect(problems.map((problem) => describeDrawProblem(problem))).toEqual([
       "Obecnych gości jest 41, a dostępnych miejsc 40 — dodaj miejsca albo oznacz kogoś jako nieobecnego.",
     ]);
   });
@@ -173,6 +173,9 @@ describe("drawSeating — infeasible", () => {
     expect(describeDrawProblem(problems[0] ?? { kind: "groups-do-not-fit" })).toBe(
       "Grupa Ania, Kuba, Ola, Ewa i Jan (5 osób) nie zmieści się na kolejnych miejscach przy żadnym stoliku — potrzeba 5 wolnych miejsc obok siebie (przy prostokątnym po jednej stronie).",
     );
+    expect(describeDrawProblem(problems[0] ?? { kind: "groups-do-not-fit" }, "en")).toBe(
+      "The group Ania, Kuba, Ola, Ewa and Jan (5 people) does not fit on consecutive seats at any table — it needs 5 free seats next to each other (on one side of a rectangular table).",
+    );
   });
 
   it("names pinned members of one group at different tables", () => {
@@ -184,7 +187,7 @@ describe("drawSeating — infeasible", () => {
     );
     const problems = problemsOf(drawSeating(data, [], seeded(1)));
     expect(problems).toEqual([{ kind: "pinned-group-split", names: ["Ania", "Kuba"] }]);
-    expect(problems.map(describeDrawProblem)[0]).toContain("Grupa Ania i Kuba: przypięte osoby");
+    expect(problems.map((problem) => describeDrawProblem(problem))[0]).toContain("Grupa Ania i Kuba: przypięte osoby");
   });
 
   it("names pinned members of a trio too far apart at one table", () => {
@@ -220,7 +223,9 @@ describe("drawSeating — infeasible", () => {
     );
     const problems = problemsOf(drawSeating(data, [], seeded(1)));
     expect(problems).toEqual([{ kind: "pinned-group-no-room", names: ["Ania", "Kuba"] }]);
-    expect(problems.map(describeDrawProblem)[0]).toContain("obok przypiętego miejsca nie ma dość wolnych miejsc");
+    expect(problems.map((problem) => describeDrawProblem(problem))[0]).toContain(
+      "obok przypiętego miejsca nie ma dość wolnych miejsc",
+    );
   });
 
   it("names groups that fit one by one but not all together", () => {
@@ -328,7 +333,9 @@ describe("drawSeating — property", () => {
         expectValidDraw(data, history, result);
       } else {
         expect(result.problems.length).toBeGreaterThan(0);
-        expect(result.problems.map(describeDrawProblem).every((line) => line.length > 0)).toBe(true);
+        expect(result.problems.map((problem) => describeDrawProblem(problem)).every((line) => line.length > 0)).toBe(
+          true,
+        );
       }
     }
     // Most random venues are feasible; the generator must exercise the draw, not only the refusals.

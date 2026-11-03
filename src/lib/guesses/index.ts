@@ -13,6 +13,7 @@ export {
   type ParseAmountResult,
 } from "./amount";
 export { formatGuessSummary, toGuessBoard, type GuessBoardInput } from "./board";
+export { amountMessages, guessMessages, guessUiMessages } from "./messages";
 export { placesFromLast, rankGuesses, type RankableGuess, type ReadoutStep } from "./ranking";
 export {
   GUESS_GUEST_NOT_FOUND_MESSAGE,

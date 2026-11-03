@@ -40,4 +40,11 @@ describe("summarizeGuestList", () => {
   it("omits absences when everyone is present", () => {
     expect(formatGuestSummary({ guests: 1, present: 1, absent: 0, groups: 0 })).toBe("1 gość · 0 grup");
   });
+
+  it("formats the summary in English", () => {
+    expect(formatGuestSummary({ guests: 40, present: 38, absent: 2, groups: 3 }, "en")).toBe(
+      "40 guests · 3 groups · absent: 2",
+    );
+    expect(formatGuestSummary({ guests: 1, present: 1, absent: 0, groups: 1 }, "en")).toBe("1 guest · 1 group");
+  });
 });

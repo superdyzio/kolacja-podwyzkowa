@@ -1,8 +1,4 @@
 export {
-  GUEST_NOT_FOUND_MESSAGE,
-  NOT_SEATED_MESSAGE,
-  PUBLISHED_MESSAGE,
-  PUBLISH_UNCHANGED_MESSAGE,
   describeWarnings,
   formatNameList,
   formatPublishedAt,
@@ -46,9 +42,6 @@ export {
   type RepeatedPair,
 } from "./neighbours";
 export {
-  DRAFT_STALE_MESSAGE,
-  SEATING_CHANGED_MESSAGE,
-  SNAPSHOT_NOT_FOUND_MESSAGE,
   describeDraftProblem,
   describeRestore,
   restoreSeats,
@@ -60,7 +53,6 @@ export {
 } from "./draft";
 export {
   DEFAULT_DRAW_BUDGET_MS,
-  DRAW_INFEASIBLE_MESSAGE,
   createRandom,
   describeDrawProblem,
   drawSeating,
@@ -97,3 +89,4 @@ export {
   type SetPinnedResult,
   type UnseatGuestResult,
 } from "./service";
+export { seatingEditorMessages, seatingMessages } from "./messages";

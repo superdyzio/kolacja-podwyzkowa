@@ -1,7 +1,7 @@
 import type { APIRoute } from "astro";
 import { jsonError, jsonResponse } from "@/lib/http";
 import { organizerApi } from "@/lib/organizer-api";
-import { drawPersonOnTv, NO_PRESENT_GUESTS_MESSAGE } from "@/lib/tv-spotlight";
+import { drawPersonOnTv, tvSpotlightMessages } from "@/lib/tv-spotlight";
 import type { TvSpotlightAnswerDto } from "@/types";
 
 export const prerender = false;
@@ -16,7 +16,7 @@ export const POST: APIRoute = async ({ locals }) => {
   }
   const result = await drawPersonOnTv(api.db);
   if (result.status === "nobody") {
-    return jsonError(409, NO_PRESENT_GUESTS_MESSAGE);
+    return jsonError(409, tvSpotlightMessages(locals.locale).noPresentGuests);
   }
   const answer: TvSpotlightAnswerDto = { spotlight: result.spotlight };
   return jsonResponse(answer);

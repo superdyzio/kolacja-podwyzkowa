@@ -3,6 +3,7 @@ import { isBoard } from "@/components/hooks/useSeatingBoard";
 import { useLayoutProposal } from "@/components/hooks/useLayoutProposal";
 import { useVenue } from "@/components/hooks/useVenue";
 import { Button } from "@/components/ui/button";
+import type { Locale } from "@/lib/i18n";
 import {
   describeRemovedOccupants,
   occupancyAfter,
@@ -13,6 +14,7 @@ import {
 import type { TableGeometry } from "@/lib/venue/editor";
 import { planImagePath, type PinPosition } from "@/lib/venue/pin";
 import { MAX_CHAIR_PITCH_SLIDER, MIN_CHAIR_PITCH_SLIDER, formatChairPitch } from "@/lib/venue/editor";
+import { venueEditorMessages } from "@/lib/venue/messages";
 import { nextTableName } from "@/lib/venue/rules";
 import { EMPTY_SELECTION, describeCost, proposalGhost, type ApplyLayoutBody } from "@/lib/venue-ai/draft";
 import { formatVenueSummary, summarizeVenue } from "@/lib/venue/summary";
@@ -31,6 +33,7 @@ interface Props {
   initialVenue: VenueDto;
   // Who sits where in the working seating arrangement (structure edits that remove seats name them first).
   initialOccupancy: SeatOccupantDto[];
+  locale: Locale;
 }
 
 // What a click on the plan does: idle → open "Nowy stolik" at that point; new → move the draft pin;
@@ -46,11 +49,14 @@ type Mode =
 // The chair-scale slider saves after this pause.
 const PITCH_SAVE_DELAY_MS = 400;
 
-const NO_ROOM_MESSAGE = "Najpierw dodaj salę — każdy stolik stoi w jakiejś sali.";
-
 // Organizer rooms-and-tables island (FR-005, FR-006): plan upload, rooms, tables pinned on the plan.
-export function VenueEditor({ apiBase, initialVenue, initialOccupancy }: Props) {
-  const { venue, pending, failure, send, uploadPlan, showFailure, dismissFailure } = useVenue(apiBase, initialVenue);
+export function VenueEditor({ apiBase, initialVenue, initialOccupancy, locale }: Props) {
+  const t = venueEditorMessages(locale);
+  const { venue, pending, failure, send, uploadPlan, showFailure, dismissFailure } = useVenue(
+    apiBase,
+    initialVenue,
+    locale,
+  );
   const [occupancy, setOccupancy] = useState(initialOccupancy);
   const [mode, setMode] = useState<Mode>({ kind: "idle" });
   const [lastRoomId, setLastRoomId] = useState<number | null>(null);
@@ -59,7 +65,7 @@ export function VenueEditor({ apiBase, initialVenue, initialOccupancy }: Props) 
   const [pitchDraft, setPitchDraft] = useState<number | null>(null);
   const pitchTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const panelRef = useRef<HTMLDivElement>(null);
-  const layoutProposal = useLayoutProposal(apiBase);
+  const layoutProposal = useLayoutProposal(apiBase, locale);
   const [proposalSelection, setProposalSelection] = useState(EMPTY_SELECTION);
   const proposalAnswer = layoutProposal.state.kind === "ready" ? layoutProposal.state.answer : null;
 
@@ -87,7 +93,7 @@ export function VenueEditor({ apiBase, initialVenue, initialOccupancy }: Props) 
       : mode;
 
   const defaultRoomId = lastRoomId !== null && roomNameById.has(lastRoomId) ? lastRoomId : (venue.rooms[0]?.id ?? 0);
-  const summary = formatVenueSummary(summarizeVenue(venue));
+  const summary = formatVenueSummary(summarizeVenue(venue), locale);
 
   // Escape leaves any mode.
   useEffect(() => {
@@ -145,7 +151,7 @@ export function VenueEditor({ apiBase, initialVenue, initialOccupancy }: Props) 
 
   // „\n\nMiejsce stracą: …” for a confirm question, or "" when nobody sits on the removed seats.
   function seatLoss(change: VenueSeatChange): string {
-    const text = describeRemovedOccupants(occupantsRemovedBy(occupancy, change), tableNameById);
+    const text = describeRemovedOccupants(occupantsRemovedBy(occupancy, change), tableNameById, locale);
     return text === "" ? "" : `\n\n${text}`;
   }
 
@@ -162,7 +168,7 @@ export function VenueEditor({ apiBase, initialVenue, initialOccupancy }: Props) 
       return;
     }
     if (venue.rooms.length === 0) {
-      showFailure(NO_ROOM_MESSAGE);
+      showFailure(t.noRoom);
       return;
     }
     setMode({ kind: "new", position });
@@ -176,10 +182,7 @@ export function VenueEditor({ apiBase, initialVenue, initialOccupancy }: Props) 
       // A lower seat count unseats whoever sits above it: ask first, naming them (nobody there → no question).
       const change: VenueSeatChange = { kind: "seat-count", tableId: current.tableId, seatCount: values.seatCount };
       const loss = seatLoss(change);
-      if (
-        loss !== "" &&
-        !window.confirm(`Zmniejszyć liczbę miejsc przy „${activeTable?.name ?? ""}” do ${values.seatCount}?${loss}`)
-      ) {
+      if (loss !== "" && !window.confirm(`${t.confirmSeatCount(activeTable?.name ?? "", values.seatCount)}${loss}`)) {
         return false;
       }
       saved = await send({ method: "PATCH", path: `/tables/${current.tableId}`, body: values });
@@ -199,7 +202,7 @@ export function VenueEditor({ apiBase, initialVenue, initialOccupancy }: Props) 
       return;
     }
     const change: VenueSeatChange = { kind: "delete-table", tableId: activeTable.id };
-    if (!window.confirm(`Usunąć stolik „${activeTable.name}”?${seatLoss(change)}`)) {
+    if (!window.confirm(`${t.confirmDeleteTable(activeTable.name)}${seatLoss(change)}`)) {
       return;
     }
     if (await send({ method: "DELETE", path: `/tables/${activeTable.id}` })) {
@@ -254,7 +257,7 @@ export function VenueEditor({ apiBase, initialVenue, initialOccupancy }: Props) 
 
   function addTableInCentre() {
     if (venue.rooms.length === 0) {
-      showFailure(NO_ROOM_MESSAGE);
+      showFailure(t.noRoom);
       return;
     }
     setPreview(false);
@@ -281,25 +284,22 @@ export function VenueEditor({ apiBase, initialVenue, initialOccupancy }: Props) 
 
   const hint =
     venue.rooms.length === 0
-      ? "Najpierw dodaj salę, potem klikaj na planie, gdzie stoją stoliki."
+      ? t.hintNoRooms
       : proposalAnswer
-        ? "Sprawdź propozycję AI: odznacz to, czego nie chcesz, i zastosuj resztę. Potem możesz wszystko poprawić ręcznie."
+        ? t.hintProposal
         : preview
-          ? "Tak TV pokaże plan po publikacji (imiona z bieżącego rozsadzenia). Wyłącz podgląd, żeby dalej rysować."
+          ? t.hintPreview
           : current.kind === "outline" && outlineRoom
-            ? `Przeciągnij na planie prostokąt sali „${outlineRoom.name}”. Esc — koniec.`
+            ? t.hintOutline(outlineRoom.name)
             : current.kind === "new"
-              ? "Uzupełnij dane nowego stolika. Kliknięcie w inne miejsce planu przesuwa pinezkę."
+              ? t.hintNew
               : current.kind === "move" && activeTable
-                ? `Kliknij na planie nowe miejsce stolika „${activeTable.name}”. Esc — anuluj.`
+                ? t.hintMove(activeTable.name)
                 : current.kind === "edit" && activeTable
-                  ? `Edytujesz stolik „${activeTable.name}”. Kliknięcie w puste miejsce planu dodaje nowy stolik.`
-                  : "Kliknij na planie, gdzie stoi nowy stolik, albo kliknij stolik, żeby go edytować. Stoliki przeciągasz myszą; strzałki przesuwają, a [ i ] obracają wybrany.";
+                  ? t.hintEdit(activeTable.name)
+                  : t.hintIdle;
 
-  const surfaceLabel =
-    current.kind === "move" && activeTable
-      ? `Plan lokalu: kliknij, żeby przestawić stolik „${activeTable.name}”`
-      : "Plan lokalu: kliknij, żeby postawić nowy stolik; przeciągnij stolik, żeby go przesunąć";
+  const surfaceLabel = current.kind === "move" && activeTable ? t.surfaceMove(activeTable.name) : t.surfaceIdle;
 
   return (
     <div className="flex flex-col gap-6">
@@ -318,7 +318,7 @@ export function VenueEditor({ apiBase, initialVenue, initialOccupancy }: Props) 
             </ul>
           )}
           <Button type="button" variant="ghost" className="h-10 self-start" onClick={dismissFailure}>
-            Zamknij
+            {t.close}
           </Button>
         </div>
       )}
@@ -329,6 +329,7 @@ export function VenueEditor({ apiBase, initialVenue, initialOccupancy }: Props) 
           hasTables={venue.tables.length > 0}
           pending={pending}
           onUpload={uploadPlan}
+          locale={locale}
         />
         <RoomsSection
           rooms={venue.rooms}
@@ -346,18 +347,19 @@ export function VenueEditor({ apiBase, initialVenue, initialOccupancy }: Props) 
           }
           seatLoss={(roomId) => seatLoss(roomChange(roomId))}
           onDelete={(roomId) => void deleteRoom(roomId)}
+          locale={locale}
         />
       </div>
 
       <section aria-labelledby="plan-heading" className="flex flex-col gap-3">
         <h2 id="plan-heading" className="text-lg font-semibold">
-          Stoliki na planie
+          {t.tablesOnPlan}
         </h2>
         {venue.plan && (
           <>
             <div className="flex flex-wrap items-center gap-3">
               <Button type="button" variant="outline" className="h-10" disabled={pending} onClick={addTableInCentre}>
-                Nowy stolik
+                {t.newTable}
               </Button>
               <Button
                 type="button"
@@ -366,9 +368,7 @@ export function VenueEditor({ apiBase, initialVenue, initialOccupancy }: Props) 
                 disabled={pending || layoutProposal.state.kind === "reading"}
                 onClick={readLayoutFromPhoto}
               >
-                {layoutProposal.state.kind === "reading"
-                  ? "AI czyta zdjęcie… (do 30 s)"
-                  : "Zaproponuj układ ze zdjęcia (AI)"}
+                {layoutProposal.state.kind === "reading" ? t.aiReading : t.aiPropose}
               </Button>
               <Button
                 type="button"
@@ -379,10 +379,10 @@ export function VenueEditor({ apiBase, initialVenue, initialOccupancy }: Props) 
                   setPreview((value) => !value);
                 }}
               >
-                Podgląd jak na TV
+                {t.preview}
               </Button>
               <label className="flex items-center gap-2 text-sm">
-                <span className="font-medium">Skala krzeseł</span>
+                <span className="font-medium">{t.chairScale}</span>
                 <input
                   type="range"
                   min={MIN_CHAIR_PITCH_SLIDER}
@@ -394,7 +394,7 @@ export function VenueEditor({ apiBase, initialVenue, initialOccupancy }: Props) 
                   }}
                   className="accent-primary w-36"
                 />
-                <span className="text-muted-foreground w-12 tabular-nums">{formatChairPitch(chairPitch)}</span>
+                <span className="text-muted-foreground w-12 tabular-nums">{formatChairPitch(chairPitch, locale)}</span>
               </label>
             </div>
             <p className="text-sm" aria-live="polite">
@@ -408,10 +408,12 @@ export function VenueEditor({ apiBase, initialVenue, initialOccupancy }: Props) 
                 <p className="text-destructive font-medium">{layoutProposal.state.message}</p>
                 {layoutProposal.state.hint && <p className="text-sm">{layoutProposal.state.hint}</p>}
                 {layoutProposal.state.costNanoUsd !== null && (
-                  <p className="text-muted-foreground text-xs">{describeCost(layoutProposal.state.costNanoUsd)}</p>
+                  <p className="text-muted-foreground text-xs">
+                    {describeCost(layoutProposal.state.costNanoUsd, locale)}
+                  </p>
                 )}
                 <Button type="button" variant="ghost" className="h-10 self-start" onClick={layoutProposal.discard}>
-                  Zamknij
+                  {t.close}
                 </Button>
               </div>
             )}
@@ -436,10 +438,11 @@ export function VenueEditor({ apiBase, initialVenue, initialOccupancy }: Props) 
               onTableClick={selectTable}
               saveTable={saveGeometry}
               saveOutline={saveOutline}
+              locale={locale}
             />
           ) : (
             <p className="text-muted-foreground rounded-xl border border-dashed p-6 text-center text-sm">
-              Wgraj plan lokalu, żeby postawić na nim stoliki.
+              {t.uploadPlanFirst}
             </p>
           )}
 
@@ -453,6 +456,7 @@ export function VenueEditor({ apiBase, initialVenue, initialOccupancy }: Props) 
                 pending={pending}
                 onApply={(body) => void applyProposal(body)}
                 onDiscard={layoutProposal.discard}
+                locale={locale}
               />
             )}
             {!proposalAnswer && current.kind === "new" && (
@@ -461,13 +465,17 @@ export function VenueEditor({ apiBase, initialVenue, initialOccupancy }: Props) 
                 table={null}
                 rooms={venue.rooms}
                 defaultRoomId={defaultRoomId}
-                suggestedName={nextTableName(venue.tables.map((table) => table.name))}
+                suggestedName={nextTableName(
+                  venue.tables.map((table) => table.name),
+                  locale,
+                )}
                 geometry={{ ...current.position, rotation: 0 }}
                 pending={pending}
                 onSubmit={saveTable}
                 onCancel={() => {
                   setMode({ kind: "idle" });
                 }}
+                locale={locale}
               />
             )}
             {!proposalAnswer && current.kind === "edit" && activeTable && (
@@ -487,6 +495,7 @@ export function VenueEditor({ apiBase, initialVenue, initialOccupancy }: Props) 
                   setMode({ kind: "move", tableId: activeTable.id });
                 }}
                 onDelete={() => void deleteActiveTable()}
+                locale={locale}
               />
             )}
             {!proposalAnswer && current.kind === "outline" && outlineRoom && (
@@ -498,12 +507,14 @@ export function VenueEditor({ apiBase, initialVenue, initialOccupancy }: Props) 
                 onDone={() => {
                   setMode({ kind: "idle" });
                 }}
+                locale={locale}
               />
             )}
             {!proposalAnswer && current.kind === "move" && activeTable && (
               <div className="flex flex-col gap-3 rounded-xl border p-4">
                 <p className="text-sm">
-                  Kliknij na planie nowe miejsce stolika <strong>„{activeTable.name}”</strong>.
+                  {t.moveTablePrefix}
+                  <strong>{t.quoted(activeTable.name)}</strong>.
                 </p>
                 <Button
                   type="button"
@@ -513,7 +524,7 @@ export function VenueEditor({ apiBase, initialVenue, initialOccupancy }: Props) 
                     setMode({ kind: "edit", tableId: activeTable.id });
                   }}
                 >
-                  Anuluj
+                  {t.cancel}
                 </Button>
               </div>
             )}
@@ -527,6 +538,7 @@ export function VenueEditor({ apiBase, initialVenue, initialOccupancy }: Props) 
         selectedId={activeTable?.id ?? null}
         pending={pending}
         onSelect={selectTable}
+        locale={locale}
       />
     </div>
   );

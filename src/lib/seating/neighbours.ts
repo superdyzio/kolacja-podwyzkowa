@@ -1,6 +1,7 @@
-import { pluralPl } from "@/lib/guests/summary";
+import type { Locale } from "@/lib/i18n/locale";
 import { neighbours } from "@/lib/venue/seats";
 import type { SeatingSnapshot, TableShape } from "@/types";
+import { seatingMessages } from "./messages";
 import type { SeatingInput } from "./rules";
 
 // Neighbour pairs (PRD Business Logic, FR-009): which guests sat next to each other in the published arrangements
@@ -162,16 +163,16 @@ export function repeatedNeighbours(input: SeatingInput, history: readonly GuestP
 }
 
 // „0 powtórzonych par sąsiadów”, „1 powtórzona para sąsiadów”, „2 powtórzone pary sąsiadów”
-export function formatRepeatCount(count: number): string {
-  return `${count} ${pluralPl(count, "powtórzona para sąsiadów", "powtórzone pary sąsiadów", "powtórzonych par sąsiadów")}`;
+export function formatRepeatCount(count: number, locale: Locale = "pl"): string {
+  return seatingMessages(locale).repeatCount(count);
 }
 
 // „Historia: 3 opublikowane rozkłady”
-export function formatHistoryCount(count: number): string {
-  return `Historia: ${count} ${pluralPl(count, "opublikowany rozkład", "opublikowane rozkłady", "opublikowanych rozkładów")}`;
+export function formatHistoryCount(count: number, locale: Locale = "pl"): string {
+  return seatingMessages(locale).historyCount(count);
 }
 
 // „Ania i Kuba (Okno)”
-export function describeRepeat(pair: RepeatedPair): string {
-  return `${pair.names[0]} i ${pair.names[1]} (${pair.tableName})`;
+export function describeRepeat(pair: RepeatedPair, locale: Locale = "pl"): string {
+  return seatingMessages(locale).repeatPair(pair.names[0], pair.names[1], pair.tableName);
 }

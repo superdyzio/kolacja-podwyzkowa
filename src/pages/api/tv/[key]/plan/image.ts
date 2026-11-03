@@ -17,5 +17,5 @@ export const GET: APIRoute = async ({ locals }) => {
   if (!db) {
     return jsonError(503, httpMessages(locals.locale).noDatabase);
   }
-  return planImageResponse(db);
+  return planImageResponse(db, locals.locale);
 };

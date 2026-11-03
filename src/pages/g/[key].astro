@@ -8,9 +8,9 @@ import Layout from "@/layouts/Layout.astro";
 import { accessFor, guestPath } from "@/lib/access";
 import { getGuestAiQuota } from "@/lib/ai-topics/service";
 import { getDb } from "@/lib/db";
-import { getGuestState } from "@/lib/guest-links";
+import { getGuestState, guestPhoneMessages } from "@/lib/guest-links";
 
-// The guest's phone page (S-05, US-03, FR-013, NFR-003, NFR-008): mobile-first, Polish. The middleware has already
+// The guest's phone page (S-05, US-03, FR-013, NFR-003, NFR-008): mobile-first, Polish or English (i18n). The middleware has already
 // checked the key AND the guest-access switch (off, revoked or unknown → the same no-access page); this is the
 // second, role-specific check. GuestAccess carries no keys, and only this guest's own state reaches the HTML.
 //
@@ -21,6 +21,8 @@ import { getGuestState } from "@/lib/guest-links";
 // src/components/hooks/guest-state-store.ts) instead of polling again; category pickers reuse
 // src/components/questions/CategoryChips.tsx. The AI quota is not in the poll: it is rendered here and refreshed by
 // every generate answer; the topics themselves are never stored, so they never appear in this HTML.
+const locale = Astro.locals.locale;
+const t = guestPhoneMessages(locale);
 const access = accessFor(Astro.locals, "guest");
 const db = access ? getDb() : null;
 if (!access || !db) {
@@ -47,30 +49,36 @@ const view =
 
       <section aria-labelledby="seat-heading" class="flex flex-col gap-3">
         <h2 id="seat-heading" class="sr-only">
-          Twoje miejsce
+          {t.seatHeading}
         </h2>
-        <GuestSeatView client:load apiBase={view.apiBase} initial={view.initial} />
+        <GuestSeatView client:load apiBase={view.apiBase} initial={view.initial} locale={locale} />
       </section>
 
       <section aria-labelledby="guess-heading" class="flex flex-col gap-3">
         <h2 id="guess-heading" class="text-xl font-semibold">
-          Twój strzał
+          {t.guessHeading}
         </h2>
-        <GuestGuessView client:load apiBase={view.apiBase} initial={view.initial} />
+        <GuestGuessView client:load apiBase={view.apiBase} initial={view.initial} locale={locale} />
       </section>
 
       <section aria-labelledby="question-heading" class="flex flex-col gap-3">
         <h2 id="question-heading" class="text-xl font-semibold">
-          Pytanie do rozmowy
+          {t.questionHeading}
         </h2>
-        <GuestQuestionDraw client:load apiBase={view.apiBase} initial={view.initial} />
+        <GuestQuestionDraw client:load apiBase={view.apiBase} initial={view.initial} locale={locale} />
       </section>
 
       <section aria-labelledby="topic-heading" class="flex flex-col gap-3">
         <h2 id="topic-heading" class="text-xl font-semibold">
-          Temat od AI
+          {t.topicHeading}
         </h2>
-        <GuestTopicView client:load apiBase={view.apiBase} initial={view.initial} initialQuota={view.initialQuota} />
+        <GuestTopicView
+          client:load
+          apiBase={view.apiBase}
+          initial={view.initial}
+          initialQuota={view.initialQuota}
+          locale={locale}
+        />
       </section>
     </main>
   </Layout>

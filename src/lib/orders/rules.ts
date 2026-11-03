@@ -1,6 +1,8 @@
 import { formatAmount, parseAmount } from "@/lib/guesses/amount";
 import { displayNameKey, displayNameLength, normalizeDisplayName } from "@/lib/guests/names";
+import type { Locale } from "@/lib/i18n/locale";
 import type { OrderItemDto, OrderTotalsDto } from "@/types";
+import { orderMessages } from "./messages";
 
 // Order-line rules shared by the DB service, the API routes and the organizer UI (restaurant-orders). Pure functions
 // only: no DB, no `astro:*`. The DB checks the same bounds (migration 20261102120000_restaurant_orders.sql).
@@ -17,14 +19,24 @@ export const MAX_QUANTITY = 99;
 // 100 000 zł for one portion is plenty; the DB allows the same.
 export const MAX_UNIT_PRICE_GROSZE = 10_000_000;
 
-export const DISH_EMPTY_MESSAGE = "Wpisz nazwę dania.";
-export const DISH_TOO_LONG_MESSAGE = `Nazwa dania może mieć najwyżej ${MAX_DISH_LENGTH} znaków.`;
-export const NOTE_TOO_LONG_MESSAGE = `Uwaga może mieć najwyżej ${MAX_NOTE_LENGTH} znaków.`;
-export const QUANTITY_MESSAGE = `Ilość to liczba od ${MIN_QUANTITY} do ${MAX_QUANTITY}.`;
-export const PRICE_TOO_LARGE_MESSAGE = `Cena może wynieść najwyżej ${formatAmount(MAX_UNIT_PRICE_GROSZE)}.`;
-export const TOO_MANY_ITEMS_MESSAGE = `Zamówienie może mieć najwyżej ${MAX_ORDER_ITEMS} pozycji.`;
-export const ORDER_ITEM_NOT_FOUND_MESSAGE = "Nie znaleziono pozycji zamówienia.";
-export const PLACE_GONE_MESSAGE = "Nie ma już takiego gościa albo stolika.";
+// The Polish texts as constants (tests import them); the routes and the form use orderMessages(locale).
+const pl = orderMessages("pl");
+export const DISH_EMPTY_MESSAGE = pl.dishEmpty;
+export const DISH_TOO_LONG_MESSAGE = pl.dishTooLong(MAX_DISH_LENGTH);
+export const NOTE_TOO_LONG_MESSAGE = pl.noteTooLong(MAX_NOTE_LENGTH);
+export const QUANTITY_MESSAGE = pl.quantity(MIN_QUANTITY, MAX_QUANTITY);
+export const PRICE_TOO_LARGE_MESSAGE = pl.priceTooLarge(formatAmount(MAX_UNIT_PRICE_GROSZE));
+export const TOO_MANY_ITEMS_MESSAGE = pl.tooManyItems(MAX_ORDER_ITEMS);
+export const ORDER_ITEM_NOT_FOUND_MESSAGE = pl.itemNotFound;
+export const PLACE_GONE_MESSAGE = pl.placeGone;
+
+export function quantityMessage(locale: Locale = "pl"): string {
+  return orderMessages(locale).quantity(MIN_QUANTITY, MAX_QUANTITY);
+}
+
+export function tooManyItemsMessage(locale: Locale = "pl"): string {
+  return orderMessages(locale).tooManyItems(MAX_ORDER_ITEMS);
+}
 
 export const normalizeOrderText = normalizeDisplayName;
 
@@ -35,25 +47,25 @@ export type TextResult = { ok: true; value: string } | { ok: false; message: str
 export type NoteResult = { ok: true; value: string | null } | { ok: false; message: string };
 export type PriceResult = { ok: true; grosze: number } | { ok: false; message: string };
 
-export function parseDishName(raw: string): TextResult {
+export function parseDishName(raw: string, locale: Locale = "pl"): TextResult {
   const value = normalizeOrderText(raw);
   if (value === "") {
-    return { ok: false, message: DISH_EMPTY_MESSAGE };
+    return { ok: false, message: orderMessages(locale).dishEmpty };
   }
   if (displayNameLength(value) > MAX_DISH_LENGTH) {
-    return { ok: false, message: DISH_TOO_LONG_MESSAGE };
+    return { ok: false, message: orderMessages(locale).dishTooLong(MAX_DISH_LENGTH) };
   }
   return { ok: true, value };
 }
 
 // An empty note is no note (null).
-export function parseNote(raw: string | null): NoteResult {
+export function parseNote(raw: string | null, locale: Locale = "pl"): NoteResult {
   const value = normalizeOrderText(raw ?? "");
   if (value === "") {
     return { ok: true, value: null };
   }
   if (displayNameLength(value) > MAX_NOTE_LENGTH) {
-    return { ok: false, message: NOTE_TOO_LONG_MESSAGE };
+    return { ok: false, message: orderMessages(locale).noteTooLong(MAX_NOTE_LENGTH) };
   }
   return { ok: true, value };
 }
@@ -62,13 +74,13 @@ export function isValidQuantity(quantity: number): boolean {
   return Number.isInteger(quantity) && quantity >= MIN_QUANTITY && quantity <= MAX_QUANTITY;
 }
 
-export function parseUnitPrice(text: string): PriceResult {
-  const parsed = parseAmount(text);
+export function parseUnitPrice(text: string, locale: Locale = "pl"): PriceResult {
+  const parsed = parseAmount(text, locale);
   if (!parsed.ok) {
     return parsed;
   }
   if (parsed.grosze > MAX_UNIT_PRICE_GROSZE) {
-    return { ok: false, message: PRICE_TOO_LARGE_MESSAGE };
+    return { ok: false, message: orderMessages(locale).priceTooLarge(formatAmount(MAX_UNIT_PRICE_GROSZE)) };
   }
   return parsed;
 }

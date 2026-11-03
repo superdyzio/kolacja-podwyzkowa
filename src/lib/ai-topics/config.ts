@@ -1,5 +1,7 @@
+import type { Locale } from "@/lib/i18n/locale";
 import type { AiProviderStatusDto } from "@/types";
 import { createAnthropicProvider, type FetchLike } from "./anthropic-provider";
+import { aiTopicMessages } from "./messages";
 import { createMockProvider, type MockProviderOptions } from "./mock-provider";
 import { AiProviderError, type AiTopicProvider } from "./provider";
 
@@ -18,7 +20,8 @@ export interface AiEnv {
 export type AiConfig =
   { kind: "mock" } | { kind: "anthropic"; apiKey: string | null; model: string } | { kind: "invalid"; value: string };
 
-export const MISSING_KEY_PROBLEM = "Brak ANTHROPIC_API_KEY — dodaj klucz albo ustaw AI_PROVIDER=mock.";
+// Polish (tests); aiProviderStatus answers in the locale it is given.
+export const MISSING_KEY_PROBLEM = aiTopicMessages("pl").missingKey;
 
 function blankToNull(value: string | undefined): string | null {
   const trimmed = value?.trim() ?? "";
@@ -36,21 +39,22 @@ export function parseAiConfig(env: AiEnv): AiConfig {
   return { kind: "invalid", value: blankToNull(env.provider) ?? "" };
 }
 
-// What the organizer sees about the provider; never the key itself.
-export function aiProviderStatus(config: AiConfig): AiProviderStatusDto {
+// What the organizer sees about the provider, `problem` in `locale`; never the key itself.
+export function aiProviderStatus(config: AiConfig, locale: Locale = "pl"): AiProviderStatusDto {
+  const t = aiTopicMessages(locale);
   switch (config.kind) {
     case "mock":
       return { kind: "mock", model: null, ready: true, problem: null };
     case "anthropic":
       return config.apiKey
         ? { kind: "anthropic", model: config.model, ready: true, problem: null }
-        : { kind: "anthropic", model: config.model, ready: false, problem: MISSING_KEY_PROBLEM };
+        : { kind: "anthropic", model: config.model, ready: false, problem: t.missingKey };
     case "invalid":
       return {
         kind: null,
         model: null,
         ready: false,
-        problem: `Nieznana wartość AI_PROVIDER: „${config.value}” — dozwolone: mock, anthropic.`,
+        problem: t.unknownProvider(config.value),
       };
   }
 }

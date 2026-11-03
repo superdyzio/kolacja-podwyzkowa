@@ -1,7 +1,9 @@
 import { useId } from "react";
+import type { Locale } from "@/lib/i18n";
 import { seatRows } from "@/lib/seating/board";
+import { seatingEditorMessages } from "@/lib/seating/messages";
 import { cn } from "@/lib/utils";
-import { TABLE_SHAPE_LABELS } from "@/lib/venue/rules";
+import { venueMessages } from "@/lib/venue/messages";
 import type { TableDto } from "@/types";
 import { GuestMarkers } from "./GuestMarkers";
 
@@ -26,11 +28,13 @@ interface Props {
   seatView: (seat: number) => SeatView;
   pending: boolean;
   onSeatClick: (seat: number) => void;
+  locale: Locale;
 }
 
 // One table with its seats as buttons: a rectangular table shows side A and side B next to each other (row by
 // position), a round table its seats in order.
-export function TableSeats({ table, seatView, pending, onSeatClick }: Props) {
+export function TableSeats({ table, seatView, pending, onSeatClick, locale }: Props) {
+  const t = seatingEditorMessages(locale);
   const headingId = useId();
   const rows = seatRows(table.shape, table.seatCount);
   const rectangular = table.shape === "rectangular";
@@ -48,13 +52,13 @@ export function TableSeats({ table, seatView, pending, onSeatClick }: Props) {
           {table.name}
         </h3>
         <span className="text-muted-foreground text-xs">
-          zajęte {taken} z {table.seatCount} · {TABLE_SHAPE_LABELS[table.shape]}
+          {t.taken(taken, table.seatCount)} · {venueMessages(locale).shapes[table.shape]}
         </span>
       </header>
       {rectangular && (
         <div aria-hidden className="text-muted-foreground grid grid-cols-2 gap-2 text-xs">
-          <span>Strona A</span>
-          <span>Strona B</span>
+          <span>{t.sideA}</span>
+          <span>{t.sideB}</span>
         </div>
       )}
       <ul className={cn("grid gap-2", rectangular ? "grid-cols-2" : "grid-cols-1")}>
@@ -63,7 +67,7 @@ export function TableSeats({ table, seatView, pending, onSeatClick }: Props) {
             <li key={`none-${index}`} aria-hidden />
           ) : (
             <li key={seat}>
-              <SeatButton seat={seat} view={seatView(seat)} pending={pending} onClick={onSeatClick} />
+              <SeatButton seat={seat} view={seatView(seat)} pending={pending} onClick={onSeatClick} locale={locale} />
             </li>
           ),
         )}
@@ -77,12 +81,15 @@ function SeatButton({
   view,
   pending,
   onClick,
+  locale,
 }: {
   seat: number;
   view: SeatView;
   pending: boolean;
   onClick: (seat: number) => void;
+  locale: Locale;
 }) {
+  const t = seatingEditorMessages(locale);
   const { occupant } = view;
   return (
     <button
@@ -103,7 +110,7 @@ function SeatButton({
       )}
     >
       <span className="text-muted-foreground w-5 shrink-0 pt-px text-right text-xs tabular-nums">
-        <span className="sr-only">Miejsce </span>
+        <span className="sr-only">{t.seatPrefix}</span>
         {seat}
       </span>
       <span className="flex min-w-0 flex-1 flex-col gap-0.5">
@@ -112,9 +119,16 @@ function SeatButton({
             {occupant.name}
           </span>
         ) : (
-          <span className="text-muted-foreground italic">wolne</span>
+          <span className="text-muted-foreground italic">{t.free}</span>
         )}
-        {occupant && <GuestMarkers pinned={occupant.pinned} absent={occupant.absent} partners={occupant.partners} />}
+        {occupant && (
+          <GuestMarkers
+            pinned={occupant.pinned}
+            absent={occupant.absent}
+            partners={occupant.partners}
+            locale={locale}
+          />
+        )}
       </span>
     </button>
   );

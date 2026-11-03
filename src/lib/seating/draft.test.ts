@@ -176,4 +176,12 @@ describe("describeRestore", () => {
       "Przywrócono rozkład z 27.10, 19:42 — sprawdź i opublikuj. Bez miejsca: Ania (stolik usunięty), Kuba (miejsce zajmuje przypięta osoba).",
     );
   });
+
+  it("says it in English", () => {
+    expect(
+      describeRestore("2026-10-27T18:42:00.000Z", [{ guestId: 1, name: "Ania", reason: "seat-removed" }], "en"),
+    ).toBe(
+      "Restored the seating from 27/10, 19:42 — check it and publish. No seat: Ania (this seat no longer exists).",
+    );
+  });
 });

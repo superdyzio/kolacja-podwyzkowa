@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { VenueDrawing, type VenueDrawingTable } from "@/components/venue-drawing/VenueDrawing";
+import type { Locale } from "@/lib/i18n";
 import {
   STAGE_WIDTH,
   chairPositions,
@@ -26,6 +27,7 @@ import {
   type OutlineCorner,
   type TableGeometry,
 } from "@/lib/venue/editor";
+import { venueEditorMessages } from "@/lib/venue/messages";
 import type { PinPosition } from "@/lib/venue/pin";
 import type { ProposalGhost } from "@/lib/venue-ai/draft";
 import { roundFraction, type OutlineFields } from "@/lib/venue/rules";
@@ -52,6 +54,7 @@ interface Props {
   // Each resolves to true when saved; a failed save drops the local change, so the last saved geometry shows.
   saveTable: (tableId: number, geometry: TableGeometry) => Promise<boolean>;
   saveOutline: (roomId: number, outline: RoomOutline) => Promise<boolean>;
+  locale: Locale;
 }
 
 // Without the plan image (or until it has loaded) the drawing stands on a 16:9 stage.
@@ -105,7 +108,9 @@ export function DrawingCanvas({
   onTableClick,
   saveTable,
   saveOutline,
+  locale,
 }: Props) {
+  const t = venueEditorMessages(locale);
   const [aspect, setAspect] = useState(BLANK_ASPECT);
   const [broken, setBroken] = useState(false);
   // Local geometry not saved yet (dragged, turned, nudged); dropped once its save answers.
@@ -426,7 +431,7 @@ export function DrawingCanvas({
   if (broken) {
     return (
       <p role="alert" className="text-destructive rounded-lg border p-4 text-sm">
-        Nie udało się wczytać planu. Odśwież stronę albo wgraj plan ponownie.
+        {t.planLoadFailed}
       </p>
     );
   }
@@ -457,7 +462,7 @@ export function DrawingCanvas({
           rooms={rooms}
           tables={tables}
           variant="tv"
-          label="Podgląd planu sali tak, jak pokaże go TV"
+          label={t.previewLabel}
           className="h-auto max-h-[80vh] w-full"
         />
       </div>
@@ -582,7 +587,7 @@ export function DrawingCanvas({
               dominantBaseline="central"
               className="fill-sky-900 font-semibold"
             >
-              Nowy stolik
+              {t.newTable}
             </text>
           </g>
         )}
@@ -611,7 +616,7 @@ export function DrawingCanvas({
                 });
               }}
             >
-              <title>Obróć stolik (Shift: bez skoku co 15°)</title>
+              <title>{t.rotateHandle}</title>
             </circle>
           </g>
         )}
@@ -639,7 +644,7 @@ export function DrawingCanvas({
                 }
               }}
             >
-              <title>Przesuń kontur sali</title>
+              <title>{t.moveOutline}</title>
             </rect>
             {OUTLINE_CORNERS.map((corner) => {
               const point = cornerPoint(editedOutline, corner);
@@ -660,7 +665,7 @@ export function DrawingCanvas({
                     startGesture(event, { kind: "resize-room", roomId: outlineRoom.id, corner, origin: editedOutline });
                   }}
                 >
-                  <title>Zmień rozmiar sali</title>
+                  <title>{t.resizeOutline}</title>
                 </rect>
               );
             })}

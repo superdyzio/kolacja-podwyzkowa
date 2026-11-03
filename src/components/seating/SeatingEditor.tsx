@@ -3,7 +3,9 @@ import { useOfflineSync } from "@/components/hooks/useOfflineSync";
 import { useSeatingBoard } from "@/components/hooks/useSeatingBoard";
 import { OfflineFallback } from "@/components/offline/OfflineFallback";
 import { Button } from "@/components/ui/button";
+import type { Locale } from "@/lib/i18n";
 import { seatClick, seatingHint, type SeatOccupant, type SelectedGuest } from "@/lib/seating/board";
+import { seatingEditorMessages } from "@/lib/seating/messages";
 import { repeatedNeighbours } from "@/lib/seating/neighbours";
 import { describeWarnings, seatLabel, seatingWarnings, summarizeSeating } from "@/lib/seating/rules";
 import { cn } from "@/lib/utils";
@@ -22,10 +24,8 @@ interface Props {
   panelPath: string;
   initialBoard: SeatingBoardDto;
   initialHistory: NeighbourHistoryDto;
+  locale: Locale;
 }
-
-const DRAW_CONFIRM = "Losowanie zastąpi nieopublikowane zmiany (przypięci zostają). Kontynuować?";
-const RESTORE_CONFIRM = "Przywrócenie zastąpi nieopublikowane zmiany. Kontynuować?";
 
 function seatKey(tableId: number, seat: number): string {
   return `${tableId}:${seat}`;
@@ -35,7 +35,8 @@ function seatKey(tableId: number, seat: number): string {
 // and free seats; publish to the TV; discard changes or go back to the previous arrangement. Warnings (split groups,
 // absent guests with a seat) never block. A publish also refreshes this device's offline copy of the published seating
 // (S-09).
-export function SeatingEditor({ apiBase, panelPath, initialBoard, initialHistory }: Props) {
+export function SeatingEditor({ apiBase, panelPath, initialBoard, initialHistory, locale }: Props) {
+  const t = seatingEditorMessages(locale);
   const {
     board,
     history,
@@ -53,7 +54,7 @@ export function SeatingEditor({ apiBase, panelPath, initialBoard, initialHistory
     showNotice,
     dismissFailure,
     dismissNotice,
-  } = useSeatingBoard(apiBase, initialBoard, initialHistory);
+  } = useSeatingBoard(apiBase, initialBoard, initialHistory, locale);
   const { offline, syncNow } = useOfflineSync(apiBase);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const { guestList, venue, assignments } = board;
@@ -81,8 +82,8 @@ export function SeatingEditor({ apiBase, panelPath, initialBoard, initialHistory
     return partners;
   }, [guestList.groups, guestById]);
   const warnings = useMemo(
-    () => describeWarnings(seatingWarnings({ guestList, venue, assignments })),
-    [guestList, venue, assignments],
+    () => describeWarnings(seatingWarnings({ guestList, venue, assignments }), locale),
+    [guestList, venue, assignments, locale],
   );
   const summary = summarizeSeating({ guestList, venue, assignments });
   const repeats = useMemo(
@@ -128,7 +129,7 @@ export function SeatingEditor({ apiBase, panelPath, initialBoard, initialHistory
 
   function seatView(tableId: number, seatNumber: number): SeatView {
     const occupant = occupantAt(tableId, seatNumber);
-    const click = seatClick(selected, occupant);
+    const click = seatClick(selected, occupant, locale);
     return {
       occupant: occupant && {
         ...occupant,
@@ -141,7 +142,7 @@ export function SeatingEditor({ apiBase, panelPath, initialBoard, initialHistory
   }
 
   async function handleSeatClick(tableId: number, seatNumber: number) {
-    const click = seatClick(selected, occupantAt(tableId, seatNumber));
+    const click = seatClick(selected, occupantAt(tableId, seatNumber), locale);
     switch (click.kind) {
       case "select":
         setSelectedId(click.guestId);
@@ -166,7 +167,7 @@ export function SeatingEditor({ apiBase, panelPath, initialBoard, initialHistory
   function handlePublish() {
     if (
       warnings.length > 0 &&
-      !window.confirm(`Opublikować mimo uwag?\n\n${warnings.map((line) => `• ${line}`).join("\n")}`)
+      !window.confirm(t.publishDespiteWarnings(warnings.map((line) => `• ${line}`).join("\n")))
     ) {
       return;
     }
@@ -178,7 +179,7 @@ export function SeatingEditor({ apiBase, panelPath, initialBoard, initialHistory
   }
 
   function handleDraw() {
-    if (replacesManualChanges && !window.confirm(DRAW_CONFIRM)) {
+    if (replacesManualChanges && !window.confirm(t.drawConfirm)) {
       return;
     }
     setSelectedId(null);
@@ -186,7 +187,7 @@ export function SeatingEditor({ apiBase, panelPath, initialBoard, initialHistory
   }
 
   function handleRestore(snapshotId: number) {
-    if (replacesManualChanges && !window.confirm(RESTORE_CONFIRM)) {
+    if (replacesManualChanges && !window.confirm(t.restoreConfirm)) {
       return;
     }
     setSelectedId(null);
@@ -202,7 +203,7 @@ export function SeatingEditor({ apiBase, panelPath, initialBoard, initialHistory
 
   return (
     <div className={cn("flex flex-col gap-6", selected && "pb-40 sm:pb-28")}>
-      <OfflineFallback apiBase={apiBase} offline={offline} />
+      <OfflineFallback apiBase={apiBase} offline={offline} locale={locale} />
 
       <PublishBar
         published={board.published}
@@ -210,6 +211,7 @@ export function SeatingEditor({ apiBase, panelPath, initialBoard, initialHistory
         summary={summary}
         pending={pending}
         onPublish={handlePublish}
+        locale={locale}
       />
 
       <DrawPanel
@@ -233,6 +235,7 @@ export function SeatingEditor({ apiBase, panelPath, initialBoard, initialHistory
             handleRestore(board.previous.snapshotId);
           }
         }}
+        locale={locale}
       />
 
       {failure && (
@@ -246,7 +249,7 @@ export function SeatingEditor({ apiBase, panelPath, initialBoard, initialHistory
             </ul>
           )}
           <Button type="button" variant="ghost" className="h-10 self-start" onClick={dismissFailure}>
-            Zamknij
+            {t.close}
           </Button>
         </div>
       )}
@@ -256,37 +259,37 @@ export function SeatingEditor({ apiBase, panelPath, initialBoard, initialHistory
           <div className="bg-muted/50 flex flex-wrap items-center justify-between gap-2 rounded-lg border p-3">
             <p className="text-sm font-medium">{notice}</p>
             <Button type="button" variant="ghost" className="h-10" onClick={dismissNotice}>
-              Zamknij
+              {t.close}
             </Button>
           </div>
         )}
       </div>
 
-      <SeatingWarnings lines={warnings} />
+      <SeatingWarnings lines={warnings} locale={locale} />
 
       {venue.tables.length === 0 && (
         <p className="text-muted-foreground rounded-xl border border-dashed p-4 text-sm">
-          Nie ma jeszcze stolików.{" "}
+          {t.noTables}{" "}
           <a href={`${panelPath}/sale`} className="text-foreground underline underline-offset-4">
-            Dodaj sale i stoliki
+            {t.addRoomsAndTables}
           </a>
-          , żeby sadzać gości.
+          {t.toSeatGuests}
         </p>
       )}
       {guestList.guests.length === 0 && (
         <p className="text-muted-foreground rounded-xl border border-dashed p-4 text-sm">
-          Lista gości jest pusta.{" "}
+          {t.noGuests}{" "}
           <a href={`${panelPath}/goscie`} className="text-foreground underline underline-offset-4">
-            Dodaj gości
+            {t.addGuests}
           </a>
-          , żeby ich posadzić.
+          {t.toSeatThem}
         </p>
       )}
 
       {venue.tables.length > 0 && guestList.guests.length > 0 && (
         <>
           <p className="text-sm" aria-live="polite">
-            {seatingHint(selected)}
+            {seatingHint(selected, locale)}
           </p>
           <div className="grid grid-cols-1 gap-6 lg:grid-cols-[16rem_minmax(0,1fr)] lg:items-start">
             <UnseatedList
@@ -295,6 +298,7 @@ export function SeatingEditor({ apiBase, panelPath, initialBoard, initialHistory
               selectedId={selectedId}
               pending={pending}
               onToggle={toggleSelected}
+              locale={locale}
             />
             <div className="flex min-w-0 flex-col gap-6">
               {rooms.map(({ room, tables }) => (
@@ -308,6 +312,7 @@ export function SeatingEditor({ apiBase, panelPath, initialBoard, initialHistory
                         seatView={(seatNumber) => seatView(table.id, seatNumber)}
                         pending={pending}
                         onSeatClick={(seatNumber) => void handleSeatClick(table.id, seatNumber)}
+                        locale={locale}
                       />
                     ))}
                   </div>
@@ -321,7 +326,9 @@ export function SeatingEditor({ apiBase, panelPath, initialBoard, initialHistory
       {selected && (
         <SelectedGuestBar
           name={selected.name}
-          seatText={selectedSeat ? seatLabel(tableNameById.get(selectedSeat.tableId) ?? "?", selectedSeat.seat) : null}
+          seatText={
+            selectedSeat ? seatLabel(tableNameById.get(selectedSeat.tableId) ?? "?", selectedSeat.seat, locale) : null
+          }
           absent={selectedGuest?.isAbsent ?? false}
           pinned={selected.pinned}
           pending={pending}
@@ -331,6 +338,7 @@ export function SeatingEditor({ apiBase, panelPath, initialBoard, initialHistory
           onCancel={() => {
             setSelectedId(null);
           }}
+          locale={locale}
         />
       )}
     </div>

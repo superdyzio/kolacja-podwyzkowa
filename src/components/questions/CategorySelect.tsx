@@ -1,4 +1,5 @@
-import { QUESTION_CATEGORIES, QUESTION_CATEGORY_LABELS, isQuestionCategory } from "@/lib/questions/categories";
+import type { Locale } from "@/lib/i18n";
+import { QUESTION_CATEGORIES, isQuestionCategory, questionCategoryLabels } from "@/lib/questions/categories";
 import { cn } from "@/lib/utils";
 import type { QuestionCategory } from "@/types";
 
@@ -8,10 +9,12 @@ interface Props {
   onChange: (category: QuestionCategory) => void;
   disabled?: boolean;
   className?: string;
+  locale: Locale;
 }
 
 // A required choice of one question category (S-07): adding questions and editing one.
-export function CategorySelect({ id, value, onChange, disabled = false, className }: Props) {
+export function CategorySelect({ id, value, onChange, disabled = false, className, locale }: Props) {
+  const labels = questionCategoryLabels(locale);
   return (
     <select
       id={id}
@@ -29,7 +32,7 @@ export function CategorySelect({ id, value, onChange, disabled = false, classNam
     >
       {QUESTION_CATEGORIES.map((category) => (
         <option key={category} value={category}>
-          {QUESTION_CATEGORY_LABELS[category]}
+          {labels[category]}
         </option>
       ))}
     </select>

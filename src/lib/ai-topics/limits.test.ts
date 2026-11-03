@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { AiProviderStatusDto } from "@/types";
 import {
+  aiTopicLimitMessages,
   EVENT_LIMIT_MESSAGE,
   FAILED_MESSAGE,
   formatAiTopicSummary,
@@ -90,5 +91,21 @@ describe("AI topic limits", () => {
     expect(EVENT_LIMIT_MESSAGE).toContain("1000 z 1000");
     expect(FAILED_MESSAGE).toContain("nie zmniejszyła limitu");
     expect(FAILED_MESSAGE).toContain("Losuj pytanie");
+  });
+
+  it("speaks English (i18n)", () => {
+    expect(aiTopicLimitMessages("pl").guestLimit).toBe(GUEST_LIMIT_MESSAGE);
+    const en = aiTopicLimitMessages("en");
+    expect(en.guestLimit).toContain("15 of 15");
+    expect(en.eventLimit).toContain("1000 of 1000");
+    expect(en.failed).toContain("Draw a question");
+    expect(formatRemaining({ limit: 5, used: 2, remaining: 3, eventExhausted: false }, "en")).toBe("3 of 5 left");
+    expect(formatUsage(usage(12, 2), "en")).toBe("Used 12 of 1000 · failed: 2");
+    expect(formatProvider(NO_KEY, "en")).toBe("no API key");
+    const billed = { inputTokens: 9000, outputTokens: 1500, costNanoUsd: 1_650_000, lastFailureHint: "x" };
+    expect(formatAiTopicSummary(usage(4, 1), MOCK, "en")).toBe("AI topics: 4 of 1000 · mock AI");
+    expect(formatAiTopicSummary(usage(12, 0, billed), CLAUDE, "en")).toBe(
+      "AI topics: 12 of 1000 · Claude (claude-haiku-5-5) · ≈\u00a00.0017\u00a0USD · last attempt failed",
+    );
   });
 });

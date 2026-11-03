@@ -1,3 +1,5 @@
+import type { Locale } from "@/lib/i18n";
+import { seatingEditorMessages } from "@/lib/seating/messages";
 import { cn } from "@/lib/utils";
 import { GuestMarkers } from "./GuestMarkers";
 
@@ -14,27 +16,36 @@ interface Props {
   selectedId: number | null;
   pending: boolean;
   onToggle: (guestId: number) => void;
+  locale: Locale;
 }
 
 // „Bez miejsca”: the guests still to seat; clicking one selects it (again — clears the selection).
-export function UnseatedList({ present, absent, selectedId, pending, onToggle }: Props) {
+export function UnseatedList({ present, absent, selectedId, pending, onToggle, locale }: Props) {
+  const t = seatingEditorMessages(locale);
   return (
     <section
       aria-labelledby="unseated-heading"
       className="flex flex-col gap-3 rounded-xl border p-3 lg:sticky lg:top-4 lg:max-h-[calc(100vh-2rem)] lg:overflow-y-auto"
     >
       <h2 id="unseated-heading" className="text-lg font-semibold">
-        Bez miejsca <span className="text-muted-foreground text-sm font-normal">({present.length})</span>
+        {t.unseatedHeading} <span className="text-muted-foreground text-sm font-normal">({present.length})</span>
       </h2>
       {present.length === 0 ? (
-        <p className="text-muted-foreground text-sm">Wszyscy obecni mają miejsce.</p>
+        <p className="text-muted-foreground text-sm">{t.allSeated}</p>
       ) : (
-        <GuestButtons guests={present} selectedId={selectedId} pending={pending} onToggle={onToggle} />
+        <GuestButtons guests={present} selectedId={selectedId} pending={pending} onToggle={onToggle} locale={locale} />
       )}
       {absent.length > 0 && (
         <>
-          <h3 className="text-muted-foreground text-sm font-medium">Nieobecni ({absent.length})</h3>
-          <GuestButtons guests={absent} muted selectedId={selectedId} pending={pending} onToggle={onToggle} />
+          <h3 className="text-muted-foreground text-sm font-medium">{t.absentHeading(absent.length)}</h3>
+          <GuestButtons
+            guests={absent}
+            muted
+            selectedId={selectedId}
+            pending={pending}
+            onToggle={onToggle}
+            locale={locale}
+          />
         </>
       )}
     </section>
@@ -47,12 +58,14 @@ function GuestButtons({
   selectedId,
   pending,
   onToggle,
+  locale,
 }: {
   guests: UnseatedGuest[];
   muted?: boolean;
   selectedId: number | null;
   pending: boolean;
   onToggle: (guestId: number) => void;
+  locale: Locale;
 }) {
   return (
     <ul className="flex flex-col gap-1">
@@ -72,7 +85,7 @@ function GuestButtons({
             )}
           >
             <span className="font-medium break-words">{guest.name}</span>
-            <GuestMarkers partners={guest.partners} />
+            <GuestMarkers partners={guest.partners} locale={locale} />
           </button>
         </li>
       ))}

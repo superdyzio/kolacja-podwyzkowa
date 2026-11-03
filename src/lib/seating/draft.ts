@@ -1,6 +1,7 @@
-import { pluralPl } from "@/lib/guests/summary";
+import type { Locale } from "@/lib/i18n/locale";
 import { areConsecutiveSeats } from "@/lib/venue/seats";
 import type { DraftSeatDto, SeatingSnapshot } from "@/types";
+import { seatingMessages } from "./messages";
 import { formatNameList, formatPublishedAt, seatLabel, type SeatingInput } from "./rules";
 
 // Drafts (PRD US-02, FR-009, FR-010): the hard rules a drawn draft must obey, re-checked by the server against the
@@ -15,10 +16,6 @@ import { formatNameList, formatPublishedAt, seatLabel, type SeatingInput } from 
 // A restore is NOT a draft: it may leave people without a seat or split a group formed later (the page warns).
 
 export type DraftSeat = DraftSeatDto;
-
-export const DRAFT_STALE_MESSAGE = "Rozsadzenie zmieniło się w międzyczasie — wylosuj jeszcze raz.";
-export const SNAPSHOT_NOT_FOUND_MESSAGE = "Nie znaleziono opublikowanego rozkładu.";
-export const SEATING_CHANGED_MESSAGE = "Rozsadzenie zmieniło się w międzyczasie — spróbuj jeszcze raz.";
 
 export type DraftProblem =
   | { kind: "unknown-guest"; guestId: number }
@@ -124,27 +121,28 @@ export function validateDraft(input: SeatingInput, seats: readonly DraftSeat[]):
   return problems;
 }
 
-// One Polish line per problem.
-export function describeDraftProblem(problem: DraftProblem): string {
+// One line per problem.
+export function describeDraftProblem(problem: DraftProblem, locale: Locale = "pl"): string {
+  const messages = seatingMessages(locale);
   switch (problem.kind) {
     case "unknown-guest":
-      return "W projekcie jest osoba, której nie ma już na liście gości.";
+      return messages.draftUnknownGuest;
     case "absent-guest":
-      return `Nieobecna osoba w projekcie: ${problem.name}.`;
+      return messages.draftAbsentGuest(problem.name);
     case "pinned-guest":
-      return `Przypięta osoba w projekcie: ${problem.name} — jej miejsce się nie zmienia.`;
+      return messages.draftPinnedGuest(problem.name);
     case "duplicate-guest":
-      return `${problem.name} ma w projekcie więcej niż jedno miejsce.`;
+      return messages.draftDuplicateGuest(problem.name);
     case "missing-guest":
-      return `Bez miejsca w projekcie: ${problem.names.join(", ")}.`;
+      return messages.draftMissingGuests(problem.names.join(", "));
     case "unknown-table":
-      return "W projekcie jest stolik, którego już nie ma.";
+      return messages.draftUnknownTable;
     case "seat-out-of-range":
-      return `${problem.tableName} nie ma miejsca nr ${problem.seat}.`;
+      return messages.draftSeatOutOfRange(problem.tableName, problem.seat);
     case "seat-taken":
-      return `${seatLabel(problem.tableName, problem.seat)} — miejsce zajęte dwa razy albo przez przypiętą osobę.`;
+      return messages.draftSeatTaken(seatLabel(problem.tableName, problem.seat, locale));
     case "group-split":
-      return `${formatNameList(problem.names)} — muszą siedzieć obok siebie przy jednym stoliku.`;
+      return messages.draftGroupSplit(formatNameList(problem.names, locale));
   }
 }
 
@@ -201,25 +199,23 @@ export function restoreSeats(snapshot: SeatingSnapshot, input: SeatingInput): Re
   return { seats, unseated };
 }
 
-const RESTORE_REASON_TEXT: Record<RestoreReason, string> = {
-  "table-deleted": "stolik usunięty",
-  "seat-removed": "tego miejsca już nie ma",
-  "seat-pinned": "miejsce zajmuje przypięta osoba",
-  "not-in-snapshot": "brak w tamtym rozkładzie",
-};
-
 const LISTED_UNSEATED = 12;
 
 // „Przywrócono rozkład z 27.10, 19:42 — sprawdź i opublikuj. Bez miejsca: Ania (stolik usunięty).”
-export function describeRestore(publishedAt: string, unseated: RestoreResult["unseated"]): string {
-  const head = `Przywrócono rozkład z ${formatPublishedAt(publishedAt)} — sprawdź i opublikuj.`;
+export function describeRestore(
+  publishedAt: string,
+  unseated: RestoreResult["unseated"],
+  locale: Locale = "pl",
+): string {
+  const messages = seatingMessages(locale);
+  const head = messages.restored(formatPublishedAt(publishedAt, locale));
   if (unseated.length === 0) {
     return head;
   }
   const listed = unseated
     .slice(0, LISTED_UNSEATED)
-    .map((guest) => `${guest.name} (${RESTORE_REASON_TEXT[guest.reason]})`);
+    .map((guest) => `${guest.name} (${messages.restoreReasons[guest.reason]})`);
   const rest = unseated.length - listed.length;
-  const more = rest > 0 ? ` i ${rest} ${pluralPl(rest, "inna osoba", "inne osoby", "innych osób")}` : "";
-  return `${head} Bez miejsca: ${listed.join(", ")}${more}.`;
+  const more = rest > 0 ? messages.andOthers(rest) : "";
+  return `${head} ${messages.withoutSeat(`${listed.join(", ")}${more}`)}`;
 }

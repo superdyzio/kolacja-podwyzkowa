@@ -1,4 +1,4 @@
-import { AI_TOPIC_SYSTEM_PROMPT, buildTopicPrompt } from "./prompt";
+import { buildTopicPrompt, topicSystemPrompt } from "./prompt";
 import { AiProviderError, isAbortError, type AiFailureKind, type AiTokenUsage, type AiTopicProvider } from "./provider";
 
 // Claude over the Anthropic Messages API with plain fetch (S-08) — one request shape, so no SDK dependency. The key
@@ -126,7 +126,7 @@ export function createAnthropicProvider(options: AnthropicProviderOptions): AiTo
           body: JSON.stringify({
             model,
             ...tuningFor(model),
-            system: AI_TOPIC_SYSTEM_PROMPT,
+            system: topicSystemPrompt(request.locale),
             messages: [{ role: "user", content: buildTopicPrompt(request) }],
           }),
           signal,

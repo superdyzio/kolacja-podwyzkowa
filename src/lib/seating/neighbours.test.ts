@@ -125,7 +125,7 @@ describe("repeatedNeighbours", () => {
       [1, 3],
     ]);
     expect(repeats).toEqual([{ guestIds: [3, 4], names: ["Ola", "Ewa"], tableId: 1, tableName: "Okno" }]);
-    expect(repeats.map(describeRepeat)).toEqual(["Ola i Ewa (Okno)"]);
+    expect(repeats.map((pair) => describeRepeat(pair))).toEqual(["Ola i Ewa (Okno)"]);
   });
 
   it("ignores pairs within one group and absent guests", () => {
@@ -146,7 +146,7 @@ describe("repeatedNeighbours", () => {
 
   it("counts the person opposite at a rectangular table", () => {
     const data = input([ola, ewa], [kominek], [seat(3, 2, 2), seat(4, 2, 5)]);
-    expect(repeatedNeighbours(data, [[3, 4]]).map(describeRepeat)).toEqual(["Ola i Ewa (Kominek)"]);
+    expect(repeatedNeighbours(data, [[3, 4]]).map((pair) => describeRepeat(pair))).toEqual(["Ola i Ewa (Kominek)"]);
   });
 
   it("is empty without history", () => {

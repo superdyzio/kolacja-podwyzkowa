@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { rouletteSteps } from "@/lib/tv-spotlight/draw";
-import { spotlightFontSize, TV_PERSON_DRAWING_LABEL, TV_SPOTLIGHT_LABELS } from "@/lib/tv-spotlight/rules";
+import type { Locale } from "@/lib/i18n";
+import { tvSpotlightMessages } from "@/lib/tv-spotlight/messages";
+import { spotlightFontSize } from "@/lib/tv-spotlight/rules";
 import { cn } from "@/lib/utils";
 import type { TvSpotlightDto } from "@/types";
 
@@ -10,6 +12,7 @@ interface Props {
   pool: readonly string[];
   // A fresh draw seen while the page runs spins first; on load (or with reduced motion) the name just shows.
   spin: boolean;
+  locale: Locale;
 }
 
 function prefersReducedMotion(): boolean {
@@ -19,7 +22,8 @@ function prefersReducedMotion(): boolean {
 // What the organizer put on the TV (tv-spotlight), over the seating plan: one large card with a caption and the text,
 // sized to its length. A drawn guest spins through the seated names (slowing down), then the name pops up. Mounted
 // with key = shownAt, so every show starts fresh.
-export function TvSpotlight({ spotlight, pool, spin }: Props) {
+export function TvSpotlight({ spotlight, pool, spin, locale }: Props) {
+  const t = tvSpotlightMessages(locale);
   // Computed once per show: a seating update during the spin must not restart it.
   const [steps] = useState(() =>
     spotlight.kind === "person" && spin && !prefersReducedMotion()
@@ -59,7 +63,7 @@ export function TvSpotlight({ spotlight, pool, spin }: Props) {
         )}
       >
         <figcaption className="text-[3vh] font-semibold tracking-[0.2em] text-amber-400 uppercase">
-          {spinning ? TV_PERSON_DRAWING_LABEL : TV_SPOTLIGHT_LABELS[spotlight.kind]}
+          {spinning ? t.drawing : t.labels[spotlight.kind]}
         </figcaption>
         <p
           key={spinning ? `step-${String(index)}` : "final"}
@@ -74,7 +78,7 @@ export function TvSpotlight({ spotlight, pool, spin }: Props) {
         </p>
       </figure>
       <p className="sr-only" aria-live="polite">
-        {spinning ? "" : `${TV_SPOTLIGHT_LABELS[spotlight.kind]}: ${spotlight.text}`}
+        {spinning ? "" : `${t.labels[spotlight.kind]}: ${spotlight.text}`}
       </p>
     </div>
   );

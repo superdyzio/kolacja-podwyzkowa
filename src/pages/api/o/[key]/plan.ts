@@ -1,14 +1,7 @@
 import type { APIRoute } from "astro";
 import { jsonError, jsonResponse, readBodyBytes } from "@/lib/http";
 import { organizerApi } from "@/lib/organizer-api";
-import {
-  MAX_PLAN_BYTES,
-  PLAN_EMPTY_MESSAGE,
-  PLAN_TOO_LARGE_MESSAGE,
-  PLAN_UNSUPPORTED_MESSAGE,
-  getVenue,
-  savePlanImage,
-} from "@/lib/venue";
+import { MAX_PLAN_BYTES, getVenue, savePlanImage, venueMessages } from "@/lib/venue";
 
 export const prerender = false;
 
@@ -20,12 +13,13 @@ export const PUT: APIRoute = async ({ locals, request }) => {
     return api;
   }
 
+  const messages = venueMessages(locals.locale);
   const body = await readBodyBytes(request, MAX_PLAN_BYTES);
   switch (body.status) {
     case "empty":
-      return jsonError(400, PLAN_EMPTY_MESSAGE);
+      return jsonError(400, messages.planEmpty);
     case "too-large":
-      return jsonError(413, PLAN_TOO_LARGE_MESSAGE);
+      return jsonError(413, messages.planTooLarge);
     case "ok":
       break;
   }
@@ -33,9 +27,9 @@ export const PUT: APIRoute = async ({ locals, request }) => {
   const result = await savePlanImage(api.db, body.bytes);
   switch (result.status) {
     case "too-large":
-      return jsonError(413, PLAN_TOO_LARGE_MESSAGE);
+      return jsonError(413, messages.planTooLarge);
     case "unsupported-type":
-      return jsonError(415, PLAN_UNSUPPORTED_MESSAGE);
+      return jsonError(415, messages.planUnsupported);
     case "saved":
       return jsonResponse(await getVenue(api.db));
   }

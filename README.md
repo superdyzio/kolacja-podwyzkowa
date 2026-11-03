@@ -32,6 +32,10 @@ Otwórz http://localhost:4321/, kliknij „Utwórz wydarzenie” i od razu dodaj
 | Restauracja | `/r/<klucz>`  | tylko do odczytu: zamówienie i plan, bez cen     |
 | Inne        | —             | strona „Brak dostępu” (HTTP 404), żadnych danych |
 
+## Języki
+
+Cała aplikacja działa po polsku i po angielsku. Przełącznik **PL / EN** jest w prawym górnym rogu każdej strony (poza TV i karteczkami do druku); wybór zapamiętuje ciasteczko na rok. Domyślnie wszystko jest po polsku, a link restauracji po angielsku — restauracja ma własne ciasteczko, więc wybór organizatora nie zmienia jej tabletu i odwrotnie. Język da się też ustawić linkiem: dopisz `?lang=en` albo `?lang=pl` (np. dla TV: `/tv/<klucz>?lang=en`). Nie tłumaczą się treści z bazy: imiona, nazwy sal, stolików i dań, uwagi oraz pytania (także baza startowa). Tematy AI powstają w języku osoby, która je losuje.
+
 ## Reset danych
 
 Na dole panelu organizatora jest karta „Reset danych”. „Resetuj…” otwiera okno z listą rzeczy do wyczyszczenia, każda z opisem i aktualną liczbą: strzały (z prawidłową kwotą), licznik tematów AI, rozsadzenie z historią publikacji, goście i grupy, plan z salami i stolikami, zamówienia (link restauracji zostaje), pytania (wraca baza startowa) oraz linki gości (nowe linki, dostęp gości wyłączony — wydrukowane karteczki przestają działać). Goście pociągają za sobą strzały, licznik AI i rozsadzenie, a plan — rozsadzenie. Jedno kliknięcie „Resetuj zaznaczone” czyści wszystko naraz (jedna transakcja w bazie). Link organizatora i adres TV się nie zmieniają, więc np. po próbie generalnej wystarczy zresetować wszystko i od nowa wgrać dane (także `npm run demo`).
@@ -74,7 +78,7 @@ Na produkcji: przed `npx supabase db push` zrób kopię danych (`npx supabase db
 
 Na `/o/<klucz>/zamowienia` organizator prowadzi zamówienie jedzenia: każda pozycja to danie (podpowiedzi z dań już wpisanych, cena podstawia się sama), cena za sztukę, ilość, opcjonalna uwaga dla kuchni i dla kogo — osoba (podanie na jej miejsce), stolik (na środek stołu) albo nieprzypisane. Widać sumę pozycji, łączną kwotę, listę „Do przygotowania” i każdą pozycję z ptaszkiem „Wydane”; wszystko da się poprawić albo usunąć.
 
-Link dla restauracji (`/r/<klucz>`, w panelu i w `npm run links`) działa zawsze i nie ma cen: lista dań do przygotowania (z uwagami i tym, co jeszcze do wydania), rysunek sali jak na TV oraz, stolik po stoliku, co podać na które miejsce i co na środek stołu. Wydane pozycje są przekreślone. Strona sama odświeża się co 15 s. Miejsca biorą się z **opublikowanego** rozsadzenia: osoba albo stolik spoza opublikowanego planu trafia do „Do ustalenia z organizatorem”. „Wymień link” od razu unieważnia stary link — wyślij restauracji nowy.
+Link dla restauracji (`/r/<klucz>`, w panelu i w `npm run links`) działa zawsze, domyślnie jest po angielsku i nie ma cen: lista dań do przygotowania (z uwagami i tym, co jeszcze do wydania), rysunek sali jak na TV oraz, stolik po stoliku, co podać na które miejsce i co na środek stołu. Wydane pozycje są przekreślone. Strona sama odświeża się co 15 s. Miejsca biorą się z **opublikowanego** rozsadzenia: osoba albo stolik spoza opublikowanego planu trafia do „Do ustalenia z organizatorem”. „Wymień link” od razu unieważnia stary link — wyślij restauracji nowy.
 
 Na produkcji ta zmiana wymaga migracji bazy **przed** wdrożeniem kodu: bez niej każda strona organizatora kończy się błędem 500 (panel czyta link restauracji). Kolejność: kopia danych (`npx supabase db dump --data-only -f ~/kolacja-backup-<data>.sql`), `npx supabase db push` (wgrywa też migrację planu sali, jeśli jeszcze jej nie było), potem `npm run deploy:aws`. Migracja tylko dodaje: istniejące linki organizatora, TV i gości się nie zmieniają.
 

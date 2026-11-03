@@ -1,4 +1,6 @@
+import type { Locale } from "@/lib/i18n/locale";
 import type { PlanImageType } from "@/types";
+import { venueMessages } from "./messages";
 
 // What the server accepts as the venue plan (PRD FR-005) and how the bytes are stored. Pure functions only (no
 // dependency, no `astro:*`); they run in Node and browsers.
@@ -13,10 +15,6 @@ import type { PlanImageType } from "@/types";
 export const MAX_PLAN_BYTES = 4 * 1024 * 1024;
 
 export const PLAN_IMAGE_TYPES = ["image/png", "image/jpeg", "image/webp"] as const satisfies readonly PlanImageType[];
-
-export const PLAN_TOO_LARGE_MESSAGE = "Plik jest za duży — najwyżej 4 MB.";
-export const PLAN_UNSUPPORTED_MESSAGE = "Wgraj obraz PNG, JPEG albo WebP.";
-export const PLAN_EMPTY_MESSAGE = "Wybierz plik z planem.";
 
 const PNG_SIGNATURE = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
 const JPEG_SIGNATURE = [0xff, 0xd8, 0xff];
@@ -68,8 +66,8 @@ export function base64ToBytes(text: string): Uint8Array<ArrayBuffer> {
   return bytes;
 }
 
-// "4,2 MB" (Polish decimal comma), for messages.
-export function formatMegabytes(byteCount: number): string {
+// "4,2 MB" (Polish decimal comma) / "4.2 MB", for messages.
+export function formatMegabytes(byteCount: number, locale: Locale = "pl"): string {
   const megabytes = byteCount / (1024 * 1024);
-  return `${megabytes.toLocaleString("pl-PL", { maximumFractionDigits: 1 })} MB`;
+  return `${megabytes.toLocaleString(venueMessages(locale).numberLocale, { maximumFractionDigits: 1 })} MB`;
 }

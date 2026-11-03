@@ -5,10 +5,13 @@ import Layout from "@/layouts/Layout.astro";
 import { accessFor, organizerPath } from "@/lib/access";
 import { getDb } from "@/lib/db";
 import { getGuessBoard } from "@/lib/guesses";
+import { guessUiMessages } from "@/lib/guesses/messages";
 
 // Organizer guesses page (S-06, FR-018..FR-020): intake, the correct amount, the ranking read from the last place, who
 // is missing and proxy entries. Organizer only — guesses of others and the ranking never reach guests or the TV. The
 // middleware has already checked the key; this is the second, role-specific check.
+const locale = Astro.locals.locale;
+const t = guessUiMessages(locale);
 const access = accessFor(Astro.locals, "organizer");
 const db = access ? getDb() : null;
 if (!access || !db) {
@@ -28,22 +31,25 @@ const view =
 ---
 
 {view ? (
-  <Layout title={`Strzały i ranking — ${view.name}`}>
+  <Layout title={t.pageTitle(view.name)}>
     <main class="mx-auto flex max-w-3xl flex-col gap-6 p-4 sm:p-8">
       <header class="flex flex-col gap-2">
         <a
           href={view.panelPath}
           class="self-start py-2 text-sm text-muted-foreground underline-offset-4 hover:underline"
         >
-          ← Panel organizatora
+          {t.backToPanel}
         </a>
-        <h1 class="text-3xl font-bold">Strzały i ranking</h1>
-        <p class="text-sm text-muted-foreground">
-          Goście zgadują na swoich telefonach, ile kosztowała cała kolacja, i widzą tylko własny strzał. Zamknij
-          przyjmowanie, wpisz prawidłową kwotę z rachunku razem z napiwkiem i czytaj ranking od ostatniego miejsca.
-        </p>
+        <h1 class="text-3xl font-bold">{t.heading}</h1>
+        <p class="text-sm text-muted-foreground">{t.intro}</p>
       </header>
-      <GuessManager client:load apiBase={view.apiBase} guestsPath={view.guestsPath} initial={view.board} />
+      <GuessManager
+        client:load
+        apiBase={view.apiBase}
+        guestsPath={view.guestsPath}
+        initial={view.board}
+        locale={locale}
+      />
     </main>
   </Layout>
 ) : (

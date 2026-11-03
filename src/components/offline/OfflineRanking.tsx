@@ -4,20 +4,24 @@ import { RankingReadout } from "@/components/guesses/RankingReadout";
 import { RankingTable } from "@/components/guesses/RankingTable";
 import { Button } from "@/components/ui/button";
 import { formatAmount, parseAmount } from "@/lib/guesses/amount";
+import type { Locale } from "@/lib/i18n";
 import type { OfflineGuessesEntry } from "@/lib/offline/cache";
-import { LOCAL_AMOUNT_NOTE, formatSavedAt, offlineRanking } from "@/lib/offline/readout";
+import { offlineMessages } from "@/lib/offline/messages";
+import { formatSavedAt, offlineRanking } from "@/lib/offline/readout";
 import type { GuessRankingDto } from "@/types";
 
 interface Props {
   headingId: string;
   entry: OfflineGuessesEntry | null;
   now: Date;
+  locale: Locale;
 }
 
 // The guesses and the ranking as saved on this device (S-09, FR-020): intake and the guess count at that time, the
 // correct amount, „Czytaj od końca” and the ranking, who was missing. Without a saved correct amount (or to try
 // another one) the organizer types it here: the ranking is computed on this device and nothing is sent anywhere.
-export function OfflineRanking({ headingId, entry, now }: Props) {
+export function OfflineRanking({ headingId, entry, now, locale }: Props) {
+  const t = offlineMessages(locale);
   const [localGrosze, setLocalGrosze] = useState<number | null>(null);
   const [editing, setEditing] = useState(false);
   const [readout, setReadout] = useState<GuessRankingDto | null>(null);
@@ -32,9 +36,9 @@ export function OfflineRanking({ headingId, entry, now }: Props) {
     return (
       <section aria-labelledby={headingId} className="flex scroll-mt-4 flex-col gap-3">
         <h2 id={headingId} className="text-xl font-semibold">
-          Strzały i ranking
+          {t.guessesHeading}
         </h2>
-        <p className="text-muted-foreground text-sm">Na tym urządzeniu nie ma zapisanych strzałów.</p>
+        <p className="text-muted-foreground text-sm">{t.noSavedGuesses}</p>
       </section>
     );
   }
@@ -46,7 +50,7 @@ export function OfflineRanking({ headingId, entry, now }: Props) {
   const showForm = editing || (savedGrosze === null && localGrosze === null);
 
   function applyLocalAmount(amount: string): Promise<boolean> {
-    const parsed = parseAmount(amount);
+    const parsed = parseAmount(amount, locale);
     if (parsed.ok) {
       setLocalGrosze(parsed.grosze);
       setEditing(false);
@@ -57,27 +61,25 @@ export function OfflineRanking({ headingId, entry, now }: Props) {
   return (
     <section aria-labelledby={headingId} className="flex scroll-mt-4 flex-col gap-4">
       <h2 id={headingId} className="text-xl font-semibold">
-        Strzały i ranking
+        {t.guessesHeading}
       </h2>
-      <p className="text-muted-foreground text-sm">{formatSavedAt(entry.savedAt, now)}</p>
+      <p className="text-muted-foreground text-sm">{formatSavedAt(entry.savedAt, now, locale)}</p>
       <div className="flex flex-col gap-1">
-        <p>Przyjmowanie strzałów było {board.intakeOpen ? "otwarte" : "zamknięte"}.</p>
-        <p className="text-2xl font-bold">
-          Strzały: {guessCount} z {board.guests.length}
-        </p>
+        <p>{t.intake(board.intakeOpen)}</p>
+        <p className="text-2xl font-bold">{t.guessCount(guessCount, board.guests.length)}</p>
       </div>
 
       <div className="flex flex-col gap-3 rounded-xl border p-4">
         {localGrosze !== null ? (
           <>
-            <p className="font-medium">Prawidłowa kwota (tylko na tym urządzeniu)</p>
+            <p className="font-medium">{t.localAmount}</p>
             <p className="text-2xl font-bold">{formatAmount(localGrosze)}</p>
-            <p className="text-muted-foreground text-sm">{LOCAL_AMOUNT_NOTE}</p>
+            <p className="text-muted-foreground text-sm">{t.localAmountNote}</p>
           </>
         ) : (
           savedGrosze !== null && (
             <>
-              <p className="font-medium">Prawidłowa kwota</p>
+              <p className="font-medium">{t.savedAmount}</p>
               <p className="text-2xl font-bold">{formatAmount(savedGrosze)}</p>
             </>
           )
@@ -85,9 +87,10 @@ export function OfflineRanking({ headingId, entry, now }: Props) {
         {showForm ? (
           <>
             <AmountForm
-              label="Prawidłowa kwota (tylko na tym urządzeniu)"
+              label={t.localAmount}
               initialGrosze={localGrosze}
-              submitLabel="Policz ranking"
+              submitLabel={t.computeRanking}
+              locale={locale}
               pending={false}
               autoFocus={editing}
               onSubmit={applyLocalAmount}
@@ -99,7 +102,7 @@ export function OfflineRanking({ headingId, entry, now }: Props) {
                   : undefined
               }
             />
-            {localGrosze === null && <p className="text-muted-foreground text-sm">{LOCAL_AMOUNT_NOTE}</p>}
+            {localGrosze === null && <p className="text-muted-foreground text-sm">{t.localAmountNote}</p>}
           </>
         ) : (
           <div className="flex flex-wrap gap-2">
@@ -111,7 +114,7 @@ export function OfflineRanking({ headingId, entry, now }: Props) {
                 setEditing(true);
               }}
             >
-              {localGrosze === null ? "Policz z inną kwotą" : "Zmień"}
+              {localGrosze === null ? t.otherAmount : t.change}
             </Button>
             {localGrosze !== null && (
               <Button
@@ -122,7 +125,7 @@ export function OfflineRanking({ headingId, entry, now }: Props) {
                   setLocalGrosze(null);
                 }}
               >
-                {savedGrosze === null ? "Usuń kwotę" : "Wróć do zapisanej kwoty"}
+                {savedGrosze === null ? t.removeAmount : t.backToSaved}
               </Button>
             )}
           </div>
@@ -130,9 +133,9 @@ export function OfflineRanking({ headingId, entry, now }: Props) {
       </div>
 
       {ranking === null ? (
-        <p className="text-muted-foreground text-sm">Ranking pojawi się po wpisaniu prawidłowej kwoty.</p>
+        <p className="text-muted-foreground text-sm">{t.rankingAfterAmount}</p>
       ) : ranking.entries.length === 0 ? (
-        <p className="text-muted-foreground text-sm">Brak strzałów do rankingu.</p>
+        <p className="text-muted-foreground text-sm">{t.noGuessesToRank}</p>
       ) : (
         <>
           <Button
@@ -143,31 +146,29 @@ export function OfflineRanking({ headingId, entry, now }: Props) {
               setReadout(ranking);
             }}
           >
-            Czytaj od końca
+            {t.readFromLast}
           </Button>
-          <RankingTable entries={ranking.entries} />
+          <RankingTable entries={ranking.entries} locale={locale} />
         </>
       )}
 
       <div className="flex flex-col gap-2">
-        <h3 className="text-lg font-semibold">Brakuje strzałów ({board.missing.length})</h3>
+        <h3 className="text-lg font-semibold">{t.missingHeading(board.missing.length)}</h3>
         {board.missing.length === 0 ? (
-          <p className="text-sm">
-            {board.guests.length === 0 ? "Nie było jeszcze gości." : "Wszyscy goście oddali strzał."}
-          </p>
+          <p className="text-sm">{board.guests.length === 0 ? t.noGuests : t.everyoneGuessed}</p>
         ) : (
           <ul className="flex flex-wrap gap-2">
             {board.missing.map((guest) => (
               <li key={guest.id} className="rounded-full border px-3 py-1 text-sm">
                 {guest.displayName}
-                {guest.isAbsent && <span className="text-muted-foreground"> · nieobecny</span>}
+                {guest.isAbsent && <span className="text-muted-foreground">{t.absent}</span>}
               </li>
             ))}
           </ul>
         )}
       </div>
 
-      {readout && <RankingReadout ranking={readout} onClose={closeReadout} />}
+      {readout && <RankingReadout ranking={readout} onClose={closeReadout} locale={locale} />}
     </section>
   );
 }

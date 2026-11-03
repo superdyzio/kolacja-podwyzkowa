@@ -3,13 +3,12 @@ import { z } from "astro/zod";
 import { jsonError, jsonResponse, readJsonBody } from "@/lib/http";
 import { organizerApi } from "@/lib/organizer-api";
 import {
-  ROOM_NOT_FOUND_MESSAGE,
-  TABLES_LIMIT_MESSAGE,
-  TABLE_DUPLICATE_MESSAGE,
   TABLE_SHAPES,
   addTable,
   describeTableFieldProblem,
   getVenue,
+  tablesLimitMessage,
+  venueMessages,
 } from "@/lib/venue";
 
 export const prerender = false;
@@ -40,13 +39,13 @@ export const POST: APIRoute = async ({ locals, request }) => {
   const result = await addTable(api.db, body.data);
   switch (result.status) {
     case "invalid":
-      return jsonError(400, describeTableFieldProblem(result.problem));
+      return jsonError(400, describeTableFieldProblem(result.problem, locals.locale));
     case "duplicate":
-      return jsonError(409, TABLE_DUPLICATE_MESSAGE);
+      return jsonError(409, venueMessages(locals.locale).tableDuplicate);
     case "room-not-found":
-      return jsonError(404, ROOM_NOT_FOUND_MESSAGE);
+      return jsonError(404, venueMessages(locals.locale).roomNotFound);
     case "too-many":
-      return jsonError(400, TABLES_LIMIT_MESSAGE);
+      return jsonError(400, tablesLimitMessage(locals.locale));
     case "added":
       return jsonResponse(await getVenue(api.db), 201);
   }

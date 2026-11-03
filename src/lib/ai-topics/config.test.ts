@@ -49,6 +49,15 @@ describe("AI configuration", () => {
     expect(JSON.stringify(invalid)).not.toContain(KEY);
   });
 
+  it("explains a misconfiguration in English (i18n)", () => {
+    expect(aiProviderStatus(parseAiConfig({ provider: "anthropic" }), "en").problem).toBe(
+      "ANTHROPIC_API_KEY is missing — add the key or set AI_PROVIDER=mock.",
+    );
+    expect(aiProviderStatus(parseAiConfig({ provider: "openai" }), "en").problem).toBe(
+      "Unknown AI_PROVIDER value: “openai” — allowed: mock, anthropic.",
+    );
+  });
+
   it("builds the matching provider", async () => {
     const fetch = vi.fn<FetchLike>();
     expect(createAiProvider(parseAiConfig({}), { fetch })).toMatchObject({ kind: "mock", ready: true });

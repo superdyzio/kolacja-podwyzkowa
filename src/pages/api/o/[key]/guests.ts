@@ -4,6 +4,7 @@ import {
   addGuests,
   describeGuestListProblem,
   getGuestList,
+  guestsMessages,
   MAX_GUESTS,
   parseGuestList,
   quoteNames,
@@ -36,27 +37,25 @@ export const POST: APIRoute = async ({ locals, request }) => {
     return body.response;
   }
 
+  const messages = guestsMessages(locals.locale);
   const parsed = parseGuestList(body.data.text);
   if (parsed.problems.length > 0) {
-    return jsonError(400, "Popraw listę — nic nie zostało dodane.", {
-      problems: parsed.problems.map(describeGuestListProblem),
+    return jsonError(400, messages.fixList, {
+      problems: parsed.problems.map((problem) => describeGuestListProblem(problem, locals.locale)),
     });
   }
   if (parsed.names.length === 0) {
-    return jsonError(400, "Wpisz co najmniej jedno imię.");
+    return jsonError(400, messages.enterOneName);
   }
 
   const result = await addGuests(api.db, parsed.names);
   switch (result.status) {
     case "duplicates":
-      return jsonError(409, `Już są na liście: ${quoteNames(result.names)}. Nic nie zostało dodane.`, {
+      return jsonError(409, messages.alreadyListed(quoteNames(result.names, locals.locale)), {
         names: result.names,
       });
     case "too-many":
-      return jsonError(
-        400,
-        `Lista może mieć najwyżej ${MAX_GUESTS} gości (jest już ${result.existing}). Nic nie zostało dodane.`,
-      );
+      return jsonError(400, messages.tooMany(MAX_GUESTS, result.existing));
     case "added":
       return jsonResponse({ added: result.added.length, ...(await getGuestList(api.db)) }, 201);
   }

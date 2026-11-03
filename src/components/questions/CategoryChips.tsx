@@ -1,5 +1,6 @@
 import { Button } from "@/components/ui/button";
-import { ALL_CATEGORIES_LABEL, QUESTION_CATEGORIES, QUESTION_CATEGORY_LABELS } from "@/lib/questions/categories";
+import type { Locale } from "@/lib/i18n";
+import { allCategoriesLabel, QUESTION_CATEGORIES, questionCategoryLabels } from "@/lib/questions/categories";
 import type { QuestionCategory } from "@/types";
 
 interface Props {
@@ -11,16 +12,18 @@ interface Props {
   // Accessible name of the group, e.g. „Kategoria pytania”.
   label: string;
   disabled?: boolean;
+  locale: Locale;
 }
 
 // Pick one question category or all of them (S-07): a row of toggle buttons, „Wszystkie” first, that wraps on a narrow
 // phone. Shared by the question draw panel (guest and organizer), the organizer's list filter and S-08's AI topic.
-export function CategoryChips({ value, onChange, counts, label, disabled = false }: Props) {
+export function CategoryChips({ value, onChange, counts, label, disabled = false, locale }: Props) {
+  const labels = questionCategoryLabels(locale);
   const options: { category: QuestionCategory | null; text: string; count?: number }[] = [
-    { category: null, text: ALL_CATEGORIES_LABEL, count: counts?.all },
+    { category: null, text: allCategoriesLabel(locale), count: counts?.all },
     ...QUESTION_CATEGORIES.map((category) => ({
       category,
-      text: QUESTION_CATEGORY_LABELS[category],
+      text: labels[category],
       count: counts?.[category],
     })),
   ];

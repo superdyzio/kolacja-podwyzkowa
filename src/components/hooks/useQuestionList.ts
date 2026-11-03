@@ -1,7 +1,8 @@
 import { useCallback, useState } from "react";
 import { toQuestionDto } from "@/lib/questions/draw-memory";
+import type { Locale } from "@/lib/i18n";
 import type { QuestionListDto } from "@/types";
-import { NETWORK_FAILURE, readJson, toFailure, type ApiFailure } from "./api-failure";
+import { networkFailure, readJson, toFailure, type ApiFailure } from "./api-failure";
 
 // The question base on the organizer's questions page (S-07, FR-014). Every change goes through the API and the list
 // is replaced with the one the server answers, so the page never drifts from the database.
@@ -29,7 +30,7 @@ export function parseQuestionList(data: unknown): QuestionListDto | null {
   return { questions: parsed.filter((question) => question !== null), starterMissing };
 }
 
-export function useQuestionList(apiBase: string, initial: QuestionListDto) {
+export function useQuestionList(apiBase: string, initial: QuestionListDto, locale: Locale) {
   const [list, setList] = useState<QuestionListDto>(initial);
   const [pending, setPending] = useState(false);
   const [failure, setFailure] = useState<ApiFailure | null>(null);
@@ -53,7 +54,7 @@ export function useQuestionList(apiBase: string, initial: QuestionListDto) {
           }
           return data;
         }
-        setFailure(toFailure(data));
+        setFailure(toFailure(data, locale));
         // The list may be stale (e.g. changed in another tab): reload it so the next try starts from the truth.
         if (response.status === 404 || response.status === 409) {
           const fresh = parseQuestionList(await fetch(`${apiBase}/questions`).then(readJson, () => null));
@@ -63,13 +64,13 @@ export function useQuestionList(apiBase: string, initial: QuestionListDto) {
         }
         return null;
       } catch {
-        setFailure(NETWORK_FAILURE);
+        setFailure(networkFailure(locale));
         return null;
       } finally {
         setPending(false);
       }
     },
-    [apiBase],
+    [apiBase, locale],
   );
 
   const dismissFailure = useCallback(() => {

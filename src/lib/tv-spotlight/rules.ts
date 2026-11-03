@@ -1,8 +1,10 @@
+import type { Locale } from "@/lib/i18n/locale";
 import { normalizeQuestionText } from "@/lib/questions/text";
 import type { TvSpotlightDto, TvSpotlightKind } from "@/types";
+import { tvSpotlightMessages } from "./messages";
 
 // What the organizer puts on the TV over the seating (tv-spotlight), pure: the kinds, the text rules, the TV polling
-// token and the Polish texts. Shared by the server, the organizer's page and the TV.
+// token and the texts (messages.ts). Shared by the server, the organizer's page and the TV.
 
 export const TV_SPOTLIGHT_KINDS = ["question", "topic", "person"] as const satisfies readonly TvSpotlightKind[];
 
@@ -11,18 +13,15 @@ export const TV_SHOWABLE_KINDS = ["question", "topic"] as const satisfies readon
 
 export const MAX_SPOTLIGHT_LENGTH = 300;
 
-// The caption above the text on the TV.
-export const TV_SPOTLIGHT_LABELS: Readonly<Record<TvSpotlightKind, string>> = {
-  question: "Pytanie do rozmowy",
-  topic: "Temat od AI",
-  person: "Wylosowana osoba",
-};
+// The caption above the text on the TV (Polish; the TV uses tvSpotlightMessages(locale).labels).
+export const TV_SPOTLIGHT_LABELS: Readonly<Record<TvSpotlightKind, string>> = tvSpotlightMessages("pl").labels;
 
-// The TV's caption while the drawn name is still spinning.
-export const TV_PERSON_DRAWING_LABEL = "Losujemy…";
+// The TV's caption while the drawn name is still spinning (Polish; see tvSpotlightMessages(locale).drawing).
+export const TV_PERSON_DRAWING_LABEL = tvSpotlightMessages("pl").drawing;
 
-export const NO_PRESENT_GUESTS_MESSAGE = "Nie ma kogo losować — brak obecnych gości na liście.";
-export const INVALID_SPOTLIGHT_MESSAGE = "Tekst musi mieć od 1 do 300 znaków.";
+// Polish answers (tests); routes use tvSpotlightMessages(locals.locale).noPresentGuests / .invalid.
+export const NO_PRESENT_GUESTS_MESSAGE = tvSpotlightMessages("pl").noPresentGuests;
+export const INVALID_SPOTLIGHT_MESSAGE = tvSpotlightMessages("pl").invalid;
 
 export function isTvSpotlightKind(value: unknown): value is TvSpotlightKind {
   return TV_SPOTLIGHT_KINDS.some((kind) => kind === value);
@@ -57,16 +56,17 @@ export function spotlightFontSize(kind: TvSpotlightKind, text: string): number {
 }
 
 // The organizer's status line about the TV.
-export function describeTvSpotlight(spotlight: TvSpotlightDto | null): string {
+export function describeTvSpotlight(spotlight: TvSpotlightDto | null, locale: Locale = "pl"): string {
+  const t = tvSpotlightMessages(locale);
   if (!spotlight) {
-    return "Na TV jest plan rozsadzenia.";
+    return t.showsPlan;
   }
   switch (spotlight.kind) {
     case "question":
-      return `Na TV jest pytanie: „${spotlight.text}”`;
+      return t.showsQuestion(spotlight.text);
     case "topic":
-      return `Na TV jest temat od AI: „${spotlight.text}”`;
+      return t.showsTopic(spotlight.text);
     case "person":
-      return `Na TV jest wylosowana osoba: ${spotlight.text}`;
+      return t.showsPerson(spotlight.text);
   }
 }

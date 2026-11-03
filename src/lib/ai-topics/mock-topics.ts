@@ -47,3 +47,50 @@ export const MOCK_TOPICS: Readonly<Record<QuestionCategory, readonly string[]>> 
     "Jakie wspomnienie z dzieciństwa wraca do Ciebie najczęściej i dlaczego?",
   ],
 };
+
+// The same in English (i18n): what the mock answers a guest or organizer using the app in English. Within the English
+// content bounds (mock-topics.test.ts).
+export const MOCK_TOPICS_EN: Readonly<Record<QuestionCategory, readonly string[]>> = {
+  kontrowersyjne: [
+    "Is remote work the future, or a comfortable excuse to try a little less?",
+    "Would you rather earn a lot in a boring job or a little in a job you truly enjoy?",
+    "Does honesty at work always pay off, or is it sometimes smarter to keep quiet?",
+    "Is pineapple on pizza a culinary crime or a stroke of genius?",
+    "Is being an influencer a real profession or just a well-paid hobby?",
+    "In a relationship, is a joint bank account better than keeping money separate?",
+    "Should a tip be a given, or a reward only for truly great service?",
+    "Will artificial intelligence take over our most interesting tasks or only the dull ones?",
+    "Is a four-day work week a realistic plan or a beautiful utopia?",
+    "Is putting phones away when meeting friends a good habit or going too far?",
+    "Is lending money to friends worth it, or the shortest road to a quarrel?",
+    "Is a boss who is your buddy better than a boss who keeps their distance?",
+  ],
+  generyczne: [
+    "Which superpower would you pick for one ordinary workday, and what would you use it for?",
+    "If your life were a film, what would it be called and who would play the lead?",
+    "Which dish could you cook with your eyes closed?",
+    "Which invention of recent years makes your everyday life easiest?",
+    "Where would you go tomorrow if a ticket to anywhere were already paid for?",
+    "Which song always lifts your mood, even on a Monday morning?",
+    "Which hobby do you want to start but keep putting off?",
+    "What is the strangest thing you have ever bought online?",
+    "Which animal best matches your character, and why?",
+    "Which series could you watch over and over without ever getting bored?",
+    "If you could eat only one country's cuisine until the end of the year, which would you choose?",
+    "Which board or card game brings out the most emotion in you?",
+  ],
+  refleksyjne: [
+    "Which decision from years ago changed the direction of your life the most?",
+    "What did your first job teach you that you still use today?",
+    "What do you want to be doing in ten years that you are not doing yet?",
+    "What advice would you give yourself from ten years ago?",
+    "Which small everyday pleasures matter most to you?",
+    "What are you most grateful for today?",
+    "Which of your skills that nobody notices are you proud of?",
+    "What in your life is simpler today than it seemed ten years ago?",
+    "Which person outside your family has shaped who you are the most?",
+    "What does success mean to you, and has that changed over time?",
+    "If a completely free year started tomorrow, what would you spend it on?",
+    "Which childhood memory comes back to you most often, and why?",
+  ],
+};

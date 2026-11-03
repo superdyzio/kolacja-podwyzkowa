@@ -1,17 +1,21 @@
 import { useEffect, useId, useRef } from "react";
 import { Button } from "@/components/ui/button";
+import type { Locale } from "@/lib/i18n";
+import { offlineMessages } from "@/lib/offline/messages";
 import { OfflineReadout } from "./OfflineReadout";
 
 interface Props {
   apiBase: string;
   offline: boolean;
+  locale: Locale;
   // The host closes the dialog and returns focus to the button that opened it.
   onClose: () => void;
 }
 
 // The last saved state over any organizer page (S-09), full screen. It sits below „Czytaj od końca” (z-50), which can
 // open from inside it; Escape is left to that readout, so this dialog closes only with „Zamknij”.
-export function OfflineReadoutDialog({ apiBase, offline, onClose }: Props) {
+export function OfflineReadoutDialog({ apiBase, offline, locale, onClose }: Props) {
+  const t = offlineMessages(locale);
   const titleId = useId();
   const closeButton = useRef<HTMLButtonElement>(null);
 
@@ -34,13 +38,13 @@ export function OfflineReadoutDialog({ apiBase, offline, onClose }: Props) {
       <div className="mx-auto flex max-w-3xl flex-col gap-6 p-4 sm:p-8">
         <header className="flex items-center justify-between gap-3">
           <h2 id={titleId} className="text-2xl font-bold">
-            Ostatni zapisany stan
+            {t.dialogTitle}
           </h2>
           <Button ref={closeButton} type="button" variant="outline" className="h-11" onClick={onClose}>
-            Zamknij
+            {t.close}
           </Button>
         </header>
-        <OfflineReadout apiBase={apiBase} offline={offline} />
+        <OfflineReadout apiBase={apiBase} offline={offline} locale={locale} />
       </div>
     </div>
   );

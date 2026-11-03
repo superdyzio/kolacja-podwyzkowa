@@ -1,7 +1,9 @@
 import { useId, useState, type SubmitEvent } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { QUESTION_CATEGORY_LABELS } from "@/lib/questions/categories";
+import type { Locale } from "@/lib/i18n";
+import { questionCategoryLabels } from "@/lib/questions/categories";
+import { questionUiMessages } from "@/lib/questions/messages";
 import {
   describeQuestionProblem,
   MAX_QUESTION_LENGTH,
@@ -22,10 +24,12 @@ interface Props {
   // Saves the changed fields; resolves to true when saved.
   onSave: (change: QuestionChange) => Promise<boolean>;
   onDelete: () => void;
+  locale: Locale;
 }
 
 // One question on the organizer's list (S-07, FR-014): its text and category, edited in place, or deleted.
-export function QuestionRow({ question, pending, onSave, onDelete }: Props) {
+export function QuestionRow({ question, pending, onSave, onDelete, locale }: Props) {
+  const t = questionUiMessages(locale);
   const textId = useId();
   const categoryId = useId();
   const problemId = useId();
@@ -46,7 +50,7 @@ export function QuestionRow({ question, pending, onSave, onDelete }: Props) {
     const text = normalizeQuestionText(draft);
     const textProblem = validateQuestionText(text);
     if (textProblem) {
-      setProblem(describeQuestionProblem(textProblem));
+      setProblem(describeQuestionProblem(textProblem, locale));
       return;
     }
     const change: QuestionChange = {
@@ -63,7 +67,7 @@ export function QuestionRow({ question, pending, onSave, onDelete }: Props) {
       <li className="rounded-lg border p-3">
         <form onSubmit={(event) => void save(event)} className="flex flex-col gap-2">
           <label htmlFor={textId} className="sr-only">
-            Treść pytania
+            {t.questionText}
           </label>
           <Textarea
             id={textId}
@@ -85,11 +89,11 @@ export function QuestionRow({ question, pending, onSave, onDelete }: Props) {
           )}
           <div className="flex flex-wrap items-center gap-2">
             <label htmlFor={categoryId} className="sr-only">
-              Kategoria
+              {t.category}
             </label>
-            <CategorySelect id={categoryId} value={category} onChange={setCategory} />
+            <CategorySelect id={categoryId} value={category} onChange={setCategory} locale={locale} />
             <Button type="submit" disabled={pending} className="h-11">
-              Zapisz
+              {t.save}
             </Button>
             <Button
               type="button"
@@ -99,7 +103,7 @@ export function QuestionRow({ question, pending, onSave, onDelete }: Props) {
                 setEditing(false);
               }}
             >
-              Anuluj
+              {t.cancel}
             </Button>
           </div>
         </form>
@@ -112,15 +116,15 @@ export function QuestionRow({ question, pending, onSave, onDelete }: Props) {
       <div className="flex min-w-0 flex-1 flex-col gap-1">
         <p className="break-words">{question.text}</p>
         <span className="bg-secondary text-secondary-foreground self-start rounded-full px-2 py-0.5 text-xs">
-          {QUESTION_CATEGORY_LABELS[question.category]}
+          {questionCategoryLabels(locale)[question.category]}
         </span>
       </div>
       <div className="flex shrink-0 gap-2">
         <Button type="button" variant="outline" className="h-10" disabled={pending} onClick={startEditing}>
-          Edytuj
+          {t.edit}
         </Button>
         <Button type="button" variant="ghost" className="text-destructive h-10" disabled={pending} onClick={onDelete}>
-          Usuń
+          {t.remove}
         </Button>
       </div>
     </li>

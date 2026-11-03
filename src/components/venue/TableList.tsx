@@ -1,6 +1,6 @@
-import { pluralPl } from "@/lib/guests/summary";
-import { TABLE_SHAPE_LABELS } from "@/lib/venue/rules";
+import type { Locale } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
+import { venueEditorMessages, venueMessages } from "@/lib/venue/messages";
 import type { RoomDto, TableDto } from "@/types";
 
 interface Props {
@@ -9,17 +9,20 @@ interface Props {
   selectedId: number | null;
   pending: boolean;
   onSelect: (tableId: number) => void;
+  locale: Locale;
 }
 
 // Tables grouped by room; choosing one opens its edit form (same as clicking its pin).
-export function TableList({ rooms, tables, selectedId, pending, onSelect }: Props) {
+export function TableList({ rooms, tables, selectedId, pending, onSelect, locale }: Props) {
   if (rooms.length === 0) {
     return null;
   }
+  const t = venueEditorMessages(locale);
+  const shapes = venueMessages(locale).shapes;
   return (
     <section aria-labelledby="tables-heading" className="flex flex-col gap-3">
       <h2 id="tables-heading" className="text-lg font-semibold">
-        Stoliki
+        {t.tablesHeading}
       </h2>
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {rooms.map((room) => {
@@ -29,12 +32,10 @@ export function TableList({ rooms, tables, selectedId, pending, onSelect }: Prop
             <div key={room.id} className="flex flex-col gap-2 rounded-xl border p-3">
               <h3 className="font-semibold">
                 {room.name}
-                <span className="text-muted-foreground ml-2 text-sm font-normal">
-                  {seats} {pluralPl(seats, "miejsce", "miejsca", "miejsc")}
-                </span>
+                <span className="text-muted-foreground ml-2 text-sm font-normal">{t.seatCount(seats)}</span>
               </h3>
               {roomTables.length === 0 ? (
-                <p className="text-muted-foreground text-sm">Brak stolików — kliknij na planie, gdzie stoją.</p>
+                <p className="text-muted-foreground text-sm">{t.noTablesInRoom}</p>
               ) : (
                 <ul className="flex flex-col gap-1">
                   {roomTables.map((table) => (
@@ -53,8 +54,7 @@ export function TableList({ rooms, tables, selectedId, pending, onSelect }: Prop
                       >
                         <span className="truncate font-medium">{table.name}</span>
                         <span className="text-muted-foreground shrink-0 text-xs">
-                          {table.seatCount} {pluralPl(table.seatCount, "miejsce", "miejsca", "miejsc")} ·{" "}
-                          {TABLE_SHAPE_LABELS[table.shape]}
+                          {t.seatCount(table.seatCount)} · {shapes[table.shape]}
                         </span>
                       </button>
                     </li>

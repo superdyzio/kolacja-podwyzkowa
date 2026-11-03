@@ -3,14 +3,12 @@ import { z } from "astro/zod";
 import { jsonError, jsonResponse, parseId, readJsonBody } from "@/lib/http";
 import { organizerApi } from "@/lib/organizer-api";
 import {
-  ROOM_NOT_FOUND_MESSAGE,
-  TABLE_DUPLICATE_MESSAGE,
-  TABLE_NOT_FOUND_MESSAGE,
   TABLE_SHAPES,
   deleteTable,
   describeTableFieldProblem,
   getVenue,
   updateTable,
+  venueMessages,
 } from "@/lib/venue";
 
 export const prerender = false;
@@ -38,7 +36,7 @@ export const PATCH: APIRoute = async ({ locals, params, request }) => {
   }
   const id = parseId(params.id);
   if (id === null) {
-    return jsonError(404, TABLE_NOT_FOUND_MESSAGE);
+    return jsonError(404, venueMessages(locals.locale).tableNotFound);
   }
   const body = await readJsonBody(request, UpdateTableBody, locals.locale);
   if (!body.ok) {
@@ -48,13 +46,13 @@ export const PATCH: APIRoute = async ({ locals, params, request }) => {
   const result = await updateTable(api.db, id, body.data);
   switch (result.status) {
     case "invalid":
-      return jsonError(400, describeTableFieldProblem(result.problem));
+      return jsonError(400, describeTableFieldProblem(result.problem, locals.locale));
     case "duplicate":
-      return jsonError(409, TABLE_DUPLICATE_MESSAGE);
+      return jsonError(409, venueMessages(locals.locale).tableDuplicate);
     case "room-not-found":
-      return jsonError(404, ROOM_NOT_FOUND_MESSAGE);
+      return jsonError(404, venueMessages(locals.locale).roomNotFound);
     case "not-found":
-      return jsonError(404, TABLE_NOT_FOUND_MESSAGE);
+      return jsonError(404, venueMessages(locals.locale).tableNotFound);
     case "updated":
       return jsonResponse(await getVenue(api.db));
   }
@@ -67,12 +65,12 @@ export const DELETE: APIRoute = async ({ locals, params }) => {
   }
   const id = parseId(params.id);
   if (id === null) {
-    return jsonError(404, TABLE_NOT_FOUND_MESSAGE);
+    return jsonError(404, venueMessages(locals.locale).tableNotFound);
   }
 
   const result = await deleteTable(api.db, id);
   if (result.status === "not-found") {
-    return jsonError(404, TABLE_NOT_FOUND_MESSAGE);
+    return jsonError(404, venueMessages(locals.locale).tableNotFound);
   }
   return jsonResponse(await getVenue(api.db));
 };

@@ -1,5 +1,6 @@
 import { EVENT_ID } from "@/lib/event";
 import { getGuestList } from "@/lib/guests/service";
+import type { Locale } from "@/lib/i18n/locale";
 import type { DbClient } from "@/lib/supabase-client";
 import { DEFAULT_CHAIR_PITCH, compareTableNames, isTableShape } from "@/lib/venue/rules";
 import { getVenue } from "@/lib/venue/service";
@@ -452,11 +453,16 @@ export async function replaceSeating(db: DbClient, seats: readonly DraftSeatDto[
 
 // Saves a drawn draft as the working arrangement (FR-009) after re-checking the hard rules against the current data
 // (validateDraft). The TV keeps the latest snapshot until the organizer publishes.
-export async function saveDraft(db: DbClient, seats: readonly DraftSeatDto[]): Promise<SaveDraftResult> {
+// `locale`: the language of the problem lines.
+export async function saveDraft(
+  db: DbClient,
+  seats: readonly DraftSeatDto[],
+  locale: Locale = "pl",
+): Promise<SaveDraftResult> {
   const [guestList, venue, assignments] = await Promise.all([getGuestList(db), getVenue(db), getAssignments(db)]);
   const problems = validateDraft({ guestList, venue, assignments }, seats);
   if (problems.length > 0) {
-    return { status: "invalid", problems: problems.map(describeDraftProblem) };
+    return { status: "invalid", problems: problems.map((problem) => describeDraftProblem(problem, locale)) };
   }
   const written = await replaceSeating(db, seats);
   return written.status === "replaced" ? { status: "saved" } : written;
@@ -464,7 +470,12 @@ export async function saveDraft(db: DbClient, seats: readonly DraftSeatDto[]): P
 
 // Puts a published snapshot back into the working arrangement (FR-010 "back to the previous arrangement", or
 // discarding a draft): restoreSeats() rules, pinned rows kept; the organizer publishes it afterwards.
-export async function restoreSnapshot(db: DbClient, snapshotId: number): Promise<RestoreSnapshotResult> {
+// `locale`: the language of the notice.
+export async function restoreSnapshot(
+  db: DbClient,
+  snapshotId: number,
+  locale: Locale = "pl",
+): Promise<RestoreSnapshotResult> {
   const [snapshot, guestList, venue, assignments] = await Promise.all([
     getSnapshot(db, snapshotId),
     getGuestList(db),
@@ -479,5 +490,5 @@ export async function restoreSnapshot(db: DbClient, snapshotId: number): Promise
   if (written.status === "conflict") {
     return written;
   }
-  return { status: "restored", notice: describeRestore(snapshot.publishedAt, unseated) };
+  return { status: "restored", notice: describeRestore(snapshot.publishedAt, unseated, locale) };
 }

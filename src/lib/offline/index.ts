@@ -16,10 +16,6 @@ export {
   type OfflineSeatingEntry,
 } from "./cache";
 export {
-  LOCAL_AMOUNT_NOTE,
-  NO_OFFLINE_STATE,
-  OFFLINE_NOTICE,
-  OFFLINE_READOUT_BANNER,
   findGuestSeats,
   formatPublishedLabel,
   formatSavedAt,
@@ -32,4 +28,5 @@ export {
   type ReadoutSeat,
   type ReadoutTable,
 } from "./readout";
+export { offlineMessages } from "./messages";
 export { readOfflineState, type FetchFunction, type OfflineReadResult } from "./sync";

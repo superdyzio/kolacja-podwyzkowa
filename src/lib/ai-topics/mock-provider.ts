@@ -1,4 +1,4 @@
-import { MOCK_TOPICS } from "./mock-topics";
+import { MOCK_TOPICS, MOCK_TOPICS_EN } from "./mock-topics";
 import { AiProviderError, type AiTopicProvider } from "./provider";
 
 // The default AI provider (S-08): a random catalog topic after a short delay, no network, no cost (usage null). Used in dev, tests,
@@ -49,7 +49,7 @@ export function createMockProvider(options: MockProviderOptions = {}): AiTopicPr
       if (options.fail || simulateFailure) {
         throw new AiProviderError("unavailable", undefined, "AI: symulowana awaria atrapy");
       }
-      const topics = MOCK_TOPICS[request.category];
+      const topics = (request.locale === "en" ? MOCK_TOPICS_EN : MOCK_TOPICS)[request.category];
       const index = Math.min(Math.floor(random() * topics.length), topics.length - 1);
       return { text: topics[index] ?? "", usage: null };
     },

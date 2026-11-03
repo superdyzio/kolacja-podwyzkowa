@@ -1,6 +1,7 @@
 // Server-safe exports of the guest links module. qr.ts is intentionally NOT exported here: it is browser-only (the
 // card sheet's client script imports it directly), so `qrcode` never reaches the server bundle.
-export { LOCAL_ORIGIN_WARNING, guestUrl, isLocalOrigin } from "./links";
+export { guestUrl, isLocalOrigin } from "./links";
+export { guestLinksMessages, guestPhoneMessages } from "./messages";
 export {
   GUEST_UNPUBLISHED_MESSAGE,
   GUEST_UNSEATED_MESSAGE,
