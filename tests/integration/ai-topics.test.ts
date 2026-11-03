@@ -2,7 +2,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from
 import { createAiProvider, parseAiConfig } from "@/lib/ai-topics/config";
 import { MAX_GUEST_TOPICS } from "@/lib/ai-topics/limits";
 import { createMockProvider } from "@/lib/ai-topics/mock-provider";
-import { MOCK_TOPICS } from "@/lib/ai-topics/mock-topics";
+import { MOCK_TOPICS, MOCK_TOPICS_EN } from "@/lib/ai-topics/mock-topics";
 import { AiProviderError, type AiGeneration, type AiTopicProvider } from "@/lib/ai-topics/provider";
 import { generateTopic, getAiTopicUsage, getGuestAiQuota } from "@/lib/ai-topics/service";
 import type { DbClient } from "@/lib/supabase-client";
@@ -307,5 +307,16 @@ describe.skipIf(!hasLocalDb)("AI topic generation", () => {
     const { error } = await db.from("ai_topic").update({ failure_kind: null }).eq("id", id);
     expect(error).toBeNull();
     expect((await getAiTopicUsage(db)).lastFailureHint).toBe("Przyczyna nie została zapisana.");
+    expect((await getAiTopicUsage(db, "en")).lastFailureHint).toBe("The cause was not recorded.");
+  });
+
+  it("writes the topic and the hints in the requester's language (i18n)", async () => {
+    const result = await generateTopic(db, fast, { guestId: null, category: "generyczne", locale: "en" });
+    expect(result).toMatchObject({ status: "generated", topic: { category: "generyczne" } });
+    if (result.status === "generated") {
+      expect(MOCK_TOPICS_EN.generyczne).toContain(result.topic.text);
+    }
+    await generateTopic(db, createMockProvider({ delayMs: () => 0, fail: true }), { guestId: null, category: null });
+    expect((await getAiTopicUsage(db, "en")).lastFailureHint).toBe("AI provider unavailable.");
   });
 });
