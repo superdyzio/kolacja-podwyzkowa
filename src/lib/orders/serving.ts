@@ -29,9 +29,11 @@ export interface ServingSpot<T> {
 }
 
 export interface DishInstance<T> {
-  // 1-based within the dish, in placement order.
+  // 1-based within the dish, in placement order (shown; it shifts when lines are added before it).
   number: number;
   spotKey: string;
+  // 0-based within its line: with spotKey, what a selection holds on to.
+  piece: number;
   item: T;
   place: ServingPlace;
 }
@@ -52,7 +54,15 @@ export interface ServingMark {
   done: boolean;
 }
 
-export type ServingSelection = { kind: "dish"; dish: string; instance: number | null } | { kind: "spot"; key: string };
+// A picked piece is held by its line and its place in the line, not by its number: a line added at an earlier table
+// renumbers the pieces, but the pick stays on the same plate.
+export interface PieceRef {
+  spotKey: string;
+  piece: number;
+}
+
+export type ServingSelection =
+  { kind: "dish"; dish: string; instance: PieceRef | null } | { kind: "spot"; key: string };
 
 // Every line at its place, in placement order. keyOf gives a stable key (the organizer's line ids); without it the key
 // is the line's position (the restaurant's lines carry no ids), which is enough to find it again after a refresh.
@@ -111,6 +121,7 @@ export function dishInstances<T extends ServingLine>(
       found.instances.push({
         number: found.instances.length + 1,
         spotKey: spot.key,
+        piece,
         item: spot.item,
         place: spot.place,
       });
@@ -207,7 +218,11 @@ export function resolveSelection<T extends ServingLine>(
     return null;
   }
   const instance =
-    selection.instance === null ? null : (dish.instances.find((one) => one.number === selection.instance) ?? null);
+    selection.instance === null
+      ? null
+      : (dish.instances.find(
+          (one) => one.spotKey === selection.instance?.spotKey && one.piece === selection.instance.piece,
+        ) ?? null);
   const chosen = instance ? [instance] : dish.instances;
   return {
     kind: "dish",

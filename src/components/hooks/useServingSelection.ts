@@ -57,14 +57,24 @@ export function useServingSelection<T extends ServingLine>(
     );
   }, []);
 
-  // The piece again → the whole dish.
-  const toggleInstance = useCallback((dish: string, instance: number) => {
-    setSelection((previous) =>
-      previous?.kind === "dish" && previous.dish === dish && previous.instance === instance
-        ? { kind: "dish", dish, instance: null }
-        : { kind: "dish", dish, instance },
-    );
-  }, []);
+  // The piece again → the whole dish. Held by its line, so later renumbering keeps it on the same plate.
+  const toggleInstance = useCallback(
+    (dish: string, number: number) => {
+      const picked = dishes.get(dish)?.instances.find((one) => one.number === number);
+      if (!picked) {
+        return;
+      }
+      setSelection((previous) =>
+        previous?.kind === "dish" &&
+        previous.dish === dish &&
+        previous.instance?.spotKey === picked.spotKey &&
+        previous.instance.piece === picked.piece
+          ? { kind: "dish", dish, instance: null }
+          : { kind: "dish", dish, instance: { spotKey: picked.spotKey, piece: picked.piece } },
+      );
+    },
+    [dishes],
+  );
 
   const toggleSpot = useCallback((key: string) => {
     setSelection((previous) => (previous?.kind === "spot" && previous.key === key ? null : { kind: "spot", key }));

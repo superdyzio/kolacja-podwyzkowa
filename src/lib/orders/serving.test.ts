@@ -116,6 +116,12 @@ describe("instanceMarks", () => {
   });
 });
 
+// The selection of the piece with this number now.
+function pieceOf(dishes: ReturnType<typeof dishInstances>, dish: string, number: number) {
+  const one = dishes.get(dish)?.instances.find((candidate) => candidate.number === number);
+  return one ? { spotKey: one.spotKey, piece: one.piece } : { spotKey: "gone", piece: 0 };
+}
+
 describe("resolveSelection", () => {
   const spots = servingSpots(placement);
   const dishes = dishInstances(spots);
@@ -137,20 +143,57 @@ describe("resolveSelection", () => {
   });
 
   it("marks one instance on its own", () => {
-    const resolved = resolveSelection({ kind: "dish", dish: "rosół", instance: 5 }, spots, dishes);
+    const resolved = resolveSelection(
+      { kind: "dish", dish: "rosół", instance: pieceOf(dishes, "rosół", 5) },
+      spots,
+      dishes,
+    );
     if (resolved?.kind !== "dish") throw new Error("expected a dish");
     expect(resolved.instance?.number).toBe(5);
     expect(resolved.marks).toEqual([{ table: "Okno", seat: null, label: "5", done: false }]);
     expect(resolved.offPlan).toBe(0);
 
-    const offPlan = resolveSelection({ kind: "dish", dish: "rosół", instance: 7 }, spots, dishes);
+    const offPlan = resolveSelection(
+      { kind: "dish", dish: "rosół", instance: pieceOf(dishes, "rosół", 7) },
+      spots,
+      dishes,
+    );
     if (offPlan?.kind !== "dish") throw new Error("expected a dish");
     expect(offPlan.marks).toEqual([]);
     expect(offPlan.offPlan).toBe(1);
   });
 
-  it("falls back to all instances when the chosen number is gone", () => {
-    const resolved = resolveSelection({ kind: "dish", dish: "schabowy", instance: 4 }, spots, dishes);
+  it("keeps a picked piece on the same plate when lines are added before it", () => {
+    const picked = pieceOf(dishes, "rosół", 6); // Kominek, seat 2, Celina
+    const earlier: OrderPlacementDto<RestaurantItemDto> = {
+      ...placement,
+      tables: [
+        {
+          name: "Altana",
+          room: "Sala A",
+          seats: [{ seat: 1, guestName: "Ela", items: [item("Rosół", 2)] }],
+          tableItems: [],
+        },
+        ...placement.tables,
+      ],
+    };
+    const laterSpots = servingSpots(earlier);
+    const resolved = resolveSelection(
+      { kind: "dish", dish: "rosół", instance: picked },
+      laterSpots,
+      dishInstances(laterSpots),
+    );
+    if (resolved?.kind !== "dish") throw new Error("expected a dish");
+    expect(resolved.instance?.number).toBe(8);
+    expect(resolved.marks).toEqual([{ table: "Kominek", seat: 2, label: "8", done: true }]);
+  });
+
+  it("falls back to all instances when the chosen piece is gone", () => {
+    const resolved = resolveSelection(
+      { kind: "dish", dish: "schabowy", instance: pieceOf(dishes, "schabowy", 4) },
+      spots,
+      dishes,
+    );
     if (resolved?.kind !== "dish") throw new Error("expected a dish");
     expect(resolved.instance).toBeNull();
     expect(resolved.marks).toEqual([{ table: "Okno", seat: 3, label: null, done: false }]);
@@ -175,14 +218,18 @@ describe("describeSelection", () => {
   it("names the dish, the piece and its place in both languages", () => {
     expect(caption({ kind: "dish", dish: "rosół", instance: null })).toBe("Rosół — wszystkie (8)");
     expect(caption({ kind: "dish", dish: "rosół", instance: null }, "en")).toBe("Rosół — all 8");
-    expect(caption({ kind: "dish", dish: "rosół", instance: 2 })).toBe("Rosół 2/8 → Stolik Okno · miejsce 3 · Bartek");
-    expect(caption({ kind: "dish", dish: "rosół", instance: 4 }, "en")).toBe(
+    expect(caption({ kind: "dish", dish: "rosół", instance: pieceOf(dishes, "rosół", 2) })).toBe(
+      "Rosół 2/8 → Stolik Okno · miejsce 3 · Bartek",
+    );
+    expect(caption({ kind: "dish", dish: "rosół", instance: pieceOf(dishes, "rosół", 4) }, "en")).toBe(
       "Rosół 4/8 → Table Okno · middle of the table",
     );
-    expect(caption({ kind: "dish", dish: "rosół", instance: 6 }, "en")).toBe(
+    expect(caption({ kind: "dish", dish: "rosół", instance: pieceOf(dishes, "rosół", 6) }, "en")).toBe(
       "Rosół 6/8 → Table Kominek · seat 2 · Celina (served)",
     );
-    expect(caption({ kind: "dish", dish: "rosół", instance: 7 })).toBe("Rosół 7/8 → Daria — nie ma na planie");
+    expect(caption({ kind: "dish", dish: "rosół", instance: pieceOf(dishes, "rosół", 7) })).toBe(
+      "Rosół 7/8 → Daria — nie ma na planie",
+    );
     expect(caption({ kind: "dish", dish: "schabowy", instance: null })).toBe(
       "Schabowy → Stolik Okno · miejsce 3 · Bartek",
     );
