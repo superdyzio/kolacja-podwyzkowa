@@ -3,18 +3,21 @@ import type { APIRoute } from "astro";
 import { z } from "astro/zod";
 import { getGuestState } from "@/lib/guest-links";
 import { guestApi } from "@/lib/guest-api";
-import { parseAmount, submitGuestGuess } from "@/lib/guesses";
-import { guessMessages } from "@/lib/guesses/messages";
+import { countGuests, parseAmount, placeLimit, readPlaceField, submitGuestGuess } from "@/lib/guesses";
+import { guessMessages, placeMessages } from "@/lib/guesses/messages";
 import { jsonError, jsonResponse, readJsonBody } from "@/lib/http";
 
 export const prerender = false;
 
-// PUT { amount }: the guest saves or changes their OWN guess (S-06, FR-017), the amount as typed ("1 499,99 zł").
+// PUT { amount, place? }: the guest saves or changes their OWN guess (S-06, FR-017), the amount as typed
+// ("1 499,99 zł"), and (guess-place) optionally the prediction of their own final place as typed: "" or null clears
+// it, a missing `place` keeps the stored one (phones still on the old page send only the amount); above the number of
+// guests → 400 naming the range.
 // The guest is the key's owner (access.guest.id) — the body names nobody, and any extra field (e.g. a guest id) is
 // refused. 200 answers with the guest's whole live state (GuestStateDto, new version), so the phone shows the saved
 // guess at once (NFR-001); 409 once the organizer has closed intake (checked atomically in the DB).
 
-const SaveGuessBody = z.strictObject({ amount: z.string().max(40) });
+const SaveGuessBody = z.strictObject({ amount: z.string().max(40), place: z.string().max(10).nullable().optional() });
 
 export const PUT: APIRoute = async ({ locals, request }) => {
   const api = guestApi(locals);
@@ -30,9 +33,17 @@ export const PUT: APIRoute = async ({ locals, request }) => {
     return jsonError(400, parsed.message);
   }
 
+  // Here only the format; the upper bound (the number of guests) is checked by the service, which counts them.
+  const place = readPlaceField(body.data.place);
+  if (place === "invalid") {
+    return jsonError(400, placeMessages(locals.locale).range(placeLimit(await countGuests(api.db))));
+  }
+
   const { guest } = api.access;
-  const result = await submitGuestGuess(api.db, guest.id, parsed.grosze);
+  const result = await submitGuestGuess(api.db, guest.id, parsed.grosze, place);
   switch (result.status) {
+    case "place-out-of-range":
+      return jsonError(400, placeMessages(locals.locale).range(result.maxPlace));
     case "closed":
       return jsonError(409, guessMessages(locals.locale).intakeClosed);
     case "not-found":

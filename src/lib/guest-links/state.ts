@@ -23,10 +23,13 @@ function nameHash(name: string): string {
 
 // The guest's polling token: the seating token ("<snapshot id>.<plan version>"), the name hash, then (S-06) the
 // guess intake flag (1 open / 0 closed) and the guest's own guess in grosze ("n" = none), so a close, a reopen or an
-// organizer's proxy entry reaches the phone through the same single poll. Opaque to clients, compared for equality;
-// at most ~50 characters (route limit 64). A later slice with more live guest state appends its own part here.
+// organizer's proxy entry reaches the phone through the same single poll; then (guess-place) the own place prediction
+// ("n" = none) and the highest place allowed (a new guest raises it). Opaque to clients, compared for equality; at
+// most ~58 characters (route limit 64). A later slice with more live guest state appends its own part here.
 export function guestStateVersion(seatingVersion: string, name: string, guess: GuestGuessDto): string {
-  return `${seatingVersion}.${nameHash(name)}.${guess.intakeOpen ? "1" : "0"}.${guess.amountGrosze ?? "n"}`;
+  const amount = guess.amountGrosze ?? "n";
+  const place = guess.predictedPlace ?? "n";
+  return `${seatingVersion}.${nameHash(name)}.${guess.intakeOpen ? "1" : "0"}.${amount}.${place}.${guess.maxPlace}`;
 }
 
 export interface GuestStateInput {
@@ -54,7 +57,12 @@ export function toGuestState({
   drawing = null,
 }: GuestStateInput): GuestStateDto {
   const version = guestStateVersion(seatingVersion, name, guess);
-  const own = { intakeOpen: guess.intakeOpen, amountGrosze: guess.amountGrosze };
+  const own: GuestGuessDto = {
+    intakeOpen: guess.intakeOpen,
+    amountGrosze: guess.amountGrosze,
+    predictedPlace: guess.predictedPlace,
+    maxPlace: guess.maxPlace,
+  };
   if (snapshotId === null) {
     return { version, name, status: "unpublished", seat: null, planVersion, guess: own, drawing: null };
   }

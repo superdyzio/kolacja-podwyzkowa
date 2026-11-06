@@ -95,6 +95,7 @@ export function offlineRanking(board: GuessBoardDto, localCorrectGrosze: number 
             displayName: guest.displayName,
             isAbsent: guest.isAbsent,
             amountGrosze: guest.amountGrosze,
+            predictedPlace: guest.predictedPlace,
           },
         ],
   );

@@ -84,6 +84,14 @@ Na obu stronach (u organizatora i w restauracji) obok list jest plan sali. Klikn
 
 Na produkcji ta zmiana wymaga migracji bazy **przed** wdrożeniem kodu: bez niej każda strona organizatora kończy się błędem 500 (panel czyta link restauracji). Kolejność: kopia danych (`npx supabase db dump --data-only -f ~/kolacja-backup-<data>.sql`), `npx supabase db push` (wgrywa też migrację planu sali, jeśli jeszcze jej nie było), potem `npm run deploy:aws`. Migracja tylko dodaje: istniejące linki organizatora, TV i gości się nie zmieniają.
 
+## Typ miejsca w konkursie strzałów
+
+Obok kwoty gość może (nie musi) wpisać, które miejsce zajmie w rankingu: od 1 do liczby gości. Zapisuje się razem z kwotą i można go zmieniać do zamknięcia przyjmowania; sama kwota bez typu nie kasuje zapisanego typu. Ranking nadal liczy się tylko z kwoty. Organizator może wpisać albo poprawić typ za gościa („Popraw” przy gościu na `/o/<klucz>/strzaly`).
+
+W rankingu organizatora podium jest na złoto, srebrno i brązowo (z medalem), a na zielono każdy, kto trafił swoje miejsce. Pod rankingiem jest lista „Trafione miejsca” — do nagrody pocieszenia. Remis zajmuje wszystkie swoje miejsca: gdy dwie osoby dzielą 2. miejsce, trafiają, typując 2 albo 3. „Czytaj od końca” i odczyt bez sieci pokazują typ i trafienie przy każdej osobie. Gość widzi tylko swój typ, nigdy cudzych i nie wie, czy trafił.
+
+Na produkcji ta zmiana wymaga migracji bazy **przed** wdrożeniem kodu (bez niej strona gościa i `/strzaly` kończą się błędem): kopia danych (`npx supabase db dump --data-only -f ~/kolacja-backup-<data>.sql`), `npx supabase db push`, potem `npm run deploy:aws`. Migracja tylko dodaje kolumnę i funkcję; istniejące strzały, linki i klucze zostają bez zmian.
+
 ## Skrypty
 
 - `npm run dev`, `npm run build`, `npm run preview`: serwer deweloperski, build produkcyjny, podgląd buildu.
@@ -94,7 +102,7 @@ Na produkcji ta zmiana wymaga migracji bazy **przed** wdrożeniem kodu: bez niej
 - `npm run smoke`: test HTTP macierzy dostępu na działającym serwerze (`BASE_URL`, domyślnie `http://localhost:4321`). Wymaga bazy bez wydarzenia. `npm run preview` czyta `.env` przy starcie, więc po zmianie `.env` uruchom podgląd ponownie.
 - `npm run package:lambda`: build do `dist-lambda/build` (nie rusza `dist/` podglądu) i paczka `dist-lambda/function.zip` dla AWS Lambda, ze sprawdzeniem (bez plików env i sekretów, bez modułów natywnych, zip < 50 MB, rozpakowany zip startuje poza repozytorium).
 - `npm run deploy:aws`: wdrożenie na AWS Lambda (patrz niżej); `-- --dry-run` tylko wypisuje plan.
-- `npm run demo`: wypełnia lokalną aplikację danymi demo do sprawdzeń ręcznych (40 gości, plan, 3 sale, 7 stolików, grupy 4/2/2, 1 nieobecny, 1 przypięty, opublikowany rozkład, 30 strzałów z remisem, zamówienie z 9 pozycjami) przez API działającego serwera (`BASE_URL`) i wypisuje linki. Tworzy wydarzenie, gdy go nie ma; odmawia, gdy wydarzenie ma już gości, sale albo plan.
+- `npm run demo`: wypełnia lokalną aplikację danymi demo do sprawdzeń ręcznych (40 gości, plan, 3 sale, 7 stolików, grupy 4/2/2, 1 nieobecny, 1 przypięty, opublikowany rozkład, 30 strzałów z remisem, 12 z typem miejsca, zamówienie z 9 pozycjami) przez API działającego serwera (`BASE_URL`) i wypisuje linki. Tworzy wydarzenie, gdy go nie ma; odmawia, gdy wydarzenie ma już gości, sale albo plan.
 
 ## CI
 

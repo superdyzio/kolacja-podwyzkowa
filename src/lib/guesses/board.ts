@@ -11,7 +11,13 @@ export interface GuessBoardInput {
   intakeOpen: boolean;
   correctAmountGrosze: number | null;
   guests: readonly { id: number; displayName: string; isAbsent: boolean }[];
-  guesses: readonly { guestId: number; amountGrosze: number; enteredBy: GuessEnteredBy }[];
+  guesses: readonly {
+    guestId: number;
+    amountGrosze: number;
+    enteredBy: GuessEnteredBy;
+    // guess-place (missing or null = no prediction).
+    predictedPlace?: number | null;
+  }[];
 }
 
 const polishCollator = new Intl.Collator("pl");
@@ -27,6 +33,7 @@ export function toGuessBoard({ intakeOpen, correctAmountGrosze, guests, guesses 
         displayName: guest.displayName,
         isAbsent: guest.isAbsent,
         amountGrosze: guess?.amountGrosze ?? null,
+        predictedPlace: guess?.predictedPlace ?? null,
         enteredBy: guess?.enteredBy ?? null,
       };
     });
@@ -34,7 +41,15 @@ export function toGuessBoard({ intakeOpen, correctAmountGrosze, guests, guesses 
   const ranked = rows.flatMap((row) =>
     row.amountGrosze === null
       ? []
-      : [{ guestId: row.id, displayName: row.displayName, isAbsent: row.isAbsent, amountGrosze: row.amountGrosze }],
+      : [
+          {
+            guestId: row.id,
+            displayName: row.displayName,
+            isAbsent: row.isAbsent,
+            amountGrosze: row.amountGrosze,
+            predictedPlace: row.predictedPlace,
+          },
+        ],
   );
 
   return {

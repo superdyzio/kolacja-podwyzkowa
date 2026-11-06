@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { GuessRankingDto } from "@/types";
-import { placesFromLast, rankGuesses, type RankableGuess } from "./ranking";
+import { placeHitters, placesFromLast, rankGuesses, type RankableGuess } from "./ranking";
 
 let nextId = 1;
 function guess(displayName: string, amountGrosze: number, extra: Partial<RankableGuess> = {}): RankableGuess {
@@ -103,5 +103,51 @@ describe("placesFromLast", () => {
 
   it("returns no steps for an empty ranking", () => {
     expect(placesFromLast({ correctAmountGrosze: CORRECT, entries: [] })).toEqual([]);
+  });
+});
+
+describe("place predictions (guess-place)", () => {
+  function hits(entries: ReturnType<typeof rankGuesses>) {
+    return entries.map(
+      (entry) => `${entry.place}${entry.tied ? "=" : ""} ${entry.displayName} ${entry.placeHit ? "✓" : "·"}`,
+    );
+  }
+
+  it("marks who hit their place; a tied group spans its places (1, 2, 2, 4: the pair at 2 spans 2–3)", () => {
+    const ranked = rankGuesses(
+      [
+        guess("Zosia", 500_000, { predictedPlace: 2 }),
+        guess("Bartek", 510_000, { predictedPlace: 3 }),
+        guess("Ania", 490_000, { predictedPlace: 2 }),
+        guess("Kuba", 600_000, { predictedPlace: 3 }),
+        guess("Ola", 700_000),
+      ],
+      CORRECT,
+    );
+    expect(hits(ranked)).toEqual(["1 Zosia ·", "2= Ania ✓", "2= Bartek ✓", "4 Kuba ·", "5 Ola ·"]);
+    expect(ranked.map((entry) => entry.predictedPlace)).toEqual([2, 2, 3, 3, null]);
+  });
+
+  it("lets the winner hit place 1, and a prediction above the number of guesses simply misses", () => {
+    const ranked = rankGuesses(
+      [guess("Ela", 500_000, { predictedPlace: 1 }), guess("Iza", 400_000, { predictedPlace: 30 })],
+      CORRECT,
+    );
+    expect(hits(ranked)).toEqual(["1 Ela ✓", "2 Iza ·"]);
+  });
+
+  it("lists the hitters best first", () => {
+    const entries = rankGuesses(
+      [
+        guess("Kasia", 520_000, { predictedPlace: 3 }),
+        guess("Tomek", 500_000, { predictedPlace: 1 }),
+        guess("Wiola", 510_000, { predictedPlace: 5 }),
+      ],
+      CORRECT,
+    );
+    expect(placeHitters({ correctAmountGrosze: CORRECT, entries }).map((entry) => entry.displayName)).toEqual([
+      "Tomek",
+      "Kasia",
+    ]);
   });
 });

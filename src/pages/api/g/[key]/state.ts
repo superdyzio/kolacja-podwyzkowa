@@ -6,9 +6,9 @@ import { jsonResponse } from "@/lib/http";
 export const prerender = false;
 
 // GET ?since=<version>: what the guest's phone shows (S-05, FR-013, NFR-003 polling) — their current name, their
-// seat in the latest PUBLISHED arrangement and (S-06) the guess intake flag with their own guess. When `since` equals
-// the current version the answer is 204 with no body (three tiny parallel queries after the middleware's key
-// lookup); otherwise 200 with the whole GuestStateDto, whose `version` the phone sends back next time. Nothing about
+// seat in the latest PUBLISHED arrangement and (S-06) the guess intake flag with their own guess (and, guess-place,
+// their own place prediction with the highest place allowed). When `since` equals the current version the answer is
+// 204 with no body (four tiny parallel queries after the middleware's key lookup); otherwise 200 with the whole GuestStateDto, whose `version` the phone sends back next time. Nothing about
 // other guests, the correct amount or the ranking; access off or a revoked key is the middleware's 404.
 
 const MAX_VERSION_LENGTH = 64;

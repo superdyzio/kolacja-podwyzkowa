@@ -1,16 +1,20 @@
 import type { GuessRankingDto, RankingEntryDto } from "@/types";
+import { isPlaceHit } from "./place";
 
 // The ranking rule (PRD Business Logic, FR-020), pure: guesses ordered by the absolute distance from the correct
 // amount, in integer grosze. Equal distances share a place and the next place is skipped (competition ranking:
 // 1, 2, 2, 4); a guess above and one below by the same distance are a tie. Inside a shared place the order is by the
 // guest's name (Polish alphabet), then by id, so the list never reshuffles between reads. The organizer reads the
-// ranking from the last place (placesFromLast).
+// ranking from the last place (placesFromLast). guess-place: each entry also says whether the guest's prediction of
+// their own place hit (isPlaceHit: a tied group spans every place it covers).
 
 export interface RankableGuess {
   guestId: number;
   displayName: string;
   isAbsent: boolean;
   amountGrosze: number;
+  // guess-place: the prediction of the own final place (missing or null = none).
+  predictedPlace?: number | null;
 }
 
 // One readout step: everybody on one place (several = a tie).
@@ -53,17 +57,27 @@ export function rankGuesses(guesses: readonly RankableGuess[], correctAmountGros
 
   return rows.map((row, index) => {
     const place = places[index] ?? index + 1;
+    const shared = sharing.get(place) ?? 1;
+    const predictedPlace = row.predictedPlace ?? null;
     return {
       place,
-      tied: (sharing.get(place) ?? 0) > 1,
+      tied: shared > 1,
       guestId: row.guestId,
       displayName: row.displayName,
       isAbsent: row.isAbsent,
       amountGrosze: row.amountGrosze,
       differenceGrosze: row.differenceGrosze,
       distanceGrosze: row.distanceGrosze,
+      predictedPlace,
+      placeHit: isPlaceHit(predictedPlace, place, shared),
     };
   });
+}
+
+// Everybody who hit their own place, best first (the consolation prize list; podium places included — whether they
+// also get it is the organizer's call).
+export function placeHitters(ranking: GuessRankingDto): RankingEntryDto[] {
+  return ranking.entries.filter((entry) => entry.placeHit);
 }
 
 // The readout order: one step per place, the LAST place first and the winner(s) last; tied guests together.

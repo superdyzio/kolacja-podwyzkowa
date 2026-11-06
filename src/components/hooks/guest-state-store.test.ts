@@ -24,7 +24,7 @@ function state(overrides: Partial<GuestStateDto> = {}): GuestStateDto {
     status: "seated",
     seat: SEAT,
     planVersion: null,
-    guess: { intakeOpen: true, amountGrosze: null },
+    guess: { intakeOpen: true, amountGrosze: null, predictedPlace: null, maxPlace: 40 },
     drawing: null,
     ...overrides,
   };
@@ -85,10 +85,18 @@ describe("guest state store", () => {
     store.subscribe(listener);
 
     fetchMock.mockResolvedValueOnce(
-      answer(200, state({ version: "v2", guess: { intakeOpen: false, amountGrosze: 5 } })),
+      answer(
+        200,
+        state({ version: "v2", guess: { intakeOpen: false, amountGrosze: 5, predictedPlace: null, maxPlace: 40 } }),
+      ),
     );
     await vi.advanceTimersByTimeAsync(2_500);
-    expect(store.getSnapshot().state?.guess).toEqual({ intakeOpen: false, amountGrosze: 5 });
+    expect(store.getSnapshot().state?.guess).toEqual({
+      intakeOpen: false,
+      amountGrosze: 5,
+      predictedPlace: null,
+      maxPlace: 40,
+    });
     expect(store.getSnapshot().seatChanged).toBe(false);
     expect(listener).toHaveBeenCalled();
     expect(fetchMock.mock.calls[0]?.[0]).toMatch(/since=v1$/);
@@ -122,7 +130,12 @@ describe("guest state store", () => {
     await vi.advanceTimersByTimeAsync(2_500);
     expect(fetchMock).toHaveBeenCalledTimes(1);
 
-    store.push(state({ version: "saved", guess: { intakeOpen: true, amountGrosze: 149_999 } }));
+    store.push(
+      state({
+        version: "saved",
+        guess: { intakeOpen: true, amountGrosze: 149_999, predictedPlace: null, maxPlace: 40 },
+      }),
+    );
     release(answer(200, state({ version: "stale" })));
     await vi.advanceTimersByTimeAsync(0);
     expect(store.getSnapshot().state?.version).toBe("saved");

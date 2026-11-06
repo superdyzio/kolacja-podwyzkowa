@@ -477,6 +477,8 @@ export interface Database {
           guest_id: number;
           event_id: number;
           amount_grosze: number;
+          // guess-place: the guest's prediction of their own final place, null = none.
+          predicted_place: number | null;
           entered_by: string;
           updated_at: string;
         };
@@ -484,6 +486,7 @@ export interface Database {
           guest_id: number;
           event_id?: number;
           amount_grosze: number;
+          predicted_place?: number | null;
           entered_by?: string;
           updated_at?: string;
         };
@@ -491,6 +494,7 @@ export interface Database {
           guest_id?: number;
           event_id?: number;
           amount_grosze?: number;
+          predicted_place?: number | null;
           entered_by?: string;
           updated_at?: string;
         };
@@ -746,6 +750,12 @@ export interface Database {
       // S-06: saves or replaces a guest's own guess while intake is open. Raises GUEST_NOT_FOUND or INTAKE_CLOSED.
       save_guest_guess: {
         Args: { p_guest_id: number; p_amount_grosze: number };
+        Returns: undefined;
+      };
+      // guess-place: the guest's own amount AND place prediction (null clears it), same intake lock; raises
+      // GUEST_NOT_FOUND or INTAKE_CLOSED.
+      save_guest_guess_with_place: {
+        Args: { p_guest_id: number; p_amount_grosze: number; p_predicted_place: number | null };
         Returns: undefined;
       };
       // S-08: admits one AI topic attempt (p_guest_id null = the organizer) and returns the pending row id. Raises

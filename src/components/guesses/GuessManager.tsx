@@ -6,6 +6,7 @@ import { OfflineFallback } from "@/components/offline/OfflineFallback";
 import { Button } from "@/components/ui/button";
 import { formatAmount } from "@/lib/guesses/amount";
 import { guessUiMessages } from "@/lib/guesses/messages";
+import { placeLimit } from "@/lib/guesses/place";
 import type { Locale } from "@/lib/i18n";
 import type { GuessBoardDto, GuessGuestDto, GuessRankingDto } from "@/types";
 import { AmountForm } from "./AmountForm";
@@ -65,8 +66,8 @@ export function GuessManager({ apiBase, guestsPath, initial, locale }: Props) {
     return saved;
   }
 
-  async function saveGuess(guest: GuessGuestDto, amount: string): Promise<boolean> {
-    const saved = await send({ method: "PUT", path: `/guesses/${guest.id}`, body: { amount } });
+  async function saveGuess(guest: GuessGuestDto, amount: string, place?: string): Promise<boolean> {
+    const saved = await send({ method: "PUT", path: `/guesses/${guest.id}`, body: { amount, place } });
     if (saved) {
       setEditingGuestId(null);
     }
@@ -233,6 +234,7 @@ export function GuessManager({ apiBase, guestsPath, initial, locale }: Props) {
               <GuessGuestRow
                 key={guest.id}
                 guest={guest}
+                maxPlace={placeLimit(board.guests.length)}
                 editing={editingGuestId === guest.id}
                 pending={pending}
                 onEdit={() => {
@@ -241,7 +243,7 @@ export function GuessManager({ apiBase, guestsPath, initial, locale }: Props) {
                 onCancel={() => {
                   setEditingGuestId(null);
                 }}
-                onSave={(amount) => saveGuess(guest, amount)}
+                onSave={(amount, place) => saveGuess(guest, amount, place)}
                 onDelete={() => void removeGuess(guest)}
                 locale={locale}
               />
