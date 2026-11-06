@@ -16,7 +16,9 @@ const published: PublishedSeatingDto = {
 const board: GuessBoardDto = {
   intakeOpen: true,
   correctAmountGrosze: null,
-  guests: [{ id: 1, displayName: "Ania", isAbsent: false, amountGrosze: 450000, enteredBy: "guest" }],
+  guests: [
+    { id: 1, displayName: "Ania", isAbsent: false, amountGrosze: 450000, predictedPlace: null, enteredBy: "guest" },
+  ],
   missing: [],
   ranking: null,
 };

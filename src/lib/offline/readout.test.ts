@@ -108,11 +108,18 @@ describe("offlineRanking", () => {
     intakeOpen: false,
     correctAmountGrosze: null,
     guests: [
-      { id: 1, displayName: "Ania", isAbsent: false, amountGrosze: 100000, enteredBy: "guest" },
-      { id: 2, displayName: "Bartek", isAbsent: false, amountGrosze: 90000, enteredBy: "guest" },
-      { id: 3, displayName: "Celina", isAbsent: true, amountGrosze: 110000, enteredBy: "organizer" },
-      { id: 4, displayName: "Darek", isAbsent: false, amountGrosze: 50000, enteredBy: "guest" },
-      { id: 5, displayName: "Ela", isAbsent: false, amountGrosze: null, enteredBy: null },
+      { id: 1, displayName: "Ania", isAbsent: false, amountGrosze: 100000, predictedPlace: null, enteredBy: "guest" },
+      { id: 2, displayName: "Bartek", isAbsent: false, amountGrosze: 90000, predictedPlace: null, enteredBy: "guest" },
+      {
+        id: 3,
+        displayName: "Celina",
+        isAbsent: true,
+        amountGrosze: 110000,
+        predictedPlace: null,
+        enteredBy: "organizer",
+      },
+      { id: 4, displayName: "Darek", isAbsent: false, amountGrosze: 50000, predictedPlace: null, enteredBy: "guest" },
+      { id: 5, displayName: "Ela", isAbsent: false, amountGrosze: null, predictedPlace: null, enteredBy: null },
     ],
     missing: [{ id: 5, displayName: "Ela", isAbsent: false }],
     ranking: null,
@@ -134,6 +141,21 @@ describe("offlineRanking", () => {
       ["Darek", 4, false],
     ]);
     expect(ranking?.entries.find((entry) => entry.displayName === "Celina")?.isAbsent).toBe(true);
+  });
+
+  it("marks who hit their place against the locally typed amount (guess-place)", () => {
+    const withPlaces: GuessBoardDto = {
+      ...board,
+      guests: board.guests.map((guest) => ({ ...guest, predictedPlace: guest.id === 4 ? 4 : guest.id === 3 ? 3 : 2 })),
+    };
+    expect(
+      offlineRanking(withPlaces, 100000)?.entries.map((entry) => [entry.displayName, entry.place, entry.placeHit]),
+    ).toEqual([
+      ["Ania", 1, false],
+      ["Bartek", 2, true],
+      ["Celina", 2, true],
+      ["Darek", 4, true],
+    ]);
   });
 
   it("leaves guests without a guess out", () => {

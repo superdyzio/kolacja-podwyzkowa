@@ -148,7 +148,8 @@ export const guestPhoneMessages = defineMessages(
     // GuestGuessView
     guessOffline: "Brak połączenia — spróbuj ponownie.",
     intakeClosed: "Przyjmowanie strzałów jest zamknięte.",
-    guessSaved: (amount: string) => `Zapisano Twój strzał: ${amount}.`,
+    guessSaved: (amount: string, place: number | null) =>
+      place === null ? `Zapisano Twój strzał: ${amount}.` : `Zapisano Twój strzał: ${amount}, typ miejsca: ${place}.`,
     notSaved: "Zmiana nie została zapisana.",
     noGuess: "Nie oddano strzału.",
     yourGuess: "Twój strzał",
@@ -156,6 +157,12 @@ export const guestPhoneMessages = defineMessages(
     guessLabel: "Ile kosztowała cała kolacja? Wpisz swój strzał w złotych.",
     guessHint: "Liczymy cały rachunek razem z napiwkiem.",
     guessPlaceholder: "np. 1500 albo 1499,99",
+    placeLabel: "Które miejsce zajmiesz w tym konkursie? (opcjonalnie)",
+    placeHint: (max: number) =>
+      `Wpisz od 1 do ${max}. Kto nie wygra, a trafi swoje miejsce, dostanie nagrodę pocieszenia.`,
+    yourPlace: "Twój typ miejsca",
+    noPlace: "Bez typu miejsca — możesz go dopisać.",
+    noPlaceClosed: "Bez typu miejsca.",
     saving: "Zapisuję…",
     saveGuess: "Zapisz strzał",
     cancel: "Anuluj",
@@ -196,7 +203,8 @@ export const guestPhoneMessages = defineMessages(
     showVenue: "Show on the floor plan",
     guessOffline: "No connection — please try again.",
     intakeClosed: "Guessing is closed.",
-    guessSaved: (amount: string) => `Your guess is saved: ${amount}.`,
+    guessSaved: (amount: string, place: number | null) =>
+      place === null ? `Your guess is saved: ${amount}.` : `Your guess is saved: ${amount}, predicted place: ${place}.`,
     notSaved: "Your change was not saved.",
     noGuess: "You did not make a guess.",
     yourGuess: "Your guess",
@@ -204,6 +212,12 @@ export const guestPhoneMessages = defineMessages(
     guessLabel: "How much did the whole dinner cost? Enter your guess in złoty.",
     guessHint: "We count the whole bill, tip included.",
     guessPlaceholder: "e.g. 1500 or 1499.99",
+    placeLabel: "Which place will you take in this contest? (optional)",
+    placeHint: (max: number) =>
+      `From 1 to ${max}. If you do not win but hit your own place, you get a consolation prize.`,
+    yourPlace: "Your predicted place",
+    noPlace: "No predicted place — you can add one.",
+    noPlaceClosed: "No predicted place.",
     saving: "Saving…",
     saveGuess: "Save guess",
     cancel: "Cancel",

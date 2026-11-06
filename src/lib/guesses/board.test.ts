@@ -84,3 +84,29 @@ describe("formatGuessSummary", () => {
     expect(formatGuessSummary(empty, "en")).toBe("Guessing open · no guests");
   });
 });
+
+describe("place predictions (guess-place)", () => {
+  it("carries each guest's prediction to the guest list and the ranking", () => {
+    const board = toGuessBoard({
+      intakeOpen: false,
+      correctAmountGrosze: 100_000,
+      guests,
+      guesses: [
+        { guestId: 2, amountGrosze: 100_000, enteredBy: "guest", predictedPlace: 1 },
+        { guestId: 3, amountGrosze: 90_000, enteredBy: "guest", predictedPlace: 1 },
+        { guestId: 4, amountGrosze: 80_000, enteredBy: "organizer" },
+      ],
+    });
+    expect(board.guests.map((guest) => [guest.displayName, guest.predictedPlace])).toEqual([
+      ["Ania", 1],
+      ["Kuba", null],
+      ["Łucja", null],
+      ["Zosia", 1],
+    ]);
+    expect(board.ranking?.entries.map((entry) => [entry.displayName, entry.predictedPlace, entry.placeHit])).toEqual([
+      ["Ania", 1, true],
+      ["Zosia", 1, false],
+      ["Kuba", null, false],
+    ]);
+  });
+});

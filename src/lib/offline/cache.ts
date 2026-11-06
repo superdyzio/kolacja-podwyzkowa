@@ -91,6 +91,11 @@ export function isPublishedSeating(value: unknown): value is PublishedSeatingDto
   );
 }
 
+// guess-place: a place prediction, or none (null; missing in boards cached before the change, see withPlaceDefaults).
+function isPredictedPlace(value: unknown): boolean {
+  return value === undefined || value === null || isCount(value, 1);
+}
+
 function isGuessGuest(value: unknown): value is GuessGuestDto {
   return (
     isRecord(value) &&
@@ -98,6 +103,7 @@ function isGuessGuest(value: unknown): value is GuessGuestDto {
     isString(value.displayName) &&
     typeof value.isAbsent === "boolean" &&
     (value.amountGrosze === null || isCount(value.amountGrosze)) &&
+    isPredictedPlace(value.predictedPlace) &&
     (value.enteredBy === null || value.enteredBy === "guest" || value.enteredBy === "organizer")
   );
 }
@@ -116,7 +122,9 @@ function isRankingEntry(value: unknown): value is RankingEntryDto {
     typeof value.isAbsent === "boolean" &&
     isCount(value.amountGrosze) &&
     isInteger(value.differenceGrosze) &&
-    isCount(value.distanceGrosze)
+    isCount(value.distanceGrosze) &&
+    isPredictedPlace(value.predictedPlace) &&
+    (value.placeHit === undefined || typeof value.placeHit === "boolean")
   );
 }
 
@@ -164,8 +172,32 @@ export function parseOfflineSeating(raw: string | null): OfflineSeatingEntry | n
   return parseEnvelope(raw, (data): data is PublishedSeatingDto | null => data === null || isPublishedSeating(data));
 }
 
+// A board cached before guess-place has no predictions: read them as none and no hits, so every reader can rely on
+// the fields (the validators let them be missing; the types say what the app writes now).
+function withPlaceDefaults(board: GuessBoardDto): GuessBoardDto {
+  return {
+    ...board,
+    guests: board.guests.map((guest) => ({
+      ...guest,
+      predictedPlace: (guest.predictedPlace as number | null | undefined) ?? null,
+    })),
+    ranking:
+      board.ranking === null
+        ? null
+        : {
+            ...board.ranking,
+            entries: board.ranking.entries.map((entry) => ({
+              ...entry,
+              predictedPlace: (entry.predictedPlace as number | null | undefined) ?? null,
+              placeHit: (entry.placeHit as boolean | undefined) ?? false,
+            })),
+          },
+  };
+}
+
 export function parseOfflineGuesses(raw: string | null): OfflineGuessesEntry | null {
-  return parseEnvelope(raw, isGuessBoardData);
+  const entry = parseEnvelope(raw, isGuessBoardData);
+  return entry === null ? null : { ...entry, data: withPlaceDefaults(entry.data) };
 }
 
 export function offlineEntry<T>(apiBase: string, data: T, savedAt: string): OfflineEntry<T> {

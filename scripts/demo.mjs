@@ -1,6 +1,6 @@
 // Fills the LOCAL app with demo data for the manual checks: 40 fictional guests, a generated venue plan, 3 rooms,
 // 7 tables (45 seats), groups of 4, 2 and 2, one absent and one pinned guest, a published seating, 30 guesses
-// (a tie and the absent guest's guess among them, 10 missing) and a food order (lines for guests, for tables, one
+// (a tie and the absent guest's guess among them, 10 missing, 12 with a place prediction) and a food order (lines for guests, for tables, one
 // unassigned, one delivered). Every write goes through the HTTP API of a running
 // server, so it passes the same validation as the UI; the keys are read from the database like `npm run links`.
 // Defaults stay as they are: guest access OFF, guess intake OPEN, no correct amount, only the starter questions.
@@ -87,38 +87,41 @@ const GROUPS = [
   { members: ["Kasia", "Tomek"], table: "Dąb", seats: [1, 2] },
   { members: ["Gosia Kowalska", "Igor z IT"], table: "Kominek", seats: [1, 2] },
 ];
-// Guesses entered by the organizer, typed in the formats guests use. Bartek and Marta tie exactly (same amount in
-// two spellings); the absent guest has a guess. The 10 guests not listed here are "missing".
+// Guesses entered by the organizer, typed in the formats guests use, some with a place prediction (guess-place).
+// Bartek and Marta tie exactly (same amount in two spellings); the absent guest has a guess. The 10 guests not listed
+// here are "missing". With the correct amount 1500 the ranking shows the podium (Ania, Monika, Maciek) and the hits:
+// Ania 1, Maciek 3, Gosia Kowalska 4 and Natalia 5 (a tie at 4 spans 4–5), Paweł 7, Marta 12 (a tie at 10 spans
+// 10–12).
 const GUESSES = [
-  ["Ania", "1500"],
+  ["Ania", "1500", "1"],
   ["Bartek", "1 250"],
   ["Kasia", "2000"],
-  ["Tomek", "1 800 zł"],
+  ["Tomek", "1 800 zł", "5"],
   ["Magda", "999,99"],
   ["Piotrek", "1750"],
   ["Marcin", "3000"],
   ["Zosia", "1 100"],
   ["Michał", "2 499,99 zł"],
   ["Basia", "800"],
-  ["Grzesiek", "1650"],
-  ["Paweł", "1 337"],
+  ["Grzesiek", "1650", "2"],
+  ["Paweł", "1 337", "7"],
   ["Joasia", "2200"],
   ["Krzysiek", "1900 PLN"],
-  ["Monika", "1450,50"],
+  ["Monika", "1450,50", "3"],
   ["Łukasz", "2750"],
   ["Wojtek", "1200"],
-  ["Natalia", "1 600 zł"],
+  ["Natalia", "1 600 zł", "5"],
   ["Iwona", "950"],
   ["Rafał", "2100"],
-  ["Marta", "1250 zł"],
-  ["Ela", "1 300"],
-  ["Darek", "4000"],
-  ["Maciek", "1550"],
+  ["Marta", "1250 zł", "12"],
+  ["Ela", "1 300", "10"],
+  ["Darek", "4000", "30"],
+  ["Maciek", "1550", "3"],
   ["Karolina", "1 700,-"],
-  ["Gosia Kowalska", "1400"],
+  ["Gosia Kowalska", "1400", "4"],
   ["Gosia Wiśniewska", "2300"],
   ["Staszek „Szef”", "500"],
-  ["Pani Halinka", "1850"],
+  ["Pani Halinka", "1850", "15"],
   ["Weronika", "1 999"],
 ];
 // Food order lines: [dish, price as typed, quantity, note, for whom]. `for` is a guest name, `{ table }` or null
@@ -407,8 +410,11 @@ const board = await step("publikacja na TV", `${api}/seating/publish`, { method:
 // --- 5. Guesses by organizer proxy ----------------------------------------------------------------------------
 
 let guessBoard;
-for (const [name, amount] of GUESSES) {
-  guessBoard = await step(`strzał ${name}`, `${api}/guesses/${idOf(name)}`, { method: "PUT", json: { amount } });
+for (const [name, amount, place] of GUESSES) {
+  guessBoard = await step(`strzał ${name}`, `${api}/guesses/${idOf(name)}`, {
+    method: "PUT",
+    json: place === undefined ? { amount } : { amount, place },
+  });
 }
 
 // --- 6. Food order -----------------------------------------------------------------------------------------------
@@ -438,6 +444,7 @@ orderBoard = await step(`wydane: ${firstLine.name}`, `${api}/orders/${firstLine.
 
 const seatTotal = venue.tables.reduce((sum, table) => sum + table.seatCount, 0);
 const guessCount = guessBoard.guests.filter((guest) => guest.amountGrosze !== null).length;
+const placeCount = guessBoard.guests.filter((guest) => guest.predictedPlace !== null).length;
 const organizerUrl = new URL(`/o/${event.organizer_key}`, BASE_URL).href;
 
 console.log(`
@@ -446,6 +453,7 @@ Dane demo gotowe:
 - plan ${PLAN_WIDTH}×${PLAN_HEIGHT}, sale: ${venue.rooms.length}, stoliki: ${venue.tables.length}, miejsca: ${seatTotal}
 - rozsadzenie opublikowane na TV: ${board.assignments.length} osób, przypięta: ${PINNED}
 - strzały: ${guessCount} (remis: Bartek i Marta, strzał nieobecnej), brakuje: ${guessBoard.missing.length}
+- typy miejsc: ${placeCount} (wpisz prawidłową kwotę 1500, żeby zobaczyć podium i trafione miejsca)
 - zamówienie: ${orderBoard.totals.lines} pozycji, ${orderBoard.totals.quantity} szt., wydane: ${orderBoard.totals.deliveredQuantity}
 - bez zmian: przyjmowanie strzałów otwarte, prawidłowa kwota niewpisana, dostęp gości wyłączony, pytania startowe
 

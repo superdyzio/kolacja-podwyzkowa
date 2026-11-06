@@ -19,7 +19,7 @@ const SEAT: GuestSeatDto = {
   y: 0.5,
   tablemates: [{ seat: 4, name: "Ola", relation: "side" }],
 };
-const OPEN: GuestGuessDto = { intakeOpen: true, amountGrosze: null };
+const OPEN: GuestGuessDto = { intakeOpen: true, amountGrosze: null, predictedPlace: null, maxPlace: 40 };
 
 describe("toTablemates", () => {
   const rows = (...seats: number[]) => seats.map((seat) => ({ seat, name: `Gość ${String(seat)}` }));
@@ -69,8 +69,20 @@ describe("toTablemates", () => {
 describe("guestStateVersion", () => {
   it("is stable for the same inputs", () => {
     expect(guestStateVersion("4.1700000000000", "Ania", OPEN)).toBe(guestStateVersion("4.1700000000000", "Ania", OPEN));
-    expect(guestStateVersion("4.17", "Ania", { intakeOpen: false, amountGrosze: 149_999 })).toBe(
-      guestStateVersion("4.17", "Ania", { intakeOpen: false, amountGrosze: 149_999 }),
+    expect(
+      guestStateVersion("4.17", "Ania", {
+        intakeOpen: false,
+        amountGrosze: 149_999,
+        predictedPlace: null,
+        maxPlace: 40,
+      }),
+    ).toBe(
+      guestStateVersion("4.17", "Ania", {
+        intakeOpen: false,
+        amountGrosze: 149_999,
+        predictedPlace: null,
+        maxPlace: 40,
+      }),
     );
   });
 
@@ -85,11 +97,38 @@ describe("guestStateVersion", () => {
   it("changes when intake opens or closes and when the own guess changes (S-06)", () => {
     const versions = [
       guestStateVersion("4.17", "Ania", OPEN),
-      guestStateVersion("4.17", "Ania", { intakeOpen: false, amountGrosze: null }),
-      guestStateVersion("4.17", "Ania", { intakeOpen: true, amountGrosze: 0 }),
-      guestStateVersion("4.17", "Ania", { intakeOpen: true, amountGrosze: 150_000 }),
-      guestStateVersion("4.17", "Ania", { intakeOpen: false, amountGrosze: 150_000 }),
-      guestStateVersion("4.17", "Ania", { intakeOpen: true, amountGrosze: 150_001 }),
+      guestStateVersion("4.17", "Ania", { intakeOpen: false, amountGrosze: null, predictedPlace: null, maxPlace: 40 }),
+      guestStateVersion("4.17", "Ania", { intakeOpen: true, amountGrosze: 0, predictedPlace: null, maxPlace: 40 }),
+      guestStateVersion("4.17", "Ania", {
+        intakeOpen: true,
+        amountGrosze: 150_000,
+        predictedPlace: null,
+        maxPlace: 40,
+      }),
+      guestStateVersion("4.17", "Ania", {
+        intakeOpen: false,
+        amountGrosze: 150_000,
+        predictedPlace: null,
+        maxPlace: 40,
+      }),
+      guestStateVersion("4.17", "Ania", {
+        intakeOpen: true,
+        amountGrosze: 150_001,
+        predictedPlace: null,
+        maxPlace: 40,
+      }),
+    ];
+    expect(new Set(versions).size).toBe(versions.length);
+  });
+
+  it("changes with the own place prediction and with the highest place allowed (guess-place)", () => {
+    const guess = { ...OPEN, amountGrosze: 150_000 };
+    const versions = [
+      guestStateVersion("4.17", "Ania", guess),
+      guestStateVersion("4.17", "Ania", { ...guess, predictedPlace: 3 }),
+      guestStateVersion("4.17", "Ania", { ...guess, predictedPlace: 30 }),
+      guestStateVersion("4.17", "Ania", { ...guess, maxPlace: 41 }),
+      guestStateVersion("4.17", "Ania", { ...guess, predictedPlace: 3, maxPlace: 41 }),
     ];
     expect(new Set(versions).size).toBe(versions.length);
   });
@@ -98,6 +137,8 @@ describe("guestStateVersion", () => {
     const version = guestStateVersion(`${Number.MAX_SAFE_INTEGER}.${Number.MAX_SAFE_INTEGER}`, "Ż".repeat(40), {
       intakeOpen: false,
       amountGrosze: 1_000_000_000,
+      predictedPlace: 100,
+      maxPlace: 100,
     });
     expect(version.startsWith(`${Number.MAX_SAFE_INTEGER}.${Number.MAX_SAFE_INTEGER}.`)).toBe(true);
     expect(version.length).toBeLessThanOrEqual(64);
@@ -136,10 +177,24 @@ describe("toGuestState", () => {
   });
 
   it("carries the intake flag and only the own guess, whatever extra the input had", () => {
-    const leaky = { intakeOpen: false, amountGrosze: 149_999, correctAmountGrosze: 500_000, ranking: [] };
+    const leaky = {
+      intakeOpen: false,
+      amountGrosze: 149_999,
+      predictedPlace: null,
+      maxPlace: 40,
+      correctAmountGrosze: 500_000,
+      ranking: [],
+    };
     const state = toGuestState({ ...base, snapshotId: 4, seat: null, guess: leaky });
-    expect(state.guess).toEqual({ intakeOpen: false, amountGrosze: 149_999 });
-    expect(state.version).toBe(guestStateVersion("4.17", "Ania", { intakeOpen: false, amountGrosze: 149_999 }));
+    expect(state.guess).toEqual({ intakeOpen: false, amountGrosze: 149_999, predictedPlace: null, maxPlace: 40 });
+    expect(state.version).toBe(
+      guestStateVersion("4.17", "Ania", {
+        intakeOpen: false,
+        amountGrosze: 149_999,
+        predictedPlace: null,
+        maxPlace: 40,
+      }),
+    );
     expect(Object.keys(state).sort()).toEqual(["drawing", "guess", "name", "planVersion", "seat", "status", "version"]);
   });
 
@@ -180,7 +235,9 @@ describe("describeGuestSeat", () => {
   it("does not depend on the guess, so a guess change never looks like a new seat", () => {
     const common = { seatingVersion: "4.0", planVersion: null, name: "A", snapshotId: 4, seat: SEAT };
     expect(describeGuestSeat(toGuestState({ ...common, guess: OPEN }))).toBe(
-      describeGuestSeat(toGuestState({ ...common, guess: { intakeOpen: false, amountGrosze: 5 } })),
+      describeGuestSeat(
+        toGuestState({ ...common, guess: { intakeOpen: false, amountGrosze: 5, predictedPlace: null, maxPlace: 40 } }),
+      ),
     );
   });
 });

@@ -373,21 +373,27 @@ export interface GuestStateDto {
 // Guesses of the final raise amount (S-06). Every amount is an integer number of grosze (1 zł = 100), never a float.
 
 // What a guest's phone may know about guesses: whether intake is open and the guest's OWN guess (null = none yet).
-// Nothing about other guests, the correct amount or the ranking.
+// Nothing about other guests, the correct amount or the ranking. guess-place: predictedPlace is the guest's own
+// optional prediction of their final place (null = none); maxPlace is the highest place they may predict (the number
+// of guests in the event).
 export interface GuestGuessDto {
   intakeOpen: boolean;
   amountGrosze: number | null;
+  predictedPlace: number | null;
+  maxPlace: number;
 }
 
 // Who typed a guess in: the guest on their phone, or the organizer for them (proxy entry).
 export type GuessEnteredBy = "guest" | "organizer";
 
-// A guest on the organizer's guesses page with their guess (null = no guess yet).
+// A guest on the organizer's guesses page with their guess (null = no guess yet) and their place prediction
+// (guess-place; null = none).
 export interface GuessGuestDto {
   id: number;
   displayName: string;
   isAbsent: boolean;
   amountGrosze: number | null;
+  predictedPlace: number | null;
   enteredBy: GuessEnteredBy | null;
 }
 
@@ -400,6 +406,8 @@ export interface MissingGuessDto {
 
 // One ranked guess. place: competition ranking by distance (1, 2, 2, 4); tied: the place is shared.
 // differenceGrosze = guess − correct (negative: too low); distanceGrosze = |differenceGrosze|.
+// guess-place: predictedPlace is the guest's prediction of their own place (null = none); placeHit: the prediction
+// lies within the places the entry's group spans (two people sharing place 2 span 2–3).
 export interface RankingEntryDto {
   place: number;
   tied: boolean;
@@ -409,6 +417,8 @@ export interface RankingEntryDto {
   amountGrosze: number;
   differenceGrosze: number;
   distanceGrosze: number;
+  predictedPlace: number | null;
+  placeHit: boolean;
 }
 
 // The ranking (organizer only), self-contained so it renders without anything else (S-09 caches it for offline

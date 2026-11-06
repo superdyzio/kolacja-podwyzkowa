@@ -26,6 +26,16 @@ export const amountMessages = defineMessages(
   },
 );
 
+// The field message of parsePredictedPlace (guess-place).
+export const placeMessages = defineMessages(
+  {
+    range: (max: number) => (max === 1 ? "Miejsce może być tylko 1." : `Wpisz miejsce od 1 do ${max}.`),
+  },
+  {
+    range: (max: number) => (max === 1 ? "The place can only be 1." : `Enter a place from 1 to ${max}.`),
+  },
+);
+
 // Server answers and the organizer shell card.
 export const guessMessages = defineMessages(
   {
@@ -63,6 +73,8 @@ export const guessUiMessages = defineMessages(
     absent: "nieobecny",
     // AmountForm
     amountPlaceholder: "np. 1500 albo 1499,99",
+    placeFieldLabel: "Typ miejsca (opcjonalnie)",
+    placePlaceholder: (max: number) => `1–${max}`,
     // Intake
     intakeHeading: "Przyjmowanie strzałów",
     intakeOpen: "Otwarte",
@@ -85,6 +97,10 @@ export const guessUiMessages = defineMessages(
     rankingAfterCorrect: "Ranking pojawi się po wpisaniu prawidłowej kwoty.",
     rankingEmpty: "Brak strzałów do rankingu.",
     readFromLast: "Czytaj od końca",
+    rankingLegend:
+      "Podium na złoto, srebrno i brązowo. Na zielono: kto trafił swoje miejsce. Remis zajmuje wszystkie swoje miejsca: dwie osoby na 2. miejscu trafiają, typując 2 albo 3.",
+    hittersHeading: (count: number) => `Trafione miejsca (${count})`,
+    hittersNone: "Nikt nie trafił swojego miejsca.",
     // Missing
     missingHeading: (count: number) => `Brakuje strzałów (${count})`,
     noGuestsYet: "Nie ma jeszcze gości.",
@@ -113,6 +129,9 @@ export const guessUiMessages = defineMessages(
     guest: "Gość",
     guess: "Strzał",
     tie: "remis",
+    medal: { gold: "złoto", silver: "srebro", bronze: "brąz" },
+    predictedPlace: (place: number) => `typ miejsca: ${place}`,
+    placeHit: "trafione miejsce",
     // RankingReadout
     winners: "Zwycięzcy!",
     winner: "Zwycięzca!",
@@ -121,6 +140,8 @@ export const guessUiMessages = defineMessages(
     correctAmount: "Prawidłowa kwota:",
     tiePeople: (count: number) => `remis: ${count} ${pluralPl(count, "osoba", "osoby", "osób")}`,
     guessLabel: "strzał:",
+    predictedLabel: "typ miejsca:",
+    placeHitReadout: "trafione miejsce!",
     back: "Wstecz",
     next: "Dalej",
     finish: "Zakończ",
@@ -136,6 +157,8 @@ export const guessUiMessages = defineMessages(
     save: "Save",
     absent: "absent",
     amountPlaceholder: "e.g. 1500 or 1499,99",
+    placeFieldLabel: "Predicted place (optional)",
+    placePlaceholder: (max: number) => `1–${max}`,
     intakeHeading: "Taking guesses",
     intakeOpen: "Open",
     intakeClosed: "Closed",
@@ -154,6 +177,10 @@ export const guessUiMessages = defineMessages(
     rankingAfterCorrect: "The ranking appears once you enter the correct amount.",
     rankingEmpty: "No guesses to rank.",
     readFromLast: "Read from the last place",
+    rankingLegend:
+      "The podium in gold, silver and bronze. Green: whoever hit their own place. A tie covers all its places: two people sharing place 2 hit with a prediction of 2 or 3.",
+    hittersHeading: (count: number) => `Hit their place (${count})`,
+    hittersNone: "Nobody hit their own place.",
     missingHeading: (count: number) => `Missing guesses (${count})`,
     noGuestsYet: "No guests yet.",
     addGuests: "Add guests",
@@ -179,6 +206,9 @@ export const guessUiMessages = defineMessages(
     guest: "Guest",
     guess: "Guess",
     tie: "tie",
+    medal: { gold: "gold", silver: "silver", bronze: "bronze" },
+    predictedPlace: (place: number) => `predicted place: ${place}`,
+    placeHit: "place hit",
     winners: "The winners!",
     winner: "The winner!",
     placeTitle: (place: number) => `Place ${place}`,
@@ -186,6 +216,8 @@ export const guessUiMessages = defineMessages(
     correctAmount: "Correct amount:",
     tiePeople: (count: number) => `tie: ${count} ${pluralEn(count, "person", "people")}`,
     guessLabel: "guess:",
+    predictedLabel: "predicted place:",
+    placeHitReadout: "place hit!",
     back: "Back",
     next: "Next",
     finish: "Finish",

@@ -13,11 +13,24 @@ export {
   type ParseAmountResult,
 } from "./amount";
 export { formatGuessSummary, toGuessBoard, type GuessBoardInput } from "./board";
-export { amountMessages, guessMessages, guessUiMessages } from "./messages";
-export { placesFromLast, rankGuesses, type RankableGuess, type ReadoutStep } from "./ranking";
+export { amountMessages, guessMessages, guessUiMessages, placeMessages } from "./messages";
+export {
+  MAX_PREDICTED_PLACE,
+  formatPlaceInput,
+  isPlaceHit,
+  parsePredictedPlace,
+  placeLimit,
+  podiumMedal,
+  readPlaceField,
+  readPlaceText,
+  type ParsePlaceResult,
+  type PodiumMedal,
+} from "./place";
+export { placeHitters, placesFromLast, rankGuesses, type RankableGuess, type ReadoutStep } from "./ranking";
 export {
   GUESS_GUEST_NOT_FOUND_MESSAGE,
   GUESS_INTAKE_CLOSED_MESSAGE,
+  countGuests,
   deleteGuess,
   getGuessBoard,
   getGuestGuess,

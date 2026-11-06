@@ -8,19 +8,32 @@ import { AmountForm } from "./AmountForm";
 
 interface Props {
   guest: GuessGuestDto;
+  // guess-place: the highest place a prediction may name (the number of guests).
+  maxPlace: number;
   editing: boolean;
   pending: boolean;
   onEdit: () => void;
   onCancel: () => void;
-  // Resolves to true when saved.
-  onSave: (amount: string) => Promise<boolean>;
+  // Resolves to true when saved; `place` is the prediction as text ("" = none).
+  onSave: (amount: string, place?: string) => Promise<boolean>;
   onDelete: () => void;
   locale: Locale;
 }
 
 // One guest on the organizer's guesses page (S-06, FR-018): their guess or „brak strzału”, entering or correcting it
-// for them (also after intake closed) and deleting a mistaken one.
-export function GuessGuestRow({ guest, editing, pending, onEdit, onCancel, onSave, onDelete, locale }: Props) {
+// for them (also after intake closed) and deleting a mistaken one; guess-place: their place prediction next to it,
+// entered or corrected in the same form.
+export function GuessGuestRow({
+  guest,
+  maxPlace,
+  editing,
+  pending,
+  onEdit,
+  onCancel,
+  onSave,
+  onDelete,
+  locale,
+}: Props) {
   const t = guessUiMessages(locale);
   const hasGuess = guest.amountGrosze !== null;
   return (
@@ -37,8 +50,15 @@ export function GuessGuestRow({ guest, editing, pending, onEdit, onCancel, onSav
             )}
           </span>
         </div>
-        <span className={cn("text-lg whitespace-nowrap", hasGuess ? "font-semibold" : "text-muted-foreground")}>
-          {guest.amountGrosze === null ? t.noGuess : formatAmount(guest.amountGrosze)}
+        <span className="flex flex-col items-end">
+          <span className={cn("text-lg whitespace-nowrap", hasGuess ? "font-semibold" : "text-muted-foreground")}>
+            {guest.amountGrosze === null ? t.noGuess : formatAmount(guest.amountGrosze)}
+          </span>
+          {guest.predictedPlace !== null && (
+            <span className="text-muted-foreground text-sm whitespace-nowrap">
+              {t.predictedPlace(guest.predictedPlace)}
+            </span>
+          )}
         </span>
       </div>
 
@@ -47,6 +67,7 @@ export function GuessGuestRow({ guest, editing, pending, onEdit, onCancel, onSav
           label={t.guessFor(guest.displayName)}
           hideLabel
           initialGrosze={guest.amountGrosze}
+          place={{ initial: guest.predictedPlace, max: maxPlace }}
           submitLabel={t.save}
           pending={pending}
           autoFocus

@@ -1486,7 +1486,7 @@ const ANIA_GUESS = 123456;
 const ANIA_TIE = 222223;
 const OLA_GUESS = 777777;
 const CORRECT = 500000;
-const SECRET_WORDS = ["ranking", "correctAmount", '"place"', "distance", "missing"];
+const SECRET_WORDS = ["ranking", "correctAmount", '"place"', "distance", "missing", "placeHit"];
 
 const board0 = await request(guessesApi);
 check(
@@ -1508,14 +1508,41 @@ check(
   aniaGuess0.status === 200 &&
     aniaGuess0.data?.guess?.intakeOpen === true &&
     aniaGuess0.data.guess.amountGrosze === null &&
-    Object.keys(aniaGuess0.data.guess).length === 2,
+    aniaGuess0.data.guess.predictedPlace === null &&
+    aniaGuess0.data.guess.maxPlace === board0.data?.guests?.length &&
+    Object.keys(aniaGuess0.data.guess).length === 4,
   aniaGuess0.body,
+);
+// guess-place: the optional prediction of the own final place, 1 … number of guests, saved with the amount.
+const guestCount = board0.data?.guests?.length ?? 0;
+const aniaPlaced = await request(guessApi(aniaNewKey), { method: "PUT", json: { amount: "1 234,56 zł", place: "2." } });
+check(
+  "guest saves her guess with a place prediction",
+  aniaPlaced.status === 200 &&
+    aniaPlaced.data?.guess?.amountGrosze === ANIA_GUESS &&
+    aniaPlaced.data.guess.predictedPlace === 2,
+  `${aniaPlaced.status} ${aniaPlaced.body}`,
+);
+for (const place of ["0", "abc", "1,5", String(guestCount + 1)]) {
+  const res = await request(guessApi(aniaNewKey), { method: "PUT", json: { amount: "1", place } });
+  check(
+    `guest place ${JSON.stringify(place)} is refused with the range 1 … number of guests`,
+    res.status === 400 && errorOf(res) === `Wpisz miejsce od 1 do ${guestCount}.` && res.data?.field === "place",
+    `${res.status} ${res.body}`,
+  );
+}
+const placeAsNumber = await request(guessApi(aniaNewKey), { method: "PUT", json: { amount: "1", place: 2 } });
+check(
+  "guest place must be sent as typed text",
+  placeAsNumber.status === 400 && errorOf(placeAsNumber) === "Nieprawidłowe dane.",
+  `${placeAsNumber.status} ${placeAsNumber.body}`,
 );
 const aniaSaved = await request(guessApi(aniaNewKey), { method: "PUT", json: { amount: "1 234,56 zł" } });
 check(
-  "guest saves her own guess in a Polish format and gets her new state",
+  "guest saves her own guess in a Polish format and gets her new state (an amount alone keeps her place)",
   aniaSaved.status === 200 &&
     aniaSaved.data?.guess?.amountGrosze === ANIA_GUESS &&
+    aniaSaved.data.guess.predictedPlace === 2 &&
     aniaSaved.data.guess.intakeOpen === true &&
     aniaSaved.data.name === GUEST_NAMES[0] &&
     aniaSaved.data.version !== aniaGuess0.data?.version &&
@@ -1558,11 +1585,16 @@ check(
   boardAfterGuest.body,
 );
 
-const olaProxy = await request(`${guessesApi}/${ola.id}`, { method: "PUT", json: { amount: "7777,77" } });
+const olaProxy = await request(`${guessesApi}/${ola.id}`, {
+  method: "PUT",
+  json: { amount: "7777,77", place: "1" },
+});
 check(
-  "organizer enters a guess for another guest",
+  "organizer enters a guess with a place prediction for another guest",
   olaProxy.status === 200 &&
     boardGuest(olaProxy, ola.id)?.amountGrosze === OLA_GUESS &&
+    boardGuest(olaProxy, ola.id)?.predictedPlace === 1 &&
+    boardGuest(olaProxy, ania.id)?.predictedPlace === 2 &&
     boardGuest(olaProxy, ola.id)?.enteredBy === "organizer" &&
     !isMissingGuess(olaProxy, ola.id),
   `${olaProxy.status} ${olaProxy.body}`,
@@ -1571,7 +1603,9 @@ const olaGuessState = await request(guestStateApi(olaKey));
 const aniaAfterOla = await guestSince(aniaNewKey, aniaSaved.data?.version);
 check(
   "the proxy guess reaches only that guest's phone",
-  olaGuessState.data?.guess?.amountGrosze === OLA_GUESS && aniaAfterOla.status === 204,
+  olaGuessState.data?.guess?.amountGrosze === OLA_GUESS &&
+    olaGuessState.data.guess.predictedPlace === 1 &&
+    aniaAfterOla.status === 204,
   `${olaGuessState.body} ${aniaAfterOla.status}`,
 );
 const aniaStateNow = await request(guestStateApi(aniaNewKey));
@@ -1622,7 +1656,11 @@ check(
     rankOf(correctSet, ola.id)?.distanceGrosze === OLA_GUESS - CORRECT &&
     rankOf(correctSet, ania.id)?.place === 2 &&
     rankOf(correctSet, ania.id)?.differenceGrosze === ANIA_GUESS - CORRECT &&
-    rankOf(correctSet, ania.id)?.tied === false,
+    rankOf(correctSet, ania.id)?.tied === false &&
+    rankOf(correctSet, ola.id)?.predictedPlace === 1 &&
+    rankOf(correctSet, ola.id)?.placeHit === true &&
+    rankOf(correctSet, ania.id)?.predictedPlace === 2 &&
+    rankOf(correctSet, ania.id)?.placeHit === true,
   `${correctSet.status} ${correctSet.body}`,
 );
 const aniaTie = await request(`${guessesApi}/${ania.id}`, { method: "PUT", json: { amount: "2222,23" } });
@@ -1634,7 +1672,11 @@ check(
     rankOf(aniaTie, ania.id)?.place === 1 &&
     rankOf(aniaTie, ola.id)?.place === 1 &&
     rankOf(aniaTie, ania.id)?.tied === true &&
-    rankOf(aniaTie, ola.id)?.tied === true,
+    rankOf(aniaTie, ola.id)?.tied === true &&
+    // The tie at 1 spans places 1–2: both predictions (2 and 1) still hit; the amount-only save kept the place.
+    rankOf(aniaTie, ania.id)?.predictedPlace === 2 &&
+    rankOf(aniaTie, ania.id)?.placeHit === true &&
+    rankOf(aniaTie, ola.id)?.placeHit === true,
   `${aniaTie.status} ${aniaTie.body}`,
 );
 
@@ -1657,9 +1699,13 @@ const tvLeaks = [
   ...leaksIn(
     withoutVersions(tvWithGuesses.data),
     [ANIA_TIE, OLA_GUESS, CORRECT, ANIA_GUESS],
-    [...SECRET_WORDS, "guess", "amount"],
+    [...SECRET_WORDS, "guess", "amount", "predictedPlace"],
   ),
-  ...leaksIn(tvPageWithGuesses.body, [], ["7 777,77", "7777,77", "5 000,00", "2 222,23", "amountGrosze", "guess"]),
+  ...leaksIn(
+    tvPageWithGuesses.body,
+    [],
+    ["7 777,77", "7777,77", "5 000,00", "2 222,23", "amountGrosze", "guess", "predictedPlace"],
+  ),
 ];
 check(
   "the TV shows no guesses, correct amount or ranking",
@@ -1683,6 +1729,8 @@ for (const [path, method, json, status] of [
   [`${guessesApi}/999999999`, "DELETE", undefined, 404],
   [`${guessesApi}/${ola.id}`, "PUT", { amount: "x" }, 400],
   [`${guessesApi}/${ola.id}`, "PUT", { amount: "1", guestId: ania.id }, 400],
+  [`${guessesApi}/${ola.id}`, "PUT", { amount: "1", place: "abc" }, 400],
+  [`${guessesApi}/${ola.id}`, "PUT", { amount: "1", place: "999" }, 400],
 ]) {
   const res = await request(path, { method, json });
   check(
@@ -1759,6 +1807,7 @@ check(
   phoneWithGuess.status === 200 &&
     phoneWithGuess.body.includes("Twój strzał") &&
     phoneWithGuess.body.includes(`2${NBSP}222,23${NBSP}zł`) &&
+    phoneWithGuess.body.includes("Twój typ miejsca") &&
     phoneWithGuess.body.includes("GuestGuessView"),
   String(phoneWithGuess.status),
 );

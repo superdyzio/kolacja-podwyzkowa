@@ -124,6 +124,56 @@ describe.skipIf(!hasLocalDb)("guess schema", () => {
     expect(outOfRange.error?.code).toBe("23514");
   });
 
+  // guess-place
+  async function placeOf(guestId: number) {
+    const { data, error } = await db
+      .from("guess")
+      .select("amount_grosze, predicted_place, entered_by")
+      .eq("guest_id", guestId)
+      .maybeSingle();
+    if (error) {
+      throw new Error(error.message);
+    }
+    return data;
+  }
+
+  it("keeps a place prediction within 1 … 100 or none", async () => {
+    const [guest] = await guests(1);
+    expect((await db.from("guess").insert({ guest_id: guest, amount_grosze: 1 })).error).toBeNull();
+    for (const place of [0, 101, -1]) {
+      const { error } = await db.from("guess").update({ predicted_place: place }).eq("guest_id", guest);
+      expect(error?.code).toBe("23514");
+    }
+    for (const place of [1, 100, null]) {
+      expect((await db.from("guess").update({ predicted_place: place }).eq("guest_id", guest)).error).toBeNull();
+    }
+  });
+
+  it("saves the guest's amount and place together while intake is open; the old function keeps the place", async () => {
+    const [guest] = await guests(1);
+    await setIntake(true);
+    const save = (amount: number, place: number | null) =>
+      db.rpc("save_guest_guess_with_place", { p_guest_id: guest, p_amount_grosze: amount, p_predicted_place: place });
+    expect((await save(150_000, 4)).error).toBeNull();
+    expect(await placeOf(guest)).toEqual({ amount_grosze: 150_000, predicted_place: 4, entered_by: "guest" });
+    expect((await db.rpc("save_guest_guess", { p_guest_id: guest, p_amount_grosze: 160_000 })).error).toBeNull();
+    expect(await placeOf(guest)).toEqual({ amount_grosze: 160_000, predicted_place: 4, entered_by: "guest" });
+    expect((await save(170_000, null)).error).toBeNull();
+    expect(await placeOf(guest)).toEqual({ amount_grosze: 170_000, predicted_place: null, entered_by: "guest" });
+
+    await setIntake(false);
+    expect((await save(180_000, 5)).error?.message).toBe("INTAKE_CLOSED");
+    expect(await placeOf(guest)).toEqual({ amount_grosze: 170_000, predicted_place: null, entered_by: "guest" });
+    const unknown = await db.rpc("save_guest_guess_with_place", {
+      p_guest_id: UNKNOWN_ID,
+      p_amount_grosze: 1,
+      p_predicted_place: 1,
+    });
+    expect(unknown.error?.message).toBe("GUEST_NOT_FOUND");
+    await setIntake(true);
+    expect((await save(1, 101)).error?.code).toBe("23514");
+  });
+
   it("keeps the correct amount within the same bounds", async () => {
     for (const amount of [-1, MAX + 1]) {
       const { error } = await db.from("event").update({ correct_amount_grosze: amount }).eq("id", EVENT_ID);
@@ -155,6 +205,12 @@ describe.skipIf(!hasLocalDb)("guess schema", () => {
         body: JSON.stringify({ p_guest_id: guest, p_amount_grosze: 1 }),
       });
       expect(save.ok).toBe(false);
+      const saveWithPlace = await fetch(`${restUrl}/rpc/save_guest_guess_with_place`, {
+        method: "POST",
+        headers: { ...headers, "Content-Type": "application/json" },
+        body: JSON.stringify({ p_guest_id: guest, p_amount_grosze: 1, p_predicted_place: 1 }),
+      });
+      expect(saveWithPlace.ok).toBe(false);
     }
     expect(await guessOf(guest)).toEqual({ amount_grosze: 424_242, entered_by: "guest" });
   });

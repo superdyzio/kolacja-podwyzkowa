@@ -39,8 +39,8 @@ const board: GuessBoardDto = {
   intakeOpen: false,
   correctAmountGrosze: 500000,
   guests: [
-    { id: 1, displayName: "Ania", isAbsent: false, amountGrosze: 450000, enteredBy: "guest" },
-    { id: 2, displayName: "Kuba", isAbsent: true, amountGrosze: null, enteredBy: null },
+    { id: 1, displayName: "Ania", isAbsent: false, amountGrosze: 450000, predictedPlace: null, enteredBy: "guest" },
+    { id: 2, displayName: "Kuba", isAbsent: true, amountGrosze: null, predictedPlace: null, enteredBy: null },
   ],
   missing: [{ id: 2, displayName: "Kuba", isAbsent: true }],
   ranking: {
@@ -55,6 +55,8 @@ const board: GuessBoardDto = {
         amountGrosze: 450000,
         differenceGrosze: -50000,
         distanceGrosze: 50000,
+        predictedPlace: null,
+        placeHit: false,
       },
     ],
   },
@@ -91,6 +93,18 @@ describe("round trips", () => {
     expect(parseOfflineGuesses(serializeOfflineEntry(entry))).toEqual(entry);
     const noRanking = offlineEntry(API, { ...board, correctAmountGrosze: null, ranking: null }, SAVED_AT);
     expect(parseOfflineGuesses(serializeOfflineEntry(noRanking))).toEqual(noRanking);
+  });
+
+  it("reads a board saved before guess-place as one without predictions or hits", () => {
+    const old = {
+      ...board,
+      guests: board.guests.map(({ predictedPlace: _place, ...guest }) => guest),
+      ranking: board.ranking && {
+        ...board.ranking,
+        entries: board.ranking.entries.map(({ predictedPlace: _place, placeHit: _hit, ...entry }) => entry),
+      },
+    };
+    expect(parseOfflineGuesses(stored(offlineEntry(API, old, SAVED_AT)))?.data).toEqual(board);
   });
 
   it("drops unknown extra fields of the envelope", () => {
@@ -150,6 +164,16 @@ describe("rejections", () => {
     expect(parseOfflineSeating(entry({ ...seating, tables: [{ ...table, seats: [{ seat: 1 }] }] }))).toBeNull();
     expect(parseOfflineSeating(entry({ ...seating, tables: [{ ...table, room: 5 }] }))).toBeNull();
     expect(parseOfflineSeating(entry([]))).toBeNull();
+  });
+
+  it("refuses a wrongly typed place prediction or hit flag (guess-place)", () => {
+    const entry = (data: unknown) => stored({ ...good, data });
+    const [first] = board.ranking?.entries ?? [];
+    for (const predictedPlace of [0, 1.5, "3"]) {
+      expect(parseOfflineGuesses(entry({ ...board, guests: [{ ...board.guests[0], predictedPlace }] }))).toBeNull();
+    }
+    const badHit = { ...board, ranking: { correctAmountGrosze: 1, entries: [{ ...first, placeHit: "tak" }] } };
+    expect(parseOfflineGuesses(entry(badHit))).toBeNull();
   });
 
   it("does not take one kind for the other", () => {

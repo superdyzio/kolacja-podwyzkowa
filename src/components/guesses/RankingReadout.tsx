@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { describeDifference, formatAmount } from "@/lib/guesses/amount";
 import { guessUiMessages } from "@/lib/guesses/messages";
+import { podiumMedal } from "@/lib/guesses/place";
 import { placesFromLast } from "@/lib/guesses/ranking";
 import type { Locale } from "@/lib/i18n";
 import type { GuessRankingDto } from "@/types";
@@ -15,7 +16,10 @@ interface Props {
 
 // "Czytaj od końca" (S-06, FR-020): the ranking read aloud from the LAST place on the organizer's phone, one place
 // per step, tied guests together, big enough to read at arm's length. „Dalej” (or →, Space, Enter) moves on,
-// „Wstecz” (←) goes back, „Zamknij” (Esc) closes; after the winner „Dalej” becomes „Zakończ”.
+// „Wstecz” (←) goes back, „Zamknij” (Esc) closes; after the winner „Dalej” becomes „Zakończ”. guess-place: each person
+// with their place prediction, a hit in green; the podium places carry their medal.
+
+const MEDAL_ICON = { gold: "🥇", silver: "🥈", bronze: "🥉" } as const;
 export function RankingReadout({ ranking, onClose, locale }: Props) {
   const t = guessUiMessages(locale);
   const [steps] = useState(() => placesFromLast(ranking));
@@ -64,6 +68,7 @@ export function RankingReadout({ ranking, onClose, locale }: Props) {
 
   const winners = step.place === 1;
   const title = winners ? (step.entries.length > 1 ? t.winners : t.winner) : t.placeTitle(step.place);
+  const medal = podiumMedal(step.place);
 
   return (
     <div
@@ -88,6 +93,12 @@ export function RankingReadout({ ranking, onClose, locale }: Props) {
         <div className="flex flex-col gap-2">
           <h2 id="readout-title" className="text-5xl leading-none font-black tracking-tight sm:text-8xl">
             {title}
+            {medal && (
+              <>
+                <span aria-hidden="true"> {MEDAL_ICON[medal]}</span>
+                <span className="sr-only"> ({t.medal[medal]})</span>
+              </>
+            )}
           </h2>
           <p className="flex flex-wrap items-center gap-2 text-2xl font-semibold sm:text-3xl">
             {winners && <span>{t.placeTitle(1)}</span>}
@@ -108,6 +119,18 @@ export function RankingReadout({ ranking, onClose, locale }: Props) {
               <p className="text-muted-foreground text-xl sm:text-2xl">
                 {describeDifference(entry.differenceGrosze, locale)}
               </p>
+              {entry.predictedPlace !== null && (
+                <p className="flex flex-wrap items-center gap-2 text-xl sm:text-2xl">
+                  <span>
+                    {t.predictedLabel} <strong>{entry.predictedPlace}</strong>
+                  </span>
+                  {entry.placeHit && (
+                    <span className="rounded-full bg-emerald-100 px-3 py-1 font-semibold text-emerald-900">
+                      ✓ {t.placeHitReadout}
+                    </span>
+                  )}
+                </p>
+              )}
               {entry.isAbsent && <p className="text-muted-foreground text-lg">{t.absent}</p>}
             </li>
           ))}
