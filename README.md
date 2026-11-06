@@ -86,7 +86,7 @@ Na produkcji ta zmiana wymaga migracji bazy **przed** wdrożeniem kodu: bez niej
 
 ## Typ miejsca w konkursie strzałów
 
-Obok kwoty gość może (nie musi) wpisać, które miejsce zajmie w rankingu: od 1 do liczby gości. Zapisuje się razem z kwotą i można go zmieniać do zamknięcia przyjmowania; sama kwota bez typu nie kasuje zapisanego typu. Ranking nadal liczy się tylko z kwoty. Organizator może wpisać albo poprawić typ za gościa („Popraw” przy gościu na `/o/<klucz>/strzaly`).
+Obok kwoty gość może (nie musi) wpisać, które miejsce zajmie w rankingu: od 1 do liczby gości. Zapisuje się razem z kwotą i można go zmieniać (albo wyczyścić) do zamknięcia przyjmowania. Telefon ze starą wersją strony (otwartą przed wdrożeniem) wysyła samą kwotę — wtedy zapisany typ zostaje. Ranking nadal liczy się tylko z kwoty. Organizator może wpisać albo poprawić typ za gościa („Popraw” przy gościu na `/o/<klucz>/strzaly`).
 
 W rankingu organizatora podium jest na złoto, srebrno i brązowo (z medalem), a na zielono każdy, kto trafił swoje miejsce. Pod rankingiem jest lista „Trafione miejsca” — do nagrody pocieszenia. Remis zajmuje wszystkie swoje miejsca: gdy dwie osoby dzielą 2. miejsce, trafiają, typując 2 albo 3. „Czytaj od końca” i odczyt bez sieci pokazują typ i trafienie przy każdej osobie. Gość widzi tylko swój typ, nigdy cudzych i nie wie, czy trafił.
 

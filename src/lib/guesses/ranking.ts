@@ -76,8 +76,8 @@ export function rankGuesses(guesses: readonly RankableGuess[], correctAmountGros
 
 // Everybody who hit their own place, best first (the consolation prize list; podium places included — whether they
 // also get it is the organizer's call).
-export function placeHitters(ranking: GuessRankingDto): RankingEntryDto[] {
-  return ranking.entries.filter((entry) => entry.placeHit);
+export function placeHitters(entries: readonly RankingEntryDto[]): RankingEntryDto[] {
+  return entries.filter((entry) => entry.placeHit);
 }
 
 // The readout order: one step per place, the LAST place first and the winner(s) last; tied guests together.

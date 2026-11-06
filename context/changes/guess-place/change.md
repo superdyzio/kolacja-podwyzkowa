@@ -1,7 +1,7 @@
 ---
 change_id: guess-place
 title: Optional "which place will you be" next to the dinner-cost guess, podium and hit highlights in the ranking
-status: implementing
+status: implemented
 created: 2026-11-06
 updated: 2026-11-06
 archived_at: null

@@ -86,7 +86,14 @@ export function GuestGuessView({ apiBase, initial, locale }: Props) {
         refresh();
         return;
       }
-      setProblem(toFailure(data, locale).message);
+      // A place above a limit that changed since the last poll is the place field's problem.
+      const placeField = typeof data === "object" && data !== null && "field" in data && data.field === "place";
+      if (placeField) {
+        setPlaceProblem(toFailure(data, locale).message);
+        refresh();
+      } else {
+        setProblem(toFailure(data, locale).message);
+      }
       if (response.status === 409) {
         refresh();
       }

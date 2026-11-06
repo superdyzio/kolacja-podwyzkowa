@@ -145,9 +145,6 @@ describe("place predictions (guess-place)", () => {
       ],
       CORRECT,
     );
-    expect(placeHitters({ correctAmountGrosze: CORRECT, entries }).map((entry) => entry.displayName)).toEqual([
-      "Tomek",
-      "Kasia",
-    ]);
+    expect(placeHitters(entries).map((entry) => entry.displayName)).toEqual(["Tomek", "Kasia"]);
   });
 });

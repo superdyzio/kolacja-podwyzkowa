@@ -214,7 +214,7 @@ describe.skipIf(!hasLocalDb)("guess services", () => {
 
   // guess-place: the optional prediction of the own final place.
   it("saves the guest's place with the amount, keeps it on an amount-only save and clears it with null", async () => {
-    const { ids } = await guests(1);
+    const { ids } = await guests(3); // places 1…3 allowed even on an otherwise empty event
     const [g1 = 0] = ids;
     await setGuessIntakeOpen(db, true);
     expect(await submitGuestGuess(db, g1, 100_000, 2)).toEqual({ status: "saved" });
@@ -242,7 +242,7 @@ describe.skipIf(!hasLocalDb)("guess services", () => {
   });
 
   it("refuses the guest's place once intake is closed; the organizer sets, keeps and clears it", async () => {
-    const { ids } = await guests(1);
+    const { ids } = await guests(3); // places 1…3 allowed even on an otherwise empty event
     const [g1 = 0] = ids;
     await setGuessIntakeOpen(db, true);
     await submitGuestGuess(db, g1, 100_000, 1);
@@ -287,7 +287,7 @@ describe.skipIf(!hasLocalDb)("guess services", () => {
   });
 
   it("gives the phone only its own place and the limit, and a place entered for the guest changes the token", async () => {
-    const { ids, names } = await guests(2);
+    const { ids, names } = await guests(7); // places 1…7 allowed even on an otherwise empty event
     const [g1 = 0, g2 = 0] = ids;
     const me = { id: g1, displayName: names[0] ?? "" };
     await setGuessIntakeOpen(db, true);

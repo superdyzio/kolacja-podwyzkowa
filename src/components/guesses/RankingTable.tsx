@@ -1,6 +1,7 @@
 import { describeDifference, formatAmount } from "@/lib/guesses/amount";
 import { guessUiMessages } from "@/lib/guesses/messages";
 import { podiumMedal, type PodiumMedal } from "@/lib/guesses/place";
+import { placeHitters } from "@/lib/guesses/ranking";
 import type { Locale } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 import type { RankingEntryDto } from "@/types";
@@ -25,7 +26,7 @@ const HIT_ROW = "bg-emerald-50 border-l-emerald-500";
 // it a legend of the highlights, below it who hit their own place (the consolation prize list).
 export function RankingTable({ entries, locale }: Props) {
   const t = guessUiMessages(locale);
-  const hitters = entries.filter((entry) => entry.placeHit);
+  const hitters = placeHitters(entries);
   return (
     <div className="flex flex-col gap-3">
       <p className="text-muted-foreground text-sm">{t.rankingLegend}</p>

@@ -118,15 +118,23 @@ for the old code until the deploy. Hosted DB: dump → `db push` → `deploy:aws
 
 #### Automated
 
-- [x] 1.1 Migration, DB types and DTOs
-- [x] 1.2 Pure place rules, ranking hits and messages with unit tests
-- [x] 1.3 Service, APIs and phone token with integration tests
-- [x] 1.4 Guest phone field
-- [x] 1.5 Organizer page: form, rows, ranking highlights, readout
-- [x] 1.6 Offline readout and cache compatibility
-- [x] 1.7 Smoke, demo data and docs
-- [x] 1.8 Full checks (lint, check, tests, build, smoke, package:lambda)
+- [x] 1.1 Migration, DB types and DTOs — 48f54a5
+- [x] 1.2 Pure place rules, ranking hits and messages with unit tests — 48f54a5
+- [x] 1.3 Service, APIs and phone token with integration tests — 48f54a5
+- [x] 1.4 Guest phone field — 48f54a5
+- [x] 1.5 Organizer page: form, rows, ranking highlights, readout — 48f54a5
+- [x] 1.6 Offline readout and cache compatibility — 48f54a5
+- [x] 1.7 Smoke, demo data and docs — 48f54a5
+- [x] 1.8 Full checks (lint, check, tests, build, smoke, package:lambda) — 48f54a5
 
 #### Manual
 
 - [ ] 1.9 Guest phone and `/strzaly` checked in Chrome
+
+## Deviations
+
+- Review fixes (Fable, `reviews/fable-review.md`) landed in a second commit: the `service_role` grant on the new
+  function, the place error routed to the place field (`field: "place"`), docs, `placeHitters` in the table.
+- 1.9 (manual): checked headless (Playwright, local demo data): guest form with a wrong and a right place, clearing,
+  the organizer's proxy place reaching the phone, podium/hit colours, the readout. A check in Chrome by the user
+  is still open.

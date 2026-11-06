@@ -55,3 +55,5 @@ comment on function public.save_guest_guess_with_place (bigint, integer, integer
 
 revoke execute on function public.save_guest_guess_with_place (bigint, integer, integer)
   from public, anon, authenticated;
+
+grant execute on function public.save_guest_guess_with_place (bigint, integer, integer) to service_role;

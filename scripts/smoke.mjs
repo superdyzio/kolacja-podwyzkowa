@@ -1527,7 +1527,7 @@ for (const place of ["0", "abc", "1,5", String(guestCount + 1)]) {
   const res = await request(guessApi(aniaNewKey), { method: "PUT", json: { amount: "1", place } });
   check(
     `guest place ${JSON.stringify(place)} is refused with the range 1 … number of guests`,
-    res.status === 400 && errorOf(res) === `Wpisz miejsce od 1 do ${guestCount}.`,
+    res.status === 400 && errorOf(res) === `Wpisz miejsce od 1 do ${guestCount}.` && res.data?.field === "place",
     `${res.status} ${res.body}`,
   );
 }
