@@ -79,6 +79,8 @@ export const seatingMessages = defineMessages(
       `Grupa ${names}: obok przypiętego miejsca nie ma dość wolnych miejsc dla całej grupy — odepnij tę osobę albo kogoś z sąsiednich miejsc.`,
     drawGroupsDoNotFit:
       "Wszystkie grupy naraz nie mieszczą się na kolejnych miejscach przy stolikach — dodaj miejsca, zmień stoliki albo odepnij kogoś.",
+    drawLonely: (names: string) =>
+      `Nie udało się posadzić wszystkich tak, żeby każdy miał sąsiada (obok albo naprzeciwko) — bez sąsiada: ${names}. Wylosuj ponownie; jeśli to nie pomaga, zmniejsz liczbę miejsc przy stolikach, odepnij kogoś albo oznacz nieobecnych.`,
     // Neighbour history (neighbours.ts)
     repeatCount: (count: number) =>
       `${count} ${pluralPl(count, "powtórzona para sąsiadów", "powtórzone pary sąsiadów", "powtórzonych par sąsiadów")}`,
@@ -151,6 +153,8 @@ export const seatingMessages = defineMessages(
       `The group ${names}: there are not enough free seats next to the pinned seat for the whole group — unpin this person or someone on the neighbouring seats.`,
     drawGroupsDoNotFit:
       "All the groups together do not fit on consecutive seats at the tables — add seats, change the tables or unpin someone.",
+    drawLonely: (names: string) =>
+      `Could not seat everyone with at least one neighbour (beside or opposite) — without a neighbour: ${names}. Draw again; if that does not help, lower the seat counts, unpin someone or mark absent guests.`,
     repeatCount: (count: number) => `${count} repeated ${pluralEn(count, "neighbour pair", "neighbour pairs")}`,
     historyCount: (count: number) => `History: ${count} published ${pluralEn(count, "seating", "seatings")}`,
     repeatPair: (first: string, second: string, table: string) => `${first} and ${second} (${table})`,

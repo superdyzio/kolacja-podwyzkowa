@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { areConsecutiveSeats } from "@/lib/venue/seats";
+import { areConsecutiveSeats, neighbours } from "@/lib/venue/seats";
 import type { GuestDto, GuestGroupDto, SeatAssignmentDto, SeatingSnapshot, TableDto, TableShape } from "@/types";
 import { validateDraft } from "./draft";
 import {
@@ -23,13 +23,31 @@ function seeded(seed: number, maxIterations = 300_000): DrawOptions {
 
 type Drawn = Extract<DrawResult, { status: "drawn" }>;
 
-// Every drawn result is checked by code independent of the solver: the server's hard-rule validation and a recount
-// of the repeated pairs.
+// Present seated guests (pinned ones included) none of whose neighbour seats (side or opposite) holds a present guest.
+function lonelyGuests(data: SeatingInput): string[] {
+  const guestById = new Map(data.guestList.guests.map((g) => [g.id, g]));
+  const present = data.assignments.filter((row) => guestById.get(row.guestId)?.isAbsent === false);
+  return present
+    .filter((row) => {
+      const t = data.venue.tables.find((candidate) => candidate.id === row.tableId);
+      return (
+        t !== undefined &&
+        !neighbours(t.shape, t.seatCount, row.seat).some((other) =>
+          present.some((mate) => mate.tableId === row.tableId && mate.seat === other),
+        )
+      );
+    })
+    .map((row) => guestById.get(row.guestId)?.displayName ?? "?");
+}
+
+// Every drawn result is checked by code independent of the solver: the server's hard-rule validation, nobody alone
+// (draw-neighbour) and a recount of the repeated pairs.
 function expectValidDraw(data: SeatingInput, history: readonly GuestPair[], result: DrawResult): Drawn {
   if (result.status !== "drawn") {
     throw new Error(`expected a draft, got ${JSON.stringify(result.problems)}`);
   }
   expect(validateDraft(data, result.seats)).toEqual([]);
+  expect(lonelyGuests(withDraft(data, result.seats))).toEqual([]);
   // The rows go to POST /seating/draft as they are; its schema is strict (no extra keys).
   expect(result.seats.every((row) => Object.keys(row).sort().join() === "guestId,seat,tableId")).toBe(true);
   expect(repeatedNeighbours(withDraft(data, result.seats), history)).toHaveLength(result.repeats);
@@ -142,6 +160,85 @@ describe("drawSeating — pins and absences", () => {
   });
 });
 
+describe("drawSeating — nobody alone (draw-neighbour)", () => {
+  it("leaves nobody without a neighbour when most seats stay empty", () => {
+    const tables = [
+      table(1, "A", 8),
+      table(2, "B", 8, "rectangular"),
+      table(3, "C", 7, "rectangular"),
+      table(4, "D", 6),
+    ];
+    const guests = Array.from({ length: 9 }, (_, index) => guest(index + 1, `G${index + 1}`));
+    const data = input(guests, tables, []);
+    const history: GuestPair[] = [
+      [1, 2],
+      [3, 4],
+      [5, 6],
+    ];
+    for (let seed = 1; seed <= 40; seed++) {
+      // expectValidDraw checks that nobody sits alone.
+      expectValidDraw(data, history, drawSeating(data, history, seeded(seed, 50_000)));
+    }
+  });
+
+  it("puts someone next to a pinned guest sitting alone", () => {
+    const data = input(
+      [guest(1, "Ania"), guest(2, "Bartek"), guest(3, "Celina"), guest(4, "Darek")],
+      [table(1, "A", 6), table(2, "B", 6)],
+      [seat(1, 2, 3, true)],
+    );
+    for (let seed = 1; seed <= 10; seed++) {
+      const result = expectValidDraw(data, [], drawSeating(data, [], seeded(seed, 50_000)));
+      expect(result.seats.some((row) => row.tableId === 2 && (row.seat === 2 || row.seat === 4))).toBe(true);
+    }
+  });
+
+  it("counts the person opposite as a neighbour at a two-seat rectangular table", () => {
+    const data = input([guest(1, "Ania"), guest(2, "Bartek")], [table(1, "A", 2, "rectangular")], []);
+    expectValidDraw(data, [], drawSeating(data, [], seeded(1)));
+  });
+
+  it("refuses when someone must sit alone, naming them", () => {
+    // Three guests, two tables of two: one table always gets a single guest.
+    const data = input(
+      [guest(1, "Ania"), guest(2, "Bartek"), guest(3, "Celina")],
+      [table(1, "A", 2), table(2, "B", 2)],
+      [],
+    );
+    const result = drawSeating(data, [], seeded(1, 5_000));
+    expect(result.status).toBe("infeasible");
+    const problems = result.status === "infeasible" ? result.problems : [];
+    expect(problems).toHaveLength(1);
+    expect(problems[0]?.kind).toBe("lonely");
+    const names = problems[0]?.kind === "lonely" ? problems[0].names : [];
+    expect(names).toHaveLength(1);
+    expect(describeDrawProblem(problems[0] ?? { kind: "groups-do-not-fit" })).toBe(
+      `Nie udało się posadzić wszystkich tak, żeby każdy miał sąsiada (obok albo naprzeciwko) — bez sąsiada: ${names[0] ?? ""}. Wylosuj ponownie; jeśli to nie pomaga, zmniejsz liczbę miejsc przy stolikach, odepnij kogoś albo oznacz nieobecnych.`,
+    );
+    expect(describeDrawProblem(problems[0] ?? { kind: "groups-do-not-fit" }, "en")).toContain(
+      `without a neighbour: ${names[0] ?? ""}.`,
+    );
+  });
+
+  it("refuses when a pinned guest's only neighbours are seats of absent pinned guests", () => {
+    const data = input(
+      [
+        guest(1, "Ania"),
+        guest(2, "Bartek", { isAbsent: true }),
+        guest(3, "Celina", { isAbsent: true }),
+        guest(4, "Darek"),
+        guest(5, "Ewa"),
+      ],
+      [table(1, "A", 3), table(2, "B", 4)],
+      [seat(1, 1, 1, true), seat(2, 1, 2, true), seat(3, 1, 3, true)],
+    );
+    expect(drawSeating(data, [], seeded(1, 5_000))).toEqual({
+      status: "infeasible",
+      problems: [{ kind: "lonely", names: ["Ania"] }],
+    });
+  });
+});
+
 describe("drawSeating — infeasible", () => {
   function problemsOf(result: DrawResult) {
     expect(result.status).toBe("infeasible");
@@ -247,6 +344,30 @@ describe("drawSeating — infeasible", () => {
     expect(describeDrawProblem({ kind: "groups-do-not-fit" })).toBe(
       "Wszystkie grupy naraz nie mieszczą się na kolejnych miejscach przy stolikach — dodaj miejsca, zmień stoliki albo odepnij kogoś.",
     );
+  });
+
+  it("restarts a group placement that gave up instead of reporting that the groups do not fit", () => {
+    // Shaped like the real venue (rectangular 14, 10, 8, 12; 16 couples, 7 singles): with seed 2226 the first
+    // backtracking search runs out of nodes; before the restarts this draw was refused as "groups-do-not-fit".
+    const guests = Array.from({ length: 39 }, (_, index) =>
+      guest(index + 1, `G${index + 1}`, { groupId: index < 32 ? 100 + Math.floor(index / 2) : null }),
+    );
+    const groups = Array.from({ length: 16 }, (_, index) => ({
+      id: 100 + index,
+      memberIds: [2 * index + 1, 2 * index + 2],
+    }));
+    const data = input(
+      guests,
+      [
+        table(1, "A", 14, "rectangular"),
+        table(2, "B", 10, "rectangular"),
+        table(3, "C", 8, "rectangular"),
+        table(4, "D", 12, "rectangular"),
+      ],
+      [],
+      groups,
+    );
+    expectValidDraw(data, [], drawSeating(data, [], seeded(2226, 50_000)));
   });
 
   it("finds the only arrangement of an exact fit (no false 'infeasible')", () => {
