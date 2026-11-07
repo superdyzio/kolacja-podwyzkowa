@@ -29,8 +29,15 @@ function line(id: number, fields: Partial<OrderItemDto> = {}): OrderItemDto {
     guestId: null,
     tableId: null,
     delivered: false,
+    // A line ticked as delivered has all of its pieces delivered (guest-delivered).
+    deliveredPieces: fields.delivered ? allPieces(fields.quantity ?? 1) : [],
+    marks: [],
     ...fields,
   };
+}
+
+function allPieces(quantity: number): number[] {
+  return Array.from({ length: quantity }, (_, index) => index + 1);
 }
 
 describe("order texts", () => {
@@ -67,6 +74,8 @@ describe("totals", () => {
     expect(lineTotal(items[1])).toBe(3_750);
     expect(orderTotals(items)).toEqual({ lines: 2, quantity: 5, deliveredQuantity: 3, totalGrosze: 13_550 });
     expect(orderTotals([])).toEqual({ lines: 0, quantity: 0, deliveredQuantity: 0, totalGrosze: 0 });
+    // guest-delivered: single pieces count; a stale mark above the quantity does not.
+    expect(orderTotals([line(1, { quantity: 3, deliveredPieces: [2, 5] })]).deliveredQuantity).toBe(1);
   });
 
   it("describes the order for the shell and the restaurant", () => {

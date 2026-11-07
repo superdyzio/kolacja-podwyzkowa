@@ -1,6 +1,7 @@
 ---
 import NoAccess from "@/components/NoAccess.astro";
 import { GuestGuessView } from "@/components/guest/GuestGuessView";
+import { GuestOrderView } from "@/components/guest/GuestOrderView";
 import { GuestQuestionDraw } from "@/components/guest/GuestQuestionDraw";
 import { GuestSeatView } from "@/components/guest/GuestSeatView";
 import { GuestTopicView } from "@/components/guest/GuestTopicView";
@@ -14,8 +15,9 @@ import { getGuestState, guestPhoneMessages } from "@/lib/guest-links";
 // checked the key AND the guest-access switch (off, revoked or unknown → the same no-access page); this is the
 // second, role-specific check. GuestAccess carries no keys, and only this guest's own state reaches the HTML.
 //
-// Structure: <main> holds one <section> per feature, stacked: S-05's seat view, S-06's guess, S-07's question draw,
-// then S-08's AI topic. Each section's island lives in src/components/guest/, receives `apiBase` (/api/g/<key>) and
+// Structure: <main> holds one <section> per feature, stacked: S-05's seat view, the order (guest-delivered: the island
+// renders its own <section> and heading, and nothing while the guest has no order lines), S-06's guess, S-07's
+// question draw, then S-08's AI topic. Each section's island lives in src/components/guest/, receives `apiBase` (/api/g/<key>) and
 // talks to routes under src/pages/api/g/[key]/ (which start with guestApi(locals); the guest is access.guest.id, never
 // an id from the request). Islands that need the live state read it with useGuestState (one shared poll per phone,
 // src/components/hooks/guest-state-store.ts) instead of polling again; category pickers reuse
@@ -53,6 +55,8 @@ const view =
         </h2>
         <GuestSeatView client:load apiBase={view.apiBase} initial={view.initial} locale={locale} />
       </section>
+
+      <GuestOrderView client:load apiBase={view.apiBase} initial={view.initial} locale={locale} />
 
       <section aria-labelledby="guess-heading" class="flex flex-col gap-3">
         <h2 id="guess-heading" class="text-xl font-semibold">

@@ -3145,14 +3145,196 @@ const moved = await request(`${ordersApi}/${schabowyId}`, {
 });
 const movedLine = moved.data?.items?.find((item) => item.id === schabowyId);
 check(
-  "orders: a line is moved to a table and repriced, keeping its tick",
+  "orders: a line is moved to a table and repriced, keeping its tick on the first piece (the new one is to serve)",
   moved.status === 200 &&
     movedLine?.guestId === null &&
     movedLine.tableId === publishedTable?.id &&
     movedLine.unitPriceGrosze === 5200 &&
     movedLine.quantity === 2 &&
-    movedLine.delivered === true,
+    movedLine.delivered === false &&
+    JSON.stringify(movedLine.deliveredPieces) === "[1]" &&
+    JSON.stringify(movedLine.marks) === JSON.stringify([{ piece: 1, by: "organizer", guestId: null }]),
   moved.body.slice(0, 300),
+);
+
+// 23b. Delivered pieces (guest-delivered). A guest's phone shows their own dishes and the dishes for the middle of
+// their table (latest published seating), each piece with its own „Dotarło”; no prices, no ids of people. A guest may
+// mark only those lines, never undo the organizer's mark; the organizer marks single pieces too and sees who marked
+// what; the restaurant and the guest's poll (204 when unchanged) follow.
+const guestOrdersApi = (key) => `/api/g/${key}/orders`;
+const linksForOrders = await request(linksApi);
+const seatedKey = linkOf(linksForOrders, seatedGuest?.id)?.key;
+const unseatedKey = linkOf(linksForOrders, unseatedGuest?.id)?.key;
+const ordersAccessOn = await request(linksApi, { method: "PATCH", json: { enabled: true } });
+const boardForGuests = await request(ordersApi);
+const guestTableId = boardForGuests.data?.tables?.find((table) => table.name === seatedGuest?.seat?.table)?.id;
+const lineIdOf = (name) => boardForGuests.data?.items?.find((item) => item.name === name)?.id;
+const zurekId = lineIdOf("Żurek Smoke");
+const pierogiId = lineIdOf("Pierogi Smoke");
+const tableLineNames = (boardForGuests.data?.items ?? [])
+  .filter((item) => item.tableId === guestTableId)
+  .map((item) => item.name)
+  .sort()
+  .join();
+const seatedState = await request(guestStateApi(seatedKey));
+const phoneOrders = (res) => res.data?.orders ?? [];
+const phoneLine = (res, name) => phoneOrders(res).find((line) => line.name === name);
+check(
+  "guest-delivered: the phone gets its own dishes and its table's, every piece, no prices or ids",
+  ordersAccessOn.status === 200 &&
+    Boolean(seatedKey) &&
+    seatedState.status === 200 &&
+    phoneOrders(seatedState)
+      .filter((line) => line.kind === "own")
+      .map((line) => line.name)
+      .join() === "Żurek Smoke" &&
+    phoneOrders(seatedState)
+      .filter((line) => line.kind === "table")
+      .map((line) => line.name)
+      .sort()
+      .join() === tableLineNames &&
+    JSON.stringify(phoneLine(seatedState, "Żurek Smoke")?.pieces) ===
+      JSON.stringify([
+        { piece: 1, deliveredBy: null },
+        { piece: 2, deliveredBy: null },
+      ]) &&
+    !/Grosze|price|"guestId"|"tableId"|"id"|"marks"/.test(JSON.stringify(seatedState.data?.orders)),
+  JSON.stringify(seatedState.data?.orders ?? seatedState.body).slice(0, 400),
+);
+const unseatedState = await request(guestStateApi(unseatedKey));
+check(
+  "guest-delivered: a guest without a published seat sees only their own dish",
+  unseatedState.status === 200 &&
+    phoneOrders(unseatedState)
+      .map((line) => `${line.kind}:${line.name}`)
+      .join() === "own:Pierogi Smoke",
+  JSON.stringify(unseatedState.data?.orders ?? unseatedState.body).slice(0, 200),
+);
+const seatedPage = await request(`/g/${seatedKey}`);
+check(
+  "guest-delivered: the guest page renders „Twoje zamówienie” without prices",
+  seatedPage.status === 200 &&
+    seatedPage.body.includes("Twoje zamówienie") &&
+    seatedPage.body.includes("Żurek Smoke") &&
+    !seatedPage.body.includes("24,00") &&
+    !seatedPage.body.includes("unitPriceGrosze"),
+  String(seatedPage.status),
+);
+
+const markPiece = (key, json) => request(guestOrdersApi(key), { method: "PUT", json });
+const markedByGuest = await markPiece(seatedKey, { lineId: zurekId, piece: 2, delivered: true });
+const boardAfterPieceMark = await request(ordersApi);
+const zurekAfterGuest = boardAfterPieceMark.data?.items?.find((item) => item.id === zurekId);
+const restaurantAfterGuest = await request(`${restaurantApiBase}/orders`);
+check(
+  "guest-delivered: a guest marks ONE piece; the organizer sees who, the restaurant one piece less to serve",
+  markedByGuest.status === 200 &&
+    JSON.stringify(phoneLine(markedByGuest, "Żurek Smoke")?.pieces) ===
+      JSON.stringify([
+        { piece: 1, deliveredBy: null },
+        { piece: 2, deliveredBy: "you" },
+      ]) &&
+    markedByGuest.data.version !== seatedState.data?.version &&
+    zurekAfterGuest?.delivered === false &&
+    JSON.stringify(zurekAfterGuest.marks) === JSON.stringify([{ piece: 2, by: "guest", guestId: seatedGuest?.id }]) &&
+    restaurantAfterGuest.data?.prep?.find((line) => line.name === "Żurek Smoke")?.toServe === 1 &&
+    !JSON.stringify(restaurantAfterGuest.data).includes('"marks"'),
+  `${markedByGuest.status} ${markedByGuest.body.slice(0, 300)}`,
+);
+const sinceAfterMark = await guestSince(seatedKey, markedByGuest.data?.version);
+check(
+  "guest-delivered: the phone's next poll is 204 (the same token on both paths)",
+  sinceAfterMark.status === 204,
+  String(sinceAfterMark.status),
+);
+
+for (const [label, key, json, status, message] of [
+  [
+    "another guest's dish",
+    seatedKey,
+    { lineId: pierogiId, piece: 1, delivered: true },
+    409,
+    "Tej pozycji nie ma już przy Tobie ani na Twoim stole.",
+  ],
+  [
+    "a piece the line does not have",
+    seatedKey,
+    { lineId: zurekId, piece: 3, delivered: true },
+    409,
+    "Tej sztuki nie ma już na zamówieniu.",
+  ],
+  [
+    "a line of a table the guest does not sit at",
+    unseatedKey,
+    { lineId: zurekId, piece: 1, delivered: true },
+    409,
+    "Tej pozycji nie ma już przy Tobie ani na Twoim stole.",
+  ],
+  [
+    "a guest id in the body",
+    seatedKey,
+    { lineId: zurekId, piece: 1, delivered: true, guestId: 1 },
+    400,
+    "Nieprawidłowe dane.",
+  ],
+  ["a piece 0", seatedKey, { lineId: zurekId, piece: 0, delivered: true }, 400, "Nieprawidłowe dane."],
+]) {
+  const res = await markPiece(key, json);
+  check(
+    `guest-delivered refuses ${label}`,
+    res.status === status && errorOf(res) === message,
+    `${res.status} ${res.body}`,
+  );
+}
+const organizerPiece = await request(`${ordersApi}/${zurekId}/pieces`, {
+  method: "PUT",
+  json: { piece: 1, delivered: true },
+});
+const undoOrganizer = await markPiece(seatedKey, { lineId: zurekId, piece: 1, delivered: false });
+const undoOwn = await markPiece(seatedKey, { lineId: zurekId, piece: 2, delivered: false });
+check(
+  "guest-delivered: the organizer marks a single piece; the guest cannot undo it but undoes their own",
+  organizerPiece.status === 200 &&
+    JSON.stringify(organizerPiece.data.items.find((item) => item.id === zurekId)?.deliveredPieces) === "[1,2]" &&
+    organizerPiece.data.items.find((item) => item.id === zurekId)?.delivered === true &&
+    undoOrganizer.status === 409 &&
+    errorOf(undoOrganizer) === "Tę sztukę oznaczył organizator — cofnąć może tylko on." &&
+    undoOwn.status === 200 &&
+    JSON.stringify(phoneLine(undoOwn, "Żurek Smoke")?.pieces) ===
+      JSON.stringify([
+        { piece: 1, deliveredBy: "organizer" },
+        { piece: 2, deliveredBy: null },
+      ]),
+  `${organizerPiece.status} ${undoOrganizer.status} ${undoOwn.status}`,
+);
+const organizerPieceBad = await request(`${ordersApi}/${zurekId}/pieces`, {
+  method: "PUT",
+  json: { piece: 3, delivered: true },
+});
+const organizerPieceUnknown = await request(`${ordersApi}/2000000000/pieces`, {
+  method: "PUT",
+  json: { piece: 1, delivered: true },
+});
+const tvPieces = await request(`/api/o/${tvKey}/orders/${zurekId}/pieces`, {
+  method: "PUT",
+  json: { piece: 1, delivered: false },
+});
+const tvAfterPieces = await request(tvSeatingApi);
+check(
+  "guest-delivered: organizer piece API refuses a missing piece (409), an unknown line (404) and other keys",
+  organizerPieceBad.status === 409 &&
+    organizerPieceUnknown.status === 404 &&
+    noAccessJson(tvPieces) &&
+    tvAfterPieces.status === 200 &&
+    !tvAfterPieces.body.includes("Żurek"),
+  `${organizerPieceBad.status} ${organizerPieceUnknown.status} ${tvPieces.status}`,
+);
+const ordersAccessOff = await request(linksApi, { method: "PATCH", json: { enabled: false } });
+const markWithAccessOff = await markPiece(seatedKey, { lineId: zurekId, piece: 2, delivered: true });
+check(
+  "guest-delivered: with guest access off the mark is the JSON 404",
+  ordersAccessOff.status === 200 && noAccessJson(markWithAccessOff),
+  markWithAccessOff.body,
 );
 const tortId = tortLine.data?.items?.find((item) => item.name === "Tort Smoke")?.id;
 const deletedLine = await request(`${ordersApi}/${tortId}`, { method: "DELETE" });

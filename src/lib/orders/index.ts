@@ -1,5 +1,14 @@
 export { AddOrderItemBody, OrderAssignment, UpdateOrderItemBody, type OrderAssignmentInput } from "./api";
 export { toOrderItemInput, toOrderItemPatch, type InputResult } from "./input";
+export {
+  deliveredCount,
+  guestOrdersKey,
+  isLineDelivered,
+  isPieceDelivered,
+  toGuestOrderLines,
+  toPieceMarks,
+  type PieceLine,
+} from "./pieces";
 export { placeOrders, type PlaceableLine, type PlacementSource } from "./placement";
 export { organizerPrepList, prepList } from "./prep";
 export { fingerprint, toRestaurantItem, toRestaurantView } from "./restaurant";
@@ -37,16 +46,20 @@ export {
   addOrderItem,
   deleteOrderItem,
   getOrderBoard,
+  getGuestOrders,
   getOrderItems,
   getRestaurantView,
+  markGuestPiece,
+  markOrderPieces,
   rotateRestaurantKey,
   toOrderBoard,
   updateOrderItem,
   type AddOrderItemResult,
   type DeleteOrderItemResult,
+  type MarkPiecesResult,
   type OrderItemInput,
   type OrderItemPatch,
   type UpdateOrderItemResult,
 } from "./service";
-export { orderMessages, restaurantMessages } from "./messages";
+export { guestOrderMessages, orderMessages, restaurantMessages } from "./messages";
 export { describeLines, describeToServe, formatOrderSummary } from "./summary";

@@ -368,6 +368,27 @@ export interface GuestStateDto {
   planVersion: number | null;
   guess: GuestGuessDto;
   drawing: GuestDrawingDto | null;
+  // guest-delivered: the guest's own order lines, then the lines for the middle of their table (latest snapshot).
+  orders: GuestOrderLineDto[];
+}
+
+// guest-delivered: an order line as a guest's phone shows it — no price, no ids of people. lineId addresses the line
+// when marking a piece (the server checks it is the guest's own line or one of their table's). Every piece 1 …
+// quantity, with who marked it from the guest's point of view (null = not delivered yet).
+export interface GuestOrderLineDto {
+  lineId: number;
+  name: string;
+  note: string | null;
+  quantity: number;
+  kind: "own" | "table";
+  pieces: GuestOrderPieceDto[];
+}
+
+export type GuestPieceMarker = "you" | "guest" | "organizer";
+
+export interface GuestOrderPieceDto {
+  piece: number;
+  deliveredBy: GuestPieceMarker | null;
 }
 
 // Guesses of the final raise amount (S-06). Every amount is an integer number of grosze (1 zł = 100), never a float.
@@ -599,15 +620,28 @@ export interface OrderItemDto {
   unitPriceGrosze: number;
   guestId: number | null;
   tableId: number | null;
+  // Every piece delivered (guest-delivered: = deliveredPieces covers 1 … quantity).
   delivered: boolean;
+  // guest-delivered: the delivered pieces (1-based, ascending) and who marked each.
+  deliveredPieces: number[];
+  marks: OrderPieceMarkDto[];
 }
 
-// What the restaurant sees of a line: no ids, no price.
+// guest-delivered: one delivered piece of a line and who marked it — the organizer, or a guest on their phone
+// (guestId = that guest; null once the guest was deleted).
+export interface OrderPieceMarkDto {
+  piece: number;
+  by: "organizer" | "guest";
+  guestId: number | null;
+}
+
+// What the restaurant sees of a line: no ids, no price, not who marked a piece.
 export interface RestaurantItemDto {
   name: string;
   note: string | null;
   quantity: number;
   delivered: boolean;
+  deliveredPieces: number[];
 }
 
 // A seated guest with their lines; guestName as published (like the TV).

@@ -1,8 +1,10 @@
 import type { OrderItemDto, OrganizerPrepLineDto, PrepLineDto } from "@/types";
+import { deliveredCount } from "./pieces";
 import { compareDishNames, dishKey, lineTotal } from "./rules";
 
 // The prep list (restaurant-orders), pure: one line per dish however it is capitalised (the first-seen spelling is
-// shown), the quantity to prepare, what is still to serve and the notes with their quantities; Polish order.
+// shown), the quantity to prepare, what is still to serve (pieces not marked delivered, guest-delivered) and the
+// notes with their quantities; Polish order.
 
 export function organizerPrepList(items: readonly OrderItemDto[]): OrganizerPrepLineDto[] {
   const dishes = new Map<string, OrganizerPrepLineDto & { noteIndex: Map<string, number> }>();
@@ -15,9 +17,7 @@ export function organizerPrepList(items: readonly OrderItemDto[]): OrganizerPrep
     }
     dish.quantity += item.quantity;
     dish.totalGrosze += lineTotal(item);
-    if (!item.delivered) {
-      dish.toServe += item.quantity;
-    }
+    dish.toServe += item.quantity - deliveredCount(item);
     if (item.note !== null) {
       const noteKey = dishKey(item.note);
       const index = dish.noteIndex.get(noteKey);

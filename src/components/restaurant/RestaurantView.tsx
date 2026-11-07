@@ -5,6 +5,7 @@ import { DishInstanceChips } from "@/components/orders/DishInstanceChips";
 import { ServingPlan } from "@/components/orders/ServingPlan";
 import type { Locale } from "@/lib/i18n";
 import { restaurantMessages, servingMessages } from "@/lib/orders/messages";
+import { deliveredCount } from "@/lib/orders/pieces";
 import { dishKey } from "@/lib/orders/rules";
 import type { ServingSpot } from "@/lib/orders/serving";
 import { describeToServe } from "@/lib/orders/summary";
@@ -22,6 +23,8 @@ interface Props {
 interface ItemListProps {
   items: readonly RestaurantItemDto[];
   deliveredLabel: string;
+  // guest-delivered: „wydane 1 z 2” for a line served in part.
+  partlyLabel: (done: number, quantity: number) => string;
   // Lines with a place on the plan are buttons that light it up (serving-highlight).
   spotOf?: (item: RestaurantItemDto) => ServingSpot<RestaurantItemDto> | undefined;
   selectedSpot?: string | null;
@@ -29,19 +32,29 @@ interface ItemListProps {
   showLabel?: (dish: string) => string;
 }
 
-function ItemList({ items, deliveredLabel, spotOf, selectedSpot = null, onSelect, showLabel }: ItemListProps) {
+function ItemList({
+  items,
+  deliveredLabel,
+  partlyLabel,
+  spotOf,
+  selectedSpot = null,
+  onSelect,
+  showLabel,
+}: ItemListProps) {
   return (
     <ul className="flex flex-col gap-1">
       {items.map((item, index) => {
+        const done = deliveredCount(item);
+        const partly = done > 0 && !item.delivered;
         const content = (
           <>
             <span className={cn("font-medium", item.delivered && "line-through")}>
               {item.name} × {item.quantity}
             </span>
             {item.note && <span className="text-amber-700 dark:text-amber-400">{item.note}</span>}
-            {item.delivered && (
+            {(item.delivered || partly) && (
               <span className="rounded-full bg-emerald-600/10 px-2 py-0.5 text-xs text-emerald-700 dark:text-emerald-400">
-                {deliveredLabel}
+                {partly ? partlyLabel(done, item.quantity) : deliveredLabel}
               </span>
             )}
           </>
@@ -239,6 +252,7 @@ export function RestaurantView({ apiBase, initial, eventName, locale }: Props) {
                     </h4>
                     <ItemList
                       deliveredLabel={t.delivered}
+                      partlyLabel={t.partlyServed}
                       items={seat.items}
                       spotOf={spotOf}
                       selectedSpot={serving.selectedSpot}
@@ -252,6 +266,7 @@ export function RestaurantView({ apiBase, initial, eventName, locale }: Props) {
                     <h4 className="text-sm font-semibold">{t.middleOfTable}</h4>
                     <ItemList
                       deliveredLabel={t.delivered}
+                      partlyLabel={t.partlyServed}
                       items={table.tableItems}
                       spotOf={spotOf}
                       selectedSpot={serving.selectedSpot}
@@ -276,7 +291,7 @@ export function RestaurantView({ apiBase, initial, eventName, locale }: Props) {
                     <h4 className="text-sm font-semibold">
                       {group.kind === "guest" ? group.name : t.table(group.name)}
                     </h4>
-                    <ItemList deliveredLabel={t.delivered} items={group.items} />
+                    <ItemList deliveredLabel={t.delivered} partlyLabel={t.partlyServed} items={group.items} />
                   </div>
                 ))}
               </article>
@@ -284,7 +299,7 @@ export function RestaurantView({ apiBase, initial, eventName, locale }: Props) {
             {placement.unassigned.length > 0 && (
               <article className="flex flex-col gap-3 rounded-xl border p-4" aria-label={t.unassignedLabel}>
                 <h3 className="text-lg font-semibold">{t.unassignedHeading}</h3>
-                <ItemList deliveredLabel={t.delivered} items={placement.unassigned} />
+                <ItemList deliveredLabel={t.delivered} partlyLabel={t.partlyServed} items={placement.unassigned} />
               </article>
             )}
           </section>

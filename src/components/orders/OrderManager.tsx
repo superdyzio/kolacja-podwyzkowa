@@ -90,6 +90,9 @@ export function OrderManager({ apiBase, initial, locale }: Props) {
             onDelivered={(delivered) =>
               send({ method: "PATCH", path: `/orders/${String(item.id)}`, body: { delivered } })
             }
+            onPiece={(piece, delivered) =>
+              send({ method: "PUT", path: `/orders/${String(item.id)}/pieces`, body: { piece, delivered } })
+            }
             onDelete={() => {
               deleteLine(item);
             }}

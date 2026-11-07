@@ -68,55 +68,87 @@ describe("toTablemates", () => {
 
 describe("guestStateVersion", () => {
   it("is stable for the same inputs", () => {
-    expect(guestStateVersion("4.1700000000000", "Ania", OPEN)).toBe(guestStateVersion("4.1700000000000", "Ania", OPEN));
+    expect(guestStateVersion("4.1700000000000", "Ania", OPEN, [])).toBe(
+      guestStateVersion("4.1700000000000", "Ania", OPEN, []),
+    );
     expect(
-      guestStateVersion("4.17", "Ania", {
-        intakeOpen: false,
-        amountGrosze: 149_999,
-        predictedPlace: null,
-        maxPlace: 40,
-      }),
+      guestStateVersion(
+        "4.17",
+        "Ania",
+        {
+          intakeOpen: false,
+          amountGrosze: 149_999,
+          predictedPlace: null,
+          maxPlace: 40,
+        },
+        [],
+      ),
     ).toBe(
-      guestStateVersion("4.17", "Ania", {
-        intakeOpen: false,
-        amountGrosze: 149_999,
-        predictedPlace: null,
-        maxPlace: 40,
-      }),
+      guestStateVersion(
+        "4.17",
+        "Ania",
+        {
+          intakeOpen: false,
+          amountGrosze: 149_999,
+          predictedPlace: null,
+          maxPlace: 40,
+        },
+        [],
+      ),
     );
   });
 
   it("changes with the published version and with the name", () => {
-    const base = guestStateVersion("4.1700000000000", "Ania", OPEN);
-    expect(guestStateVersion("5.1700000000000", "Ania", OPEN)).not.toBe(base);
-    expect(guestStateVersion("4.1700000000001", "Ania", OPEN)).not.toBe(base);
-    expect(guestStateVersion("4.1700000000000", "Ania K.", OPEN)).not.toBe(base);
-    expect(guestStateVersion("4.1700000000000", "ania", OPEN)).not.toBe(base);
+    const base = guestStateVersion("4.1700000000000", "Ania", OPEN, []);
+    expect(guestStateVersion("5.1700000000000", "Ania", OPEN, [])).not.toBe(base);
+    expect(guestStateVersion("4.1700000000001", "Ania", OPEN, [])).not.toBe(base);
+    expect(guestStateVersion("4.1700000000000", "Ania K.", OPEN, [])).not.toBe(base);
+    expect(guestStateVersion("4.1700000000000", "ania", OPEN, [])).not.toBe(base);
   });
 
   it("changes when intake opens or closes and when the own guess changes (S-06)", () => {
     const versions = [
-      guestStateVersion("4.17", "Ania", OPEN),
-      guestStateVersion("4.17", "Ania", { intakeOpen: false, amountGrosze: null, predictedPlace: null, maxPlace: 40 }),
-      guestStateVersion("4.17", "Ania", { intakeOpen: true, amountGrosze: 0, predictedPlace: null, maxPlace: 40 }),
-      guestStateVersion("4.17", "Ania", {
-        intakeOpen: true,
-        amountGrosze: 150_000,
-        predictedPlace: null,
-        maxPlace: 40,
-      }),
-      guestStateVersion("4.17", "Ania", {
-        intakeOpen: false,
-        amountGrosze: 150_000,
-        predictedPlace: null,
-        maxPlace: 40,
-      }),
-      guestStateVersion("4.17", "Ania", {
-        intakeOpen: true,
-        amountGrosze: 150_001,
-        predictedPlace: null,
-        maxPlace: 40,
-      }),
+      guestStateVersion("4.17", "Ania", OPEN, []),
+      guestStateVersion(
+        "4.17",
+        "Ania",
+        { intakeOpen: false, amountGrosze: null, predictedPlace: null, maxPlace: 40 },
+        [],
+      ),
+      guestStateVersion("4.17", "Ania", { intakeOpen: true, amountGrosze: 0, predictedPlace: null, maxPlace: 40 }, []),
+      guestStateVersion(
+        "4.17",
+        "Ania",
+        {
+          intakeOpen: true,
+          amountGrosze: 150_000,
+          predictedPlace: null,
+          maxPlace: 40,
+        },
+        [],
+      ),
+      guestStateVersion(
+        "4.17",
+        "Ania",
+        {
+          intakeOpen: false,
+          amountGrosze: 150_000,
+          predictedPlace: null,
+          maxPlace: 40,
+        },
+        [],
+      ),
+      guestStateVersion(
+        "4.17",
+        "Ania",
+        {
+          intakeOpen: true,
+          amountGrosze: 150_001,
+          predictedPlace: null,
+          maxPlace: 40,
+        },
+        [],
+      ),
     ];
     expect(new Set(versions).size).toBe(versions.length);
   });
@@ -124,39 +156,71 @@ describe("guestStateVersion", () => {
   it("changes with the own place prediction and with the highest place allowed (guess-place)", () => {
     const guess = { ...OPEN, amountGrosze: 150_000 };
     const versions = [
-      guestStateVersion("4.17", "Ania", guess),
-      guestStateVersion("4.17", "Ania", { ...guess, predictedPlace: 3 }),
-      guestStateVersion("4.17", "Ania", { ...guess, predictedPlace: 30 }),
-      guestStateVersion("4.17", "Ania", { ...guess, maxPlace: 41 }),
-      guestStateVersion("4.17", "Ania", { ...guess, predictedPlace: 3, maxPlace: 41 }),
+      guestStateVersion("4.17", "Ania", guess, []),
+      guestStateVersion("4.17", "Ania", { ...guess, predictedPlace: 3 }, []),
+      guestStateVersion("4.17", "Ania", { ...guess, predictedPlace: 30 }, []),
+      guestStateVersion("4.17", "Ania", { ...guess, maxPlace: 41 }, []),
+      guestStateVersion("4.17", "Ania", { ...guess, predictedPlace: 3, maxPlace: 41 }, []),
+    ];
+    expect(new Set(versions).size).toBe(versions.length);
+  });
+
+  it("changes with the order lines the phone shows and their marks (guest-delivered)", () => {
+    const soup = {
+      lineId: 4,
+      name: "Rosół",
+      note: null,
+      quantity: 2,
+      kind: "own" as const,
+      pieces: [
+        { piece: 1, deliveredBy: null },
+        { piece: 2, deliveredBy: null },
+      ],
+    };
+    const versions = [
+      guestStateVersion("4.17", "Ania", OPEN, []),
+      guestStateVersion("4.17", "Ania", OPEN, [soup]),
+      guestStateVersion("4.17", "Ania", OPEN, [
+        { ...soup, pieces: [soup.pieces[0], { piece: 2, deliveredBy: "guest" as const }] },
+      ]),
+      guestStateVersion("4.17", "Ania", OPEN, [
+        { ...soup, pieces: [soup.pieces[0], { piece: 2, deliveredBy: "you" as const }] },
+      ]),
+      guestStateVersion("4.17", "Ania", OPEN, [{ ...soup, kind: "table" as const }]),
     ];
     expect(new Set(versions).size).toBe(versions.length);
   });
 
   it("starts with the seating token and stays short enough for the 64-character limit", () => {
-    const version = guestStateVersion(`${Number.MAX_SAFE_INTEGER}.${Number.MAX_SAFE_INTEGER}`, "Ż".repeat(40), {
-      intakeOpen: false,
-      amountGrosze: 1_000_000_000,
-      predictedPlace: 100,
-      maxPlace: 100,
-    });
+    const version = guestStateVersion(
+      `${Number.MAX_SAFE_INTEGER}.${Number.MAX_SAFE_INTEGER}`,
+      "Ż".repeat(40),
+      {
+        intakeOpen: false,
+        amountGrosze: 1_000_000_000,
+        predictedPlace: 100,
+        maxPlace: 100,
+      },
+      [],
+    );
     expect(version.startsWith(`${Number.MAX_SAFE_INTEGER}.${Number.MAX_SAFE_INTEGER}.`)).toBe(true);
     expect(version.length).toBeLessThanOrEqual(64);
   });
 });
 
 describe("toGuestState", () => {
-  const base = { seatingVersion: "4.17", planVersion: 17, name: "Ania", guess: OPEN };
+  const base = { seatingVersion: "4.17", planVersion: 17, name: "Ania", guess: OPEN, orders: [] };
 
   it("is unpublished before the first publish, even with a seat in hand", () => {
     expect(toGuestState({ ...base, seatingVersion: "0.17", snapshotId: null, seat: SEAT })).toEqual({
-      version: guestStateVersion("0.17", "Ania", OPEN),
+      version: guestStateVersion("0.17", "Ania", OPEN, []),
       name: "Ania",
       status: "unpublished",
       seat: null,
       planVersion: 17,
       guess: OPEN,
       drawing: null,
+      orders: [],
     });
   });
 
@@ -166,13 +230,14 @@ describe("toGuestState", () => {
 
   it("is seated with the snapshot seat", () => {
     expect(toGuestState({ ...base, snapshotId: 4, seat: SEAT })).toEqual({
-      version: guestStateVersion("4.17", "Ania", OPEN),
+      version: guestStateVersion("4.17", "Ania", OPEN, []),
       name: "Ania",
       status: "seated",
       seat: SEAT,
       planVersion: 17,
       guess: OPEN,
       drawing: null,
+      orders: [],
     });
   });
 
@@ -188,14 +253,28 @@ describe("toGuestState", () => {
     const state = toGuestState({ ...base, snapshotId: 4, seat: null, guess: leaky });
     expect(state.guess).toEqual({ intakeOpen: false, amountGrosze: 149_999, predictedPlace: null, maxPlace: 40 });
     expect(state.version).toBe(
-      guestStateVersion("4.17", "Ania", {
-        intakeOpen: false,
-        amountGrosze: 149_999,
-        predictedPlace: null,
-        maxPlace: 40,
-      }),
+      guestStateVersion(
+        "4.17",
+        "Ania",
+        {
+          intakeOpen: false,
+          amountGrosze: 149_999,
+          predictedPlace: null,
+          maxPlace: 40,
+        },
+        [],
+      ),
     );
-    expect(Object.keys(state).sort()).toEqual(["drawing", "guess", "name", "planVersion", "seat", "status", "version"]);
+    expect(Object.keys(state).sort()).toEqual([
+      "drawing",
+      "guess",
+      "name",
+      "orders",
+      "planVersion",
+      "seat",
+      "status",
+      "version",
+    ]);
   });
 
   it("carries no ids, keys, correct amount or ranking", () => {
@@ -208,19 +287,27 @@ describe("describeGuestSeat", () => {
   it("names table, room and seat", () => {
     expect(
       describeGuestSeat(
-        toGuestState({ seatingVersion: "4.0", planVersion: null, name: "A", snapshotId: 4, seat: SEAT, guess: OPEN }),
+        toGuestState({
+          seatingVersion: "4.0",
+          planVersion: null,
+          name: "A",
+          snapshotId: 4,
+          seat: SEAT,
+          guess: OPEN,
+          orders: [],
+        }),
       ),
     ).toBe("Twoje miejsce: stolik Okno, sala Sala A, miejsce 3.");
   });
 
   it("explains the other two states", () => {
-    const common = { seatingVersion: "0.0", planVersion: null, name: "A", seat: null, guess: OPEN };
+    const common = { seatingVersion: "0.0", planVersion: null, name: "A", seat: null, guess: OPEN, orders: [] };
     expect(describeGuestSeat(toGuestState({ ...common, snapshotId: null }))).toBe(GUEST_UNPUBLISHED_MESSAGE);
     expect(describeGuestSeat(toGuestState({ ...common, snapshotId: 2 }))).toBe(GUEST_UNSEATED_MESSAGE);
   });
 
   it("speaks English when asked", () => {
-    const common = { seatingVersion: "4.0", planVersion: null, name: "A", guess: OPEN };
+    const common = { seatingVersion: "4.0", planVersion: null, name: "A", guess: OPEN, orders: [] };
     expect(describeGuestSeat(toGuestState({ ...common, snapshotId: 4, seat: SEAT }), "en")).toBe(
       "Your seat: table Okno, room Sala A, seat 3.",
     );
@@ -233,7 +320,7 @@ describe("describeGuestSeat", () => {
   });
 
   it("does not depend on the guess, so a guess change never looks like a new seat", () => {
-    const common = { seatingVersion: "4.0", planVersion: null, name: "A", snapshotId: 4, seat: SEAT };
+    const common = { seatingVersion: "4.0", planVersion: null, name: "A", snapshotId: 4, seat: SEAT, orders: [] };
     expect(describeGuestSeat(toGuestState({ ...common, guess: OPEN }))).toBe(
       describeGuestSeat(
         toGuestState({ ...common, guess: { intakeOpen: false, amountGrosze: 5, predictedPlace: null, maxPlace: 40 } }),

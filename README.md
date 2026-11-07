@@ -84,6 +84,12 @@ Na obu stronach (u organizatora i w restauracji) obok list jest plan sali. Klikn
 
 Na produkcji ta zmiana wymaga migracji bazy **przed** wdrożeniem kodu: bez niej każda strona organizatora kończy się błędem 500 (panel czyta link restauracji). Kolejność: kopia danych (`npx supabase db dump --data-only -f ~/kolacja-backup-<data>.sql`), `npx supabase db push` (wgrywa też migrację planu sali, jeśli jeszcze jej nie było), potem `npm run deploy:aws`. Migracja tylko dodaje: istniejące linki organizatora, TV i gości się nie zmieniają.
 
+## Co dotarło na stół
+
+Gość widzi na swoim telefonie sekcję „Twoje zamówienie”: swoje dania i dania na środek swojego stolika (z opublikowanego rozsadzenia), bez cen. Każdą sztukę zaznacza osobno przyciskiem „Dotarło” (dzbanek × 2 to dwa przyciski) i może to cofnąć. Zaznaczenie organizatora może cofnąć tylko organizator. Przy każdej sztuce widać, kto ją zaznaczył: gość widzi „Ty”, „gość” albo „organizator”, organizator widzi imię gościa. U organizatora (`/o/<klucz>/zamowienia`) „Wydane” dalej zaznacza całą pozycję, a przy pozycjach z kilkoma sztukami są osobne przyciski sztuk („✓ 2 · Basia”); strona odświeża się sama co 5 s. Restauracja widzi „wydane 1 z 2”, a na planie wydane sztuki są szare.
+
+Na produkcji ta zmiana wymaga migracji bazy **przed** wdrożeniem kodu (bez niej telefony gości przestają się odświeżać): kopia danych, `npx supabase db push`, potem `npm run deploy:aws`. Między `db push` a wdrożeniem nie odhaczaj „Wydane”. Migracja tylko dodaje tabelę i funkcje; już odhaczone pozycje zostają wydane (wszystkie sztuki, przez organizatora). Telefony otwarte przed wdrożeniem pokażą nową sekcję dopiero po odświeżeniu strony.
+
 ## Typ miejsca w konkursie strzałów
 
 Obok kwoty gość może (nie musi) wpisać, które miejsce zajmie w rankingu: od 1 do liczby gości. Zapisuje się razem z kwotą i można go zmieniać (albo wyczyścić) do zamknięcia przyjmowania. Telefon ze starą wersją strony (otwartą przed wdrożeniem) wysyła samą kwotę — wtedy zapisany typ zostaje. Ranking nadal liczy się tylko z kwoty. Organizator może wpisać albo poprawić typ za gościa („Popraw” przy gościu na `/o/<klucz>/strzaly`).

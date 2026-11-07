@@ -6,13 +6,15 @@ import {
   dishInstances,
   formatInstanceNumbers,
   instanceMarks,
+  isInstanceServed,
   markedTables,
   resolveSelection,
   servingSpots,
 } from "./serving";
 
 function item(name: string, quantity = 1, fields: Partial<RestaurantItemDto> = {}): RestaurantItemDto {
-  return { name, note: null, quantity, delivered: false, ...fields };
+  const deliveredPieces = fields.delivered ? Array.from({ length: quantity }, (_, index) => index + 1) : [];
+  return { name, note: null, quantity, delivered: false, deliveredPieces, ...fields };
 }
 
 // Okno: Ania (seat 1) has a soup, Bartek (seat 3) two soups and a cutlet, two soups in the middle; Kominek: Celina
@@ -92,6 +94,51 @@ describe("dishInstances", () => {
 
   it("shows the given spelling of a dish", () => {
     expect(dishInstances(servingSpots(placement), ["ROSÓŁ"]).get("rosół")?.name).toBe("ROSÓŁ");
+  });
+});
+
+describe("single delivered pieces (guest-delivered)", () => {
+  // Bartek's two soups: only the SECOND piece arrived (deliveredPieces are 1-based, an instance's piece 0-based).
+  const half: OrderPlacementDto<RestaurantItemDto> = {
+    tables: [
+      {
+        name: "Okno",
+        room: "Sala",
+        seats: [{ seat: 3, guestName: "Bartek", items: [item("Rosół", 2, { deliveredPieces: [2] })] }],
+        tableItems: [],
+      },
+    ],
+    unplaced: [],
+    unassigned: [],
+  };
+  const spots = servingSpots(half);
+  const soup = dishInstances(spots).get("rosół");
+
+  it("serves exactly the marked piece", () => {
+    expect(soup?.instances.map((one) => [one.number, one.piece, isInstanceServed(one)])).toEqual([
+      [1, 0, false],
+      [2, 1, true],
+    ]);
+  });
+
+  it("greys out only the served piece's mark and names it in the caption", () => {
+    expect(instanceMarks(soup?.instances ?? [], true)).toEqual([
+      { table: "Okno", seat: 3, label: "1", done: false },
+      { table: "Okno", seat: 3, label: "2", done: true },
+    ]);
+    const dishes = dishInstances(spots);
+    const second = resolveSelection(
+      { kind: "dish", dish: "rosół", instance: { spotKey: spots[0].key, piece: 1 } },
+      spots,
+      dishes,
+    );
+    const first = resolveSelection(
+      { kind: "dish", dish: "rosół", instance: { spotKey: spots[0].key, piece: 0 } },
+      spots,
+      dishes,
+    );
+    expect(second && describeSelection(second)).toMatch(/\(wydane\)$/);
+    expect(first && describeSelection(first)).not.toMatch(/wydane/);
   });
 });
 

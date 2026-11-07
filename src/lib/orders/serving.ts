@@ -1,6 +1,7 @@
 import type { Locale } from "@/lib/i18n/locale";
 import type { OrderPlacementDto } from "@/types";
 import { servingMessages } from "./messages";
+import { isPieceDelivered } from "./pieces";
 import { dishKey } from "./rules";
 
 // Where each dish goes, for highlighting on the drawn plan (serving-highlight), pure. A "spot" is one order line at its
@@ -12,7 +13,10 @@ export interface ServingLine {
   name: string;
   note: string | null;
   quantity: number;
+  // Every piece delivered.
   delivered: boolean;
+  // guest-delivered: the delivered pieces, 1-based (a DishInstance's `piece` is 0-based: piece + 1).
+  deliveredPieces: readonly number[];
 }
 
 export type ServingPlace =
@@ -32,7 +36,7 @@ export interface DishInstance<T> {
   // 1-based within the dish, in placement order (shown; it shifts when lines are added before it).
   number: number;
   spotKey: string;
-  // 0-based within its line: with spotKey, what a selection holds on to.
+  // 0-based within its line: with spotKey, what a selection holds on to. Its delivery mark is piece + 1.
   piece: number;
   item: T;
   place: ServingPlace;
@@ -130,6 +134,11 @@ export function dishInstances<T extends ServingLine>(
   return dishes;
 }
 
+// guest-delivered: this very piece was marked delivered (not just its line).
+export function isInstanceServed(instance: Pick<DishInstance<ServingLine>, "item" | "piece">): boolean {
+  return isPieceDelivered(instance.item, instance.piece + 1);
+}
+
 export function isOnPlan(place: ServingPlace): place is Extract<ServingPlace, { kind: "seat" | "table" }> {
   return place.kind === "seat" || place.kind === "table";
 }
@@ -162,7 +171,7 @@ export function instanceMarks<T extends ServingLine>(
       continue;
     }
     const seat = place.kind === "seat" ? place.seat : null;
-    const done = instance.item.delivered;
+    const done = isInstanceServed(instance);
     const key = `${place.table}\u0000${String(seat)}\u0000${String(done)}`;
     const mark = marks.get(key) ?? { table: place.table, seat, numbers: [], done };
     mark.numbers.push(instance.number);
@@ -276,10 +285,10 @@ export function describeSelection<T extends ServingLine>(
   locale: Locale = "pl",
 ): string {
   const t = servingMessages(locale);
-  const served = (item: ServingLine) => (item.delivered ? ` (${t.served})` : "");
+  const served = (done: boolean) => (done ? ` (${t.served})` : "");
   if (resolved.kind === "spot") {
     const { item, place } = resolved.spot;
-    return `${item.name} × ${String(item.quantity)} → ${describePlace(place, locale)}${served(item)}`;
+    return `${item.name} × ${String(item.quantity)} → ${describePlace(place, locale)}${served(item.delivered)}`;
   }
   const { instances } = resolved;
   const one = resolved.instance ?? (instances.length === 1 ? instances[0] : null);
@@ -287,5 +296,5 @@ export function describeSelection<T extends ServingLine>(
     return t.dishAll(resolved.name, instances.length);
   }
   const counter = instances.length > 1 ? ` ${String(one.number)}/${String(instances.length)}` : "";
-  return `${resolved.name}${counter} → ${describePlace(one.place, locale)}${served(one.item)}`;
+  return `${resolved.name}${counter} → ${describePlace(one.place, locale)}${served(isInstanceServed(one))}`;
 }

@@ -1,6 +1,7 @@
 import { generateAccessKey } from "@/lib/access/keys";
 import { EVENT_ID } from "@/lib/event";
 import { getGuestGuess } from "@/lib/guesses/service";
+import { getGuestOrders } from "@/lib/orders/service";
 import { getPublishedVersion, readSnapshotRooms } from "@/lib/seating/service";
 import type { DbClient } from "@/lib/supabase-client";
 import { DEFAULT_CHAIR_PITCH, compareTableNames, isTableShape } from "@/lib/venue/rules";
@@ -164,9 +165,13 @@ async function guestDrawing(db: DbClient, snapshotId: number): Promise<GuestDraw
 }
 
 // What the guest's phone shows: their current name, their seat in the latest PUBLISHED arrangement with the drawing
-// of that arrangement, and (S-06) the guess intake flag with their own guess.
+// of that arrangement, (S-06) the guess intake flag with their own guess and (guest-delivered) their order lines.
 export async function getGuestState(db: DbClient, guest: { id: number; displayName: string }): Promise<GuestStateDto> {
-  const [published, guess] = await Promise.all([getPublishedVersion(db), getGuestGuess(db, guest.id)]);
+  const [published, guess, orders] = await Promise.all([
+    getPublishedVersion(db),
+    getGuestGuess(db, guest.id),
+    getGuestOrders(db, guest.id),
+  ]);
   const snapshotId = published.snapshotId;
   const seat = snapshotId === null ? null : await guestSeat(db, snapshotId, guest.id);
   // Only a seated guest sees the drawing (state.ts drops it otherwise): unseated phones skip its queries.
@@ -179,12 +184,17 @@ export async function getGuestState(db: DbClient, guest: { id: number; displayNa
     seat,
     guess,
     drawing,
+    orders,
   });
 }
 
-// The guest's polling token without reading any seat (the 204 path): the published version and the own guess in
-// parallel, one round trip.
+// The guest's polling token without reading any seat (the 204 path): the published version, the own guess and the
+// order lines (the same RPC and mapping as getGuestState, so both give the same token) in parallel, one round trip.
 export async function getGuestStateVersion(db: DbClient, guest: { id: number; displayName: string }): Promise<string> {
-  const [published, guess] = await Promise.all([getPublishedVersion(db), getGuestGuess(db, guest.id)]);
-  return guestStateVersion(published.version, guest.displayName, guess);
+  const [published, guess, orders] = await Promise.all([
+    getPublishedVersion(db),
+    getGuestGuess(db, guest.id),
+    getGuestOrders(db, guest.id),
+  ]);
+  return guestStateVersion(published.version, guest.displayName, guess, orders);
 }
