@@ -15,14 +15,20 @@ import { formatNameList, type SeatingInput } from "./rules";
 // - every group with ≥ 2 present members sits at one table on consecutive seats: an arc of a round table (wrapping
 //   around) or a run on ONE side of a rectangular table (areConsecutiveSeats in seats.ts); when some members are
 //   pinned, the others complete one block of consecutive seats around them at that table.
+// The draw's own hard rule (draw-neighbour; not re-checked by validateDraft): nobody sits alone — every present seated
+// guest, pinned ones included, has at least one neighbour (`neighbours()`: side or opposite) occupied by a present
+// guest; the seat of an absent pinned guest is no company. When the search cannot reach that, the draw is refused
+// ("lonely", with the names) and nothing is sent.
 // Soft rule: as few repeated neighbour pairs as possible, a "repeated pair" being two guests who are neighbours now
 // and in any published arrangement (history), except members of one group.
 //
 // Search: static feasibility checks → groups placed by randomized backtracking (largest first, forward checking) →
 // singles shuffled into the free seats → local search (move/swap a single, relocate a group to another block with
 // the displaced singles taking its old seats, permute a group within its block) with an incremental cost and
-// simulated-annealing acceptance, restarting from the best arrangement when it stalls. It stops at 0 repeats, after
-// `maxIterations`, or when the time budget is used up (the clock is read every 256 iterations).
+// simulated-annealing acceptance, restarting from the best arrangement when it stalls. The cost is the repeats plus
+// a weight above any possible repeat count per guest left alone, so a lonely guest is never traded for fewer repeats.
+// It stops with nobody alone and 0 repeats, after `maxIterations`, or when the time budget is used up (the clock is
+// read every 256 iterations).
 
 export const DEFAULT_DRAW_BUDGET_MS = 1200;
 // Notice after a draw was saved as the working arrangement.
@@ -46,7 +52,8 @@ export type DrawProblem =
   | { kind: "group-too-large"; names: string[] }
   | { kind: "pinned-group-split"; names: string[] }
   | { kind: "pinned-group-no-room"; names: string[] }
-  | { kind: "groups-do-not-fit" };
+  | { kind: "groups-do-not-fit" }
+  | { kind: "lonely"; names: string[] };
 
 export type DrawResult =
   | { status: "drawn"; seats: DraftSeat[]; repeats: number; iterations: number }
@@ -66,6 +73,8 @@ export function describeDrawProblem(problem: DrawProblem, locale: Locale = "pl")
       return messages.drawPinnedGroupNoRoom(formatNameList(problem.names, locale));
     case "groups-do-not-fit":
       return messages.drawGroupsDoNotFit;
+    case "lonely":
+      return messages.drawLonely(formatNameList(problem.names, locale));
   }
 }
 
@@ -95,8 +104,11 @@ function defaultNow(): number {
 const EMPTY = -1;
 // The seat of an absent pinned guest: taken, but nobody sits there.
 const BLOCKED = -2;
-// Backtracking nodes for placing the groups before giving up.
+// Backtracking nodes for placing the groups: the first attempt, then each fresh random restart (heavy-tailed search:
+// an unlucky order of choices can stall a placement that a new order finds at once).
 const PLACEMENT_NODE_LIMIT = 50_000;
+const PLACEMENT_RESTART_NODES = 10_000;
+const PLACEMENT_RESTARTS = 7;
 const TEMPERATURE = 0.3;
 const KICK_MOVES = 12;
 
@@ -214,6 +226,18 @@ export function drawSeating(input: SeatingInput, history: readonly GuestPair[], 
   if (guestCount > seatCount - blocked) {
     problems.push({ kind: "too-many-guests", present: guestCount, seats: seatCount - blocked });
   }
+  // Nobody can ever sit with them (draw-neighbour): refused at once rather than after the whole search — the only
+  // present guest, or a pinned guest whose every neighbour seat is pinned with nobody present on it.
+  if (guestCount === 1) {
+    problems.push({ kind: "lonely", names: [present[0]?.displayName ?? "?"] });
+  } else {
+    const alone = [...pinnedSeatOf].filter(([, seatIndex]) =>
+      (adjacency[seatIndex] ?? []).every((other) => fixed[other] === 1 && (initial[other] ?? EMPTY) < 0),
+    );
+    if (alone.length > 0) {
+      problems.push({ kind: "lonely", names: alone.map(([guestIndex]) => present[guestIndex]?.displayName ?? "?") });
+    }
+  }
 
   // Conflicts: pairs from the history among present guests, minus pairs within one group.
   const conflict = new Uint8Array(guestCount * guestCount);
@@ -309,24 +333,27 @@ export function drawSeating(input: SeatingInput, history: readonly GuestPair[], 
   for (const [guestIndex, seatIndex] of pinnedSeatOf) {
     seatOf[guestIndex] = seatIndex;
   }
-  const order = shuffle(units.map((_, index) => index)).sort((a, b) => {
-    const unitA = units[a];
-    const unitB = units[b];
-    return (
-      Number(unitB.pinnedSeats.size > 0) - Number(unitA.pinnedSeats.size > 0) ||
-      unitB.members.length + unitB.pinnedSeats.size - (unitA.members.length + unitA.pinnedSeats.size)
-    );
-  });
+  const unitOrder = () =>
+    shuffle(units.map((_, index) => index)).sort((a, b) => {
+      const unitA = units[a];
+      const unitB = units[b];
+      return (
+        Number(unitB.pinnedSeats.size > 0) - Number(unitA.pinnedSeats.size > 0) ||
+        unitB.members.length + unitB.pinnedSeats.size - (unitA.members.length + unitA.pinnedSeats.size)
+      );
+    });
+  let order = unitOrder();
   const blockIsFree = (unit: Unit, block: readonly number[]) =>
     block.every((seat) => unit.pinnedSeats.has(seat) || occupant[seat] === EMPTY);
   const movableSeats = (unit: Unit, block: readonly number[]) => block.filter((seat) => !unit.pinnedSeats.has(seat));
   let nodes = 0;
+  let nodeLimit = PLACEMENT_NODE_LIMIT;
   let aborted = false;
   const place = (position: number): boolean => {
     if (position === order.length) {
       return true;
     }
-    if (++nodes > PLACEMENT_NODE_LIMIT) {
+    if (++nodes > nodeLimit) {
       aborted = true;
       return false;
     }
@@ -357,7 +384,25 @@ export function drawSeating(input: SeatingInput, history: readonly GuestPair[], 
     }
     return false;
   };
-  if (!place(0)) {
+  // A failed place() undoes its writes, so every attempt starts from the pinned seats only. Only a search that gave up
+  // (aborted) is retried; one that tried everything proves the groups do not fit.
+  // Read through a function: TypeScript does not see place() setting `aborted`.
+  const gaveUp = () => aborted;
+  // The restarts stop at half the draw's budget, so placement plus search stay near the budget on hopeless inputs.
+  const placementStart = now();
+  let placed = place(0);
+  for (
+    let restart = 0;
+    !placed && gaveUp() && restart < PLACEMENT_RESTARTS && now() - placementStart < budget / 2;
+    restart++
+  ) {
+    nodes = 0;
+    nodeLimit = PLACEMENT_RESTART_NODES;
+    aborted = false;
+    order = unitOrder();
+    placed = place(0);
+  }
+  if (!placed) {
     return { status: "infeasible", problems: [{ kind: "groups-do-not-fit" }] };
   }
 
@@ -384,10 +429,51 @@ export function drawSeating(input: SeatingInput, history: readonly GuestPair[], 
     }
   }
 
-  // Cost: repeated pairs over the neighbour edges.
+  // Cost: repeated pairs over the neighbour edges, plus LONELY_WEIGHT per present guest without a present neighbour.
+  // The weight exceeds the number of edges (every possible repeat), so one guest fewer alone always wins.
   const conflicts = (a: number, b: number) => (a >= 0 && b >= 0 ? (conflict[a * guestCount + b] ?? 0) : 0);
+  let edgeCount = 0;
+  for (const around of adjacency) {
+    edgeCount += around.length;
+  }
+  const LONELY_WEIGHT = edgeCount / 2 + 1;
+  // A present guest (pinned or not) none of whose neighbour seats holds a present guest (EMPTY and BLOCKED are not).
+  const isLonely = (seat: number): boolean => {
+    if ((occupant[seat] ?? EMPTY) < 0) {
+      return false;
+    }
+    for (const other of adjacency[seat] ?? []) {
+      if ((occupant[other] ?? EMPTY) >= 0) {
+        return false;
+      }
+    }
+    return true;
+  };
   const mark = new Int32Array(seatCount);
   let stamp = 0;
+  const lonelyMark = new Int32Array(seatCount);
+  let lonelyStamp = 0;
+  // Guests alone among the changed seats and their neighbours (the only seats whose loneliness a move can change);
+  // the same seats before and after a move, so the difference is the move's effect.
+  const lonelyAround = (changed: readonly number[]): number => {
+    lonelyStamp++;
+    let count = 0;
+    const visit = (seat: number) => {
+      if (lonelyMark[seat] !== lonelyStamp) {
+        lonelyMark[seat] = lonelyStamp;
+        if (isLonely(seat)) {
+          count++;
+        }
+      }
+    };
+    for (const seat of changed) {
+      visit(seat);
+      for (const other of adjacency[seat] ?? []) {
+        visit(other);
+      }
+    }
+    return count;
+  };
   const localCost = (changed: readonly number[]): number => {
     stamp++;
     for (const seat of changed) {
@@ -406,19 +492,29 @@ export function drawSeating(input: SeatingInput, history: readonly GuestPair[], 
         cost += conflicts(guestIndex, occupant[other] ?? EMPTY);
       }
     }
-    return cost;
+    return cost + LONELY_WEIGHT * lonelyAround(changed);
   };
-  const totalCost = (): number => {
-    let cost = 0;
+  const totalRepeats = (): number => {
+    let repeats = 0;
     for (let seat = 0; seat < seatCount; seat++) {
       for (const other of adjacency[seat] ?? []) {
         if (other > seat) {
-          cost += conflicts(occupant[seat] ?? EMPTY, occupant[other] ?? EMPTY);
+          repeats += conflicts(occupant[seat] ?? EMPTY, occupant[other] ?? EMPTY);
         }
       }
     }
-    return cost;
+    return repeats;
   };
+  const lonelySeats = (): number[] => {
+    const seats: number[] = [];
+    for (let seat = 0; seat < seatCount; seat++) {
+      if (isLonely(seat)) {
+        seats.push(seat);
+      }
+    }
+    return seats;
+  };
+  const totalCost = (): number => totalRepeats() + LONELY_WEIGHT * lonelySeats().length;
 
   const isSingleSeat = (seat: number) => {
     const guestIndex = occupant[seat] ?? EMPTY;
@@ -529,7 +625,9 @@ export function drawSeating(input: SeatingInput, history: readonly GuestPair[], 
   let iterations = 0;
   let sinceBest = 0;
   let forced = 0;
-  while (best > 0 && iterations < maxIterations) {
+  // No move can change anything (everyone pinned, groups without a second block): the start is the result.
+  const canMove = singles.length > 0 || units.some((unit) => unit.candidates.length > 1 || unit.members.length > 1);
+  while (canMove && best > 0 && iterations < maxIterations) {
     if ((iterations & 255) === 0 && now() - start >= budget) {
       break;
     }
@@ -565,13 +663,20 @@ export function drawSeating(input: SeatingInput, history: readonly GuestPair[], 
     }
   }
 
+  // The best arrangement, measured again from scratch: who is alone, how many repeats.
+  restoreBest();
+  const alone = lonelySeats();
+  if (alone.length > 0) {
+    const names = alone.map((seat) => present[occupant[seat] ?? 0]?.displayName ?? "?");
+    return { status: "infeasible", problems: [{ kind: "lonely", names }] };
+  }
   const seats: DraftSeat[] = [];
   for (let seat = 0; seat < seatCount; seat++) {
-    const guestIndex = bestOccupant[seat] ?? EMPTY;
+    const guestIndex = occupant[seat] ?? EMPTY;
     const guest = guestIndex >= 0 ? present[guestIndex] : undefined;
     if (guest && !pinnedGuest[guestIndex]) {
       seats.push({ guestId: guest.id, tableId: seatTableId[seat] ?? 0, seat: seatNumber[seat] ?? 0 });
     }
   }
-  return { status: "drawn", seats, repeats: best, iterations };
+  return { status: "drawn", seats, repeats: totalRepeats(), iterations };
 }

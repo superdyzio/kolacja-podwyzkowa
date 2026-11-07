@@ -3,6 +3,7 @@ import { displayNameKey, displayNameLength, normalizeDisplayName } from "@/lib/g
 import type { Locale } from "@/lib/i18n/locale";
 import type { OrderItemDto, OrderTotalsDto } from "@/types";
 import { orderMessages } from "./messages";
+import { deliveredCount } from "./pieces";
 
 // Order-line rules shared by the DB service, the API routes and the organizer UI (restaurant-orders). Pure functions
 // only: no DB, no `astro:*`. The DB checks the same bounds (migration 20261102120000_restaurant_orders.sql).
@@ -96,9 +97,7 @@ export function orderTotals(items: readonly OrderItemDto[]): OrderTotalsDto {
   for (const item of items) {
     quantity += item.quantity;
     totalGrosze += lineTotal(item);
-    if (item.delivered) {
-      deliveredQuantity += item.quantity;
-    }
+    deliveredQuantity += deliveredCount(item);
   }
   return { lines: items.length, quantity, deliveredQuantity, totalGrosze };
 }

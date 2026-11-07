@@ -133,7 +133,7 @@ Flow wieczoru według użytkownika: wpisanie gości → wgranie zrzutu powierzch
   > Socratic: Counter-argument considered: "Baza początkowa powinna być gotowa na starcie." Resolution: startowa baza (ok. 30 pytań na kategorię) przygotowana do przejrzenia przez użytkownika + hurtowe wklejenie.
 - FR-015: Organizator lub gość can wylosować pytanie z bazy z wybranej kategorii albo ze wszystkich; wylosowane pytanie widzi tylko ten, kto je wylosował. Priority: must-have
 - FR-016: Organizator lub gość can wygenerować z AI temat do rozmowy w wybranej kategorii; widzi go tylko ten, kto go wygenerował. Priority: must-have
-  > Socratic: Counter-argument considered: "Koszt i abuse: 40 gości może zalewać AI zapytaniami." Resolution: limit 15 tematów na gościa i łączny limit na wieczór (NFR-005); osobiste linki uniemożliwiają obejście limitu zmianą tożsamości.
+  > Socratic: Counter-argument considered: "Koszt i abuse: 40 gości może zalewać AI zapytaniami." Resolution: limit 25 tematów na gościa i łączny limit na wieczór (NFR-005); osobiste linki uniemożliwiają obejście limitu zmianą tożsamości.
 
 ### Strzały kwoty
 - FR-017: Gość can wpisać swój strzał kwoty (ile kosztowała cała kolacja, razem z napiwkiem) w złotych z groszami (≥ 0) i zmieniać go do zamknięcia przyjmowania; widzi tylko własny strzał. Priority: must-have
@@ -148,7 +148,7 @@ Flow wieczoru według użytkownika: wpisanie gości → wgranie zrzutu powierzch
 - NFR-002: Do 60 gości korzystających z telefonów jednocześnie (zapas na 35–40) nie pogarsza NFR-001 ani NFR-003.
 - NFR-003: Po publikacji rozkładu ekran TV i otwarte telefony gości pokazują nowy rozkład w czasie ≤ 5 s, bez żadnej akcji gościa.
 - NFR-004: Bez dostępu do sieci organizator widzi ostatni opublikowany rozkład i ranking strzałów zebranych przed awarią, także po odświeżeniu strony; funkcje gości i AI wracają razem z siecią.
-- NFR-005: Gość wygeneruje najwyżej 15 tematów AI na wieczór; łącznie na wieczór powstaje najwyżej 1000 tematów AI (organizator może wyzerować licznik); organizator nie ma limitu na osobę. Temat AI pojawia się w czasie ≤ 10 s; gdy go nie ma, gość widzi komunikat i może wylosować pytanie z bazy, a nieudana próba nie zmniejsza limitu.
+- NFR-005: Gość wygeneruje najwyżej 25 tematów AI na wieczór; łącznie na wieczór powstaje najwyżej 1000 tematów AI (organizator może wyzerować licznik); organizator nie ma limitu na osobę. Temat AI pojawia się w czasie ≤ 10 s; gdy go nie ma, gość widzi komunikat i może wylosować pytanie z bazy, a nieudana próba nie zmniejsza limitu.
 - NFR-006: Na ekranie TV cały plan z imionami mieści się bez przewijania, a każde imię ma wysokość co najmniej 2,5% wysokości ekranu.
 - NFR-007: Projekt nowego rozkładu dla 60 gości jest gotowy w czasie ≤ 3 s.
 - NFR-008: Widok gościa działa w dwóch ostatnich głównych wersjach popularnych przeglądarek mobilnych, bez instalacji i konta.

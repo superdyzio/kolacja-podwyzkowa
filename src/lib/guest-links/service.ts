@@ -1,6 +1,7 @@
 import { generateAccessKey } from "@/lib/access/keys";
 import { EVENT_ID } from "@/lib/event";
 import { getGuestGuess } from "@/lib/guesses/service";
+import { getGuestOrders } from "@/lib/orders/service";
 import { getPublishedVersion, readSnapshotRooms } from "@/lib/seating/service";
 import type { DbClient } from "@/lib/supabase-client";
 import { DEFAULT_CHAIR_PITCH, compareTableNames, isTableShape } from "@/lib/venue/rules";
@@ -13,7 +14,7 @@ import { guestStateVersion, toGuestState, toTablemates } from "./state";
 //
 // Keys live in guest.access_key (the DB default gives every guest one); revoking writes a fresh key, so the old link
 // stops working at once. The guest side reads only what the guest may see: their own seat in the latest snapshot and
-// the published names at that table (what the TV shows anyway).
+// the published seating of that snapshot (names at their chairs, what the TV shows anyway).
 
 const UNIQUE_VIOLATION = "23505";
 
@@ -127,12 +128,14 @@ async function guestSeat(db: DbClient, snapshotId: number, guestId: number): Pro
 // The drawing of snapshot `snapshotId` as a guest may see it (venue-drawing): every table's geometry and name, the
 // outlined rooms and the pitch — never who sits where.
 async function guestDrawing(db: DbClient, snapshotId: number): Promise<GuestDrawingDto> {
-  const [snapshot, tables, rooms] = await Promise.all([
+  // At most MAX_GUESTS (100) seats per snapshot: one page, no paging needed.
+  const [snapshot, tables, seats, rooms] = await Promise.all([
     db.from("seating_snapshot").select("chair_pitch").eq("id", snapshotId).maybeSingle(),
     db
       .from("seating_snapshot_table")
-      .select("name, shape, seat_count, pos_x, pos_y, rotation")
+      .select("id, name, shape, seat_count, pos_x, pos_y, rotation")
       .eq("snapshot_id", snapshotId),
+    db.from("seating_snapshot_seat").select("snapshot_table_id, seat, guest_name").eq("snapshot_id", snapshotId),
     readSnapshotRooms(db, snapshotId),
   ]);
   if (snapshot.error) {
@@ -140,6 +143,9 @@ async function guestDrawing(db: DbClient, snapshotId: number): Promise<GuestDraw
   }
   if (tables.error) {
     fail("odczytać rysunku sali", tables.error.message);
+  }
+  if (seats.error) {
+    fail("odczytać rysunku sali", seats.error.message);
   }
   return {
     chairPitch: snapshot.data?.chair_pitch ?? DEFAULT_CHAIR_PITCH,
@@ -155,6 +161,10 @@ async function guestDrawing(db: DbClient, snapshotId: number): Promise<GuestDraw
                 x: table.pos_x,
                 y: table.pos_y,
                 rotation: table.rotation ?? 0,
+                seats: seats.data
+                  .filter((seat) => seat.snapshot_table_id === table.id)
+                  .sort((a, b) => a.seat - b.seat)
+                  .map((seat) => ({ seat: seat.seat, name: seat.guest_name })),
               },
             ]
           : [],
@@ -164,9 +174,13 @@ async function guestDrawing(db: DbClient, snapshotId: number): Promise<GuestDraw
 }
 
 // What the guest's phone shows: their current name, their seat in the latest PUBLISHED arrangement with the drawing
-// of that arrangement, and (S-06) the guess intake flag with their own guess.
+// of that arrangement, (S-06) the guess intake flag with their own guess and (guest-delivered) their order lines.
 export async function getGuestState(db: DbClient, guest: { id: number; displayName: string }): Promise<GuestStateDto> {
-  const [published, guess] = await Promise.all([getPublishedVersion(db), getGuestGuess(db, guest.id)]);
+  const [published, guess, orders] = await Promise.all([
+    getPublishedVersion(db),
+    getGuestGuess(db, guest.id),
+    getGuestOrders(db, guest.id),
+  ]);
   const snapshotId = published.snapshotId;
   const seat = snapshotId === null ? null : await guestSeat(db, snapshotId, guest.id);
   // Only a seated guest sees the drawing (state.ts drops it otherwise): unseated phones skip its queries.
@@ -179,12 +193,17 @@ export async function getGuestState(db: DbClient, guest: { id: number; displayNa
     seat,
     guess,
     drawing,
+    orders,
   });
 }
 
-// The guest's polling token without reading any seat (the 204 path): the published version and the own guess in
-// parallel, one round trip.
+// The guest's polling token without reading any seat (the 204 path): the published version, the own guess and the
+// order lines (the same RPC and mapping as getGuestState, so both give the same token) in parallel, one round trip.
 export async function getGuestStateVersion(db: DbClient, guest: { id: number; displayName: string }): Promise<string> {
-  const [published, guess] = await Promise.all([getPublishedVersion(db), getGuestGuess(db, guest.id)]);
-  return guestStateVersion(published.version, guest.displayName, guess);
+  const [published, guess, orders] = await Promise.all([
+    getPublishedVersion(db),
+    getGuestGuess(db, guest.id),
+    getGuestOrders(db, guest.id),
+  ]);
+  return guestStateVersion(published.version, guest.displayName, guess, orders);
 }

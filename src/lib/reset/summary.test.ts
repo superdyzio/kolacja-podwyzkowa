@@ -120,7 +120,7 @@ describe("describeResetResult", () => {
       describeResetResult({ parts: [...RESET_PARTS], before: DEMO, questionsAdded: 90, guestKeysReplaced: 0 }),
     ).toEqual([
       "Strzały: usunięto 30 strzałów i prawidłową kwotę; przyjmowanie strzałów otwarte.",
-      "Licznik tematów AI: wyzerowany (0 z 1000), każdy gość znów ma 15.",
+      "Licznik tematów AI: wyzerowany (0 z 1000), każdy gość znów ma 25.",
       "Rozsadzenie i historia: usunięto 38 miejsc i 2 publikacje; TV nie pokazuje rozsadzenia do następnej publikacji.",
       "Goście i grupy: usunięto 40 gości i 3 grupy.",
       "Plan, sale i stoliki: usunięto plan, 3 sale i 7 stolików.",
@@ -187,7 +187,7 @@ describe("English texts", () => {
       ),
     ).toEqual([
       "Guesses: removed 1 guess and the correct amount; guessing is open.",
-      "AI topic counter: reset (0 of 1000), every guest again has 15.",
+      "AI topic counter: reset (0 of 1000), every guest again has 25.",
       "Guests and groups: removed 2 guests and 1 group.",
       "Guest links: new links for 2 guests, guest access off — print new cards.",
     ]);

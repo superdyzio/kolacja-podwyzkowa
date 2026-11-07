@@ -24,6 +24,7 @@ export const restaurantMessages = defineMessages(
     unassignedLabel: "Bez miejsca",
     unassignedHeading: "Bez przypisanego miejsca",
     delivered: "wydane",
+    partlyServed: (done: number, quantity: number) => `wydane ${done} z ${quantity}`,
   },
   {
     pageTitle: (event: string) => `${event} — order for the restaurant`,
@@ -47,6 +48,7 @@ export const restaurantMessages = defineMessages(
     unassignedLabel: "No place",
     unassignedHeading: "No place assigned",
     delivered: "served",
+    partlyServed: (done: number, quantity: number) => `served ${done} of ${quantity}`,
   },
 );
 
@@ -160,6 +162,16 @@ export const orderMessages = defineMessages(
     // OrderLineRow.
     save: "Zapisz",
     delivered: "Wydane",
+    // guest-delivered: single pieces and who marked them.
+    pieceOutOfRange: "Ta pozycja nie ma już takiej sztuki.",
+    piecesLabel: (name: string) => `Wydane sztuki: ${name}`,
+    pieceToggle: (piece: number, quantity: number, done: boolean) =>
+      done ? `Sztuka ${piece} z ${quantity} wydana — cofnij` : `Oznacz sztukę ${piece} z ${quantity} jako wydaną`,
+    partlyServed: (done: number, quantity: number) => `wydane ${done} z ${quantity}`,
+    markedBy: (who: string) => `zaznaczone przez: ${who}`,
+    markerOrganizer: "Ciebie",
+    markerYouShort: "Ty",
+    markerDeletedGuest: "gościa (usuniętego)",
     edit: "Zmień",
     editLabel: (name: string) => `Zmień: ${name}`,
     remove: "Usuń",
@@ -231,6 +243,15 @@ export const orderMessages = defineMessages(
     cancel: "Cancel",
     save: "Save",
     delivered: "Served",
+    pieceOutOfRange: "This line no longer has that piece.",
+    piecesLabel: (name: string) => `Served pieces: ${name}`,
+    pieceToggle: (piece: number, quantity: number, done: boolean) =>
+      done ? `Piece ${piece} of ${quantity} served — undo` : `Mark piece ${piece} of ${quantity} as served`,
+    partlyServed: (done: number, quantity: number) => `served ${done} of ${quantity}`,
+    markedBy: (who: string) => `marked by: ${who}`,
+    markerOrganizer: "you",
+    markerYouShort: "you",
+    markerDeletedGuest: "a guest (deleted)",
     edit: "Edit",
     editLabel: (name: string) => `Edit: ${name}`,
     remove: "Remove",
@@ -245,5 +266,53 @@ export const orderMessages = defineMessages(
     rotate: "Replace link",
     confirmRotate: "Replace the restaurant link? The old link stops working at once — send the restaurant the new one.",
     rotated: "New link ready. The old one no longer works.",
+  },
+);
+
+// The guest's phone (guest-delivered): the „Twoje zamówienie” section — own dishes and the table's, each piece marked on
+// its own. No prices.
+export const guestOrderMessages = defineMessages(
+  {
+    heading: "Twoje zamówienie",
+    intro: "Zaznacz, co już dotarło — każdą sztukę osobno. Widzi to organizator i restauracja.",
+    ownHeading: "Twoje dania",
+    tableHeading: (table: string | null) => (table ? `Na środek stołu ${table}` : "Na środek stołu"),
+    deliver: "Dotarło",
+    piece: (piece: number, quantity: number) => `Sztuka ${piece} z ${quantity}`,
+    delivered: "✓ Dotarło",
+    byYou: "zaznaczone przez Ciebie",
+    byGuest: "zaznaczone przez gościa",
+    byOrganizer: "zaznaczone przez organizatora",
+    undo: "Cofnij",
+    markLabel: (name: string, piece: number, quantity: number) =>
+      quantity > 1 ? `${name}, sztuka ${piece} z ${quantity}: dotarło` : `${name}: dotarło`,
+    undoLabel: (name: string, piece: number, quantity: number) =>
+      quantity > 1 ? `${name}, sztuka ${piece} z ${quantity}: cofnij „dotarło”` : `${name}: cofnij „dotarło”`,
+    organizerOnly: "Cofnąć może tylko organizator.",
+    itemGone: "Tej pozycji nie ma już przy Tobie ani na Twoim stole.",
+    pieceGone: "Tej sztuki nie ma już na zamówieniu.",
+    markedByOrganizer: "Tę sztukę oznaczył organizator — cofnąć może tylko on.",
+  },
+  {
+    heading: "Your order",
+    intro: "Mark what has arrived — each piece on its own. The organizer and the restaurant see it.",
+    ownHeading: "Your dishes",
+    tableHeading: (table: string | null) =>
+      table ? `For the middle of table ${table}` : "For the middle of the table",
+    deliver: "Arrived",
+    piece: (piece: number, quantity: number) => `Piece ${piece} of ${quantity}`,
+    delivered: "✓ Arrived",
+    byYou: "marked by you",
+    byGuest: "marked by a guest",
+    byOrganizer: "marked by the organizer",
+    undo: "Undo",
+    markLabel: (name: string, piece: number, quantity: number) =>
+      quantity > 1 ? `${name}, piece ${piece} of ${quantity}: arrived` : `${name}: arrived`,
+    undoLabel: (name: string, piece: number, quantity: number) =>
+      quantity > 1 ? `${name}, piece ${piece} of ${quantity}: undo “arrived”` : `${name}: undo “arrived”`,
+    organizerOnly: "Only the organizer can undo this.",
+    itemGone: "This line is no longer yours or your table's.",
+    pieceGone: "This piece is no longer on the order.",
+    markedByOrganizer: "The organizer marked this piece — only they can undo it.",
   },
 );

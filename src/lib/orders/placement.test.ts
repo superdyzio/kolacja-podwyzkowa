@@ -14,8 +14,15 @@ function line(id: number, fields: Partial<OrderItemDto> = {}): OrderItemDto {
     guestId: null,
     tableId: null,
     delivered: false,
+    // A line ticked as delivered has all of its pieces delivered (guest-delivered).
+    deliveredPieces: fields.delivered ? allPieces(fields.quantity ?? 1) : [],
+    marks: [],
     ...fields,
   };
+}
+
+function allPieces(quantity: number): number[] {
+  return Array.from({ length: quantity }, (_, index) => index + 1);
 }
 
 // Two published tables (ids 10 „Okno” in Sala A, 11 „Kominek” in Sala A) and a third live table (12) added after the
@@ -151,11 +158,24 @@ describe("toRestaurantView", () => {
     const json = JSON.stringify(view);
     expect(json).not.toMatch(/Grosze|guestId|tableId|"id"/);
     expect(view.totals).toEqual({ quantity: 9, toServe: 7 });
-    expect(view.placement.unassigned).toEqual([{ name: "Tort", note: null, quantity: 1, delivered: true }]);
+    expect(view.placement.unassigned).toEqual([
+      { name: "Tort", note: null, quantity: 1, delivered: true, deliveredPieces: [1] },
+    ]);
     expect(view.seating.tables.map((table) => table.name)).toEqual(["Kominek", "Okno"]);
     expect(toRestaurantView(items, source, 123).version).toBe(view.version);
     const ticked = items.map((item) => (item.id === 1 ? { ...item, delivered: true } : item));
     expect(toRestaurantView(ticked, source, 123).version).not.toBe(view.version);
     expect(toRestaurantView(items, source, 124).version).not.toBe(view.version);
+  });
+
+  it("counts single delivered pieces and changes the token with each (guest-delivered)", () => {
+    const two = items.find((item) => item.quantity > 1);
+    expect(two).toBeDefined();
+    const onePiece = items.map((item) => (item === two ? { ...item, deliveredPieces: [2] } : item));
+    const view = toRestaurantView(onePiece, source, 123);
+    expect(view.totals.toServe).toBe(toRestaurantView(items, source, 123).totals.toServe - 1);
+    expect(view.version).not.toBe(toRestaurantView(items, source, 123).version);
+    const other = items.map((item) => (item === two ? { ...item, deliveredPieces: [1] } : item));
+    expect(toRestaurantView(other, source, 123).version).not.toBe(view.version);
   });
 });

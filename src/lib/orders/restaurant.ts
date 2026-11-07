@@ -1,5 +1,6 @@
 import { toTvSeating } from "@/lib/seating/published";
 import type { OrderItemDto, RestaurantItemDto, RestaurantViewDto } from "@/types";
+import { deliveredCount } from "./pieces";
 import { placeOrders, type PlacementSource } from "./placement";
 import { prepList } from "./prep";
 
@@ -8,7 +9,13 @@ import { prepList } from "./prep";
 // line, a tick, a publish, a new plan) is a new version and an unchanged poll answers 204.
 
 export function toRestaurantItem(item: OrderItemDto): RestaurantItemDto {
-  return { name: item.name, note: item.note, quantity: item.quantity, delivered: item.delivered };
+  return {
+    name: item.name,
+    note: item.note,
+    quantity: item.quantity,
+    delivered: item.delivered,
+    deliveredPieces: item.deliveredPieces,
+  };
 }
 
 // FNV-1a (32 bit) over the UTF-16 code units, 8 lowercase hex chars, plus the length: cheap and stable, not secret.
@@ -30,9 +37,7 @@ export function toRestaurantView(
   let toServe = 0;
   for (const item of items) {
     quantity += item.quantity;
-    if (!item.delivered) {
-      toServe += item.quantity;
-    }
+    toServe += item.quantity - deliveredCount(item);
   }
   const content: Omit<RestaurantViewDto, "version"> = {
     seating: toTvSeating(source.snapshot, planVersion),

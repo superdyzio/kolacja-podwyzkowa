@@ -42,7 +42,7 @@ Na dole panelu organizatora jest karta „Reset danych”. „Resetuj…” otwi
 
 ## Tematy AI
 
-Goście i organizator generują temat do rozmowy od AI w wybranej kategorii. Gość ma najwyżej 15 tematów na wieczór, wszyscy razem (z organizatorem) 1000; organizator nie ma osobnego limitu. Licznik zeruje „Reset danych” → „Licznik tematów AI” (nic innego nie znika). Nieudana próba (np. przekroczony czas 9 s) nie zmniejsza limitu. Tematy nie są nigdzie zapisywane: widzi je tylko osoba, która je wygenerowała.
+Goście i organizator generują temat do rozmowy od AI w wybranej kategorii. Gość ma najwyżej 25 tematów na wieczór, wszyscy razem (z organizatorem) 1000; organizator nie ma osobnego limitu. Licznik zeruje „Reset danych” → „Licznik tematów AI” (nic innego nie znika). Nieudana próba (np. przekroczony czas 9 s) nie zmniejsza limitu. Tematy nie są nigdzie zapisywane: widzi je tylko osoba, która je wygenerowała.
 
 Domyślnie działa atrapa AI (`AI_PROVIDER=mock` albo brak zmiennej): przykładowe polskie tematy, bez połączenia z siecią i bez kosztów. Tak działają dev, testy i `npm run smoke`.
 
@@ -72,6 +72,8 @@ TV i telefony gości nie pokazują zdjęcia planu, tylko rysunek: kontury sal z 
 3. Popraw ręcznie: przeciągnij stolik, obróć go uchwytem (co 15°, z Shift dowolnie), strzałki przesuwają, `[` i `]` obracają wybrany stolik. „Kontur” przy sali rysuje jej prostokąt. „Skala krzeseł” zmienia rozmiar wszystkich stolików naraz. „Podgląd jak na TV” pokazuje rysunek z imionami.
 4. Zmiany rysunku nie ruszają przypisań gości. TV i telefony pokażą nowy rysunek dopiero po „Opublikuj” na stronie rozsadzenia.
 
+Na telefonie gość widzi najpierw swój stolik z imionami przy krzesłach. Przycisk „Pokaż plan sali ze wszystkimi” rozwija całą salę z imieniem każdego gościa przy jego krześle (to samo, co na TV); jego stolik i miejsce są na czerwono. Plan jest szerszy niż ekran: otwiera się w powiększeniu, w którym imiona da się przeczytać, przewinięty do stolika gościa. Przesuwa się go palcem, „−” i „+” zmieniają powiększenie, „Mój stolik” wraca do własnego stolika.
+
 Na produkcji: przed `npx supabase db push` zrób kopię danych (`npx supabase db dump --data-only -f ~/kolacja-backup-<data>.sql`), potem `db push`, potem `npm run deploy:aws` (podnosi limit czasu Lambdy do 30 s). Do czasu przerysowania TV rysuje dotychczasowy układ z domyślnymi wartościami.
 
 ## Zamówienia i restauracja
@@ -83,6 +85,12 @@ Link dla restauracji (`/r/<klucz>`, w panelu i w `npm run links`) działa zawsze
 Na obu stronach (u organizatora i w restauracji) obok list jest plan sali. Kliknięcie dania na liście „Do przygotowania” zapala na planie wszystkie miejsca, gdzie ma trafić — krzesła gości albo środek stołu, z numerami sztuk — i rozwija listę sztuk: każdą sztukę (np. „3 · Dąb · m. 7 · Darek”) można wybrać osobno, wtedy świeci tylko jej miejsce. Kliknięcie pojedynczej pozycji przy stoliku zapala jej miejsce. Nad planem jest podpis słowami („Rosół 3/9 → Stolik Dąb · miejsce 7 · Darek”), wydane sztuki są szare, a „Wyczyść” albo Esc gasi zaznaczenie. Na wąskim ekranie plan jest nad listami i przypina się u góry, dopóki coś jest zaznaczone.
 
 Na produkcji ta zmiana wymaga migracji bazy **przed** wdrożeniem kodu: bez niej każda strona organizatora kończy się błędem 500 (panel czyta link restauracji). Kolejność: kopia danych (`npx supabase db dump --data-only -f ~/kolacja-backup-<data>.sql`), `npx supabase db push` (wgrywa też migrację planu sali, jeśli jeszcze jej nie było), potem `npm run deploy:aws`. Migracja tylko dodaje: istniejące linki organizatora, TV i gości się nie zmieniają.
+
+## Co dotarło na stół
+
+Gość widzi na swoim telefonie sekcję „Twoje zamówienie”: swoje dania i dania na środek swojego stolika (z opublikowanego rozsadzenia), bez cen. Każdą sztukę zaznacza osobno przyciskiem „Dotarło” (dzbanek × 2 to dwa przyciski) i może to cofnąć. Zaznaczenie organizatora może cofnąć tylko organizator. Przy każdej sztuce widać, kto ją zaznaczył: gość widzi „Ty”, „gość” albo „organizator”, organizator widzi imię gościa. U organizatora (`/o/<klucz>/zamowienia`) „Wydane” dalej zaznacza całą pozycję, a przy pozycjach z kilkoma sztukami są osobne przyciski sztuk („✓ 2 · Basia”); strona odświeża się sama co 5 s. Restauracja widzi „wydane 1 z 2”, a na planie wydane sztuki są szare.
+
+Na produkcji ta zmiana wymaga migracji bazy **przed** wdrożeniem kodu (bez niej telefony gości przestają się odświeżać): kopia danych, `npx supabase db push`, potem `npm run deploy:aws`. Między `db push` a wdrożeniem nie odhaczaj „Wydane”. Migracja tylko dodaje tabelę i funkcje; już odhaczone pozycje zostają wydane (wszystkie sztuki, przez organizatora). Telefony otwarte przed wdrożeniem pokażą nową sekcję dopiero po odświeżeniu strony.
 
 ## Typ miejsca w konkursie strzałów
 

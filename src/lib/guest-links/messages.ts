@@ -142,9 +142,16 @@ export const guestPhoneMessages = defineMessages(
     tablemateSeat: (seat: number) => `miejsce ${seat}`,
     tableDrawingLabel: (table: string, seat: number) =>
       `Stolik ${table} z Twoim miejscem ${seat} i imionami przy krzesłach`,
-    venueDrawingLabel: (table: string) => `Plan sali z zaznaczonym stolikiem ${table}`,
+    venueDrawingLabel: (table: string) =>
+      `Plan sali z imionami wszystkich gości przy ich krzesłach; Twój stolik ${table} i Twoje miejsce zaznaczone`,
     hideVenue: "Ukryj plan sali",
-    showVenue: "Pokaż na planie sali",
+    showVenue: "Pokaż plan sali ze wszystkimi",
+    venueHint: "Twój stolik i Twoje miejsce są na czerwono. Przesuń plan palcem, żeby zobaczyć resztę sali.",
+    zoomIn: "Powiększ plan",
+    zoomOut: "Pomniejsz plan",
+    zoomLevel: (percent: number) => `Powiększenie ${percent}%`,
+    centerOnMe: "Mój stolik",
+    venueLoading: "Wczytuję plan sali…",
     // GuestGuessView
     guessOffline: "Brak połączenia — spróbuj ponownie.",
     intakeClosed: "Przyjmowanie strzałów jest zamknięte.",
@@ -198,9 +205,16 @@ export const guestPhoneMessages = defineMessages(
     tablemateSeat: (seat: number) => `seat ${seat}`,
     tableDrawingLabel: (table: string, seat: number) =>
       `Table ${table} with your seat ${seat} and the names at the chairs`,
-    venueDrawingLabel: (table: string) => `Floor plan with table ${table} marked`,
+    venueDrawingLabel: (table: string) =>
+      `Floor plan with every guest's name at their chair; your table ${table} and your seat marked`,
     hideVenue: "Hide the floor plan",
-    showVenue: "Show on the floor plan",
+    showVenue: "Show the floor plan with everyone",
+    venueHint: "Your table and your seat are in red. Drag the plan with your finger to see the rest of the venue.",
+    zoomIn: "Zoom in",
+    zoomOut: "Zoom out",
+    zoomLevel: (percent: number) => `Zoom ${percent}%`,
+    centerOnMe: "My table",
+    venueLoading: "Loading the floor plan…",
     guessOffline: "No connection — please try again.",
     intakeClosed: "Guessing is closed.",
     guessSaved: (amount: string, place: number | null) =>

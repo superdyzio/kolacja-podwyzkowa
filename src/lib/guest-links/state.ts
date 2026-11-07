@@ -1,6 +1,15 @@
 import type { Locale } from "@/lib/i18n/locale";
+import { guestOrdersKey } from "@/lib/orders/pieces";
 import { oppositeSeat, sideNeighbours } from "@/lib/venue/seats";
-import type { GuestDrawingDto, GuestGuessDto, GuestSeatDto, GuestStateDto, TableShape, TablemateDto } from "@/types";
+import type {
+  GuestDrawingDto,
+  GuestGuessDto,
+  GuestOrderLineDto,
+  GuestSeatDto,
+  GuestStateDto,
+  TableShape,
+  TablemateDto,
+} from "@/types";
 import { guestPhoneMessages } from "./messages";
 
 // What a guest's phone shows (S-05), pure: the polling token and the mapping of "latest snapshot + the guest's own
@@ -11,8 +20,8 @@ import { guestPhoneMessages } from "./messages";
 export const GUEST_UNPUBLISHED_MESSAGE = guestPhoneMessages("pl").unpublished;
 export const GUEST_UNSEATED_MESSAGE = guestPhoneMessages("pl").unseated;
 
-// FNV-1a (32 bit) of the name in base36: short, stable, cheap. Only used to notice a rename between polls.
-function nameHash(name: string): string {
+// FNV-1a (32 bit) in base36: short, stable, cheap. Only used to notice a change between polls.
+function shortHash(name: string): string {
   let hash = 0x811c9dc5;
   for (let index = 0; index < name.length; index++) {
     hash ^= name.charCodeAt(index);
@@ -21,15 +30,22 @@ function nameHash(name: string): string {
   return hash.toString(36);
 }
 
-// The guest's polling token: the seating token ("<snapshot id>.<plan version>"), the name hash, then (S-06) the
-// guess intake flag (1 open / 0 closed) and the guest's own guess in grosze ("n" = none), so a close, a reopen or an
-// organizer's proxy entry reaches the phone through the same single poll; then (guess-place) the own place prediction
-// ("n" = none) and the highest place allowed (a new guest raises it). Opaque to clients, compared for equality; at
-// most ~58 characters (route limit 64). A later slice with more live guest state appends its own part here.
-export function guestStateVersion(seatingVersion: string, name: string, guess: GuestGuessDto): string {
+// The guest's polling token: the seating token ("<snapshot id>.<plan version>"), a hash of the name and (guest-delivered)
+// of the order lines the phone shows with their marked pieces, then (S-06) the guess intake flag (1 open / 0 closed)
+// and the guest's own guess in grosze ("n" = none), so a close, a reopen or an organizer's proxy entry reaches the
+// phone through the same single poll; then (guess-place) the own place prediction ("n" = none) and the highest place
+// allowed (a new guest raises it). Opaque to clients, compared for equality; at most 62 characters (route limit 64):
+// a later slice with more live guest state adds it to the hashed part instead of a new part.
+export function guestStateVersion(
+  seatingVersion: string,
+  name: string,
+  guess: GuestGuessDto,
+  orders: readonly GuestOrderLineDto[],
+): string {
   const amount = guess.amountGrosze ?? "n";
   const place = guess.predictedPlace ?? "n";
-  return `${seatingVersion}.${nameHash(name)}.${guess.intakeOpen ? "1" : "0"}.${amount}.${place}.${guess.maxPlace}`;
+  const live = shortHash(`${name}\u0000${guestOrdersKey(orders)}`);
+  return `${seatingVersion}.${live}.${guess.intakeOpen ? "1" : "0"}.${amount}.${place}.${guess.maxPlace}`;
 }
 
 export interface GuestStateInput {
@@ -45,6 +61,8 @@ export interface GuestStateInput {
   guess: GuestGuessDto;
   // The published drawing (venue-drawing), read only for a seated guest.
   drawing?: GuestDrawingDto | null;
+  // guest-delivered: the guest's own order lines and their table's (getGuestOrders).
+  orders: GuestOrderLineDto[];
 }
 
 export function toGuestState({
@@ -55,8 +73,9 @@ export function toGuestState({
   seat,
   guess,
   drawing = null,
+  orders,
 }: GuestStateInput): GuestStateDto {
-  const version = guestStateVersion(seatingVersion, name, guess);
+  const version = guestStateVersion(seatingVersion, name, guess, orders);
   const own: GuestGuessDto = {
     intakeOpen: guess.intakeOpen,
     amountGrosze: guess.amountGrosze,
@@ -64,12 +83,12 @@ export function toGuestState({
     maxPlace: guess.maxPlace,
   };
   if (snapshotId === null) {
-    return { version, name, status: "unpublished", seat: null, planVersion, guess: own, drawing: null };
+    return { version, name, status: "unpublished", seat: null, planVersion, guess: own, drawing: null, orders };
   }
   if (!seat) {
-    return { version, name, status: "unseated", seat: null, planVersion, guess: own, drawing: null };
+    return { version, name, status: "unseated", seat: null, planVersion, guess: own, drawing: null, orders };
   }
-  return { version, name, status: "seated", seat, planVersion, guess: own, drawing };
+  return { version, name, status: "seated", seat, planVersion, guess: own, drawing, orders };
 }
 
 // Everyone else at the guest's table in the same snapshot (rows = that table's snapshot seats, names as published),

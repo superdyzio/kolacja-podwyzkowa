@@ -22,25 +22,25 @@ const INVALID: AiProviderStatusDto = { kind: null, model: null, ready: false, pr
 const NO_SPEND = { inputTokens: 0, outputTokens: 0, costNanoUsd: 0, lastFailureHint: null };
 
 function usage(used: number, failed: number, extras: Partial<typeof NO_SPEND> | object = {}) {
-  return { used, limit: 1000, failed, guestLimit: 15, ...NO_SPEND, ...extras };
+  return { used, limit: 1000, failed, guestLimit: 25, ...NO_SPEND, ...extras };
 }
 
 describe("AI topic limits", () => {
   it("are the PRD numbers", () => {
-    expect(MAX_GUEST_TOPICS).toBe(15);
+    expect(MAX_GUEST_TOPICS).toBe(25);
     expect(MAX_EVENT_TOPICS).toBe(1000);
   });
 
   it("maps a usage row to the guest's quota", () => {
     expect(toGuestQuota({ event_used: 10, event_failed: 2, guest_used: 2, guest_busy: false })).toEqual({
-      limit: 15,
+      limit: 25,
       used: 2,
-      remaining: 13,
+      remaining: 23,
       eventExhausted: false,
     });
-    expect(toGuestQuota({ event_used: 1000, event_failed: 0, guest_used: 17, guest_busy: false })).toEqual({
-      limit: 15,
-      used: 15,
+    expect(toGuestQuota({ event_used: 1000, event_failed: 0, guest_used: 27, guest_busy: false })).toEqual({
+      limit: 25,
+      used: 25,
       remaining: 0,
       eventExhausted: true,
     });
@@ -52,14 +52,14 @@ describe("AI topic limits", () => {
       used: 12,
       limit: 1000,
       failed: 3,
-      guestLimit: 15,
+      guestLimit: 25,
       inputTokens: 0,
       outputTokens: 0,
       costNanoUsd: 0,
       lastFailureHint: null,
     });
     const extras = { inputTokens: 900, outputTokens: 150, costNanoUsd: 165_000, lastFailureHint: "Brak." };
-    expect(toUsage(row, extras)).toEqual({ used: 12, limit: 1000, failed: 3, guestLimit: 15, ...extras });
+    expect(toUsage(row, extras)).toEqual({ used: 12, limit: 1000, failed: 3, guestLimit: 25, ...extras });
   });
 
   it("formats the remaining count, the usage and the shell summary in Polish", () => {
@@ -87,7 +87,7 @@ describe("AI topic limits", () => {
   });
 
   it("says the limits and the failure rule clearly", () => {
-    expect(GUEST_LIMIT_MESSAGE).toContain("15 z 15");
+    expect(GUEST_LIMIT_MESSAGE).toContain("25 z 25");
     expect(EVENT_LIMIT_MESSAGE).toContain("1000 z 1000");
     expect(FAILED_MESSAGE).toContain("nie zmniejszyła limitu");
     expect(FAILED_MESSAGE).toContain("Losuj pytanie");
@@ -96,7 +96,7 @@ describe("AI topic limits", () => {
   it("speaks English (i18n)", () => {
     expect(aiTopicLimitMessages("pl").guestLimit).toBe(GUEST_LIMIT_MESSAGE);
     const en = aiTopicLimitMessages("en");
-    expect(en.guestLimit).toContain("15 of 15");
+    expect(en.guestLimit).toContain("25 of 25");
     expect(en.eventLimit).toContain("1000 of 1000");
     expect(en.failed).toContain("Draw a question");
     expect(formatRemaining({ limit: 5, used: 2, remaining: 3, eventExhausted: false }, "en")).toBe("3 of 5 left");

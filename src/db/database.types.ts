@@ -683,6 +683,56 @@ export interface Database {
           },
         ];
       };
+      // guest-delivered: one delivered piece (1 … quantity) of an order line and who marked it.
+      order_piece: {
+        Row: {
+          order_item_id: number;
+          piece: number;
+          event_id: number;
+          marked_by: string;
+          guest_id: number | null;
+          marked_at: string;
+        };
+        Insert: {
+          order_item_id: number;
+          piece: number;
+          event_id?: number;
+          marked_by: string;
+          guest_id?: number | null;
+          marked_at?: string;
+        };
+        Update: {
+          order_item_id?: number;
+          piece?: number;
+          event_id?: number;
+          marked_by?: string;
+          guest_id?: number | null;
+          marked_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "order_piece_order_item_id_fkey";
+            columns: ["order_item_id"];
+            isOneToOne: false;
+            referencedRelation: "order_item";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "order_piece_event_id_fkey";
+            columns: ["event_id"];
+            isOneToOne: false;
+            referencedRelation: "event";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "order_piece_guest_id_fkey";
+            columns: ["guest_id"];
+            isOneToOne: false;
+            referencedRelation: "guest";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       tv_spotlight: {
         Row: {
           id: number;
@@ -718,6 +768,22 @@ export interface Database {
     };
     Views: { [_ in never]: never };
     Functions: {
+      // guest-delivered: the guest's table in the latest published snapshot (venue_table id), or null.
+      guest_published_table_id: {
+        Args: { p_guest_id: number };
+        Returns: number | null;
+      };
+      // guest-delivered: the guest's own order lines and their table's lines with the marked pieces (JSON, no prices).
+      guest_order_lines: {
+        Args: { p_guest_id: number };
+        Returns: Json;
+      };
+      // guest-delivered: marks or unmarks pieces (null = all) of a line as delivered by the organizer (p_guest_id
+      // null) or a guest; raises ITEM_NOT_FOUND, PIECE_OUT_OF_RANGE or MARKED_BY_ORGANIZER.
+      set_order_pieces: {
+        Args: { p_item_id: number; p_pieces: number[] | null; p_delivered: boolean; p_guest_id: number | null };
+        Returns: undefined;
+      };
       // Atomic creation of an inseparable group (2–5 existing, ungrouped guests); returns the group id.
       // Raises GROUP_SIZE, GUEST_NOT_FOUND or GUEST_ALREADY_GROUPED.
       create_guest_group: {

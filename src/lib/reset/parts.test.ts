@@ -34,7 +34,7 @@ describe("reset parts", () => {
     expect(RESET_PART_DESCRIPTIONS.guestLinks).toContain("karteczki");
     expect(RESET_PART_DESCRIPTIONS.guestLinks).toContain("przestają działać");
     expect(RESET_PART_DESCRIPTIONS.aiUsage).toBe(
-      "Zeruje licznik: każdy gość znów ma 15 tematów, cały wieczór 1000. Szacunek kosztu AI też liczy się od nowa.",
+      "Zeruje licznik: każdy gość znów ma 25 tematów, cały wieczór 1000. Szacunek kosztu AI też liczy się od nowa.",
     );
   });
 
