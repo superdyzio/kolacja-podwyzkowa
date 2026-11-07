@@ -232,9 +232,32 @@ describe("drawSeating — nobody alone (draw-neighbour)", () => {
       [table(1, "A", 3), table(2, "B", 4)],
       [seat(1, 1, 1, true), seat(2, 1, 2, true), seat(3, 1, 3, true)],
     );
-    expect(drawSeating(data, [], seeded(1, 5_000))).toEqual({
+    // Refused before the search: the clock throws if the search reads it.
+    const clock = (): number => {
+      throw new Error("the search ran");
+    };
+    expect(drawSeating(data, [], { random: createRandom(1), timeBudgetMs: 1200, now: clock })).toEqual({
       status: "infeasible",
       problems: [{ kind: "lonely", names: ["Ania"] }],
+    });
+  });
+
+  it("refuses a single present guest at once and stops when no move can change anything", () => {
+    expect(drawSeating(input([guest(1, "Ania")], [table(1, "A", 4)], []), [], seeded(1))).toEqual({
+      status: "infeasible",
+      problems: [{ kind: "lonely", names: ["Ania"] }],
+    });
+    // Everyone pinned, one of them alone with free seats around: no move exists, so the start is the result.
+    const pinned = input(
+      [guest(1, "Ania"), guest(2, "Bartek"), guest(3, "Celina")],
+      [table(1, "A", 4), table(2, "B", 4)],
+      [seat(1, 1, 1, true), seat(2, 1, 2, true), seat(3, 2, 1, true)],
+    );
+    expect(
+      drawSeating(pinned, [], { random: createRandom(1), timeBudgetMs: Number.POSITIVE_INFINITY, now: () => 0 }),
+    ).toEqual({
+      status: "infeasible",
+      problems: [{ kind: "lonely", names: ["Celina"] }],
     });
   });
 });
@@ -349,6 +372,8 @@ describe("drawSeating — infeasible", () => {
   it("restarts a group placement that gave up instead of reporting that the groups do not fit", () => {
     // Shaped like the real venue (rectangular 14, 10, 8, 12; 16 couples, 7 singles): with seed 2226 the first
     // backtracking search runs out of nodes; before the restarts this draw was refused as "groups-do-not-fit".
+    // Seed-dependent: a change in how many random numbers are drawn before the placement can make this pass without
+    // a restart (then find a new seed that fails with PLACEMENT_RESTARTS = 0).
     const guests = Array.from({ length: 39 }, (_, index) =>
       guest(index + 1, `G${index + 1}`, { groupId: index < 32 ? 100 + Math.floor(index / 2) : null }),
     );

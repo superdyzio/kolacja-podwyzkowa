@@ -226,6 +226,18 @@ export function drawSeating(input: SeatingInput, history: readonly GuestPair[], 
   if (guestCount > seatCount - blocked) {
     problems.push({ kind: "too-many-guests", present: guestCount, seats: seatCount - blocked });
   }
+  // Nobody can ever sit with them (draw-neighbour): refused at once rather than after the whole search — the only
+  // present guest, or a pinned guest whose every neighbour seat is pinned with nobody present on it.
+  if (guestCount === 1) {
+    problems.push({ kind: "lonely", names: [present[0]?.displayName ?? "?"] });
+  } else {
+    const alone = [...pinnedSeatOf].filter(([, seatIndex]) =>
+      (adjacency[seatIndex] ?? []).every((other) => fixed[other] === 1 && (initial[other] ?? EMPTY) < 0),
+    );
+    if (alone.length > 0) {
+      problems.push({ kind: "lonely", names: alone.map(([guestIndex]) => present[guestIndex]?.displayName ?? "?") });
+    }
+  }
 
   // Conflicts: pairs from the history among present guests, minus pairs within one group.
   const conflict = new Uint8Array(guestCount * guestCount);
@@ -376,8 +388,14 @@ export function drawSeating(input: SeatingInput, history: readonly GuestPair[], 
   // (aborted) is retried; one that tried everything proves the groups do not fit.
   // Read through a function: TypeScript does not see place() setting `aborted`.
   const gaveUp = () => aborted;
+  // The restarts stop at half the draw's budget, so placement plus search stay near the budget on hopeless inputs.
+  const placementStart = now();
   let placed = place(0);
-  for (let restart = 0; !placed && gaveUp() && restart < PLACEMENT_RESTARTS; restart++) {
+  for (
+    let restart = 0;
+    !placed && gaveUp() && restart < PLACEMENT_RESTARTS && now() - placementStart < budget / 2;
+    restart++
+  ) {
     nodes = 0;
     nodeLimit = PLACEMENT_RESTART_NODES;
     aborted = false;
@@ -607,7 +625,9 @@ export function drawSeating(input: SeatingInput, history: readonly GuestPair[], 
   let iterations = 0;
   let sinceBest = 0;
   let forced = 0;
-  while (best > 0 && iterations < maxIterations) {
+  // No move can change anything (everyone pinned, groups without a second block): the start is the result.
+  const canMove = singles.length > 0 || units.some((unit) => unit.candidates.length > 1 || unit.members.length > 1);
+  while (canMove && best > 0 && iterations < maxIterations) {
     if ((iterations & 255) === 0 && now() - start >= budget) {
       break;
     }
