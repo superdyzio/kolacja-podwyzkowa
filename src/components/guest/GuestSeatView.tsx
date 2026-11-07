@@ -89,6 +89,9 @@ function VenueMap({
   // null until the names were measured at zoom 1 (before the first paint).
   const [zoom, setZoom] = useState<number | null>(null);
   const anchor = useRef<ZoomAnchor>({ kind: "own" });
+  // The guest's place the view was last scrolled for: a new one (a redraw) scrolls to the new table.
+  const place = `${ownTable}\u0000${String(ownSeat)}`;
+  const lastPlace = useRef(place);
 
   useLayoutEffect(() => {
     const box = scrollRef.current;
@@ -101,6 +104,10 @@ function VenueMap({
       );
       setZoom(initialVenueZoom(medianHeight(heights)));
       return;
+    }
+    if (lastPlace.current !== place) {
+      lastPlace.current = place;
+      anchor.current = { kind: "own" };
     }
     const target = anchor.current;
     if (target.kind === "point") {
@@ -117,8 +124,7 @@ function VenueMap({
       box.scrollLeft += rect.left + rect.width / 2 - (area.left + area.width / 2);
       box.scrollTop += rect.top + rect.height / 2 - (area.top + area.height / 2);
     }
-    // A new seat (a redraw) scrolls to the new table.
-  }, [zoom, ownTable, ownSeat]);
+  }, [zoom, ownTable, place]);
 
   function zoomBy(direction: 1 | -1) {
     const box = scrollRef.current;
