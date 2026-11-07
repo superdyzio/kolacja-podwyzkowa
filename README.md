@@ -42,7 +42,7 @@ Na dole panelu organizatora jest karta „Reset danych”. „Resetuj…” otwi
 
 ## Tematy AI
 
-Goście i organizator generują temat do rozmowy od AI w wybranej kategorii. Gość ma najwyżej 15 tematów na wieczór, wszyscy razem (z organizatorem) 1000; organizator nie ma osobnego limitu. Licznik zeruje „Reset danych” → „Licznik tematów AI” (nic innego nie znika). Nieudana próba (np. przekroczony czas 9 s) nie zmniejsza limitu. Tematy nie są nigdzie zapisywane: widzi je tylko osoba, która je wygenerowała.
+Goście i organizator generują temat do rozmowy od AI w wybranej kategorii. Gość ma najwyżej 25 tematów na wieczór, wszyscy razem (z organizatorem) 1000; organizator nie ma osobnego limitu. Licznik zeruje „Reset danych” → „Licznik tematów AI” (nic innego nie znika). Nieudana próba (np. przekroczony czas 9 s) nie zmniejsza limitu. Tematy nie są nigdzie zapisywane: widzi je tylko osoba, która je wygenerowała.
 
 Domyślnie działa atrapa AI (`AI_PROVIDER=mock` albo brak zmiennej): przykładowe polskie tematy, bez połączenia z siecią i bez kosztów. Tak działają dev, testy i `npm run smoke`.
 

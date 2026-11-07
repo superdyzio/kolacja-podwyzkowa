@@ -2205,12 +2205,12 @@ check(
 );
 
 // 20. AI conversation topics (S-08). Only the MOCK provider is ever asked here (no network, no cost): when the server
-// reports another provider, every generate check is skipped and one check fails. A guest gets at most 15 topics; a
+// reports another provider, every generate check is skipped and one check fails. A guest gets at most 25 topics; a
 // failed attempt (header x-ai-mock: fail, honoured only by the mock) does not count; the organizer has no personal
 // limit; nothing is stored, so no page shows a topic; the TV gets nothing. Guest access is on here.
 const aiApi = `${api}/ai-topics`;
 // The limits of src/lib/ai-topics/limits.ts (MAX_GUEST_TOPICS, MAX_EVENT_TOPICS).
-const GUEST_AI_LIMIT = 15;
+const GUEST_AI_LIMIT = 25;
 const EVENT_AI_LIMIT = 1000;
 const GUEST_AI_FULL = `${GUEST_AI_LIMIT} z ${GUEST_AI_LIMIT}`;
 const guestAiApi = (key) => `/api/g/${key}/ai-topics`;

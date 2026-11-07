@@ -7,7 +7,7 @@ import { aiTopicMessages } from "./messages";
 // reserve_ai_topic(), which enforces them atomically; the texts are what guests and the organizer read.
 
 // A guest generates at most this many topics per evening (failed attempts do not count).
-export const MAX_GUEST_TOPICS = 15;
+export const MAX_GUEST_TOPICS = 25;
 // Everyone together, the organizer included, at most this many per evening (until the organizer resets the counter).
 export const MAX_EVENT_TOPICS = 1000;
 // The server aborts the AI call after this long, so a topic (or the failure message) shows within 10 s.
@@ -92,7 +92,7 @@ export function toUsage(
   };
 }
 
-// „Zostało 3 z 15” — the guest's remaining topics.
+// „Zostało 3 z 25” — the guest's remaining topics.
 export function formatRemaining(quota: GuestAiQuotaDto, locale: Locale = "pl"): string {
   return aiTopicMessages(locale).remaining(quota.remaining, quota.limit);
 }
