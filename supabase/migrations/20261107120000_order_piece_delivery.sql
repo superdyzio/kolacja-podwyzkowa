@@ -114,9 +114,10 @@ as $$
     '[]'::jsonb
   )
     from public.order_item item
-    cross join (select public.guest_published_table_id(p_guest_id) as table_id) mine
+    -- The scalar sub-select has no outer reference, so it is an InitPlan: the table is looked up ONCE per call, not
+    -- per order line (the function cannot be inlined: it sets search_path). „= null” is false: no table, no lines.
     where item.guest_id = p_guest_id
-      or (mine.table_id is not null and item.table_id = mine.table_id);
+      or item.table_id = (select public.guest_published_table_id(p_guest_id));
 $$;
 
 comment on function public.guest_order_lines (bigint) is

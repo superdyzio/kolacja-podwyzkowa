@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { formatAmount } from "@/lib/guesses/amount";
 import type { Locale } from "@/lib/i18n";
 import { orderMessages, servingMessages } from "@/lib/orders/messages";
+import { isPieceDelivered } from "@/lib/orders/pieces";
 import { lineTotal, type DishSuggestion } from "@/lib/orders/rules";
 import { cn } from "@/lib/utils";
 import type { OrderGuestOptionDto, OrderItemDto, OrderPieceMarkDto, OrderTableOptionDto } from "@/types";
@@ -57,11 +58,13 @@ export function OrderLineRow({
   const t = orderMessages(locale);
   const s = servingMessages(locale);
   const pieces = Array.from({ length: item.quantity }, (_, index) => index + 1);
-  const isDone = (piece: number) => pieceTicks.get(piece) ?? ticked ?? item.deliveredPieces.includes(piece);
+  const isDone = (piece: number) => pieceTicks.get(piece) ?? ticked ?? isPieceDelivered(item, piece);
   const doneCount = pieces.filter(isDone).length;
   const delivered = doneCount === item.quantity;
   const partly = doneCount > 0 && !delivered;
-  const marks = new Map(item.marks.map((mark) => [mark.piece, mark]));
+  // No marks in an answer of an older server (during a deploy): nothing to show, no crash.
+  const sent: unknown = item.marks;
+  const marks = new Map((Array.isArray(sent) ? item.marks : []).map((mark) => [mark.piece, mark]));
 
   function settle(request: Promise<unknown>) {
     inFlight.current += 1;

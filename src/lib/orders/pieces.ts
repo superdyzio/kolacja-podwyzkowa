@@ -9,14 +9,21 @@ export interface PieceLine {
   deliveredPieces: readonly number[];
 }
 
+// The line's delivered pieces; none for an answer of a server older than guest-delivered (a browser that loaded the
+// new page while an old instance still answers during a deploy), so the page keeps working instead of crashing.
+export function deliveredPiecesOf(line: PieceLine): readonly number[] {
+  const pieces: unknown = line.deliveredPieces;
+  return Array.isArray(pieces) ? line.deliveredPieces : [];
+}
+
 // The delivered pieces that still exist (a mark above the quantity is never counted).
 export function deliveredCount(line: PieceLine): number {
-  return line.deliveredPieces.filter((piece) => piece >= 1 && piece <= line.quantity).length;
+  return deliveredPiecesOf(line).filter((piece) => piece >= 1 && piece <= line.quantity).length;
 }
 
 // piece: 1-based.
 export function isPieceDelivered(line: PieceLine, piece: number): boolean {
-  return line.deliveredPieces.includes(piece);
+  return deliveredPiecesOf(line).includes(piece);
 }
 
 export function isLineDelivered(line: PieceLine): boolean {
