@@ -35,6 +35,8 @@ export interface VenueDrawingTable extends DrawingTableInput {
   key: string;
   // Phone: tables other than the guest's are drawn faded.
   muted?: boolean;
+  // Phone (guest-venue-names): the guest's own table on the whole-venue plan, drawn red with a ring.
+  highlighted?: boolean;
 }
 
 // A highlighted place (serving-highlight): a chair (seat) or the middle of a table (seat null), by table name, with an
@@ -335,8 +337,18 @@ function DrawnTable({
     ? tableMark.done
       ? "fill-neutral-500/20 stroke-neutral-500"
       : "fill-red-500/25 stroke-red-600"
-    : null;
-  const bodyStroke = tableMark ? stroke * 4 : selected ? stroke * 3 : stroke;
+    : table.highlighted
+      ? "fill-red-500/15 stroke-red-600"
+      : null;
+  const bodyStroke = tableMark || table.highlighted ? stroke * 4 : selected ? stroke * 3 : stroke;
+  // A ring around the body: pulsing for a table mark still to serve, steady for the guest's own table.
+  const ring = tableMark
+    ? tableMark.done
+      ? null
+      : "stroke-red-500/40 motion-safe:animate-pulse"
+    : table.highlighted
+      ? "stroke-red-500/30"
+      : null;
   return (
     <g
       className={cn(table.muted && "opacity-40", onPointerDown && "cursor-grab touch-none")}
@@ -369,15 +381,14 @@ function DrawnTable({
           className={bodyMarkClass ?? cn(styles.body, selected && "stroke-sky-600")}
         />
       )}
-      {tableMark &&
-        !tableMark.done &&
+      {ring &&
         (body.shape === "round" ? (
           <circle
             cx={body.cx}
             cy={body.cy}
             r={body.r + chairR * 1.2}
             strokeWidth={chairR * 0.8}
-            className="pointer-events-none fill-none stroke-red-500/40 motion-safe:animate-pulse"
+            className={cn("pointer-events-none fill-none", ring)}
           />
         ) : (
           <rect
@@ -388,7 +399,7 @@ function DrawnTable({
             rx={body.depth * 0.2}
             transform={`rotate(${body.rotation} ${body.cx} ${body.cy})`}
             strokeWidth={chairR * 0.8}
-            className="pointer-events-none fill-none stroke-red-500/40 motion-safe:animate-pulse"
+            className={cn("pointer-events-none fill-none", ring)}
           />
         ))}
       <text
@@ -397,7 +408,7 @@ function DrawnTable({
         fontSize={nameShift > 0 ? Math.min(laidOut.nameFont, half * 0.5) : laidOut.nameFont}
         textAnchor="middle"
         dominantBaseline="central"
-        className={cn(styles.tableName, "font-medium")}
+        className={table.highlighted && !tableMark ? "fill-red-700 font-bold" : cn(styles.tableName, "font-medium")}
       >
         {table.name}
       </text>
@@ -456,6 +467,7 @@ function DrawnTable({
             fontSize={placed.box.height / LINE_HEIGHT}
             textAnchor="middle"
             dominantBaseline="central"
+            data-seat-name=""
             className={mine ? "fill-red-700 font-bold" : cn(styles.name, "font-semibold")}
           >
             {placed.name}

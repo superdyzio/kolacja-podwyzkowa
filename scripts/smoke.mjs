@@ -1142,11 +1142,18 @@ check(
     aniaState.cacheControl.includes("no-store"),
   `${aniaState.status} ${aniaState.body}`,
 );
-// Tablemates: the published names at the guest's OWN table (what the TV shows) are the only other guests a phone
-// gets. "Okno Smoke" is rectangular with 6 seats, so seat 1 (Ola) is opposite seat 4 (Ania).
-const stripTablemates = (data) => ({ ...data, seat: data?.seat ? { ...data.seat, tablemates: [] } : data?.seat });
+// Other guests reach a phone only as the published seating the TV shows: the tablemates at the guest's OWN table and
+// (guest-venue-names) the names at every chair of the drawing. "Okno Smoke" is rectangular with 6 seats, so seat 1
+// (Ola) is opposite seat 4 (Ania).
+const stripTablemates = (data) => ({
+  ...data,
+  seat: data?.seat ? { ...data.seat, tablemates: [] } : data?.seat,
+  drawing: data?.drawing
+    ? { ...data.drawing, tables: data.drawing.tables.map((table) => ({ ...table, seats: [] })) }
+    : data?.drawing,
+});
 check(
-  "guest state leaks no keys or ids, and other guests only as tablemates",
+  "guest state leaks no keys or ids, and other guests only as the published seating",
   leaksFromGuest(aniaState.body, aniaKey).length === 0 &&
     !JSON.stringify(stripTablemates(aniaState.data)).includes(GUEST_NAMES[2]),
   leaksFromGuest(aniaState.body, aniaKey).join(" "),
@@ -1157,20 +1164,27 @@ check(
     JSON.stringify([{ seat: 1, name: GUEST_NAMES[2], relation: "opposite" }]),
   JSON.stringify(aniaState.data?.seat?.tablemates),
 );
-// The guest's drawing (venue-drawing): every table's geometry and name, outlined rooms and the pitch — no guest
-// names (those only come as tablemates), ids or keys.
+// The guest's drawing (venue-drawing): every table's geometry and name, outlined rooms and the pitch, and
+// (guest-venue-names) the published names at every table — exactly the TV's seats, no ids or keys.
 const drawingOf = (data) => data?.drawing ?? null;
+const tvForPhone = await request(tvSeatingApi);
+const seatsByTable = (tables) => JSON.stringify((tables ?? []).map((table) => [table.name, table.seats]));
 check(
-  "guest state carries the published drawing without anyone's name",
+  "guest state carries the published drawing with the TV's names at every table",
   JSON.stringify(Object.keys(drawingOf(aniaState.data) ?? {}).sort()) ===
     JSON.stringify(["chairPitch", "rooms", "tables"]) &&
     aniaState.data.drawing.chairPitch === 0.04 &&
     aniaState.data.drawing.tables.some((table) => table.name === TABLE_NAME && table.rotation === 270) &&
     aniaState.data.drawing.tables.every(
-      (table) => Object.keys(table).sort().join(",") === "name,rotation,seatCount,shape,x,y",
+      (table) => Object.keys(table).sort().join(",") === "name,rotation,seatCount,seats,shape,x,y",
     ) &&
-    !GUEST_NAMES.some((name) => JSON.stringify(aniaState.data.drawing).includes(name)),
-  JSON.stringify(aniaState.data?.drawing),
+    aniaState.data.drawing.tables.every((table) =>
+      table.seats.every((seat) => Object.keys(seat).sort().join(",") === "name,seat"),
+    ) &&
+    tvForPhone.status === 200 &&
+    seatsByTable(aniaState.data.drawing.tables) === seatsByTable(tvForPhone.data?.tables) &&
+    aniaState.data.drawing.tables.some((table) => table.seats.some((seat) => seat.name === GUEST_NAMES[2])),
+  `${JSON.stringify(aniaState.data?.drawing)} vs ${tvForPhone.body}`,
 );
 const olaState = await request(guestStateApi(olaKey));
 check(

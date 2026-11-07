@@ -72,6 +72,8 @@ TV i telefony gości nie pokazują zdjęcia planu, tylko rysunek: kontury sal z 
 3. Popraw ręcznie: przeciągnij stolik, obróć go uchwytem (co 15°, z Shift dowolnie), strzałki przesuwają, `[` i `]` obracają wybrany stolik. „Kontur” przy sali rysuje jej prostokąt. „Skala krzeseł” zmienia rozmiar wszystkich stolików naraz. „Podgląd jak na TV” pokazuje rysunek z imionami.
 4. Zmiany rysunku nie ruszają przypisań gości. TV i telefony pokażą nowy rysunek dopiero po „Opublikuj” na stronie rozsadzenia.
 
+Na telefonie gość widzi najpierw swój stolik z imionami przy krzesłach. Przycisk „Pokaż plan sali ze wszystkimi” rozwija całą salę z imieniem każdego gościa przy jego krześle (to samo, co na TV); jego stolik i miejsce są na czerwono. Plan jest szerszy niż ekran: otwiera się w powiększeniu, w którym imiona da się przeczytać, przewinięty do stolika gościa. Przesuwa się go palcem, „−” i „+” zmieniają powiększenie, „Mój stolik” wraca do własnego stolika.
+
 Na produkcji: przed `npx supabase db push` zrób kopię danych (`npx supabase db dump --data-only -f ~/kolacja-backup-<data>.sql`), potem `db push`, potem `npm run deploy:aws` (podnosi limit czasu Lambdy do 30 s). Do czasu przerysowania TV rysuje dotychczasowy układ z domyślnymi wartościami.
 
 ## Zamówienia i restauracja

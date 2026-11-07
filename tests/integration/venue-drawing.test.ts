@@ -123,10 +123,17 @@ describe.skipIf(!hasLocalDb)("venue drawing", () => {
       seatCount: 6,
       rotation: 270,
     });
-    // The drawing carries table and room names only: never who sits where.
+    // guest-venue-names: every table carries the published names at its chairs, exactly what the TV shows for it —
+    // never ids or keys.
+    for (const table of tv.tables) {
+      expect(state.drawing?.tables.find((drawn) => drawn.name === table.name)?.seats).toEqual(table.seats);
+    }
+    expect(state.drawing?.tables.find((table) => table.name === s.tableNames[0])?.seats).toEqual([
+      { seat: 1, name: s.guestNames[0] },
+      { seat: 2, name: s.guestNames[1] },
+    ]);
     const json = JSON.stringify(state.drawing);
-    expect(json).not.toContain(s.guestNames[1]);
-    expect(json).not.toMatch(/guestId|tableId|access_key|key/);
+    expect(json).not.toMatch(/guestId|tableId|access_key|key|"id"/);
 
     // Any drawing change is an unpublished change.
     await updateTable(db, t2, { rotation: 0 });

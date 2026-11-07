@@ -14,7 +14,7 @@ import { guestStateVersion, toGuestState, toTablemates } from "./state";
 //
 // Keys live in guest.access_key (the DB default gives every guest one); revoking writes a fresh key, so the old link
 // stops working at once. The guest side reads only what the guest may see: their own seat in the latest snapshot and
-// the published names at that table (what the TV shows anyway).
+// the published seating of that snapshot (names at their chairs, what the TV shows anyway).
 
 const UNIQUE_VIOLATION = "23505";
 
@@ -128,12 +128,14 @@ async function guestSeat(db: DbClient, snapshotId: number, guestId: number): Pro
 // The drawing of snapshot `snapshotId` as a guest may see it (venue-drawing): every table's geometry and name, the
 // outlined rooms and the pitch — never who sits where.
 async function guestDrawing(db: DbClient, snapshotId: number): Promise<GuestDrawingDto> {
-  const [snapshot, tables, rooms] = await Promise.all([
+  // At most MAX_GUESTS (100) seats per snapshot: one page, no paging needed.
+  const [snapshot, tables, seats, rooms] = await Promise.all([
     db.from("seating_snapshot").select("chair_pitch").eq("id", snapshotId).maybeSingle(),
     db
       .from("seating_snapshot_table")
-      .select("name, shape, seat_count, pos_x, pos_y, rotation")
+      .select("id, name, shape, seat_count, pos_x, pos_y, rotation")
       .eq("snapshot_id", snapshotId),
+    db.from("seating_snapshot_seat").select("snapshot_table_id, seat, guest_name").eq("snapshot_id", snapshotId),
     readSnapshotRooms(db, snapshotId),
   ]);
   if (snapshot.error) {
@@ -141,6 +143,9 @@ async function guestDrawing(db: DbClient, snapshotId: number): Promise<GuestDraw
   }
   if (tables.error) {
     fail("odczytać rysunku sali", tables.error.message);
+  }
+  if (seats.error) {
+    fail("odczytać rysunku sali", seats.error.message);
   }
   return {
     chairPitch: snapshot.data?.chair_pitch ?? DEFAULT_CHAIR_PITCH,
@@ -156,6 +161,10 @@ async function guestDrawing(db: DbClient, snapshotId: number): Promise<GuestDraw
                 x: table.pos_x,
                 y: table.pos_y,
                 rotation: table.rotation ?? 0,
+                seats: seats.data
+                  .filter((seat) => seat.snapshot_table_id === table.id)
+                  .sort((a, b) => a.seat - b.seat)
+                  .map((seat) => ({ seat: seat.seat, name: seat.guest_name })),
               },
             ]
           : [],

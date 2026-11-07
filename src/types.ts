@@ -332,19 +332,13 @@ export interface GuestSeatDto {
   tablemates: TablemateDto[];
 }
 
-// A table on the guest's drawing: geometry and name only, never who sits there (only the guest's own table gets
-// names, through seat.tablemates).
-export interface DrawingTableDto {
-  name: string;
-  shape: TableShape;
-  seatCount: number;
-  x: number;
-  y: number;
-  rotation: number;
-}
+// A table on the guest's drawing: geometry, name and (guest-venue-names) the published names at its chairs — exactly
+// what the TV shows for it (TvTableDto), never ids, keys or absences.
+export type DrawingTableDto = TvTableDto;
 
 // The published drawing as the guest's phone gets it (venue-drawing): the venue's tables and outlined rooms from the
-// same snapshot as the guest's seat. No guest names, ids or keys.
+// same snapshot as the guest's seat, every table with the names published at it (guest-venue-names; the TV's view).
+// No ids, keys or absences.
 export interface GuestDrawingDto {
   chairPitch: number;
   rooms: DrawingRoomDto[];
@@ -357,9 +351,10 @@ export type GuestSeatStatus = "unpublished" | "unseated" | "seated";
 
 // What a guest's phone shows (S-05) and polls for. version is the opaque polling token; name is the guest's current
 // display name; planVersion is the plan image version (null before an upload); guess (S-06) is the intake flag and
-// the guest's OWN guess. Nothing about other guests beyond the published names at their own table (seat.tablemates),
-// nothing about the correct amount or the ranking. drawing: the published venue drawing while the guest is seated
-// (null otherwise); its snapshot is the one in the token, so it needs no token part of its own.
+// the guest's OWN guess. Nothing about other guests beyond the published seating the TV shows (seat.tablemates at
+// their own table, drawing.tables[].seats everywhere), nothing about the correct amount or the ranking. drawing: the
+// published venue drawing while the guest is seated (null otherwise); its snapshot is the one in the token (snapshots
+// are immutable), so it needs no token part of its own.
 export interface GuestStateDto {
   version: string;
   name: string;
