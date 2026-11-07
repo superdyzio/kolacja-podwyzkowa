@@ -151,6 +151,7 @@ export const guestPhoneMessages = defineMessages(
     zoomOut: "Pomniejsz plan",
     zoomLevel: (percent: number) => `Powiększenie ${percent}%`,
     centerOnMe: "Mój stolik",
+    venueLoading: "Wczytuję plan sali…",
     // GuestGuessView
     guessOffline: "Brak połączenia — spróbuj ponownie.",
     intakeClosed: "Przyjmowanie strzałów jest zamknięte.",
@@ -213,6 +214,7 @@ export const guestPhoneMessages = defineMessages(
     zoomOut: "Zoom out",
     zoomLevel: (percent: number) => `Zoom ${percent}%`,
     centerOnMe: "My table",
+    venueLoading: "Loading the floor plan…",
     guessOffline: "No connection — please try again.",
     intakeClosed: "Guessing is closed.",
     guessSaved: (amount: string, place: number | null) =>

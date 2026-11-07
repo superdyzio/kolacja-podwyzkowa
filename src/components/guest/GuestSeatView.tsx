@@ -89,8 +89,10 @@ function VenueMap({
   // null until the names were measured at zoom 1 (before the first paint).
   const [zoom, setZoom] = useState<number | null>(null);
   const anchor = useRef<ZoomAnchor>({ kind: "own" });
-  // The guest's place the view was last scrolled for: a new one (a redraw) scrolls to the new table.
-  const place = `${ownTable}\u0000${String(ownSeat)}`;
+  // The guest's place the view was last scrolled for: a new one (a redraw, a republish that moved the table) scrolls
+  // to the own table again.
+  const own = tables.find((table) => table.key === ownTable);
+  const place = [ownTable, ownSeat, own?.x, own?.y, own?.rotation, aspect].map(String).join("\u0000");
   const lastPlace = useRef(place);
 
   useLayoutEffect(() => {
@@ -232,7 +234,11 @@ function SeatDrawing({
 }) {
   const t = guestPhoneMessages(locale);
   const [showVenue, setShowVenue] = useState(false);
-  // The plan photo's aspect ratio (the drawing's coordinates are fractions of it), read only for the whole-venue view.
+  // The plan photo is read (hidden) only once the whole venue was asked for, then stays mounted: hiding and showing
+  // again does not download it again.
+  const [planWanted, setPlanWanted] = useState(false);
+  // The plan photo's aspect ratio (the drawing's coordinates are fractions of it); a photo that fails to load counts
+  // as the default.
   const [aspect, setAspect] = useState<{ version: number; value: number } | null>(null);
   const tables = useMemo(
     (): VenueDrawingTable[] =>
@@ -256,6 +262,9 @@ function SeatDrawing({
     [tables, seat.table],
   );
   const ratio = aspect !== null && aspect.version === planVersion ? aspect.value : DEFAULT_ASPECT;
+  // The whole venue waits for the real aspect: drawn at the default first, every table would move (and the view would
+  // lose the guest's table) when the photo arrives.
+  const aspectKnown = planVersion === null || aspect?.version === planVersion;
   const highlight = { table: seat.table, seat: seat.seat };
 
   return (
@@ -280,12 +289,13 @@ function SeatDrawing({
         className="h-12 self-start text-base"
         aria-expanded={showVenue}
         onClick={() => {
+          setPlanWanted(true);
           setShowVenue((shown) => !shown);
         }}
       >
         {showVenue ? t.hideVenue : t.showVenue}
       </Button>
-      {showVenue && planVersion !== null && (
+      {planWanted && planVersion !== null && (
         <img
           src={planImagePath(apiBase, planVersion)}
           alt=""
@@ -293,13 +303,23 @@ function SeatDrawing({
           className="hidden"
           onLoad={(event) => {
             const img = event.currentTarget;
-            if (img.naturalWidth > 0 && img.naturalHeight > 0) {
-              setAspect({ version: planVersion, value: img.naturalWidth / img.naturalHeight });
-            }
+            setAspect({
+              version: planVersion,
+              value:
+                img.naturalWidth > 0 && img.naturalHeight > 0 ? img.naturalWidth / img.naturalHeight : DEFAULT_ASPECT,
+            });
+          }}
+          onError={() => {
+            setAspect({ version: planVersion, value: DEFAULT_ASPECT });
           }}
         />
       )}
-      {showVenue && (
+      {showVenue && !aspectKnown && (
+        <p role="status" className="text-muted-foreground text-sm">
+          {t.venueLoading}
+        </p>
+      )}
+      {showVenue && aspectKnown && (
         <VenueMap
           aspect={ratio}
           drawing={drawing}
