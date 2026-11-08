@@ -45,7 +45,9 @@ describe.skipIf(!hasLocalDb)("organizer reset", () => {
     await releaseEvent(db, event);
   });
 
-  async function count(table: "guest" | "guest_group" | "question" | "seating_snapshot"): Promise<number> {
+  async function count(
+    table: "guest" | "guest_group" | "question" | "seating_snapshot" | "drink_item",
+  ): Promise<number> {
     const { count: rows, error } = await db.from(table).select("*", { count: "exact", head: true });
     if (error) {
       throw new Error(error.message);
@@ -102,7 +104,8 @@ describe.skipIf(!hasLocalDb)("organizer reset", () => {
     plan: true,
     rooms: 1,
     tables: 2,
-    orders: 2,
+    // Two order lines and one drink (bill-drinks: the part counts and deletes both).
+    orders: 3,
     questions: starterQuestionRows().length + 1,
     guestAccessEnabled: true,
   };
@@ -146,6 +149,10 @@ describe.skipIf(!hasLocalDb)("organizer reset", () => {
     ]);
     if (orders.error) {
       throw new Error(orders.error.message);
+    }
+    const drinks = await db.from("drink_item").insert({ name: `Piwo ${tag}`, quantity: 6, unit_price_grosze: 1_400 });
+    if (drinks.error) {
+      throw new Error(drinks.error.message);
     }
     expect((await addQuestions(db, "generyczne", [`Czy reset ${tag} działa?`])).status).toBe("added");
     expect(await counts()).toEqual(SEEDED);
@@ -258,7 +265,7 @@ describe.skipIf(!hasLocalDb)("organizer reset", () => {
       });
     });
 
-    it("orders: every order line, nothing else; guests and tables leave their lines unassigned", async () => {
+    it("orders: every order line and drink, nothing else; guests and tables leave their lines unassigned", async () => {
       await seed();
       await reset(["guests", "venue"]);
       const { data, error } = await db.from("order_item").select("guest_id, table_id");
@@ -269,8 +276,9 @@ describe.skipIf(!hasLocalDb)("organizer reset", () => {
       ]);
       const result = await reset(["orders"]);
       expect(result.parts).toEqual(["orders"]);
-      expect(result.summary).toEqual(["Zamówienia: usunięto 2 pozycje zamówienia."]);
+      expect(result.summary).toEqual(["Zamówienia i napoje: usunięto 3 pozycje zamówienia."]);
       expect((await counts()).orders).toBe(0);
+      expect(await count("drink_item")).toBe(0);
     });
 
     it("guest links: a fresh key for every guest and guest access off", async () => {

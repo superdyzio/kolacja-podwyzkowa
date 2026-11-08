@@ -4,12 +4,15 @@ import { useServingSelection } from "@/components/hooks/useServingSelection";
 import { Button } from "@/components/ui/button";
 import { formatAmount } from "@/lib/guesses/amount";
 import type { Locale } from "@/lib/i18n";
-import { orderMessages, servingMessages } from "@/lib/orders/messages";
+import { billTotalGrosze } from "@/lib/orders/drinks";
+import { drinkMessages, orderMessages, servingMessages } from "@/lib/orders/messages";
 import { dishKey, dishSuggestions, lineTotal } from "@/lib/orders/rules";
 import { describeLines, formatOrderSummary } from "@/lib/orders/summary";
 import { cn } from "@/lib/utils";
 import type { OrderBoardDto, OrderItemDto } from "@/types";
+import type { OrderRequest } from "@/components/hooks/useOrderBoard";
 import { DishInstanceChips } from "./DishInstanceChips";
+import { DrinkPanel } from "./DrinkPanel";
 import { OrderItemForm, type OrderItemFormValues } from "./OrderItemForm";
 import { OrderLineRow } from "./OrderLineRow";
 import { ServingPlan } from "./ServingPlan";
@@ -33,11 +36,23 @@ function lineKey(item: OrderItemDto): string {
 // The organizer's order page (restaurant-orders): totals, a form for new lines, the prep list with sums and every line
 // grouped where it is served — by the PUBLISHED seating, exactly as the restaurant sees it — with „Wydane”, edit and
 // delete. serving-highlight: the plan beside the lists (above them on narrow screens, pinned while something is picked)
-// lights up where a dish, one piece of it or a line goes.
+// lights up where a dish, one piece of it or a line goes. bill-drinks: „Napoje do rachunku” at the bottom (the
+// organizer's own list) and the bill total (dishes + drinks) at the top.
 export function OrderManager({ apiBase, initial, locale }: Props) {
   const t = orderMessages(locale);
   const s = servingMessages(locale);
-  const { board, pending, failure, send, dismissFailure } = useOrderBoard(apiBase, initial, locale);
+  const d = drinkMessages(locale);
+  const { board, pending, failure, send: sendRequest, dismissFailure } = useOrderBoard(apiBase, initial, locale);
+  // Where a failed save is reported: next to the drinks panel for its own requests, at the top for everything else.
+  const [failureAtDrinks, setFailureAtDrinks] = useState(false);
+  const send = (request: OrderRequest) => {
+    setFailureAtDrinks(false);
+    return sendRequest(request);
+  };
+  const sendDrink = (request: OrderRequest) => {
+    setFailureAtDrinks(true);
+    return sendRequest(request);
+  };
   const [editingId, setEditingId] = useState<number | null>(null);
   const dishes = useMemo(() => dishSuggestions(board.items), [board.items]);
   const { totals, placement } = board;
@@ -110,30 +125,37 @@ export function OrderManager({ apiBase, initial, locale }: Props) {
     );
   }
 
+  const failureAlert = failure && (
+    <div role="alert" className="border-destructive/50 bg-destructive/5 flex flex-col gap-2 rounded-lg border p-3">
+      <p className="text-destructive font-medium">{failure.message}</p>
+      <Button type="button" variant="ghost" className="h-10 self-start" onClick={dismissFailure}>
+        {t.close}
+      </Button>
+    </div>
+  );
+
   return (
     <div className="grid gap-6 lg:grid-cols-2 lg:items-start">
       <div className="flex flex-col gap-6 lg:col-start-1 lg:row-start-1">
         <section aria-labelledby="order-total-heading" className="flex flex-col gap-1 rounded-xl border p-4 sm:p-6">
           <h2 id="order-total-heading" className="text-muted-foreground text-sm">
-            {t.total}
+            {d.billTotal}
           </h2>
-          <p className="text-3xl font-bold">{formatAmount(totals.totalGrosze)}</p>
-          <p className="text-sm" aria-live="polite">
+          <p className="text-3xl font-bold" aria-live="polite">
+            {formatAmount(billTotalGrosze(totals, board.drinkTotals))}
+          </p>
+          <p className="text-sm">
+            {d.billParts(formatAmount(totals.totalGrosze), formatAmount(board.drinkTotals.totalGrosze))} ·{" "}
+            <a href="#napoje" className="underline underline-offset-4">
+              {d.heading}
+            </a>
+          </p>
+          <p className="text-muted-foreground text-sm" aria-live="polite">
             {formatOrderSummary(totals, locale)}
           </p>
         </section>
 
-        {failure && (
-          <div
-            role="alert"
-            className="border-destructive/50 bg-destructive/5 flex flex-col gap-2 rounded-lg border p-3"
-          >
-            <p className="text-destructive font-medium">{failure.message}</p>
-            <Button type="button" variant="ghost" className="h-10 self-start" onClick={dismissFailure}>
-              {t.close}
-            </Button>
-          </div>
-        )}
+        {!failureAtDrinks && failureAlert}
 
         <section aria-labelledby="order-add-heading" className="flex flex-col gap-3 rounded-xl border p-4 sm:p-6">
           <h2 id="order-add-heading" className="text-xl font-semibold">
@@ -315,6 +337,15 @@ export function OrderManager({ apiBase, initial, locale }: Props) {
             </article>
           )}
         </section>
+
+        {failureAtDrinks && failureAlert}
+        <DrinkPanel
+          drinks={board.drinks}
+          totals={board.drinkTotals}
+          pending={pending}
+          locale={locale}
+          send={sendDrink}
+        />
       </div>
     </div>
   );

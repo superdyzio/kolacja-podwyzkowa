@@ -97,7 +97,7 @@ describe("describeResetCount", () => {
         questionsAdded: 0,
         guestKeysReplaced: 0,
       }),
-    ).toEqual(["Zamówienia: usunięto 1 pozycję zamówienia."]);
+    ).toEqual(["Zamówienia i napoje: usunięto 1 pozycję zamówienia."]);
     expect(describeResetCount("questions", one, 2)).toBe("1 pytanie → zostaną 2 startowe");
     const few = { ...EMPTY, guesses: 22, guests: 2, groups: 4, rooms: 2, tables: 3 };
     expect(describeResetCount("guesses", few, 90)).toBe("22 strzały");
@@ -124,7 +124,7 @@ describe("describeResetResult", () => {
       "Rozsadzenie i historia: usunięto 38 miejsc i 2 publikacje; TV nie pokazuje rozsadzenia do następnej publikacji.",
       "Goście i grupy: usunięto 40 gości i 3 grupy.",
       "Plan, sale i stoliki: usunięto plan, 3 sale i 7 stolików.",
-      "Zamówienia: usunięto 12 pozycji zamówienia.",
+      "Zamówienia i napoje: usunięto 12 pozycji zamówienia.",
       "Pytania: usunięto 95 pytań, wczytano 90 startowych.",
       "Linki gości: dostęp gości wyłączony.",
     ]);

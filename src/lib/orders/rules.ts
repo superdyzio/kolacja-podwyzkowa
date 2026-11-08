@@ -109,10 +109,12 @@ export interface DishSuggestion {
   unitPriceGrosze: number;
 }
 
+type PricedLine = Pick<OrderItemDto, "id" | "name" | "unitPriceGrosze">;
+
 // The dishes already on the order for the form's autocomplete, each with the price of its newest line (highest id),
-// in Polish order.
-export function dishSuggestions(items: readonly OrderItemDto[]): DishSuggestion[] {
-  const newest = new Map<string, OrderItemDto>();
+// in Polish order. bill-drinks: the drinks form uses it for the drinks the same way.
+export function dishSuggestions(items: readonly PricedLine[]): DishSuggestion[] {
+  const newest = new Map<string, PricedLine>();
   for (const item of items) {
     const key = dishKey(item.name);
     const known = newest.get(key);

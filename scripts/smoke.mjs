@@ -3370,6 +3370,130 @@ check(
   `${ordersPage.status} ${tvOrdersPage.status}`,
 );
 
+// 23c. Drinks on the bill (bill-drinks). The organizer's own list (name, price per item, quantity) for checking the
+// restaurant's bill: on the organizer's board and order page only — never on the restaurant's page or API, the TV or a
+// guest's phone (with guest access on); other keys are refused. One drink stays for the reset below.
+const drinksApi = `${api}/drinks`;
+const DRINK = "Piwo Drinksmoke";
+const addDrink = (json) => request(drinksApi, { method: "POST", json });
+const drinkAdded = await addDrink({ name: `  ${DRINK}  `, price: "14,50 zł", quantity: 12 });
+const drinkId = drinkAdded.data?.drinks?.find((drink) => drink.name === DRINK)?.id;
+check(
+  "drinks: a drink joins the organizer's board, its sum apart from the dishes'",
+  drinkAdded.status === 201 &&
+    drinkAdded.cacheControl.includes("no-store") &&
+    Boolean(drinkId) &&
+    drinkAdded.data.drinks.length === 1 &&
+    drinkAdded.data.drinks[0].unitPriceGrosze === 1450 &&
+    drinkAdded.data.drinks[0].quantity === 12 &&
+    drinkAdded.data.drinkTotals.totalGrosze === 12 * 1450 &&
+    drinkAdded.data.totals.totalGrosze === deletedLine.data?.totals?.totalGrosze &&
+    !drinkAdded.data.items.some((item) => item.name === DRINK) &&
+    !drinkAdded.data.prep.some((line) => line.name === DRINK),
+  drinkAdded.body.slice(0, 300),
+);
+const wineAdded = await addDrink({ name: "Wino Drinksmoke", price: "120", quantity: 1 });
+const wineId = wineAdded.data?.drinks?.find((drink) => drink.name === "Wino Drinksmoke")?.id;
+const drinkChanged = await request(`${drinksApi}/${drinkId}`, { method: "PATCH", json: { quantity: 15 } });
+check(
+  "drinks: a drink's quantity is changed, the sum follows",
+  wineAdded.status === 201 &&
+    drinkChanged.status === 200 &&
+    drinkChanged.data?.drinks?.find((drink) => drink.id === drinkId)?.quantity === 15 &&
+    drinkChanged.data.drinkTotals.totalGrosze === 15 * 1450 + 12_000 &&
+    drinkChanged.data.drinkTotals.lines === 2,
+  drinkChanged.body.slice(0, 300),
+);
+for (const [label, method, path, json, status, message] of [
+  ["no name", "POST", drinksApi, { name: " ", price: "1", quantity: 1 }, 400, "Wpisz nazwę napoju."],
+  [
+    "a quantity above 999",
+    "POST",
+    drinksApi,
+    { name: "X", price: "1", quantity: 1000 },
+    400,
+    "Ilość to liczba od 1 do 999.",
+  ],
+  [
+    "a bad price",
+    "POST",
+    drinksApi,
+    { name: "X", price: "abc", quantity: 1 },
+    400,
+    "Wpisz kwotę w złotych, np. 1500 albo 1499,99.",
+  ],
+  [
+    "an assignment",
+    "POST",
+    drinksApi,
+    { name: "X", price: "1", quantity: 1, assignment: null },
+    400,
+    "Nieprawidłowe dane.",
+  ],
+  ["an empty change", "PATCH", `${drinksApi}/${drinkId}`, {}, 400, "Nieprawidłowe dane."],
+  ["an unknown drink", "PATCH", `${drinksApi}/2000000000`, { quantity: 1 }, 404, "Nie znaleziono napoju."],
+]) {
+  const res = await request(path, { method, json });
+  check(`drinks refuse ${label}`, res.status === status && errorOf(res) === message, `${res.status} ${res.body}`);
+}
+for (const [method, path] of [
+  ["POST", `/api/o/${tvKey}/drinks`],
+  ["POST", `/api/o/${restaurantKey}/drinks`],
+  ["POST", `/api/o/${seatedKey}/drinks`],
+  ["PATCH", `/api/o/${tvKey}/drinks/${drinkId}`],
+  ["DELETE", `/api/o/${restaurantKey}/drinks/${drinkId}`],
+]) {
+  const res = await request(path, {
+    method,
+    json: method === "DELETE" ? undefined : { name: "X", price: "1", quantity: 1 },
+  });
+  check(
+    `drinks: other keys are refused (${method} ${path.replace(tvKey, "<tv>").replace(restaurantKey, "<restaurant>").replace(seatedKey, "<guest>")})`,
+    noAccessJson(res),
+    `${res.status} ${res.body}`,
+  );
+}
+const drinksGuestAccessOn = await request(linksApi, { method: "PATCH", json: { enabled: true } });
+const drinkLeakChecks = [
+  ["the restaurant's page", await request(`/r/${restaurantKey}`)],
+  ["the restaurant's API", await request(`${restaurantApiBase}/orders`)],
+  ["the TV page", await request(`/tv/${tvKey}`)],
+  ["the TV poll", await request(tvSeatingApi)],
+  ["the guest's page", await request(`/g/${seatedKey}`)],
+  ["the guest's poll", await request(guestStateApi(seatedKey))],
+];
+for (const [label, res] of drinkLeakChecks) {
+  check(
+    `drinks never reach ${label}`,
+    drinksGuestAccessOn.status === 200 &&
+      res.status === 200 &&
+      !res.body.includes("Drinksmoke") &&
+      !res.body.includes("Napoje do rachunku") &&
+      !res.body.includes("Drinks for the bill"),
+    `${res.status} ${res.body.slice(0, 120)}`,
+  );
+}
+await request(linksApi, { method: "PATCH", json: { enabled: false } });
+const drinksPage = await request(`/o/${organizerKey}/zamowienia`);
+check(
+  "drinks: the organizer's order page lists them and the bill total",
+  drinksPage.status === 200 &&
+    drinksPage.body.includes(DRINK) &&
+    drinksPage.body.includes("Napoje do rachunku") &&
+    drinksPage.body.includes("Rachunek razem"),
+  String(drinksPage.status),
+);
+const wineDeleted = await request(`${drinksApi}/${wineId}`, { method: "DELETE" });
+const wineDeletedAgain = await request(`${drinksApi}/${wineId}`, { method: "DELETE" });
+check(
+  "drinks: a drink is deleted once",
+  wineDeleted.status === 200 &&
+    wineDeleted.data.drinks.map((drink) => drink.name).join() === DRINK &&
+    wineDeletedAgain.status === 404 &&
+    errorOf(wineDeletedAgain) === "Nie znaleziono napoju.",
+  `${wineDeleted.status} ${wineDeletedAgain.status}`,
+);
+
 const rotated = await request(`${api}/restaurant-link`, { method: "POST" });
 const newRestaurantKey = new RegExp(`^/r/(${KEY})$`).exec(rotated.data?.path ?? "")?.[1];
 const oldRestaurantPage = await request(`/r/${restaurantKey}`);
@@ -3612,6 +3736,14 @@ check(
       guestAccessEnabled: false,
     }),
   previewAfterReset.body,
+);
+const drinksAfterReset = await request(ordersApi);
+check(
+  "after resetting everything: no drinks left (the orders part deletes them)",
+  drinksAfterReset.status === 200 &&
+    drinksAfterReset.data?.drinks?.length === 0 &&
+    drinksAfterReset.data.drinkTotals.totalGrosze === 0,
+  drinksAfterReset.body.slice(0, 200),
 );
 const shellAfterReset = await request(`/o/${organizerKey}`);
 const tvPageAfterReset = await request(`/tv/${tvKey}`);

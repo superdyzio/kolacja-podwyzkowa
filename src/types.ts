@@ -582,7 +582,7 @@ export interface ResetCountsDto {
   plan: boolean;
   rooms: number;
   tables: number;
-  // restaurant-orders: order lines.
+  // restaurant-orders: order lines (bill-drinks: plus the drink lines, which the part deletes too).
   orders: number;
   questions: number;
   guestAccessEnabled: boolean;
@@ -702,6 +702,21 @@ export interface OrderTableOptionDto {
   published: boolean;
 }
 
+// bill-drinks: one line of the drinks on the restaurant's bill, kept by the organizer only to check the bill (never
+// for anyone in particular, never on a guest's phone, the TV or the restaurant's page).
+export interface DrinkItemDto {
+  id: number;
+  name: string;
+  quantity: number;
+  unitPriceGrosze: number;
+}
+
+export interface DrinkTotalsDto {
+  lines: number;
+  quantity: number;
+  totalGrosze: number;
+}
+
 // GET /api/o/<key>/orders and every mutation's answer.
 export interface OrderBoardDto {
   items: OrderItemDto[];
@@ -712,7 +727,11 @@ export interface OrderBoardDto {
   seating: TvSeatingDto;
   placement: OrderPlacementDto<OrderItemDto>;
   prep: OrganizerPrepLineDto[];
+  // The dishes only (pieces and „wydane” count dishes).
   totals: OrderTotalsDto;
+  // bill-drinks: the drinks and their sum; the bill = totals.totalGrosze + drinkTotals.totalGrosze.
+  drinks: DrinkItemDto[];
+  drinkTotals: DrinkTotalsDto;
 }
 
 // GET /api/r/<key>/orders: the restaurant's view. seating = what the TV draws (names at chairs, no ids); no prices,
