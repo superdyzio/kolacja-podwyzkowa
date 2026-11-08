@@ -7,7 +7,7 @@ import type { Locale } from "@/lib/i18n";
 import { billTotalGrosze } from "@/lib/orders/drinks";
 import { drinkMessages, orderMessages, servingMessages } from "@/lib/orders/messages";
 import { dishKey, dishSuggestions, lineTotal } from "@/lib/orders/rules";
-import { describeLines, formatOrderSummary } from "@/lib/orders/summary";
+import { describeLines, formatServedSummary } from "@/lib/orders/summary";
 import { cn } from "@/lib/utils";
 import type { OrderBoardDto, OrderItemDto } from "@/types";
 import type { OrderRequest } from "@/components/hooks/useOrderBoard";
@@ -151,7 +151,7 @@ export function OrderManager({ apiBase, initial, locale }: Props) {
             </a>
           </p>
           <p className="text-muted-foreground text-sm" aria-live="polite">
-            {formatOrderSummary(totals, locale)}
+            {formatServedSummary(totals, locale)}
           </p>
         </section>
 

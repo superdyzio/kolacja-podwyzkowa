@@ -11,6 +11,7 @@ import {
 } from "./drinks";
 import { toDrinkInput, toDrinkPatch } from "./input";
 import { dishSuggestions } from "./rules";
+import { formatServedSummary } from "./summary";
 
 function drink(id: number, fields: Partial<DrinkItemDto> = {}): DrinkItemDto {
   return { id, name: "Piwo", quantity: 1, unitPriceGrosze: 1_400, ...fields };
@@ -70,5 +71,15 @@ describe("drink rules (bill-drinks)", () => {
     });
     expect(toDrinkPatch({ quantity: 3 })).toEqual({ ok: true, value: { quantity: 3 } });
     expect(toDrinkPatch({ price: "0" })).toEqual({ ok: true, value: { unitPriceGrosze: 0 } });
+  });
+
+  it("sums up the dishes under the bill without repeating their amount", () => {
+    expect(formatServedSummary({ lines: 9, quantity: 10, deliveredQuantity: 1, totalGrosze: 51_000 })).toBe(
+      "9 pozycji · wydane 1 z 10 szt.",
+    );
+    expect(formatServedSummary({ lines: 1, quantity: 2, deliveredQuantity: 2, totalGrosze: 100 }, "en")).toBe(
+      "1 line · served 2 of 2 pcs",
+    );
+    expect(formatServedSummary({ lines: 0, quantity: 0, deliveredQuantity: 0, totalGrosze: 0 })).toBeNull();
   });
 });

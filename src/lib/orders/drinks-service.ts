@@ -8,6 +8,9 @@ import { MAX_DRINK_ITEMS } from "./drinks";
 // throw; expected outcomes come back as status unions. Inputs are already normalized and validated (drinks.ts).
 
 const DRINK_COLUMNS = "id, name, quantity, unit_price_grosze";
+// PostgREST's "no such table" (and Postgres' own code). Only while the code runs before its migration (deploy order
+// mistake on the evening): the order page and „Wydane” keep working with an empty drinks list; adding one still fails.
+const MISSING_TABLE_CODES = new Set(["PGRST205", "42P01"]);
 
 function fail(action: string, message: string): never {
   throw new Error(`Nie udało się ${action}: ${message}`);
@@ -28,6 +31,11 @@ function toDrinkDto(row: DrinkRow): DrinkItemDto {
 export async function getDrinkItems(db: DbClient): Promise<DrinkItemDto[]> {
   const { data, error } = await db.from("drink_item").select(DRINK_COLUMNS).eq("event_id", EVENT_ID).order("id");
   if (error) {
+    if (MISSING_TABLE_CODES.has(error.code)) {
+      // eslint-disable-next-line no-console -- the only trace of the deploy-order mistake (Lambda logs)
+      console.error(`drink_item is missing (${error.code}): run the migration 20261108120000_bill_drinks.sql`);
+      return [];
+    }
     fail("odczytać napojów", error.message);
   }
   return data.map(toDrinkDto);
