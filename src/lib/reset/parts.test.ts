@@ -24,7 +24,7 @@ describe("reset parts", () => {
       "Rozsadzenie i historia",
       "Goście i grupy",
       "Plan, sale i stoliki",
-      "Zamówienia",
+      "Zamówienia i napoje",
       "Pytania",
       "Linki gości",
     ]);

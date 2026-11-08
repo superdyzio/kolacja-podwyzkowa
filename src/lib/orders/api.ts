@@ -29,3 +29,18 @@ export const UpdateOrderItemBody = z
   .refine((body) => Object.keys(body).length > 0);
 
 export type OrderAssignmentInput = z.infer<typeof OrderAssignment>;
+
+// bill-drinks: a drink line of the bill (organizer only): name, price as typed, quantity.
+export const AddDrinkBody = z.strictObject({
+  name: z.string().max(400),
+  quantity: z.number(),
+  price: z.string().max(40),
+});
+
+export const UpdateDrinkBody = z
+  .strictObject({
+    name: z.string().max(400).optional(),
+    quantity: z.number().optional(),
+    price: z.string().max(40).optional(),
+  })
+  .refine((body) => Object.keys(body).length > 0);

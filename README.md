@@ -38,7 +38,7 @@ Cała aplikacja działa po polsku i po angielsku. Przełącznik **PL / EN** jest
 
 ## Reset danych
 
-Na dole panelu organizatora jest karta „Reset danych”. „Resetuj…” otwiera okno z listą rzeczy do wyczyszczenia, każda z opisem i aktualną liczbą: strzały (z prawidłową kwotą), licznik tematów AI, rozsadzenie z historią publikacji, goście i grupy, plan z salami i stolikami, zamówienia (link restauracji zostaje), pytania (wraca baza startowa) oraz linki gości (nowe linki, dostęp gości wyłączony — wydrukowane karteczki przestają działać). Goście pociągają za sobą strzały, licznik AI i rozsadzenie, a plan — rozsadzenie. Jedno kliknięcie „Resetuj zaznaczone” czyści wszystko naraz (jedna transakcja w bazie). Link organizatora i adres TV się nie zmieniają, więc np. po próbie generalnej wystarczy zresetować wszystko i od nowa wgrać dane (także `npm run demo`).
+Na dole panelu organizatora jest karta „Reset danych”. „Resetuj…” otwiera okno z listą rzeczy do wyczyszczenia, każda z opisem i aktualną liczbą: strzały (z prawidłową kwotą), licznik tematów AI, rozsadzenie z historią publikacji, goście i grupy, plan z salami i stolikami, zamówienia z napojami do rachunku (link restauracji zostaje), pytania (wraca baza startowa) oraz linki gości (nowe linki, dostęp gości wyłączony — wydrukowane karteczki przestają działać). Goście pociągają za sobą strzały, licznik AI i rozsadzenie, a plan — rozsadzenie. Jedno kliknięcie „Resetuj zaznaczone” czyści wszystko naraz (jedna transakcja w bazie). Link organizatora i adres TV się nie zmieniają, więc np. po próbie generalnej wystarczy zresetować wszystko i od nowa wgrać dane (także `npm run demo`).
 
 ## Tematy AI
 
@@ -91,6 +91,12 @@ Na produkcji ta zmiana wymaga migracji bazy **przed** wdrożeniem kodu: bez niej
 Gość widzi na swoim telefonie sekcję „Twoje zamówienie”: swoje dania i dania na środek swojego stolika (z opublikowanego rozsadzenia), bez cen. Każdą sztukę zaznacza osobno przyciskiem „Dotarło” (dzbanek × 2 to dwa przyciski) i może to cofnąć. Zaznaczenie organizatora może cofnąć tylko organizator. Przy każdej sztuce widać, kto ją zaznaczył: gość widzi „Ty”, „gość” albo „organizator”, organizator widzi imię gościa. U organizatora (`/o/<klucz>/zamowienia`) „Wydane” dalej zaznacza całą pozycję, a przy pozycjach z kilkoma sztukami są osobne przyciski sztuk („✓ 2 · Basia”); strona odświeża się sama co 5 s. Restauracja widzi „wydane 1 z 2”, a na planie wydane sztuki są szare.
 
 Na produkcji ta zmiana wymaga migracji bazy **przed** wdrożeniem kodu (bez niej telefony gości przestają się odświeżać): kopia danych, `npx supabase db push`, potem `npm run deploy:aws`. Między `db push` a wdrożeniem nie odhaczaj „Wydane”. Migracja tylko dodaje tabelę i funkcje; już odhaczone pozycje zostają wydane (wszystkie sztuki, przez organizatora). Telefony otwarte przed wdrożeniem pokażą nową sekcję dopiero po odświeżeniu strony.
+
+### Napoje do rachunku
+
+Na dole `/o/<klucz>/zamowienia` jest sekcja „Napoje do rachunku” — tylko dla organizatora, do sprawdzenia rachunku przy rozliczeniu z restauracją. Każdy napój to nazwa (podpowiedzi z napojów już wpisanych, cena podstawia się sama), cena za sztukę i ilość (do 999), bez przypisania do osób; da się go poprawić albo usunąć. Goście, TV i restauracja napojów nie widzą. Karta z sumą na górze strony pokazuje „Rachunek razem” (dania + napoje) oraz osobno „Dania” i „Napoje”. Reset „Zamówienia i napoje” usuwa też napoje.
+
+Na produkcji ta zmiana wymaga migracji bazy **przed** wdrożeniem kodu (bez niej strona zamówień kończy się błędem 500): kopia danych, `npx supabase db push`, potem `npm run deploy:aws`. Migracja tylko dodaje tabelę i podmienia dwie funkcje resetu; nic z istniejących danych się nie zmienia.
 
 ## Typ miejsca w konkursie strzałów
 

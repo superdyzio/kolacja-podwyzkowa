@@ -1,5 +1,35 @@
-export { AddOrderItemBody, OrderAssignment, UpdateOrderItemBody, type OrderAssignmentInput } from "./api";
-export { toOrderItemInput, toOrderItemPatch, type InputResult } from "./input";
+export {
+  AddDrinkBody,
+  AddOrderItemBody,
+  OrderAssignment,
+  UpdateDrinkBody,
+  UpdateOrderItemBody,
+  type OrderAssignmentInput,
+} from "./api";
+export {
+  billTotalGrosze,
+  drinkQuantityMessage,
+  drinkTotals,
+  isValidDrinkQuantity,
+  MAX_DRINK_ITEMS,
+  MAX_DRINK_NAME_LENGTH,
+  MAX_DRINK_QUANTITY,
+  MIN_DRINK_QUANTITY,
+  parseDrinkName,
+  tooManyDrinksMessage,
+} from "./drinks";
+export {
+  addDrinkItem,
+  deleteDrinkItem,
+  getDrinkItems,
+  updateDrinkItem,
+  type AddDrinkResult,
+  type DeleteDrinkResult,
+  type DrinkInput,
+  type DrinkPatch,
+  type UpdateDrinkResult,
+} from "./drinks-service";
+export { toDrinkInput, toDrinkPatch, toOrderItemInput, toOrderItemPatch, type InputResult } from "./input";
 export {
   deliveredCount,
   guestOrdersKey,
@@ -61,5 +91,5 @@ export {
   type OrderItemPatch,
   type UpdateOrderItemResult,
 } from "./service";
-export { guestOrderMessages, orderMessages, restaurantMessages } from "./messages";
+export { drinkMessages, guestOrderMessages, orderMessages, restaurantMessages } from "./messages";
 export { describeLines, describeToServe, formatOrderSummary } from "./summary";

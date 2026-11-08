@@ -733,6 +733,45 @@ export interface Database {
           },
         ];
       };
+      // bill-drinks: drinks on the restaurant's bill (organizer only).
+      drink_item: {
+        Row: {
+          id: number;
+          event_id: number;
+          name: string;
+          quantity: number;
+          unit_price_grosze: number;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: never;
+          event_id?: number;
+          name: string;
+          quantity: number;
+          unit_price_grosze: number;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: never;
+          event_id?: number;
+          name?: string;
+          quantity?: number;
+          unit_price_grosze?: number;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "drink_item_event_id_fkey";
+            columns: ["event_id"];
+            isOneToOne: false;
+            referencedRelation: "event";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       tv_spotlight: {
         Row: {
           id: number;

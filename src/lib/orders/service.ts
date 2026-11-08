@@ -6,6 +6,7 @@ import { getLatestSnapshot, getPlanVersion } from "@/lib/seating/service";
 import type { DbClient } from "@/lib/supabase-client";
 import { getVenue } from "@/lib/venue/service";
 import type {
+  DrinkItemDto,
   GuestListDto,
   GuestOrderLineDto,
   OrderBoardDto,
@@ -15,6 +16,8 @@ import type {
   VenueDto,
 } from "@/types";
 import type { OrderAssignmentInput } from "./api";
+import { drinkTotals } from "./drinks";
+import { getDrinkItems } from "./drinks-service";
 import { isLineDelivered, toGuestOrderLines, toPieceMarks, type PieceMarkRow } from "./pieces";
 import { placeOrders, type PlacementSource } from "./placement";
 import { organizerPrepList } from "./prep";
@@ -83,6 +86,7 @@ export function toOrderBoard(
   guestList: GuestListDto,
   venue: VenueDto,
   snapshot: SeatingSnapshot | null,
+  drinks: DrinkItemDto[],
 ): OrderBoardDto {
   const source = placementSource(guestList, venue, snapshot);
   const snapshotTables = new Map(snapshot?.tables.map((table) => [table.snapshotTableId, table]) ?? []);
@@ -113,18 +117,22 @@ export function toOrderBoard(
     placement: placeOrders(items, source, (item) => item),
     prep: organizerPrepList(items),
     totals: orderTotals(items),
+    drinks,
+    drinkTotals: drinkTotals(drinks),
   };
 }
 
-// Everything the organizer's order page shows.
+// Everything the organizer's order page shows (bill-drinks: with the drinks on the bill — the organizer's board is
+// the only reader of drink_item).
 export async function getOrderBoard(db: DbClient): Promise<OrderBoardDto> {
-  const [items, guestList, venue, snapshot] = await Promise.all([
+  const [items, guestList, venue, snapshot, drinks] = await Promise.all([
     getOrderItems(db),
     getGuestList(db),
     getVenue(db),
     getLatestSnapshot(db),
+    getDrinkItems(db),
   ]);
-  return toOrderBoard(items, guestList, venue, snapshot);
+  return toOrderBoard(items, guestList, venue, snapshot, drinks);
 }
 
 // What the restaurant sees (one read of everything, then a fingerprint; see restaurant.ts).

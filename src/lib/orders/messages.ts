@@ -316,3 +316,69 @@ export const guestOrderMessages = defineMessages(
     markedByOrganizer: "The organizer marked this piece — only they can undo it.",
   },
 );
+
+// The drinks on the bill (bill-drinks): the organizer's own list on the order page, only for checking the restaurant's
+// bill — never shown to guests, the TV or the restaurant. Limits come in as parameters (as in orderMessages).
+export const drinkMessages = defineMessages(
+  {
+    // Validation (drinks.ts) and API answers.
+    nameEmpty: "Wpisz nazwę napoju.",
+    nameTooLong: (max: number) => `Nazwa napoju może mieć najwyżej ${max} znaków.`,
+    tooMany: (max: number) => `Lista napojów może mieć najwyżej ${max} pozycji.`,
+    notFound: "Nie znaleziono napoju.",
+    // The totals card on the order page.
+    billTotal: "Rachunek razem",
+    billParts: (dishes: string, drinks: string) => `Dania: ${dishes} · Napoje: ${drinks}`,
+    // DrinkPanel.
+    heading: "Napoje do rachunku",
+    intro:
+      "Tylko dla Ciebie — do sprawdzenia rachunku przy rozliczeniu z restauracją. Goście ani restauracja ich nie widzą. Wpisz nazwę, cenę za sztukę i ilość; suma wchodzi do „Rachunek razem”.",
+    name: "Napój",
+    namePlaceholder: "np. Piwo 0,5 l",
+    unitPrice: "Cena za sztukę",
+    pricePlaceholder: "np. 14",
+    quantity: "Ilość",
+    newFormLabel: "Nowy napój",
+    editFormLabel: (name: string) => `Zmień napój: ${name}`,
+    add: "Dodaj napój",
+    save: "Zapisz",
+    cancel: "Anuluj",
+    edit: "Zmień",
+    editLabel: (name: string) => `Zmień: ${name}`,
+    remove: "Usuń",
+    removeLabel: (name: string) => `Usuń: ${name}`,
+    confirmDelete: (name: string, quantity: number) => `Usunąć „${name} × ${quantity}” z napojów?`,
+    empty: "Nie ma jeszcze napojów.",
+    listLabel: "Napoje na rachunku",
+    total: "Napoje razem",
+  },
+  {
+    nameEmpty: "Enter the drink name.",
+    nameTooLong: (max: number) => `A drink name can be at most ${max} characters long.`,
+    tooMany: (max: number) => `The drinks list can have at most ${max} lines.`,
+    notFound: "Drink not found.",
+    billTotal: "Bill total",
+    billParts: (dishes: string, drinks: string) => `Dishes: ${dishes} · Drinks: ${drinks}`,
+    heading: "Drinks for the bill",
+    intro:
+      "Only for you — to check the bill when settling up with the restaurant. Guests and the restaurant never see them. Enter the name, the price per item and the quantity; the sum goes into “Bill total”.",
+    name: "Drink",
+    namePlaceholder: "e.g. Beer 0.5 l",
+    unitPrice: "Price per item",
+    pricePlaceholder: "e.g. 14",
+    quantity: "Quantity",
+    newFormLabel: "New drink",
+    editFormLabel: (name: string) => `Edit drink: ${name}`,
+    add: "Add drink",
+    save: "Save",
+    cancel: "Cancel",
+    edit: "Edit",
+    editLabel: (name: string) => `Edit: ${name}`,
+    remove: "Remove",
+    removeLabel: (name: string) => `Remove: ${name}`,
+    confirmDelete: (name: string, quantity: number) => `Remove “${name} × ${quantity}” from the drinks?`,
+    empty: "No drinks yet.",
+    listLabel: "Drinks on the bill",
+    total: "Drinks total",
+  },
+);

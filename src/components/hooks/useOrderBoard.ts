@@ -35,7 +35,10 @@ function isBoard(data: unknown): data is OrderBoardDto {
     typeof candidate.placement === "object" &&
     candidate.placement !== null &&
     typeof candidate.totals === "object" &&
-    candidate.totals !== null
+    candidate.totals !== null &&
+    Array.isArray(candidate.drinks) &&
+    typeof candidate.drinkTotals === "object" &&
+    candidate.drinkTotals !== null
   );
 }
 

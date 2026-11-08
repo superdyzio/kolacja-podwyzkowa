@@ -1,7 +1,9 @@
 import type { z } from "astro/zod";
 import { httpMessages } from "@/lib/http";
 import type { Locale } from "@/lib/i18n/locale";
-import type { AddOrderItemBody, UpdateOrderItemBody } from "./api";
+import type { AddDrinkBody, AddOrderItemBody, UpdateDrinkBody, UpdateOrderItemBody } from "./api";
+import { drinkQuantityMessage, isValidDrinkQuantity, parseDrinkName } from "./drinks";
+import type { DrinkInput, DrinkPatch } from "./drinks-service";
 import { isValidQuantity, parseDishName, parseNote, parseUnitPrice, quantityMessage } from "./rules";
 import type { OrderItemInput, OrderItemPatch } from "./service";
 
@@ -65,6 +67,44 @@ export function toOrderItemPatch(
   }
   if (body.delivered !== undefined) {
     patch.delivered = body.delivered;
+  }
+  return { ok: true, value: patch };
+}
+
+// bill-drinks: a drink line from its body, every field checked like the form does.
+export function toDrinkInput(body: z.infer<typeof AddDrinkBody>, locale: Locale = "pl"): InputResult<DrinkInput> {
+  const patch = toDrinkPatch(body, locale);
+  if (!patch.ok) {
+    return patch;
+  }
+  const { name, quantity, unitPriceGrosze } = patch.value;
+  if (name === undefined || quantity === undefined || unitPriceGrosze === undefined) {
+    return { ok: false, message: httpMessages(locale).invalidData };
+  }
+  return { ok: true, value: { name, quantity, unitPriceGrosze } };
+}
+
+export function toDrinkPatch(body: z.infer<typeof UpdateDrinkBody>, locale: Locale = "pl"): InputResult<DrinkPatch> {
+  const patch: DrinkPatch = {};
+  if (body.name !== undefined) {
+    const name = parseDrinkName(body.name, locale);
+    if (!name.ok) {
+      return name;
+    }
+    patch.name = name.value;
+  }
+  if (body.quantity !== undefined) {
+    if (!isValidDrinkQuantity(body.quantity)) {
+      return { ok: false, message: drinkQuantityMessage(locale) };
+    }
+    patch.quantity = body.quantity;
+  }
+  if (body.price !== undefined) {
+    const price = parseUnitPrice(body.price, locale);
+    if (!price.ok) {
+      return price;
+    }
+    patch.unitPriceGrosze = price.grosze;
   }
   return { ok: true, value: patch };
 }
