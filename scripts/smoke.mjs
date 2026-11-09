@@ -1,15 +1,21 @@
 // HTTP smoke test of the link-key access matrix against a running server (dev or production preview).
-// Needs a FRESH database (no event yet): it creates the event through the home page form endpoint.
+// Needs the server's LOCAL Supabase in .env (SUPABASE_URL on 127.0.0.1/localhost, like the server): it creates its own
+// two restaurants with one event each straight in the database (multi-tenant-events: nothing in the app creates events
+// yet), runs every section on event A and proves at the end that A's links never reach event B. Other events in the
+// database are never touched, so it runs again and again on the same database.
 // Zero dependencies on purpose. Usage: BASE_URL=http://localhost:4321 npm run smoke
 
 import { Buffer } from "node:buffer";
 import { randomBytes } from "node:crypto";
 import { URL } from "node:url";
 import { TextDecoder, TextEncoder } from "node:util";
+import { createEvent, createRestaurant, PlatformError, readDbEnv } from "./lib/platform.mjs";
 
 const BASE_URL = process.env.BASE_URL ?? "http://localhost:4321";
 const NO_ACCESS_TEXT = "Ta strona jest dostępna tylko przez link od organizatora.";
-const EVENT_NAME = "Kolacja podwyżkowa";
+const RUN_TAG = randomBytes(4).toString("hex");
+const EVENT_NAME = `Kolacja smoke A ${RUN_TAG}`;
+const OTHER_EVENT_NAME = `Kolacja smoke B ${RUN_TAG}`;
 const KEY = "[A-Za-z0-9_-]{24}";
 
 let failed = 0;
@@ -79,50 +85,76 @@ function finish() {
   process.exit(failed ? 1 : 0);
 }
 
-// 1. Fresh home page offers one-time creation.
+// 1. The home page creates nothing: it only says access is by link (no form, no event data).
 const home = await request("/");
 check("home renders", home.status === 200, String(home.status));
-if (!home.body.includes("Utwórz wydarzenie")) {
-  check("home offers event creation (the smoke test needs a database without an event)", false);
+check(
+  "home says access is by link only and offers no event creation",
+  home.body.includes("Dostęp tylko przez link od organizatora") &&
+    !home.body.includes("Utwórz wydarzenie") &&
+    !home.body.includes("/api/event"),
+);
+
+// 2. The old one-time creation endpoint is gone.
+const oldCreate = await request("/api/event", { method: "POST" });
+check("the old event creation endpoint is gone", oldCreate.status === 404, String(oldCreate.status));
+
+// 3. Two restaurants with one event each, created in the LOCAL database (refused anywhere else). Every section below
+// runs on A; section 23d checks B.
+let platformEnv;
+let eventA;
+let eventB;
+try {
+  platformEnv = readDbEnv({ requireLocal: true });
+  const restaurantA = await createRestaurant(platformEnv, `Restauracja smoke A ${RUN_TAG}`);
+  const restaurantB = await createRestaurant(platformEnv, `Restauracja smoke B ${RUN_TAG}`);
+  eventA = await createEvent(platformEnv, restaurantA.id, EVENT_NAME);
+  eventB = await createEvent(platformEnv, restaurantB.id, OTHER_EVENT_NAME);
+} catch (error) {
+  check(
+    "smoke events are created in the local database",
+    false,
+    error instanceof PlatformError ? error.message : String(error),
+  );
   finish();
 }
-
-// 2. Creating the event redirects to the organizer view.
-const created = await request("/api/event", { method: "POST" });
-const organizerKey = new RegExp(`^/o/(${KEY})$`).exec(created.location)?.[1];
+console.log(`      database ${platformEnv.host}: events ${String(eventA.id)} (A) and ${String(eventB.id)} (B)`);
+const organizerKey = eventA.organizerKey;
+const tvKey = eventA.tvKey;
 check(
-  "event creation redirects to the organizer view",
-  created.status === 303 && Boolean(organizerKey),
-  `${created.status} ${organizerKey ? "/o/<organizer>" : created.location}`,
+  "the two smoke events have their own keys",
+  new Set([
+    eventA.organizerKey,
+    eventA.tvKey,
+    eventA.restaurantKey,
+    eventB.organizerKey,
+    eventB.tvKey,
+    eventB.restaurantKey,
+  ]).size === 6 && [organizerKey, tvKey].every((key) => new RegExp(`^${KEY}$`).test(key)),
 );
-if (!organizerKey) finish();
 
-// 3. Organizer view opens with private headers and shows the TV link.
+// 4. A gets the starter question base, like `npm run event:create` gives it.
+const starterLoad = await request(`/api/o/${organizerKey}/questions/starter`, { method: "POST" });
+check(
+  "event A gets the starter question base",
+  starterLoad.status === 200 && starterLoad.data?.added === 90 && starterLoad.data.starterMissing === 0,
+  `${starterLoad.status} ${String(starterLoad.data?.added)}`,
+);
+
+// 5. Organizer view opens with private headers and shows the TV link.
 const organizer = await request(`/o/${organizerKey}`);
-const tvKey = new RegExp(`/tv/(${KEY})`).exec(organizer.body)?.[1];
 check("organizer view renders", organizer.status === 200, String(organizer.status));
 check("organizer view is not cacheable", organizer.cacheControl.includes("no-store"), organizer.cacheControl);
 check("organizer view sends no referrer", organizer.referrerPolicy === "no-referrer", organizer.referrerPolicy);
-check("organizer view shows the TV link", Boolean(tvKey) && tvKey !== organizerKey);
-if (!tvKey) finish();
+check(
+  "organizer view shows its event and the TV link",
+  organizer.body.includes(EVENT_NAME) && organizer.body.includes(`/tv/${tvKey}`),
+);
 
-// 4. TV view opens and never contains the organizer key.
+// 6. TV view opens and never contains the organizer key.
 const tv = await request(`/tv/${tvKey}`);
 check("TV view renders", tv.status === 200, String(tv.status));
 check("TV view does not contain the organizer key", !tv.body.includes(organizerKey));
-
-// 5. A second creation reveals nothing.
-const again = await request("/api/event", { method: "POST" });
-check(
-  "second creation redirects home without a key",
-  again.status === 303 && again.location === "/" && again.body === "",
-  `${again.status} ${again.location}`,
-);
-
-// 6. Home now shows only the no-access message.
-const homeAfter = await request("/");
-check("home no longer offers creation", homeAfter.status === 200 && !homeAfter.body.includes("Utwórz wydarzenie"));
-check("home says access is by link only", homeAfter.body.includes("Dostęp tylko przez link od organizatora"));
 
 // 7. Every page without a valid key of the right role gets the same 404 no-access page with no data.
 const unknownKey = randomBytes(18).toString("base64url");
@@ -3515,6 +3547,319 @@ check(
   `${rotated.status} ${rotated.body}`,
 );
 
+// 23d. Event isolation (multi-tenant-events, NFR-012). Event B (its own restaurant, created in section 3) gets guests, a
+// group, a room, a table, a published seating, a guess, a question, a dish and a drink through ITS organizer key.
+// Then A's keys aim at B's ids: every write is refused exactly like an id that does not exist (same status, same body),
+// nothing of B shows up in anything A's links read, B reads the same before and after, and B's TV, restaurant and guest
+// links show B only. Section 24 then resets all of A, and B must still read the same.
+const bApi = `/api/o/${eventB.organizerKey}`;
+const B_MARK = `Bx${RUN_TAG}`;
+const B_GUESTS = ["Bartek", "Basia", "Bogdan", "Bożena"].map((name) => `${name} ${B_MARK}`);
+const B_DISH = `Danie ${B_MARK}`;
+const B_DRINK = `Napój ${B_MARK}`;
+const B_QUESTION = `Pytanie izolacji ${B_MARK}?`;
+const UNKNOWN_ID = 2_000_000_000;
+
+const bPasted = await request(`${bApi}/guests`, { method: "POST", json: { text: B_GUESTS.join("\n") } });
+const [b1, b2, b3, b4] = B_GUESTS.map((name) => guestNamed(bPasted, name)?.id);
+const bGroup = await request(`${bApi}/groups`, { method: "POST", json: { guestIds: [b1, b2] } });
+const bRoom = await request(`${bApi}/rooms`, { method: "POST", json: { name: `Sala ${B_MARK}` } });
+const bRoomId = bRoom.data?.rooms?.[0]?.id;
+const bTable = await request(`${bApi}/tables`, {
+  method: "POST",
+  json: { roomId: bRoomId, name: `Stół ${B_MARK}`, seatCount: 4, shape: "round", x: 0.5, y: 0.5 },
+});
+const bTableId = bTable.data?.tables?.[0]?.id;
+for (const [guestId, seat] of [
+  [b1, 1],
+  [b2, 2],
+  [b3, 3],
+]) {
+  await request(`${bApi}/seating/guests/${guestId}`, { method: "PUT", json: { tableId: bTableId, seat } });
+}
+const bPublished = await request(`${bApi}/seating/publish`, { method: "POST" });
+const bSnapshotId = bPublished.data?.published?.snapshotId;
+const bGuess = await request(`${bApi}/guesses/${b1}`, { method: "PUT", json: { amount: "1500" } });
+const bQuestion = await request(`${bApi}/questions`, {
+  method: "POST",
+  json: { category: "generyczne", text: B_QUESTION },
+});
+const bQuestionId = bQuestion.data?.questions?.find((question) => question.text === B_QUESTION)?.id;
+const bOrder = await request(`${bApi}/orders`, {
+  method: "POST",
+  json: { name: B_DISH, price: "10", quantity: 2, assignment: { guestId: b1 } },
+});
+const bLineId = bOrder.data?.items?.find((item) => item.name === B_DISH)?.id;
+const bDrink = await request(`${bApi}/drinks`, { method: "POST", json: { name: B_DRINK, price: "5", quantity: 3 } });
+const bDrinkId = bDrink.data?.drinks?.find((drink) => drink.name === B_DRINK)?.id;
+const bLinks = await request(`${bApi}/guest-links`, { method: "PATCH", json: { enabled: true } });
+const bGuestKey = linkOf(bLinks, b1)?.key;
+const bGroupId = bGroup.data?.groups?.[0]?.id;
+check(
+  "isolation: event B is set up through its own organizer key",
+  bPasted.status === 201 &&
+    [b1, b2, b3, b4].every(Boolean) &&
+    bGroup.status === 201 &&
+    Boolean(bGroupId) &&
+    bRoom.status === 201 &&
+    bTable.status === 201 &&
+    Boolean(bTableId) &&
+    bPublished.status === 201 &&
+    Boolean(bSnapshotId) &&
+    bGuess.status === 200 &&
+    bQuestion.status === 201 &&
+    Boolean(bQuestionId) &&
+    bOrder.status === 201 &&
+    Boolean(bLineId) &&
+    bDrink.status === 201 &&
+    Boolean(bDrinkId) &&
+    bLinks.status === 200 &&
+    isKey(bGuestKey),
+  [bPasted, bGroup, bRoom, bTable, bPublished, bGuess, bQuestion, bOrder, bDrink, bLinks]
+    .map((res) => res.status)
+    .join(" "),
+);
+
+// Everything B's organizer reads, to compare after A's attempts and after A's reset.
+const B_READS = [
+  "guests",
+  "venue",
+  "seating",
+  "seating/history",
+  "seating/published",
+  "guesses",
+  "guest-links",
+  "questions",
+  "orders",
+  "tv-spotlight",
+  "reset",
+];
+const readB = async () => {
+  const bodies = [];
+  for (const path of B_READS) {
+    const res = await request(`${bApi}/${path}`);
+    bodies.push(`${String(res.status)} ${res.body}`);
+  }
+  return bodies;
+};
+const bBefore = await readB();
+
+const aGuests = (await request(`${api}/guests`)).data?.guests ?? [];
+const aGuestNames = aGuests.map((guest) => guest.displayName);
+const aGuestId = aGuests[0]?.id;
+const aTableId = (await request(`${api}/venue`)).data?.tables?.[0]?.id;
+const aBoard = await request(ordersApi);
+const aLineId = aBoard.data?.items?.[0]?.id;
+const aDishNames = (aBoard.data?.items ?? []).map((item) => item.name);
+check(
+  "isolation: event A has guests, a table and a dish to aim with",
+  Boolean(aGuestId) && Boolean(aTableId) && Boolean(aLineId) && aGuestNames.length > 0 && aDishNames.length > 0,
+);
+
+// [label, method, path for an id, body for an id, B's id]: the same request with UNKNOWN_ID must answer the same.
+const foreignWrites = [
+  ["rename B's guest", "PATCH", (id) => `guests/${id}`, () => ({ displayName: "Przejęty gość" }), b1],
+  ["delete B's guest", "DELETE", (id) => `guests/${id}`, () => undefined, b4],
+  ["group B's guests", "POST", () => "groups", (id) => ({ guestIds: [id, id === UNKNOWN_ID ? id - 1 : b4] }), b3],
+  ["dissolve B's group", "DELETE", (id) => `groups/${id}`, () => undefined, bGroupId],
+  ["rename B's room", "PATCH", (id) => `rooms/${id}`, () => ({ name: "Przejęta sala" }), bRoomId],
+  ["delete B's room", "DELETE", (id) => `rooms/${id}`, () => undefined, bRoomId],
+  ["rename B's table", "PATCH", (id) => `tables/${id}`, () => ({ name: "Przejęty stół" }), bTableId],
+  ["delete B's table", "DELETE", (id) => `tables/${id}`, () => undefined, bTableId],
+  [
+    "add a table to B's room",
+    "POST",
+    () => "tables",
+    (id) => ({ roomId: id, name: "Obcy stół", seatCount: 4, shape: "round", x: 0.2, y: 0.2 }),
+    bRoomId,
+  ],
+  ["move A's table into B's room", "PATCH", () => `tables/${aTableId}`, (id) => ({ roomId: id }), bRoomId],
+  ["seat B's guest", "PUT", (id) => `seating/guests/${id}`, () => ({ tableId: aTableId, seat: 1 }), b4],
+  [
+    "seat A's guest at B's table",
+    "PUT",
+    () => `seating/guests/${aGuestId}`,
+    (id) => ({ tableId: id, seat: 4 }),
+    bTableId,
+  ],
+  ["pin B's guest", "PATCH", (id) => `seating/guests/${id}`, () => ({ pinned: true }), b1],
+  ["unseat B's guest", "DELETE", (id) => `seating/guests/${id}`, () => undefined, b1],
+  ["restore B's snapshot", "POST", () => "seating/restore", (id) => ({ snapshotId: id }), bSnapshotId],
+  ["enter B's guest's guess", "PUT", (id) => `guesses/${id}`, () => ({ amount: "1" }), b2],
+  ["delete B's guest's guess", "DELETE", (id) => `guesses/${id}`, () => undefined, b1],
+  ["revoke B's guest link", "POST", (id) => `guest-links/${id}/revoke`, () => undefined, b1],
+  ["edit B's question", "PATCH", (id) => `questions/${id}`, () => ({ text: "Przejęte pytanie?" }), bQuestionId],
+  ["delete B's question", "DELETE", (id) => `questions/${id}`, () => undefined, bQuestionId],
+  [
+    "order a dish for B's guest",
+    "POST",
+    () => "orders",
+    (id) => ({ name: "Obce danie", price: "1", quantity: 1, assignment: { guestId: id } }),
+    b1,
+  ],
+  [
+    "order a dish for B's table",
+    "POST",
+    () => "orders",
+    (id) => ({ name: "Obce danie", price: "1", quantity: 1, assignment: { tableId: id } }),
+    bTableId,
+  ],
+  ["give A's dish to B's guest", "PATCH", () => `orders/${aLineId}`, (id) => ({ assignment: { guestId: id } }), b1],
+  ["mark B's dish served", "PATCH", (id) => `orders/${id}`, () => ({ delivered: true }), bLineId],
+  ["mark a piece of B's dish", "PUT", (id) => `orders/${id}/pieces`, () => ({ piece: 1, delivered: true }), bLineId],
+  ["delete B's dish", "DELETE", (id) => `orders/${id}`, () => undefined, bLineId],
+  ["change B's drink", "PATCH", (id) => `drinks/${id}`, () => ({ quantity: 9 }), bDrinkId],
+  ["delete B's drink", "DELETE", (id) => `drinks/${id}`, () => undefined, bDrinkId],
+];
+for (const [label, method, pathOf, bodyOf, foreignId] of foreignWrites) {
+  const send = (id) => {
+    const json = bodyOf(id);
+    return request(`${api}/${pathOf(id)}`, json === undefined ? { method } : { method, json });
+  };
+  const foreign = await send(foreignId);
+  const unknown = await send(UNKNOWN_ID);
+  check(
+    `isolation: A's key cannot ${label} (answered like an unknown id)`,
+    foreign.status >= 400 && foreign.status === unknown.status && foreign.body === unknown.body,
+    `${foreign.status} ${unknown.status} ${foreign.body.slice(0, 120)}`,
+  );
+}
+
+// A draft with B's guest (at A's table) and A's guest at B's table: the same 409 and problems as ids that do not exist.
+const draftOf = (guestId, tableId) =>
+  request(`${seatingApi}/draft`, {
+    method: "POST",
+    json: {
+      seats: [
+        { guestId, tableId: aTableId, seat: 1 },
+        { guestId: aGuestId, tableId, seat: 2 },
+      ],
+    },
+  });
+const foreignDraft = await draftOf(b4, bTableId);
+const unknownDraft = await draftOf(UNKNOWN_ID, UNKNOWN_ID);
+check(
+  "isolation: A's draft with B's guest and table is refused like unknown ids",
+  foreignDraft.status === 409 &&
+    foreignDraft.body === unknownDraft.body &&
+    foreignDraft.data?.problems?.includes("W projekcie jest osoba, której nie ma już na liście gości.") &&
+    foreignDraft.data.problems.includes("W projekcie jest stolik, którego już nie ma."),
+  `${foreignDraft.body} / ${unknownDraft.body}`,
+);
+
+// A guest of A marks a piece of B's dish: the same 409 as a line that does not exist.
+await request(linksApi, { method: "PATCH", json: { enabled: true } });
+const aGuestKey = (await request(linksApi)).data?.guests?.[0]?.key;
+const foreignPiece = await request(`/api/g/${aGuestKey}/orders`, {
+  method: "PUT",
+  json: { lineId: bLineId, piece: 1, delivered: true },
+});
+const unknownPiece = await request(`/api/g/${aGuestKey}/orders`, {
+  method: "PUT",
+  json: { lineId: UNKNOWN_ID, piece: 1, delivered: true },
+});
+const aGuestState = await request(guestStateApi(aGuestKey));
+const aGuestPage = await request(`/g/${aGuestKey}`);
+check(
+  "isolation: A's guest cannot mark B's dish and sees nothing of B",
+  foreignPiece.status === 409 &&
+    foreignPiece.body === unknownPiece.body &&
+    aGuestState.status === 200 &&
+    aGuestPage.status === 200 &&
+    ![aGuestState.body, aGuestPage.body].some((body) => body.includes(B_MARK) || body.includes(OTHER_EVENT_NAME)),
+  `${foreignPiece.status} ${unknownPiece.status} ${aGuestState.status} ${aGuestPage.status}`,
+);
+await request(linksApi, { method: "PATCH", json: { enabled: false } });
+
+// Nothing A's organizer, TV or restaurant links read mentions B.
+const aReads = [
+  ...B_READS.map((path) => `${api}/${path}`),
+  `${api}/ai-topics`,
+  `/o/${organizerKey}`,
+  `/o/${organizerKey}/goscie`,
+  `/o/${organizerKey}/sale`,
+  `/o/${organizerKey}/rozsadzenie`,
+  `/o/${organizerKey}/strzaly`,
+  `/o/${organizerKey}/linki`,
+  `/o/${organizerKey}/pytania`,
+  `/o/${organizerKey}/zamowienia`,
+  `/tv/${tvKey}`,
+  tvSeatingApi,
+  `/r/${newRestaurantKey}`,
+  `/api/r/${newRestaurantKey}/orders`,
+];
+const aLeaks = [];
+for (const path of aReads) {
+  const res = await request(path);
+  if (res.status !== 200 || res.body.includes(B_MARK) || res.body.includes(OTHER_EVENT_NAME)) {
+    aLeaks.push(`${path.replace(organizerKey, "<organizer>").replace(tvKey, "<tv>")} ${String(res.status)}`);
+  }
+}
+check("isolation: nothing A's links read mentions event B", aLeaks.length === 0, aLeaks.join(", "));
+
+const bAfterAttempts = await readB();
+check(
+  "isolation: event B reads exactly the same after A's attempts",
+  bAfterAttempts.every((body, index) => body === bBefore[index]),
+  B_READS.filter((_, index) => bAfterAttempts[index] !== bBefore[index]).join(", "),
+);
+
+// B's own links show B and nothing of A.
+const mentionsA = (body) => body.includes(EVENT_NAME) || aGuestNames.some((name) => body.includes(name));
+const bTvSeating = await request(`/api/tv/${eventB.tvKey}/seating`);
+const bTvPage = await request(`/tv/${eventB.tvKey}`);
+const bRestaurant = await request(`/api/r/${eventB.restaurantKey}/orders`);
+const bRestaurantPage = await request(`/r/${eventB.restaurantKey}`);
+const bGuestState = await request(guestStateApi(bGuestKey));
+const bGuestPage = await request(`/g/${bGuestKey}`);
+check(
+  "isolation: B's TV, restaurant and guest links show B's seating, dish and event only",
+  bTvSeating.status === 200 &&
+    B_GUESTS.slice(0, 3).every((name) => bTvSeating.body.includes(name)) &&
+    bTvPage.status === 200 &&
+    bRestaurant.status === 200 &&
+    bRestaurant.body.includes(B_DISH) &&
+    !aDishNames.some((name) => bRestaurant.body.includes(name)) &&
+    bRestaurantPage.status === 200 &&
+    bGuestState.status === 200 &&
+    bGuestState.data?.status === "seated" &&
+    bGuestPage.status === 200 &&
+    bGuestPage.body.includes(OTHER_EVENT_NAME) &&
+    ![bTvSeating, bTvPage, bRestaurant, bRestaurantPage, bGuestState, bGuestPage].some((res) => mentionsA(res.body)),
+  [bTvSeating, bTvPage, bRestaurant, bRestaurantPage, bGuestState, bGuestPage].map((res) => res.status).join(" "),
+);
+
+// B's keys in another role's place get the same denials as any wrong key (keys are global, never per event).
+const bKeyDenials = [];
+for (const [path, expected] of [
+  [`/o/${eventB.tvKey}`, deniedBody],
+  [`/o/${bGuestKey}`, deniedBody],
+  [`/o/${eventB.restaurantKey}`, deniedBody],
+  [`/tv/${eventB.organizerKey}`, deniedBody],
+  [`/tv/${bGuestKey}`, deniedBody],
+  [`/g/${eventB.organizerKey}`, deniedBody],
+  [`/g/${eventB.tvKey}`, deniedBody],
+  [`/r/${eventB.organizerKey}`, restaurantDeniedBody],
+  [`/api/o/${eventB.tvKey}/guests`, JSON.stringify({ error: "Brak dostępu" })],
+  [`/api/tv/${bGuestKey}/seating`, JSON.stringify({ error: "Brak dostępu" })],
+  [`/api/g/${eventB.organizerKey}/state`, JSON.stringify({ error: "Brak dostępu" })],
+  [`/api/r/${eventB.tvKey}/orders`, JSON.stringify({ error: "No access" })],
+]) {
+  const res = await request(path);
+  if (res.status !== 404 || res.body !== expected) {
+    const shown = [eventB.organizerKey, eventB.tvKey, eventB.restaurantKey, bGuestKey].reduce(
+      (text, key) => text.replace(key, "<key>"),
+      path,
+    );
+    bKeyDenials.push(`${shown} ${String(res.status)}`);
+  }
+}
+check(
+  "isolation: B's keys in another role's place get the usual denial",
+  bKeyDenials.length === 0,
+  bKeyDenials.join(", "),
+);
+
 // 24. Organizer reset („Reset danych”). Organizer only; one POST resets the chosen parts (implied ones added) in one
 // transaction and answers with the Polish summary. Here: a subset first (guesses + AI usage), then the guest links,
 // then everything — the organizer and TV links keep working, the event is empty except the 90 starter questions.
@@ -3751,6 +4096,12 @@ check(
   "after resetting everything: the organizer and TV links still open",
   shellAfterReset.status === 200 && tvPageAfterReset.status === 200,
   `${shellAfterReset.status} ${tvPageAfterReset.status}`,
+);
+const bAfterReset = await readB();
+check(
+  "isolation: resetting everything in A leaves event B exactly as it was",
+  bAfterReset.every((body, index) => body === bBefore[index]),
+  B_READS.filter((_, index) => bAfterReset[index] !== bBefore[index]).join(", "),
 );
 
 finish();

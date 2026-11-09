@@ -347,20 +347,20 @@ New indexes keep per-event reads indexed (`seating_snapshot (event_id, id)` for 
 
 #### Automated
 
-- [x] 2.1 Tests pass incl. isolation: `AI_PROVIDER=mock npm test`
-- [x] 2.2 Lint passes: `npm run lint`
-- [x] 2.3 Type check passes: `npx astro check`
-- [x] 2.4 `npm run event:create` prints three links with 90 questions; `npm run links` lists it
+- [x] 2.1 Tests pass incl. isolation: `AI_PROVIDER=mock npm test` — 5868bae
+- [x] 2.2 Lint passes: `npm run lint` — 5868bae
+- [x] 2.3 Type check passes: `npx astro check` — 5868bae
+- [x] 2.4 `npm run event:create` prints three links with 90 questions; `npm run links` lists it — 5868bae
 
 ### Phase 3: Smoke and demo on their own events
 
 #### Automated
 
-- [ ] 3.1 From scratch: `npx supabase db reset`, then `AI_PROVIDER=mock npm test` passes
-- [ ] 3.2 Build succeeds: `npm run build`
-- [ ] 3.3 Smoke passes twice in a row on the same DB
-- [ ] 3.4 Demo fills a new event
-- [ ] 3.5 Lint passes: `npm run lint`
+- [x] 3.1 From scratch: `npx supabase db reset`, then `AI_PROVIDER=mock npm test` passes
+- [x] 3.2 Build succeeds: `npm run build`
+- [x] 3.3 Smoke passes twice in a row on the same DB
+- [x] 3.4 Demo fills a new event
+- [x] 3.5 Lint passes: `npm run lint`
 
 #### Manual
 

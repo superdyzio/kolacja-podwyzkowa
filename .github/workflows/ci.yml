@@ -43,6 +43,8 @@ jobs:
       - name: Unit and DB integration tests
         run: npm test
       - run: npm run build
+      # The smoke creates its own two restaurants and events in the local database from .env (the tests above leave
+      # theirs behind; no empty database needed) and refuses any non-local SUPABASE_URL.
       - name: Run the access smoke test against the production preview
         run: |
           npm run preview -- --port 4321 &

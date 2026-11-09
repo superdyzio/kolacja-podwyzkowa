@@ -1,19 +1,22 @@
 // Fills the LOCAL app with demo data for the manual checks: 40 fictional guests, a generated venue plan, 3 rooms,
 // 7 tables (45 seats), groups of 4, 2 and 2, one absent and one pinned guest, a published seating, 30 guesses
 // (a tie and the absent guest's guess among them, 10 missing, 12 with a place prediction) and a food order (lines for guests, for tables, one
-// unassigned, one delivered). Every write goes through the HTTP API of a running
-// server, so it passes the same validation as the UI; the keys are read from the database like `npm run links`.
-// Defaults stay as they are: guest access OFF, guess intake OPEN, no correct amount, only the starter questions.
+// unassigned, one delivered). Every run creates a NEW restaurant „Restauracja demo” with a new event „Kolacja
+// podwyżkowa (demo)” in the LOCAL database (like `npm run event:create`; refused for any other SUPABASE_URL), so other
+// events are never touched. Every write after that goes through the HTTP API of a running server, so it passes the
+// same validation as the UI. Defaults stay as they are: guest access OFF, guess intake OPEN, no correct amount, only
+// the starter questions.
 // Usage: npm run build && npm run preview, then npm run demo   (BASE_URL, default http://localhost:4321)
-// Refuses (exit 1, nothing changed) when the event already has guests, rooms, tables or a plan. Zero dependencies.
+// Zero dependencies.
 
 import { Buffer } from "node:buffer";
 import { URL } from "node:url";
 import { crc32, deflateSync } from "node:zlib";
+import { createEvent, createRestaurant, PlatformError, readDbEnv } from "./lib/platform.mjs";
 
 const BASE_URL = process.env.BASE_URL ?? "http://localhost:4321";
-const supabaseUrl = process.env.SUPABASE_URL;
-const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const RESTAURANT_NAME = "Restauracja demo";
+const EVENT_NAME = "Kolacja podwyżkowa (demo)";
 
 // --- Demo data -------------------------------------------------------------------------------------------------
 
@@ -168,9 +171,9 @@ async function request(path, { method = "GET", json, bytes, contentType } = {}) 
   try {
     data = JSON.parse(text);
   } catch {
-    // not JSON (pages, redirects)
+    // not JSON
   }
-  return { status: response.status, location: response.headers.get("location") ?? "", text, data };
+  return { status: response.status, text, data };
 }
 
 // One API step that must answer with `expected`; anything else stops the script and says what is left behind.
@@ -182,28 +185,12 @@ async function step(name, path, options, expected = 200) {
     fail(
       `Krok „${name}” nie powiódł się (HTTP ${res.status}): ${detail}${problems}` +
         (dataWritten
-          ? "\nDane demo są niekompletne. Wyczyść lokalną bazę (npx supabase db reset) i uruchom npm run demo ponownie."
+          ? "\nDane demo tego wydarzenia są niekompletne. Uruchom npm run demo ponownie: utworzy nowe wydarzenie."
           : ""),
     );
   }
   dataWritten = dataWritten || (options?.method ?? "GET") !== "GET";
   return res.data;
-}
-
-async function readEvent() {
-  let response;
-  try {
-    response = await fetch(`${supabaseUrl}/rest/v1/event?select=organizer_key,tv_key,restaurant_key`, {
-      headers: { apikey: serviceRoleKey, Authorization: `Bearer ${serviceRoleKey}` },
-    });
-  } catch (error) {
-    fail(`Baza nie odpowiada pod ${supabaseUrl} (${error.cause?.code ?? error.message}). Uruchom lokalny Supabase.`);
-  }
-  if (!response.ok) {
-    fail(`Nie udało się odczytać wydarzenia z bazy (HTTP ${response.status}).`);
-  }
-  const [event] = await response.json();
-  return event ?? null;
 }
 
 // A plain RGB PNG (8 bits per channel, no interlace): rooms as framed rectangles, tables as filled shapes.
@@ -280,45 +267,29 @@ function planPng() {
 
 const fraction = (value, total) => Math.round((value / total) * 10_000) / 10_000;
 
-// --- 1. Event and keys; refuse when there is anything to overwrite ------------------------------------------------
+// --- 1. A new restaurant and event in the local database; the running server must know its key ------------------
 
-if (!supabaseUrl || !serviceRoleKey) {
-  fail("Ustaw SUPABASE_URL i SUPABASE_SERVICE_ROLE_KEY (lokalnie: npm run env:local).");
-}
-if (!["127.0.0.1", "localhost"].includes(new URL(supabaseUrl).hostname)) {
-  fail(`Dane demo są tylko dla lokalnej bazy, a SUPABASE_URL to ${supabaseUrl}. Nic nie zostało zmienione.`);
-}
-
-let event = await readEvent();
-if (!event) {
-  const created = await request("/api/event", { method: "POST" });
-  if (created.status !== 303) {
-    fail(`Nie udało się utworzyć wydarzenia (HTTP ${created.status}): ${created.data?.error ?? created.text}`);
-  }
-  event = await readEvent();
-  if (!event) {
-    fail("Serwer utworzył wydarzenie, ale nie ma go w bazie z .env — serwer i .env wskazują różne bazy?");
-  }
-  console.log("Utworzono wydarzenie.");
+let event;
+try {
+  const env = readDbEnv({ requireLocal: true });
+  const restaurant = await createRestaurant(env, RESTAURANT_NAME);
+  event = await createEvent(env, restaurant.id, EVENT_NAME);
+  console.log(
+    `Baza ${env.host}: restauracja „${restaurant.name}” (id ${String(restaurant.id)}), wydarzenie „${event.name}” (id ${String(event.id)}).`,
+  );
+} catch (error) {
+  fail(error instanceof PlatformError ? error.message : String(error));
 }
 
-const api = `/api/o/${event.organizer_key}`;
+const api = `/api/o/${event.organizerKey}`;
 const existingGuests = await request(`${api}/guests`);
 if (existingGuests.status === 404) {
-  fail("Serwer nie zna klucza organizatora z bazy w .env — serwer i .env wskazują różne bazy?");
-}
-const existingVenue = await request(`${api}/venue`);
-const venueUsed =
-  existingVenue.data?.plan || existingVenue.data?.rooms?.length > 0 || existingVenue.data?.tables?.length > 0;
-if (existingGuests.status !== 200 || existingVenue.status !== 200) {
-  fail(`Nie udało się odczytać wydarzenia przez API (HTTP ${existingGuests.status} / ${existingVenue.status}).`);
-}
-if (existingGuests.data.guests.length > 0 || venueUsed) {
   fail(
-    "Wydarzenie ma już dane (goście, sale, stoliki albo plan) — skrypt demo działa tylko na pustym wydarzeniu.\n" +
-      "Nic nie zostało zmienione. Linki: npm run links.",
+    "Serwer nie zna klucza organizatora nowego wydarzenia — serwer i .env wskazują różne bazy?\n" +
+      `Wydarzenie id ${String(event.id)} zostało w bazie z .env puste.`,
   );
 }
+await step("baza startowa pytań", `${api}/questions/starter`, { method: "POST" });
 
 // --- 2. Venue: plan image, rooms, tables with pins ----------------------------------------------------------------
 
@@ -445,10 +416,10 @@ orderBoard = await step(`wydane: ${firstLine.name}`, `${api}/orders/${firstLine.
 const seatTotal = venue.tables.reduce((sum, table) => sum + table.seatCount, 0);
 const guessCount = guessBoard.guests.filter((guest) => guest.amountGrosze !== null).length;
 const placeCount = guessBoard.guests.filter((guest) => guest.predictedPlace !== null).length;
-const organizerUrl = new URL(`/o/${event.organizer_key}`, BASE_URL).href;
+const organizerUrl = new URL(`/o/${event.organizerKey}`, BASE_URL).href;
 
 console.log(`
-Dane demo gotowe:
+Dane demo gotowe („${RESTAURANT_NAME}” · „${EVENT_NAME}”, id ${String(event.id)}):
 - goście: ${board.guestList.guests.length} (nieobecna: ${ABSENT}), grupy: ${GROUPS.map((group) => group.members.length).join(" + ")}
 - plan ${PLAN_WIDTH}×${PLAN_HEIGHT}, sale: ${venue.rooms.length}, stoliki: ${venue.tables.length}, miejsca: ${seatTotal}
 - rozsadzenie opublikowane na TV: ${board.assignments.length} osób, przypięta: ${PINNED}
@@ -458,7 +429,7 @@ Dane demo gotowe:
 - bez zmian: przyjmowanie strzałów otwarte, prawidłowa kwota niewpisana, dostęp gości wyłączony, pytania startowe
 
 Organizator: ${organizerUrl}
-TV:          ${new URL(`/tv/${event.tv_key}`, BASE_URL).href}
-Restauracja: ${new URL(`/r/${event.restaurant_key}`, BASE_URL).href}
+TV:          ${new URL(`/tv/${event.tvKey}`, BASE_URL).href}
+Restauracja: ${new URL(`/r/${event.restaurantKey}`, BASE_URL).href}
 Linki gości: włącz dostęp na ${organizerUrl}/linki
 Linki są sekretne: nie wklejaj ich publicznie.`);
