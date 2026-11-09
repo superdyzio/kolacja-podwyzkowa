@@ -6,8 +6,9 @@ import type { DbClient } from "@/lib/supabase-client";
 // plain insert. Functions take the client as a parameter so they can be tested against the local DB without Astro.
 // Supabase errors always throw: a broken DB must never look like "no event" or "no access".
 //
-// Nothing in the app creates events yet (the panel comes with S-11): integration tests call these functions, and the
-// scripts (npm run event:create, smoke, demo) insert the same rows over PostgREST (scripts/lib/platform.mjs).
+// The restaurant panel creates events through createEvent (restaurant-events, S-11: src/lib/events/service.ts), as do
+// the integration tests; the scripts (npm run event:create, smoke, demo) insert the same rows over PostgREST
+// (scripts/lib/platform.mjs). An event without a date gets today's (Europe/Warsaw) from the column default.
 
 const FOREIGN_KEY_VIOLATION = "23503";
 
@@ -34,14 +35,25 @@ export async function createRestaurant(db: DbClient, name: string): Promise<Rest
   return { id: data.id, name: data.name };
 }
 
-// Creates an event of the restaurant and loads the starter question base into it (S-07).
+// Creates an event of the restaurant and loads the starter question base into it (S-07). `date` ("YYYY-MM-DD") and
+// `expectedGuests` are optional (restaurant-events): omitted, the DB defaults apply (today, none).
 export async function createEvent(
   db: DbClient,
-  { restaurantId, name }: { restaurantId: number; name: string },
+  {
+    restaurantId,
+    name,
+    date,
+    expectedGuests,
+  }: { restaurantId: number; name: string; date?: string; expectedGuests?: number | null },
 ): Promise<CreateEventResult> {
   const { data, error } = await db
     .from("event")
-    .insert({ restaurant_id: restaurantId, name: name.trim() })
+    .insert({
+      restaurant_id: restaurantId,
+      name: name.trim(),
+      ...(date === undefined ? {} : { event_date: date }),
+      ...(expectedGuests === undefined ? {} : { expected_guests: expectedGuests }),
+    })
     .select("id, name, organizer_key, tv_key, restaurant_key")
     .single();
   if (error) {

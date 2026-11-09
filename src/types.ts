@@ -795,3 +795,52 @@ export interface RestaurantTeamMemberDto {
   role: "owner" | "manager" | "waiter";
   hasPassword: boolean;
 }
+
+// --- Restaurant events (restaurant-events, S-11) -------------------------------------------------------------------
+
+// Where an event's day stands relative to "today" in the platform's time zone (src/lib/events/dates.ts): an event
+// dated yesterday is still "today" until noon (FR-029's window).
+export type EventTiming = "upcoming" | "today" | "past";
+
+// The event's three link paths ("/o/<key>", "/tv/<key>", "/r/<key>"); the page adds its origin. Owners and managers
+// only (waiters never see links).
+export interface EventLinksDto {
+  organizer: string;
+  tv: string;
+  restaurant: string;
+}
+
+// An event in the restaurant panel's lists: no keys.
+export interface EventSummaryDto {
+  id: number;
+  name: string;
+  // "YYYY-MM-DD"
+  date: string;
+  expectedGuests: number | null;
+  archived: boolean;
+  timing: EventTiming;
+}
+
+// The event card (/panel/wydarzenia/<id>): the summary plus its restaurant, guest count and links.
+export interface EventCardDto extends EventSummaryDto {
+  restaurantId: number;
+  restaurantName: string;
+  archivedAt: string | null;
+  guestCount: number;
+  links: EventLinksDto;
+}
+
+// GET /api/panel/restaurants/<id>/events: "today" in the platform's time zone and the three lists (upcoming = today
+// and later, nearest first; past = latest first; archived = any date, latest first).
+export interface RestaurantEventListDto {
+  today: string;
+  upcoming: EventSummaryDto[];
+  past: EventSummaryDto[];
+  archived: EventSummaryDto[];
+}
+
+// Every answer of the event routes that leave the event in place.
+export interface EventCardAnswerDto {
+  event: EventCardDto;
+  role: "owner" | "manager" | "waiter";
+}

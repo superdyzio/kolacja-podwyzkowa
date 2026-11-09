@@ -1,7 +1,7 @@
 ---
 change_id: restaurant-events
 title: Restaurant events — create, browse, archive, delete and the event card with replaceable links
-status: plan_reviewed
+status: implementing
 created: 2026-11-10
 updated: 2026-11-10
 archived_at: null

@@ -53,7 +53,7 @@ Restauracja, która gościła kolację 2026-11-08, chce tego narzędzia do włas
 | F-02 | multi-tenant-events     | (foundation) dane trzymają wiele restauracji i wydarzeń; każdy link i każda operacja działa tylko w swoim wydarzeniu       | —                 | NFR-012, NFR-015, US-10, US-01..US-04, FR-001..FR-020, FR-043, FR-044, FR-045, FR-046, FR-047     | done        |
 | F-03 | staff-accounts          | (foundation) zaproszona osoba ustawia hasło z jednorazowego linku, loguje się na 30 dni, wylogowuje się i zmienia hasło     | F-02              | FR-022, US-05, NFR-013, NFR-020, NFR-022                                  | done        |
 | S-10 | platform-restaurants    | administrator platformy zakłada restaurację z zaproszeniem właściciela, widzi listę, wyłącza i włącza restaurację          | F-03              | FR-021, US-05                                                             | done        |
-| S-11 | restaurant-events       | lokal zakłada wydarzenie, przegląda nadchodzące, minione i archiwum, kopiuje i wymienia linki, archiwizuje i usuwa         | S-10              | FR-024, FR-025, US-06, US-09, US-10                                       | planning |
+| S-11 | restaurant-events       | lokal zakłada wydarzenie, przegląda nadchodzące, minione i archiwum, kopiuje i wymienia linki, archiwizuje i usuwa         | S-10              | FR-024, FR-025, US-06, US-09, US-10                                       | in-progress |
 | S-12 | restaurant-team         | właściciel i menedżer zapraszają zespół, zmieniają role, usuwają osoby i dają jednorazowy link resetu hasła               | S-10              | FR-023, US-05                                                             | proposed |
 | S-13 | admin-support-log       | administrator platformy wchodzi w dane lokalu w trybie wsparcia, a właściciel widzi każde wejście w dzienniku              | S-11              | FR-021, US-05, US-10, NFR-012                                             | proposed |
 | S-14 | client-restaurant-split | lokal przełącza „lokal prowadzi”; klient prowadzi zamówienia i robi reset prób; pełny reset i koszty AI tylko w panelu    | S-11              | FR-026, FR-027, FR-028, US-07                                             | proposed |
@@ -156,7 +156,7 @@ Fundamenty poniżej zakładają, że to istnieje, i NIE budują tego od nowa.
 - **Blockers:** —
 - **Unknowns:** —
 - **Risk:** To gwiazda przewodnia. Jeśli lokal nie umie sam założyć wydarzenia i przekazać linku w < 3 minuty, reszta M-2 traci sens. Tworzenie z szablonu sali dochodzi w S-15.
-- **Status:** planning
+- **Status:** in-progress
 
 ### S-12: Zespół lokalu
 

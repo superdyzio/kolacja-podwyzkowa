@@ -51,6 +51,12 @@ export interface Database {
           restaurant_key: string;
           // multi-tenant-events: the restaurant the event belongs to.
           restaurant_id: number;
+          // restaurant-events: the day of the event (YYYY-MM-DD, Europe/Warsaw; default today there).
+          event_date: string;
+          // restaurant-events: how many guests the restaurant expects (1–1000), null = not given.
+          expected_guests: number | null;
+          // restaurant-events: null = active; set = archived (only moves it between the panel's lists).
+          archived_at: string | null;
         };
         Insert: {
           id?: never;
@@ -64,6 +70,9 @@ export interface Database {
           guess_intake_open?: boolean;
           correct_amount_grosze?: number | null;
           restaurant_key?: string;
+          event_date?: string;
+          expected_guests?: number | null;
+          archived_at?: string | null;
         };
         Update: {
           id?: never;
@@ -76,6 +85,9 @@ export interface Database {
           guess_intake_open?: boolean;
           correct_amount_grosze?: number | null;
           restaurant_key?: string;
+          event_date?: string;
+          expected_guests?: number | null;
+          archived_at?: string | null;
         };
         Relationships: [
           {
