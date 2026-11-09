@@ -386,5 +386,5 @@ Additive (one nullable column, three functions); existing rows are active (`disa
 
 #### Automated
 
-- [x] 4.1 Lint passes: `npm run lint`
-- [x] 4.2 `grep -n "platform-restaurants" CLAUDE.md` finds the new block
+- [x] 4.1 Lint passes: `npm run lint` — d81e578
+- [x] 4.2 `grep -n "platform-restaurants" CLAUDE.md` finds the new block — d81e578
