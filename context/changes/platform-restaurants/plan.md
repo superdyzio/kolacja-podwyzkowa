@@ -372,11 +372,11 @@ Additive (one nullable column, three functions); existing rows are active (`disa
 
 #### Automated
 
-- [x] 3.1 From scratch: `npx supabase db reset`, then `AI_PROVIDER=mock npm test` passes
-- [x] 3.2 Build succeeds: `npm run build`
-- [x] 3.3 Smoke passes twice in a row against `AI_PROVIDER=mock npm run preview`: `npm run smoke`
-- [x] 3.4 Demo prints the owner's and the admin's logins: `npm run demo` (twice in a row)
-- [x] 3.5 Lint passes: `npm run lint`
+- [x] 3.1 From scratch: `npx supabase db reset`, then `AI_PROVIDER=mock npm test` passes — 875bcf8
+- [x] 3.2 Build succeeds: `npm run build` — 875bcf8
+- [x] 3.3 Smoke passes twice in a row against `AI_PROVIDER=mock npm run preview`: `npm run smoke` — 875bcf8
+- [x] 3.4 Demo prints the owner's and the admin's logins: `npm run demo` (twice in a row) — 875bcf8
+- [x] 3.5 Lint passes: `npm run lint` — 875bcf8
 
 #### Manual
 
@@ -386,5 +386,5 @@ Additive (one nullable column, three functions); existing rows are active (`disa
 
 #### Automated
 
-- [ ] 4.1 Lint passes: `npm run lint`
-- [ ] 4.2 `grep -n "platform-restaurants" CLAUDE.md` finds the new block
+- [x] 4.1 Lint passes: `npm run lint`
+- [x] 4.2 `grep -n "platform-restaurants" CLAUDE.md` finds the new block
