@@ -20,7 +20,7 @@ npm run env:local   # zapisuje SUPABASE_URL i SUPABASE_SERVICE_ROLE_KEY do .env
 npm run dev
 ```
 
-Załóż restaurację i wydarzenie: `npm run event:create -- --restaurant "Pod Lipą" --name "Kolacja firmowa"` (z bazą startową pytań). Skrypt wypisze link organizatora, adres TV i link restauracji — link organizatora od razu dodaj do zakładek. Kolejne wydarzenie tej samej restauracji: `--restaurant-id <id>`. Panel restauracji, w którym zakłada się wydarzenia, przyjdzie później; strona `/` tylko mówi, że dostęp jest przez link. Jeśli zgubisz link, `npm run links` wypisze linki wszystkich wydarzeń.
+Załóż restaurację i wydarzenie: `npm run event:create -- --restaurant "Pod Lipą" --name "Kolacja firmowa"` (z bazą startową pytań). Skrypt wypisze link organizatora, adres TV i link restauracji — link organizatora od razu dodaj do zakładek. Kolejne wydarzenie tej samej restauracji: `--restaurant-id <id>`. Zwykle wydarzenia zakłada jednak właściciel albo menedżer w panelu lokalu (patrz „Wydarzenia lokalu”); strona `/` tylko mówi, że dostęp jest przez link. Jeśli zgubisz link, `npm run links` wypisze linki wszystkich wydarzeń.
 
 ## Dostęp
 
@@ -45,18 +45,30 @@ Pierwszy administrator platformy (lokalnie):
 npm run platform:admin -- ja@example.com --name "Imię Nazwisko"
 ```
 
-Skrypt wypisuje host bazy i link do ustawienia hasła. Konto bez hasła dostaje zaproszenie, konto z hasłem — link do ustawienia nowego (tak administrator wraca po zgubieniu hasła). Na produkcji patrz „Pierwsze uruchomienie”. Zakładanie wydarzeń w panelu i zapraszanie personelu przez właściciela przyjdą w kolejnych etapach; `npm run demo` zakłada konto właściciela „Restauracji demo” oraz administratora platformy i wypisuje ich e-maile i hasła.
+Skrypt wypisuje host bazy i link do ustawienia hasła. Konto bez hasła dostaje zaproszenie, konto z hasłem — link do ustawienia nowego (tak administrator wraca po zgubieniu hasła). Na produkcji patrz „Pierwsze uruchomienie”. Zapraszanie personelu przez właściciela przyjdzie w kolejnym etapie; `npm run demo` zakłada konto właściciela „Restauracji demo” oraz administratora platformy i wypisuje ich e-maile i hasła.
 
 ### Panel platformy
 
 Administrator platformy widzi na `/panel` kartę „Panel platformy” (`/panel/platforma`):
 
 1. „Nowa restauracja”: nazwa restauracji i e-mail właściciela (imię opcjonalnie) → „Załóż restaurację”. Restauracja i konto właściciela powstają razem, a pod formularzem pojawia się jednorazowy link zaproszenia (ważny 7 dni) z przyciskiem „Kopiuj”. Link widać tylko teraz: przekaż go właścicielowi sam (aplikacja nie wysyła e-maili). Jeśli ten e-mail ma już konto z hasłem, linku nie ma — restauracja pojawi się tej osobie po zalogowaniu.
-2. Właściciel otwiera link, ustawia hasło i trafia do `/panel`, gdzie jego restauracja prowadzi do panelu lokalu `/panel/restauracje/<id>` (na razie nazwa, rola, liczba wydarzeń i zespół).
+2. Właściciel otwiera link, ustawia hasło i trafia do `/panel`, gdzie jego restauracja prowadzi do panelu lokalu `/panel/restauracje/<id>` (nazwa, rola, wydarzenia i zespół).
 3. Lista restauracji pokazuje liczniki (wydarzenia, zespół) i właścicieli ze stanem konta. „Nowy link” daje właścicielowi nowe zaproszenie (gdy nie ustawił jeszcze hasła) albo link resetu hasła (24 godziny); poprzedni nieużyty link przestaje działać. „Dodaj właściciela” dopisuje kolejnego właściciela (np. do „Restauracji domyślnej”, która startuje bez właściciela).
 4. „Wyłącz” odcina personel wyłączonej restauracji od jej panelu od razu (w `/panel` widzi „Wyłączona”); linki jej wydarzeń (organizator, TV, goście, restauracja) działają dalej. „Włącz” przywraca dostęp.
 
 Administrator nie widzi wydarzeń, gości ani linków restauracji — tylko liczniki i właścicieli.
+
+### Wydarzenia lokalu
+
+Właściciel i menedżer prowadzą wydarzenia w panelu lokalu `/panel/restauracje/<id>`:
+
+1. „Nowe wydarzenie”: nazwa, data i (opcjonalnie) przewidywana liczba gości → „Utwórz wydarzenie”. Przeglądarka przechodzi od razu na kartę wydarzenia `/panel/wydarzenia/<id>`: link dla klienta (organizatora) jest na górze — „Kopiuj” i wyślij go klientowi. Niżej link TV (na telewizor w sali) i link tabletu obsługi (kuchnia i kelnerzy). Każdy ma „Otwórz”.
+2. Lista ma zakładki „Nadchodzące” (od dziś, najbliższe pierwsze), „Minione” i „Archiwum”. „Dziś” liczy się w czasie polskim, a wczorajsze wydarzenie jest jeszcze „dziś” do 12:00 (impreza po północy nie znika z listy).
+3. „Wymień link” przy każdym z trzech linków daje nowy adres; stary przestaje działać od razu. Potwierdzenie mówi, kogo to odetnie (klienta i jego otwarte strony, ekran TV albo tablety obsługi) — nowy link trzeba im przekazać. Linki gości się nie zmieniają.
+4. „Przenieś do archiwum” tylko przenosi wydarzenie do zakładki „Archiwum”; wszystkie linki działają dalej, a „Przywróć z archiwum” cofa to w każdej chwili.
+5. „Usuń wydarzenie trwale” (tylko właściciel) usuwa wydarzenie ze wszystkimi danymi — gośćmi, salą, rozsadzeniem, zamówieniami, strzałami i pytaniami — i unieważnia wszystkie jego linki, także linki gości i karteczki QR. Tego nie da się cofnąć.
+
+Kelner widzi na razie tylko notkę (dzisiejsze wydarzenia dla kelnerów przyjdą później); personel innej restauracji dostaje „Brak dostępu”, jak dla nieistniejącego wydarzenia. Na produkcji ta zmiana wymaga migracji bazy **przed** wdrożeniem kodu (panel czyta nowe kolumny daty, liczby gości i archiwum); migracja tylko dodaje kolumny, linki istniejących wydarzeń się nie zmieniają, a istniejące wydarzenia dostają datę swojego utworzenia.
 
 ## Języki
 
@@ -141,10 +153,10 @@ Na produkcji ta zmiana wymaga migracji bazy **przed** wdrożeniem kodu (bez niej
 - `npm run event:create`: zakłada wydarzenie (z nową restauracją albo w istniejącej: `--restaurant-id`) z bazą startową pytań w bazie z `.env` i wypisuje jego linki; najpierw podaje, do jakiej bazy pisze.
 - `npm run links`: wypisuje wszystkie wydarzenia (restauracja · nazwa, id) z linkiem organizatora, adresem TV i linkiem restauracji.
 - `npm run platform:admin -- <email> [--name "<imię>"] [--remote]`: zakłada (albo znajduje) konto administratora platformy i wypisuje jednorazowy link do ustawienia hasła; najpierw podaje host bazy, a baza inna niż lokalna wymaga `--remote`. Link jest sekretny.
-- `npm run smoke`: test HTTP macierzy dostępu na działającym serwerze (`BASE_URL`, domyślnie `http://localhost:4321`). Działa tylko z lokalnym Supabase w `.env` (tym samym co serwer): przy każdym uruchomieniu zakłada w nim własne dwie restauracje z wydarzeniami (A do wszystkich sprawdzeń, B do sprawdzenia, że linki A nie sięgają do B) i własne konta personelu (logowanie, limit prób, sesje, panel, panel platformy z trzecią restauracją) i nie rusza innych wydarzeń ani kont, więc można go puszczać wielokrotnie na tej samej bazie. `npm run preview` czyta `.env` przy starcie, więc po zmianie `.env` uruchom podgląd ponownie.
+- `npm run smoke`: test HTTP macierzy dostępu na działającym serwerze (`BASE_URL`, domyślnie `http://localhost:4321`). Działa tylko z lokalnym Supabase w `.env` (tym samym co serwer): przy każdym uruchomieniu zakłada w nim własne dwie restauracje z wydarzeniami (A do wszystkich sprawdzeń, B do sprawdzenia, że linki A nie sięgają do B) i własne konta personelu (logowanie, limit prób, sesje, panel, panel platformy z trzecią restauracją, wydarzenia lokalu z menedżerem) i nie rusza innych wydarzeń ani kont, więc można go puszczać wielokrotnie na tej samej bazie. `npm run preview` czyta `.env` przy starcie, więc po zmianie `.env` uruchom podgląd ponownie.
 - `npm run package:lambda`: build do `dist-lambda/build` (nie rusza `dist/` podglądu) i paczka `dist-lambda/function.zip` dla AWS Lambda, ze sprawdzeniem (bez plików env i sekretów, bez modułów natywnych, zip < 50 MB, rozpakowany zip startuje poza repozytorium).
 - `npm run deploy:aws`: wdrożenie na AWS Lambda (patrz niżej); `-- --dry-run` tylko wypisuje plan.
-- `npm run demo`: wypełnia lokalną aplikację danymi demo do sprawdzeń ręcznych (40 gości, plan, 3 sale, 7 stolików, grupy 4/2/2, 1 nieobecny, 1 przypięty, opublikowany rozkład, 30 strzałów z remisem, 12 z typem miejsca, zamówienie z 9 pozycjami) przez API działającego serwera (`BASE_URL`) i wypisuje linki. Za każdym razem zakłada w lokalnej bazie nową restaurację „Restauracja demo” z wydarzeniem „Kolacja podwyżkowa (demo)” i kontem jej właściciela (e-mail i hasło do `/logowanie` na końcu wydruku). Utrzymuje też jedno konto administratora platformy `admin@demo.stolik` z hasłem `demo-admin-1` (tylko lokalnie; wydruk „Panel platformy”).
+- `npm run demo`: wypełnia lokalną aplikację danymi demo do sprawdzeń ręcznych (40 gości, plan, 3 sale, 7 stolików, grupy 4/2/2, 1 nieobecny, 1 przypięty, opublikowany rozkład, 30 strzałów z remisem, 12 z typem miejsca, zamówienie z 9 pozycjami) przez API działającego serwera (`BASE_URL`) i wypisuje linki. Za każdym razem zakłada w lokalnej bazie nową restaurację „Restauracja demo” z wydarzeniem „Kolacja podwyżkowa (demo)” i kontem jej właściciela (e-mail i hasło do `/logowanie` na końcu wydruku), który przez panel dokłada nadchodzące, minione i zarchiwizowane wydarzenie (wydruk „Wydarzenia lokalu”). Utrzymuje też jedno konto administratora platformy `admin@demo.stolik` z hasłem `demo-admin-1` (tylko lokalnie; wydruk „Panel platformy”).
 
 ## CI
 

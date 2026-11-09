@@ -321,9 +321,9 @@ Additive and backfilled; the code reads the new columns, so the migration goes t
 
 #### Automated
 
-- [x] 3.1 `npm run smoke` passes twice in a row on the preview
-- [x] 3.2 `npm run demo` passes with upcoming, past and archived events in the demo restaurant
-- [x] 3.3 Tests, lint and type check pass
+- [x] 3.1 `npm run smoke` passes twice in a row on the preview — 3cd5951
+- [x] 3.2 `npm run demo` passes with upcoming, past and archived events in the demo restaurant — 3cd5951
+- [x] 3.3 Tests, lint and type check pass — 3cd5951
 
 #### Manual
 
@@ -333,7 +333,7 @@ Additive and backfilled; the code reads the new columns, so the migration goes t
 
 #### Automated
 
-- [ ] 4.1 Lint and type check pass; only docs touched
+- [x] 4.1 Lint and type check pass; only docs touched
 
 #### Manual
 
