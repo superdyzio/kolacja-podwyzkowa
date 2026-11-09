@@ -32,11 +32,11 @@ export const PATCH: APIRoute = async ({ locals, params, request }) => {
   if (!patch.ok) {
     return jsonError(400, patch.message);
   }
-  const result = await updateDrinkItem(api.db, id, patch.value);
+  const result = await updateDrinkItem(api.db, api.access.event.id, id, patch.value);
   if (result.status === "not-found") {
     return jsonError(404, drinkMessages(locals.locale).notFound);
   }
-  return jsonResponse(await getOrderBoard(api.db));
+  return jsonResponse(await getOrderBoard(api.db, api.access.event.id));
 };
 
 export const DELETE: APIRoute = async ({ locals, params }) => {
@@ -48,9 +48,9 @@ export const DELETE: APIRoute = async ({ locals, params }) => {
   if (id === null) {
     return jsonError(404, drinkMessages(locals.locale).notFound);
   }
-  const result = await deleteDrinkItem(api.db, id);
+  const result = await deleteDrinkItem(api.db, api.access.event.id, id);
   if (result.status === "not-found") {
     return jsonError(404, drinkMessages(locals.locale).notFound);
   }
-  return jsonResponse(await getOrderBoard(api.db));
+  return jsonResponse(await getOrderBoard(api.db, api.access.event.id));
 };

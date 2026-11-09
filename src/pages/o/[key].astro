@@ -27,16 +27,17 @@ if (!access) {
 
 const db = access ? getDb() : null;
 // One read of the seating board carries the guest list and the venue too.
-const [board, guestAccessEnabled, guessBoard, questionList, aiUsage, orderItems] = db
-  ? await Promise.all([
-      getSeatingBoard(db),
-      getGuestAccessEnabled(db),
-      getGuessBoard(db),
-      getQuestionList(db),
-      getAiTopicUsage(db, locale),
-      getOrderItems(db),
-    ])
-  : [null, false, null, null, null, null];
+const [board, guestAccessEnabled, guessBoard, questionList, aiUsage, orderItems] =
+  access && db
+    ? await Promise.all([
+        getSeatingBoard(db, access.event.id),
+        getGuestAccessEnabled(db, access.event.id),
+        getGuessBoard(db, access.event.id),
+        getQuestionList(db, access.event.id),
+        getAiTopicUsage(db, access.event.id, locale),
+        getOrderItems(db, access.event.id),
+      ])
+    : [null, false, null, null, null, null];
 const view = access
   ? {
       name: access.event.name,

@@ -13,13 +13,13 @@ import {
 import type { DbClient } from "@/lib/supabase-client";
 import type { GuessBoardDto } from "@/types";
 import {
-  acquireTestEvent,
+  createTestEvent,
   createTestGuests,
   deleteTestGuests,
   hasLocalDb,
   localDb,
   readGuessSettings,
-  releaseEvent,
+  releaseTestEvent,
   testTag,
   writeGuessSettings,
   type GuessSettings,
@@ -39,21 +39,21 @@ describe.skipIf(!hasLocalDb)("guess services", () => {
 
   beforeAll(async () => {
     db = localDb();
-    event = await acquireTestEvent(db);
-    original = await readGuessSettings(db);
+    event = await createTestEvent(db);
+    original = await readGuessSettings(db, event.id);
   });
 
   afterEach(async () => {
-    await writeGuessSettings(db, original);
+    await writeGuessSettings(db, event.id, original);
     await deleteTestGuests(db, guestIds.splice(0));
   });
 
   afterAll(async () => {
-    await releaseEvent(db, event);
+    await releaseTestEvent(db, event);
   });
 
   async function guests(count: number) {
-    const created = await createTestGuests(db, testTag(), count);
+    const created = await createTestGuests(db, event.id, testTag(), count);
     guestIds.push(...created.ids);
     return created;
   }
@@ -69,71 +69,71 @@ describe.skipIf(!hasLocalDb)("guess services", () => {
   it("saves the guest's own guess while intake is open and shows it on the board", async () => {
     const { ids } = await guests(2);
     const [g1 = 0, g2 = 0] = ids;
-    await setGuessIntakeOpen(db, true);
-    expect(await submitGuestGuess(db, g1, 149_999)).toEqual({ status: "saved" });
-    const board = await getGuessBoard(db);
+    await setGuessIntakeOpen(db, event.id, true);
+    expect(await submitGuestGuess(db, event.id, g1, 149_999)).toEqual({ status: "saved" });
+    const board = await getGuessBoard(db, event.id);
     expect(board.intakeOpen).toBe(true);
     expect(row(board, g1)).toMatchObject({ amountGrosze: 149_999, enteredBy: "guest" });
     expect(isMissing(board, g1)).toBe(false);
     expect(row(board, g2)).toMatchObject({ amountGrosze: null, enteredBy: null });
     expect(isMissing(board, g2)).toBe(true);
 
-    expect(await submitGuestGuess(db, g1, 150_000)).toEqual({ status: "saved" });
-    expect(row(await getGuessBoard(db), g1)?.amountGrosze).toBe(150_000);
+    expect(await submitGuestGuess(db, event.id, g1, 150_000)).toEqual({ status: "saved" });
+    expect(row(await getGuessBoard(db, event.id), g1)?.amountGrosze).toBe(150_000);
   });
 
   it("refuses the guest's save once intake is closed, but the organizer can still enter and correct", async () => {
     const { ids } = await guests(2);
     const [g1 = 0, g2 = 0] = ids;
-    await setGuessIntakeOpen(db, true);
-    await submitGuestGuess(db, g1, 100_000);
-    await setGuessIntakeOpen(db, false);
+    await setGuessIntakeOpen(db, event.id, true);
+    await submitGuestGuess(db, event.id, g1, 100_000);
+    await setGuessIntakeOpen(db, event.id, false);
 
-    expect(await submitGuestGuess(db, g1, 200_000)).toEqual({ status: "closed" });
-    expect(await submitGuestGuess(db, g2, 200_000)).toEqual({ status: "closed" });
-    let board = await getGuessBoard(db);
+    expect(await submitGuestGuess(db, event.id, g1, 200_000)).toEqual({ status: "closed" });
+    expect(await submitGuestGuess(db, event.id, g2, 200_000)).toEqual({ status: "closed" });
+    let board = await getGuessBoard(db, event.id);
     expect(board.intakeOpen).toBe(false);
     expect(row(board, g1)).toMatchObject({ amountGrosze: 100_000, enteredBy: "guest" });
     expect(isMissing(board, g2)).toBe(true);
 
-    expect(await saveGuessByOrganizer(db, g1, 123_456)).toEqual({ status: "saved" });
-    expect(await saveGuessByOrganizer(db, g2, 7)).toEqual({ status: "saved" });
-    board = await getGuessBoard(db);
+    expect(await saveGuessByOrganizer(db, event.id, g1, 123_456)).toEqual({ status: "saved" });
+    expect(await saveGuessByOrganizer(db, event.id, g2, 7)).toEqual({ status: "saved" });
+    board = await getGuessBoard(db, event.id);
     expect(row(board, g1)).toMatchObject({ amountGrosze: 123_456, enteredBy: "organizer" });
     expect(row(board, g2)).toMatchObject({ amountGrosze: 7, enteredBy: "organizer" });
 
-    await setGuessIntakeOpen(db, true);
-    expect(await submitGuestGuess(db, g2, 8)).toEqual({ status: "saved" });
-    expect(row(await getGuessBoard(db), g2)).toMatchObject({ amountGrosze: 8, enteredBy: "guest" });
+    await setGuessIntakeOpen(db, event.id, true);
+    expect(await submitGuestGuess(db, event.id, g2, 8)).toEqual({ status: "saved" });
+    expect(row(await getGuessBoard(db, event.id), g2)).toMatchObject({ amountGrosze: 8, enteredBy: "guest" });
   });
 
   it("deletes a guess (the guest is missing again) and reports unknown guests", async () => {
     const { ids } = await guests(1);
     const [g1 = 0] = ids;
-    await saveGuessByOrganizer(db, g1, 500);
-    expect(await deleteGuess(db, g1)).toEqual({ status: "deleted" });
-    expect(isMissing(await getGuessBoard(db), g1)).toBe(true);
-    expect(await deleteGuess(db, g1)).toEqual({ status: "deleted" });
+    await saveGuessByOrganizer(db, event.id, g1, 500);
+    expect(await deleteGuess(db, event.id, g1)).toEqual({ status: "deleted" });
+    expect(isMissing(await getGuessBoard(db, event.id), g1)).toBe(true);
+    expect(await deleteGuess(db, event.id, g1)).toEqual({ status: "deleted" });
 
-    expect(await deleteGuess(db, UNKNOWN_ID)).toEqual({ status: "not-found" });
-    expect(await saveGuessByOrganizer(db, UNKNOWN_ID, 1)).toEqual({ status: "not-found" });
-    await setGuessIntakeOpen(db, true);
-    expect(await submitGuestGuess(db, UNKNOWN_ID, 1)).toEqual({ status: "not-found" });
+    expect(await deleteGuess(db, event.id, UNKNOWN_ID)).toEqual({ status: "not-found" });
+    expect(await saveGuessByOrganizer(db, event.id, UNKNOWN_ID, 1)).toEqual({ status: "not-found" });
+    await setGuessIntakeOpen(db, event.id, true);
+    expect(await submitGuestGuess(db, event.id, UNKNOWN_ID, 1)).toEqual({ status: "not-found" });
   });
 
   it("ranks by distance to the grosz once the correct amount is set, ties sharing a place", async () => {
     const { ids, names } = await guests(4);
     const [g1 = 0, g2 = 0, g3 = 0, g4 = 0] = ids;
-    await saveGuessByOrganizer(db, g1, 499_999); // 1 grosz too low
-    await saveGuessByOrganizer(db, g2, 500_001); // 1 grosz too high → tie with g1
-    await saveGuessByOrganizer(db, g3, 500_002); // 2 grosze
+    await saveGuessByOrganizer(db, event.id, g1, 499_999); // 1 grosz too low
+    await saveGuessByOrganizer(db, event.id, g2, 500_001); // 1 grosz too high → tie with g1
+    await saveGuessByOrganizer(db, event.id, g3, 500_002); // 2 grosze
     // g4 has no guess
 
-    await setCorrectAmount(db, null);
-    expect((await getGuessBoard(db)).ranking).toBeNull();
+    await setCorrectAmount(db, event.id, null);
+    expect((await getGuessBoard(db, event.id)).ranking).toBeNull();
 
-    await setCorrectAmount(db, 500_000);
-    const board = await getGuessBoard(db);
+    await setCorrectAmount(db, event.id, 500_000);
+    const board = await getGuessBoard(db, event.id);
     expect(board.correctAmountGrosze).toBe(500_000);
     const mine = (board.ranking?.entries ?? []).filter((entry) => ids.includes(entry.guestId));
     expect(mine.map((entry) => [entry.guestId, entry.differenceGrosze, entry.distanceGrosze, entry.tied])).toEqual([
@@ -152,9 +152,9 @@ describe.skipIf(!hasLocalDb)("guess services", () => {
     const [g1 = 0, g2 = 0] = ids;
     const { error } = await db.from("guest").update({ is_absent: true }).in("id", ids);
     expect(error).toBeNull();
-    await saveGuessByOrganizer(db, g2, 1_000);
-    await setCorrectAmount(db, 1_000);
-    const board = await getGuessBoard(db);
+    await saveGuessByOrganizer(db, event.id, g2, 1_000);
+    await setCorrectAmount(db, event.id, 1_000);
+    const board = await getGuessBoard(db, event.id);
     expect(board.missing.find((guest) => guest.id === g1)).toMatchObject({ isAbsent: true });
     expect(board.ranking?.entries.find((entry) => entry.guestId === g2)).toMatchObject({
       isAbsent: true,
@@ -167,76 +167,82 @@ describe.skipIf(!hasLocalDb)("guess services", () => {
     const [g1 = 0, g2 = 0] = ids;
     const me = { id: g1, displayName: names[0] ?? "" };
     const other = { id: g2, displayName: names[1] ?? "" };
-    await setGuessIntakeOpen(db, true);
-    await setCorrectAmount(db, 424_242);
+    await setGuessIntakeOpen(db, event.id, true);
+    await setCorrectAmount(db, event.id, 424_242);
 
-    const maxPlace = await countGuests(db);
-    expect(await getGuestGuess(db, g1)).toEqual({
+    const maxPlace = await countGuests(db, event.id);
+    expect(await getGuestGuess(db, event.id, g1)).toEqual({
       intakeOpen: true,
       amountGrosze: null,
       predictedPlace: null,
       maxPlace,
     });
-    const before = await getGuestState(db, me);
+    const before = await getGuestState(db, event.id, me);
     expect(before.guess).toEqual({ intakeOpen: true, amountGrosze: null, predictedPlace: null, maxPlace });
-    expect(await getGuestStateVersion(db, me)).toBe(before.version);
+    expect(await getGuestStateVersion(db, event.id, me)).toBe(before.version);
 
-    await submitGuestGuess(db, g1, 777_777);
-    const afterSave = await getGuestState(db, me);
+    await submitGuestGuess(db, event.id, g1, 777_777);
+    const afterSave = await getGuestState(db, event.id, me);
     expect(afterSave.guess).toEqual({ intakeOpen: true, amountGrosze: 777_777, predictedPlace: null, maxPlace });
     expect(afterSave.version).not.toBe(before.version);
-    expect(await getGuestStateVersion(db, me)).toBe(afterSave.version);
+    expect(await getGuestStateVersion(db, event.id, me)).toBe(afterSave.version);
 
     // Another guest's guess changes nothing for me; my guess never shows up in theirs.
-    const otherBefore = await getGuestStateVersion(db, other);
-    await saveGuessByOrganizer(db, g2, 111_111);
-    expect(await getGuestStateVersion(db, me)).toBe(afterSave.version);
-    expect(await getGuestStateVersion(db, other)).not.toBe(otherBefore);
-    const otherState = JSON.stringify(await getGuestState(db, other));
+    const otherBefore = await getGuestStateVersion(db, event.id, other);
+    await saveGuessByOrganizer(db, event.id, g2, 111_111);
+    expect(await getGuestStateVersion(db, event.id, me)).toBe(afterSave.version);
+    expect(await getGuestStateVersion(db, event.id, other)).not.toBe(otherBefore);
+    const otherState = JSON.stringify(await getGuestState(db, event.id, other));
     expect(otherState).not.toContain("777777");
     expect(otherState).not.toContain("424242");
     expect(JSON.stringify(afterSave)).not.toContain("111111");
     expect(JSON.stringify(afterSave)).not.toContain("424242");
 
     // An organizer's proxy correction reaches my phone.
-    await saveGuessByOrganizer(db, g1, 777_778);
-    const afterProxy = await getGuestState(db, me);
+    await saveGuessByOrganizer(db, event.id, g1, 777_778);
+    const afterProxy = await getGuestState(db, event.id, me);
     expect(afterProxy.guess.amountGrosze).toBe(777_778);
     expect(afterProxy.version).not.toBe(afterSave.version);
 
     // So does closing intake.
-    await setGuessIntakeOpen(db, false);
-    const afterClose = await getGuestState(db, me);
+    await setGuessIntakeOpen(db, event.id, false);
+    const afterClose = await getGuestState(db, event.id, me);
     expect(afterClose.guess).toEqual({ intakeOpen: false, amountGrosze: 777_778, predictedPlace: null, maxPlace });
     expect(afterClose.version).not.toBe(afterProxy.version);
-    expect(await getGuestStateVersion(db, me)).toBe(afterClose.version);
+    expect(await getGuestStateVersion(db, event.id, me)).toBe(afterClose.version);
   });
 
   // guess-place: the optional prediction of the own final place.
   it("saves the guest's place with the amount, keeps it on an amount-only save and clears it with null", async () => {
     const { ids } = await guests(3); // places 1…3 allowed even on an otherwise empty event
     const [g1 = 0] = ids;
-    await setGuessIntakeOpen(db, true);
-    expect(await submitGuestGuess(db, g1, 100_000, 2)).toEqual({ status: "saved" });
-    expect(row(await getGuessBoard(db), g1)).toMatchObject({ amountGrosze: 100_000, predictedPlace: 2 });
+    await setGuessIntakeOpen(db, event.id, true);
+    expect(await submitGuestGuess(db, event.id, g1, 100_000, 2)).toEqual({ status: "saved" });
+    expect(row(await getGuessBoard(db, event.id), g1)).toMatchObject({ amountGrosze: 100_000, predictedPlace: 2 });
 
     // A phone still on the old page sends only the amount: the prediction stays.
-    expect(await submitGuestGuess(db, g1, 110_000)).toEqual({ status: "saved" });
-    expect(row(await getGuessBoard(db), g1)).toMatchObject({ amountGrosze: 110_000, predictedPlace: 2 });
+    expect(await submitGuestGuess(db, event.id, g1, 110_000)).toEqual({ status: "saved" });
+    expect(row(await getGuessBoard(db, event.id), g1)).toMatchObject({ amountGrosze: 110_000, predictedPlace: 2 });
 
-    expect(await submitGuestGuess(db, g1, 120_000, null)).toEqual({ status: "saved" });
-    expect(row(await getGuessBoard(db), g1)).toMatchObject({ amountGrosze: 120_000, predictedPlace: null });
+    expect(await submitGuestGuess(db, event.id, g1, 120_000, null)).toEqual({ status: "saved" });
+    expect(row(await getGuessBoard(db, event.id), g1)).toMatchObject({ amountGrosze: 120_000, predictedPlace: null });
   });
 
   it("allows a place only up to the number of guests, for the guest and for the organizer", async () => {
     const { ids } = await guests(2);
     const [g1 = 0, g2 = 0] = ids;
-    const maxPlace = await countGuests(db);
-    await setGuessIntakeOpen(db, true);
-    expect(await submitGuestGuess(db, g1, 1_000, maxPlace)).toEqual({ status: "saved" });
-    expect(await submitGuestGuess(db, g1, 2_000, maxPlace + 1)).toEqual({ status: "place-out-of-range", maxPlace });
-    expect(await saveGuessByOrganizer(db, g2, 3_000, maxPlace + 1)).toEqual({ status: "place-out-of-range", maxPlace });
-    const board = await getGuessBoard(db);
+    const maxPlace = await countGuests(db, event.id);
+    await setGuessIntakeOpen(db, event.id, true);
+    expect(await submitGuestGuess(db, event.id, g1, 1_000, maxPlace)).toEqual({ status: "saved" });
+    expect(await submitGuestGuess(db, event.id, g1, 2_000, maxPlace + 1)).toEqual({
+      status: "place-out-of-range",
+      maxPlace,
+    });
+    expect(await saveGuessByOrganizer(db, event.id, g2, 3_000, maxPlace + 1)).toEqual({
+      status: "place-out-of-range",
+      maxPlace,
+    });
+    const board = await getGuessBoard(db, event.id);
     expect(row(board, g1)).toMatchObject({ amountGrosze: 1_000, predictedPlace: maxPlace });
     expect(isMissing(board, g2)).toBe(true);
   });
@@ -244,39 +250,41 @@ describe.skipIf(!hasLocalDb)("guess services", () => {
   it("refuses the guest's place once intake is closed; the organizer sets, keeps and clears it", async () => {
     const { ids } = await guests(3); // places 1…3 allowed even on an otherwise empty event
     const [g1 = 0] = ids;
-    await setGuessIntakeOpen(db, true);
-    await submitGuestGuess(db, g1, 100_000, 1);
-    await setGuessIntakeOpen(db, false);
-    expect(await submitGuestGuess(db, g1, 100_000, 2)).toEqual({ status: "closed" });
-    expect(row(await getGuessBoard(db), g1)).toMatchObject({ predictedPlace: 1, enteredBy: "guest" });
+    await setGuessIntakeOpen(db, event.id, true);
+    await submitGuestGuess(db, event.id, g1, 100_000, 1);
+    await setGuessIntakeOpen(db, event.id, false);
+    expect(await submitGuestGuess(db, event.id, g1, 100_000, 2)).toEqual({ status: "closed" });
+    expect(row(await getGuessBoard(db, event.id), g1)).toMatchObject({ predictedPlace: 1, enteredBy: "guest" });
 
-    expect(await saveGuessByOrganizer(db, g1, 100_001, 2)).toEqual({ status: "saved" });
-    expect(row(await getGuessBoard(db), g1)).toMatchObject({ amountGrosze: 100_001, predictedPlace: 2 });
-    expect(await saveGuessByOrganizer(db, g1, 100_002)).toEqual({ status: "saved" });
-    expect(row(await getGuessBoard(db), g1)).toMatchObject({ amountGrosze: 100_002, predictedPlace: 2 });
-    expect(await saveGuessByOrganizer(db, g1, 100_003, null)).toEqual({ status: "saved" });
-    expect(row(await getGuessBoard(db), g1)).toMatchObject({ amountGrosze: 100_003, predictedPlace: null });
+    expect(await saveGuessByOrganizer(db, event.id, g1, 100_001, 2)).toEqual({ status: "saved" });
+    expect(row(await getGuessBoard(db, event.id), g1)).toMatchObject({ amountGrosze: 100_001, predictedPlace: 2 });
+    expect(await saveGuessByOrganizer(db, event.id, g1, 100_002)).toEqual({ status: "saved" });
+    expect(row(await getGuessBoard(db, event.id), g1)).toMatchObject({ amountGrosze: 100_002, predictedPlace: 2 });
+    expect(await saveGuessByOrganizer(db, event.id, g1, 100_003, null)).toEqual({ status: "saved" });
+    expect(row(await getGuessBoard(db, event.id), g1)).toMatchObject({ amountGrosze: 100_003, predictedPlace: null });
   });
 
   it("marks hits in the ranking, a tied pair spanning both its places", async () => {
     const { ids } = await guests(3);
     const [g1 = 0, g2 = 0, g3 = 0] = ids;
     // With a correct amount of 0 these are the farthest guesses, so the test's guests take the last three places.
-    await saveGuessByOrganizer(db, g1, 999_999_000, null);
-    await saveGuessByOrganizer(db, g2, 999_999_999, null);
-    await saveGuessByOrganizer(db, g3, 1_000_000_000, null);
-    await setCorrectAmount(db, 0);
-    const before = (await getGuessBoard(db)).ranking?.entries.filter((entry) => ids.includes(entry.guestId)) ?? [];
+    await saveGuessByOrganizer(db, event.id, g1, 999_999_000, null);
+    await saveGuessByOrganizer(db, event.id, g2, 999_999_999, null);
+    await saveGuessByOrganizer(db, event.id, g3, 1_000_000_000, null);
+    await setCorrectAmount(db, event.id, 0);
+    const before =
+      (await getGuessBoard(db, event.id)).ranking?.entries.filter((entry) => ids.includes(entry.guestId)) ?? [];
     const [first, second] = before;
     expect(before.map((entry) => entry.guestId)).toEqual([g1, g2, g3]);
     const place2 = second.place;
     expect(first.place).toBe(place2 - 1);
 
     // g1 predicts g2's place (a miss); g2 predicts its own; g3 moves to g2's amount and predicts the next place.
-    await saveGuessByOrganizer(db, g1, 999_999_000, place2);
-    await saveGuessByOrganizer(db, g2, 999_999_999, place2);
-    await saveGuessByOrganizer(db, g3, 999_999_999, place2 + 1); // now tied with g2: the pair spans both places
-    const entries = (await getGuessBoard(db)).ranking?.entries.filter((entry) => ids.includes(entry.guestId)) ?? [];
+    await saveGuessByOrganizer(db, event.id, g1, 999_999_000, place2);
+    await saveGuessByOrganizer(db, event.id, g2, 999_999_999, place2);
+    await saveGuessByOrganizer(db, event.id, g3, 999_999_999, place2 + 1); // now tied with g2: the pair spans both places
+    const entries =
+      (await getGuessBoard(db, event.id)).ranking?.entries.filter((entry) => ids.includes(entry.guestId)) ?? [];
     expect(
       entries.map((entry) => [entry.guestId, entry.place, entry.tied, entry.predictedPlace, entry.placeHit]),
     ).toEqual([
@@ -290,15 +298,19 @@ describe.skipIf(!hasLocalDb)("guess services", () => {
     const { ids, names } = await guests(7); // places 1…7 allowed even on an otherwise empty event
     const [g1 = 0, g2 = 0] = ids;
     const me = { id: g1, displayName: names[0] ?? "" };
-    await setGuessIntakeOpen(db, true);
-    await submitGuestGuess(db, g1, 500_000, 3);
-    await saveGuessByOrganizer(db, g2, 600_000, 7);
-    const mine = await getGuestState(db, me);
-    expect(mine.guess).toMatchObject({ amountGrosze: 500_000, predictedPlace: 3, maxPlace: await countGuests(db) });
+    await setGuessIntakeOpen(db, event.id, true);
+    await submitGuestGuess(db, event.id, g1, 500_000, 3);
+    await saveGuessByOrganizer(db, event.id, g2, 600_000, 7);
+    const mine = await getGuestState(db, event.id, me);
+    expect(mine.guess).toMatchObject({
+      amountGrosze: 500_000,
+      predictedPlace: 3,
+      maxPlace: await countGuests(db, event.id),
+    });
     expect(JSON.stringify(mine)).not.toContain("600000");
 
-    await saveGuessByOrganizer(db, g1, 500_000, 4);
-    expect(await getGuestStateVersion(db, me)).not.toBe(mine.version);
-    expect((await getGuestState(db, me)).guess.predictedPlace).toBe(4);
+    await saveGuessByOrganizer(db, event.id, g1, 500_000, 4);
+    expect(await getGuestStateVersion(db, event.id, me)).not.toBe(mine.version);
+    expect((await getGuestState(db, event.id, me)).guess.predictedPlace).toBe(4);
   });
 });

@@ -20,8 +20,12 @@ export const GET: APIRoute = async ({ locals, url }) => {
   }
   const { guest } = api.access;
   const since = url.searchParams.get("since");
-  if (since !== null && since.length <= MAX_VERSION_LENGTH && since === (await getGuestStateVersion(api.db, guest))) {
+  if (
+    since !== null &&
+    since.length <= MAX_VERSION_LENGTH &&
+    since === (await getGuestStateVersion(api.db, api.access.event.id, guest))
+  ) {
     return new Response(null, { status: 204 });
   }
-  return jsonResponse(await getGuestState(api.db, guest));
+  return jsonResponse(await getGuestState(api.db, api.access.event.id, guest));
 };

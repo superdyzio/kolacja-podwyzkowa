@@ -43,7 +43,7 @@ export const PATCH: APIRoute = async ({ locals, params, request }) => {
     return body.response;
   }
 
-  const result = await updateTable(api.db, id, body.data);
+  const result = await updateTable(api.db, api.access.event.id, id, body.data);
   switch (result.status) {
     case "invalid":
       return jsonError(400, describeTableFieldProblem(result.problem, locals.locale));
@@ -54,7 +54,7 @@ export const PATCH: APIRoute = async ({ locals, params, request }) => {
     case "not-found":
       return jsonError(404, venueMessages(locals.locale).tableNotFound);
     case "updated":
-      return jsonResponse(await getVenue(api.db));
+      return jsonResponse(await getVenue(api.db, api.access.event.id));
   }
 };
 
@@ -68,9 +68,9 @@ export const DELETE: APIRoute = async ({ locals, params }) => {
     return jsonError(404, venueMessages(locals.locale).tableNotFound);
   }
 
-  const result = await deleteTable(api.db, id);
+  const result = await deleteTable(api.db, api.access.event.id, id);
   if (result.status === "not-found") {
     return jsonError(404, venueMessages(locals.locale).tableNotFound);
   }
-  return jsonResponse(await getVenue(api.db));
+  return jsonResponse(await getVenue(api.db, api.access.event.id));
 };

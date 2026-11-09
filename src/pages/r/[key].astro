@@ -22,7 +22,7 @@ const view =
     ? {
         name: access.event.name,
         apiBase: `/api${restaurantPath(Astro.params.key ?? "")}`,
-        initial: await getRestaurantView(db),
+        initial: await getRestaurantView(db, access.event.id),
       }
     : null;
 ---

@@ -1,15 +1,12 @@
 ---
-import { Button } from "@/components/ui/button";
 import Layout from "@/layouts/Layout.astro";
 import { getDb } from "@/lib/db";
-import { hasEvent } from "@/lib/event";
 import { shellMessages } from "@/lib/shell/messages";
 
-// Public entry. Before the event exists it offers one-time creation (POST /api/event → organizer page with links).
-// Once it exists it shows only the no-access message: the organizer enters through the bookmarked link.
+// Public entry: the app name and that everything opens only through a link (multi-tenant-events: events are created
+// by the platform — `npm run event:create` until the restaurant panel, S-11 — never from here). No DB query.
 const t = shellMessages(Astro.locals.locale);
-const db = getDb();
-const eventExists = db ? await hasEvent(db) : null;
+const configured = getDb() !== null;
 
 Astro.response.headers.set("Cache-Control", "no-store");
 ---
@@ -17,18 +14,6 @@ Astro.response.headers.set("Cache-Control", "no-store");
 <Layout>
   <main class="mx-auto flex min-h-screen max-w-xl flex-col justify-center gap-4 p-6">
     <h1 class="text-3xl font-bold">{t.appName}</h1>
-    {eventExists === null && <p class="text-muted-foreground">{t.noDatabase}</p>}
-    {eventExists === false && (
-      <>
-        <p class="text-muted-foreground">{t.noEventYet}</p>
-        <p class="text-muted-foreground">{t.bookmarkNow}</p>
-        <form method="post" action="/api/event">
-          <Button type="submit" size="lg">
-            {t.createEvent}
-          </Button>
-        </form>
-      </>
-    )}
-    {eventExists === true && <p class="text-muted-foreground">{t.linkOnly}</p>}
+    <p class="text-muted-foreground">{configured ? t.linkOnly : t.noDatabase}</p>
   </main>
 </Layout>

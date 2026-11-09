@@ -25,9 +25,9 @@ const view =
         name: access.event.name,
         panelPath: organizerPath(access.event.organizerKey),
         apiBase: `/api${organizerPath(access.event.organizerKey)}`,
-        venue: await getVenue(db),
+        venue: await getVenue(db, access.event.id),
         // Who sits where: deleting tables or lowering seat counts asks first, naming who loses a seat.
-        occupancy: await getSeatOccupancy(db),
+        occupancy: await getSeatOccupancy(db, access.event.id),
       }
     : null;
 ---

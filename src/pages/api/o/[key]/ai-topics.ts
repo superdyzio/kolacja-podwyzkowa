@@ -21,7 +21,7 @@ export const GET: APIRoute = async ({ locals }) => {
     return api;
   }
   const board: AiTopicBoardDto = {
-    usage: await getAiTopicUsage(api.db, locals.locale),
+    usage: await getAiTopicUsage(api.db, api.access.event.id, locals.locale),
     provider: getAiProviderStatus(locals.locale),
   };
   return jsonResponse(board);
@@ -41,11 +41,12 @@ export const POST: APIRoute = async ({ locals, request }) => {
   const provider = getAiProvider();
   const result = await generateTopic(
     api.db,
+    api.access.event.id,
     provider,
     { guestId: null, category: body.data.category, locale: locals.locale },
     { simulateFailure: mockFailureRequested(provider, request.headers) },
   );
-  const usage = await getAiTopicUsage(api.db, locals.locale);
+  const usage = await getAiTopicUsage(api.db, api.access.event.id, locals.locale);
   const messages = aiTopicLimitMessages(locals.locale);
   switch (result.status) {
     case "generated": {

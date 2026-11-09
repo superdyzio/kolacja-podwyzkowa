@@ -13,7 +13,7 @@ export const POST: APIRoute = async ({ locals }) => {
   if (api instanceof Response) {
     return api;
   }
-  const { added } = await loadStarterQuestions(api.db);
-  const answer: StarterLoadResultDto = { added, ...(await getQuestionList(api.db)) };
+  const { added } = await loadStarterQuestions(api.db, api.access.event.id);
+  const answer: StarterLoadResultDto = { added, ...(await getQuestionList(api.db, api.access.event.id)) };
   return jsonResponse(answer);
 };

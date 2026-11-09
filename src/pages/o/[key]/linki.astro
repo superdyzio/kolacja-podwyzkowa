@@ -27,7 +27,7 @@ const view =
         cardsPath: `${organizerPath(access.event.organizerKey)}/karteczki`,
         guestsPath: `${organizerPath(access.event.organizerKey)}/goscie`,
         origin: Astro.url.origin,
-        links: await getGuestLinks(db),
+        links: await getGuestLinks(db, access.event.id),
       }
     : null;
 ---

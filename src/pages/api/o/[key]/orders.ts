@@ -21,7 +21,7 @@ export const GET: APIRoute = async ({ locals }) => {
   if (api instanceof Response) {
     return api;
   }
-  return jsonResponse(await getOrderBoard(api.db));
+  return jsonResponse(await getOrderBoard(api.db, api.access.event.id));
 };
 
 export const POST: APIRoute = async ({ locals, request }) => {
@@ -37,13 +37,13 @@ export const POST: APIRoute = async ({ locals, request }) => {
   if (!input.ok) {
     return jsonError(400, input.message);
   }
-  const result = await addOrderItem(api.db, input.value);
+  const result = await addOrderItem(api.db, api.access.event.id, input.value);
   switch (result.status) {
     case "too-many":
       return jsonError(409, tooManyItemsMessage(locals.locale));
     case "place-gone":
       return jsonError(409, orderMessages(locals.locale).placeGone);
     case "added":
-      return jsonResponse(await getOrderBoard(api.db), 201);
+      return jsonResponse(await getOrderBoard(api.db, api.access.event.id), 201);
   }
 };

@@ -23,7 +23,7 @@ const view =
         name: access.event.name,
         panelPath: organizerPath(access.event.organizerKey),
         apiBase: `/api${organizerPath(access.event.organizerKey)}`,
-        list: await getGuestList(db),
+        list: await getGuestList(db, access.event.id),
       }
     : null;
 ---

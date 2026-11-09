@@ -27,7 +27,7 @@ const view =
         apiBase: `/api${organizerPath(access.event.organizerKey)}`,
         origin: Astro.url.origin,
         restaurantPath: restaurantPath(access.event.restaurantKey),
-        board: await getOrderBoard(db),
+        board: await getOrderBoard(db, access.event.id),
       }
     : null;
 ---

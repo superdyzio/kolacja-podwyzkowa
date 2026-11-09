@@ -16,7 +16,7 @@ export const GET: APIRoute = async ({ locals }) => {
   if (api instanceof Response) {
     return api;
   }
-  const preview = await getResetPreview(api.db);
+  const preview = await getResetPreview(api.db, api.access.event.id);
   return preview ? jsonResponse(preview) : jsonError(404, noAccessMessages(locals.locale).title);
 };
 
@@ -29,7 +29,7 @@ export const POST: APIRoute = async ({ locals, request }) => {
   if (!body.ok) {
     return body.response;
   }
-  const outcome = await resetEvent(api.db, body.data.parts, locals.locale);
+  const outcome = await resetEvent(api.db, api.access.event.id, body.data.parts, locals.locale);
   return outcome.status === "reset"
     ? jsonResponse(outcome.result)
     : jsonError(404, noAccessMessages(locals.locale).title);

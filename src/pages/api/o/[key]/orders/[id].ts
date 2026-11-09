@@ -33,14 +33,14 @@ export const PATCH: APIRoute = async ({ locals, params, request }) => {
   if (!patch.ok) {
     return jsonError(400, patch.message);
   }
-  const result = await updateOrderItem(api.db, id, patch.value);
+  const result = await updateOrderItem(api.db, api.access.event.id, id, patch.value);
   switch (result.status) {
     case "not-found":
       return jsonError(404, orderMessages(locals.locale).itemNotFound);
     case "place-gone":
       return jsonError(409, orderMessages(locals.locale).placeGone);
     case "updated":
-      return jsonResponse(await getOrderBoard(api.db));
+      return jsonResponse(await getOrderBoard(api.db, api.access.event.id));
   }
 };
 
@@ -53,9 +53,9 @@ export const DELETE: APIRoute = async ({ locals, params }) => {
   if (id === null) {
     return jsonError(404, orderMessages(locals.locale).itemNotFound);
   }
-  const result = await deleteOrderItem(api.db, id);
+  const result = await deleteOrderItem(api.db, api.access.event.id, id);
   if (result.status === "not-found") {
     return jsonError(404, orderMessages(locals.locale).itemNotFound);
   }
-  return jsonResponse(await getOrderBoard(api.db));
+  return jsonResponse(await getOrderBoard(api.db, api.access.event.id));
 };

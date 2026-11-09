@@ -38,11 +38,15 @@ export const PUT: APIRoute = async ({ locals, request }) => {
   // Here only the format; the upper bound (the number of guests) is checked by the service, which counts them.
   const place = readPlaceField(body.data.place);
   if (place === "invalid") {
-    return jsonError(400, placeMessages(locals.locale).range(placeLimit(await countGuests(api.db))), PLACE_FIELD);
+    return jsonError(
+      400,
+      placeMessages(locals.locale).range(placeLimit(await countGuests(api.db, api.access.event.id))),
+      PLACE_FIELD,
+    );
   }
 
   const { guest } = api.access;
-  const result = await submitGuestGuess(api.db, guest.id, parsed.grosze, place);
+  const result = await submitGuestGuess(api.db, api.access.event.id, guest.id, parsed.grosze, place);
   switch (result.status) {
     case "place-out-of-range":
       return jsonError(400, placeMessages(locals.locale).range(result.maxPlace), PLACE_FIELD);
@@ -51,6 +55,6 @@ export const PUT: APIRoute = async ({ locals, request }) => {
     case "not-found":
       return jsonError(404, noAccessMessages(locals.locale).title);
     case "saved":
-      return jsonResponse(await getGuestState(api.db, guest));
+      return jsonResponse(await getGuestState(api.db, api.access.event.id, guest));
   }
 };

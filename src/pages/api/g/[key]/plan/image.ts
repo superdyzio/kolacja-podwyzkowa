@@ -11,5 +11,5 @@ export const GET: APIRoute = async ({ locals }) => {
   if (api instanceof Response) {
     return api;
   }
-  return planImageResponse(api.db, locals.locale);
+  return planImageResponse(api.db, api.access.event.id, locals.locale);
 };

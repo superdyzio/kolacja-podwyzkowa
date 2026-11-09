@@ -13,5 +13,5 @@ export const POST: APIRoute = async ({ locals }) => {
   if (api instanceof Response) {
     return api;
   }
-  return jsonResponse({ path: restaurantPath(await rotateRestaurantKey(api.db)) });
+  return jsonResponse({ path: restaurantPath(await rotateRestaurantKey(api.db, api.access.event.id)) });
 };

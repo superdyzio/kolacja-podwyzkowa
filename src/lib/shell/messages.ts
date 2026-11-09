@@ -4,14 +4,9 @@ import { defineMessages } from "@/lib/i18n/locale";
 // on the shell cards come from each domain's own format*Summary(…, locale).
 export const shellMessages = defineMessages(
   {
-    // The home page (index.astro) and POST /api/event.
+    // The home page (index.astro).
     appName: "Kolacja podwyżkowa",
     noDatabase: "Baza danych nie jest skonfigurowana.",
-    noDatabaseError: "Baza danych nie jest skonfigurowana",
-    noEventYet: "Nie ma jeszcze wydarzenia. Utwórz je, a dostaniesz sekretny link organizatora i adres widoku TV.",
-    bookmarkNow:
-      "Od razu dodaj link organizatora do zakładek: to jedyne wejście do panelu. Wydarzenie można utworzyć tylko raz.",
-    createEvent: "Utwórz wydarzenie",
     linkOnly: "Dostęp tylko przez link od organizatora.",
     // 500.astro.
     errorTitle: "Błąd",
@@ -58,11 +53,6 @@ export const shellMessages = defineMessages(
   {
     appName: "Raise dinner",
     noDatabase: "The database is not configured.",
-    noDatabaseError: "The database is not configured",
-    noEventYet: "There is no event yet. Create it to get the secret organizer link and the TV address.",
-    bookmarkNow:
-      "Bookmark the organizer link right away: it is the only way into the panel. The event can be created only once.",
-    createEvent: "Create the event",
     linkOnly: "Access only through a link from the organizer.",
     errorTitle: "Error",
     errorHeading: "Something went wrong",

@@ -24,8 +24,8 @@ const view =
         name: access.event.name,
         panelPath: organizerPath(access.event.organizerKey),
         apiBase: `/api${organizerPath(access.event.organizerKey)}`,
-        board: await getSeatingBoard(db),
-        history: await getNeighbourHistory(db),
+        board: await getSeatingBoard(db, access.event.id),
+        history: await getNeighbourHistory(db, access.event.id),
       }
     : null;
 ---

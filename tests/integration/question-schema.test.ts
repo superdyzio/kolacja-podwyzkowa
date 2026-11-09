@@ -1,12 +1,12 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import type { DbClient } from "@/lib/supabase-client";
 import {
-  acquireTestEvent,
+  createTestEvent,
   deleteTestQuestions,
   hasLocalDb,
   localDb,
   localDbEnv,
-  releaseEvent,
+  releaseTestEvent,
   testTag,
   type TestEvent,
 } from "./helpers";
@@ -25,7 +25,7 @@ describe.skipIf(!hasLocalDb)("question schema", () => {
 
   beforeAll(async () => {
     db = localDb();
-    event = await acquireTestEvent(db);
+    event = await createTestEvent(db);
     const env = localDbEnv();
     if (!env) {
       throw new Error("unreachable: suite is skipped without a local DB");
@@ -38,11 +38,15 @@ describe.skipIf(!hasLocalDb)("question schema", () => {
   });
 
   afterAll(async () => {
-    await releaseEvent(db, event);
+    await releaseTestEvent(db, event);
   });
 
   async function insert(category: string, text: string) {
-    const result = await db.from("question").insert({ category, text }).select("id, text_key").maybeSingle();
+    const result = await db
+      .from("question")
+      .insert({ event_id: event.id, category, text })
+      .select("id, text_key")
+      .maybeSingle();
     if (result.data) {
       created.push(result.data.id);
     }
@@ -84,8 +88,8 @@ describe.skipIf(!hasLocalDb)("question schema", () => {
       .from("question")
       .upsert(
         [
-          { category: "generyczne", text: tagged("już JEST") },
-          { category: "refleksyjne", text: tagged("Nowe") },
+          { event_id: event.id, category: "generyczne", text: tagged("już JEST") },
+          { event_id: event.id, category: "refleksyjne", text: tagged("Nowe") },
         ],
         { onConflict: "event_id,text_key", ignoreDuplicates: true },
       )

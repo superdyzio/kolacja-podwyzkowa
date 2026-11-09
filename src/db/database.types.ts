@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/consistent-indexed-object-style -- mirrors the generated Supabase types shape */
 // Hand-written in the shape `supabase gen types typescript` produces (generation would start extra containers).
-// Every slice that adds a migration extends `public.Tables` here.
+// Every slice that adds a migration extends `public.Tables` here. multi-tenant-events: every child table's event_id is
+// required on insert (no DB default), and every function that touches event data takes p_event_id.
 
 export type Json = string | number | boolean | null | { [key: string]: Json | undefined } | Json[];
 
@@ -10,6 +11,25 @@ export interface Database {
   };
   public: {
     Tables: {
+      // multi-tenant-events: a restaurant on the platform; every event belongs to one.
+      restaurant: {
+        Row: {
+          id: number;
+          name: string;
+          created_at: string;
+        };
+        Insert: {
+          id?: never;
+          name: string;
+          created_at?: string;
+        };
+        Update: {
+          id?: never;
+          name?: string;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
       event: {
         Row: {
           id: number;
@@ -25,12 +45,16 @@ export interface Database {
           correct_amount_grosze: number | null;
           // restaurant-orders: the restaurant link key (/r/<key>), filled by the column default.
           restaurant_key: string;
+          // multi-tenant-events: the restaurant the event belongs to.
+          restaurant_id: number;
         };
         Insert: {
-          id?: number;
-          name?: string;
-          organizer_key: string;
-          tv_key: string;
+          id?: never;
+          restaurant_id: number;
+          name: string;
+          // multi-tenant-events: the organizer and TV keys are filled by column defaults (like restaurant_key).
+          organizer_key?: string;
+          tv_key?: string;
           created_at?: string;
           guest_access_enabled?: boolean;
           guess_intake_open?: boolean;
@@ -38,7 +62,8 @@ export interface Database {
           restaurant_key?: string;
         };
         Update: {
-          id?: number;
+          id?: never;
+          restaurant_id?: number;
           name?: string;
           organizer_key?: string;
           tv_key?: string;
@@ -48,7 +73,15 @@ export interface Database {
           correct_amount_grosze?: number | null;
           restaurant_key?: string;
         };
-        Relationships: [];
+        Relationships: [
+          {
+            foreignKeyName: "event_restaurant_id_fkey";
+            columns: ["restaurant_id"];
+            isOneToOne: false;
+            referencedRelation: "restaurant";
+            referencedColumns: ["id"];
+          },
+        ];
       };
       guest_group: {
         Row: {
@@ -58,7 +91,7 @@ export interface Database {
         };
         Insert: {
           id?: never;
-          event_id?: number;
+          event_id: number;
           created_at?: string;
         };
         Update: {
@@ -89,7 +122,7 @@ export interface Database {
         };
         Insert: {
           id?: never;
-          event_id?: number;
+          event_id: number;
           display_name: string;
           is_absent?: boolean;
           group_id?: number | null;
@@ -115,10 +148,10 @@ export interface Database {
           },
           {
             foreignKeyName: "guest_group_id_fkey";
-            columns: ["group_id"];
+            columns: ["event_id", "group_id"];
             isOneToOne: false;
             referencedRelation: "guest_group";
-            referencedColumns: ["id"];
+            referencedColumns: ["event_id", "id"];
           },
         ];
       };
@@ -133,7 +166,7 @@ export interface Database {
           chair_pitch: number;
         };
         Insert: {
-          event_id?: number;
+          event_id: number;
           mime_type: string;
           byte_size: number;
           image_base64: string;
@@ -172,7 +205,7 @@ export interface Database {
         };
         Insert: {
           id?: never;
-          event_id?: number;
+          event_id: number;
           name: string;
           created_at?: string;
           outline_x?: number | null;
@@ -216,7 +249,7 @@ export interface Database {
         };
         Insert: {
           id?: never;
-          event_id?: number;
+          event_id: number;
           room_id: number;
           name: string;
           seat_count: number;
@@ -248,10 +281,10 @@ export interface Database {
           },
           {
             foreignKeyName: "venue_table_room_id_fkey";
-            columns: ["room_id"];
+            columns: ["event_id", "room_id"];
             isOneToOne: false;
             referencedRelation: "venue_room";
-            referencedColumns: ["id"];
+            referencedColumns: ["event_id", "id"];
           },
         ];
       };
@@ -265,7 +298,7 @@ export interface Database {
         };
         Insert: {
           guest_id: number;
-          event_id?: number;
+          event_id: number;
           table_id: number;
           seat: number;
           is_pinned?: boolean;
@@ -280,10 +313,10 @@ export interface Database {
         Relationships: [
           {
             foreignKeyName: "seat_assignment_guest_id_fkey";
-            columns: ["guest_id"];
+            columns: ["event_id", "guest_id"];
             isOneToOne: true;
             referencedRelation: "guest";
-            referencedColumns: ["id"];
+            referencedColumns: ["event_id", "id"];
           },
           {
             foreignKeyName: "seat_assignment_event_id_fkey";
@@ -294,10 +327,10 @@ export interface Database {
           },
           {
             foreignKeyName: "seat_assignment_table_id_fkey";
-            columns: ["table_id"];
+            columns: ["event_id", "table_id"];
             isOneToOne: false;
             referencedRelation: "venue_table";
-            referencedColumns: ["id"];
+            referencedColumns: ["event_id", "id"];
           },
         ];
       };
@@ -311,7 +344,7 @@ export interface Database {
         };
         Insert: {
           id?: never;
-          event_id?: number;
+          event_id: number;
           published_at?: string;
           chair_pitch?: number | null;
         };
@@ -484,7 +517,7 @@ export interface Database {
         };
         Insert: {
           guest_id: number;
-          event_id?: number;
+          event_id: number;
           amount_grosze: number;
           predicted_place?: number | null;
           entered_by?: string;
@@ -528,7 +561,7 @@ export interface Database {
         };
         Insert: {
           id?: never;
-          event_id?: number;
+          event_id: number;
           category: string;
           text: string;
           text_key?: never;
@@ -573,7 +606,7 @@ export interface Database {
         };
         Insert: {
           id?: never;
-          event_id?: number;
+          event_id: number;
           requester: string;
           guest_id?: number | null;
           category: string;
@@ -611,10 +644,10 @@ export interface Database {
           },
           {
             foreignKeyName: "ai_topic_guest_id_fkey";
-            columns: ["guest_id"];
+            columns: ["event_id", "guest_id"];
             isOneToOne: false;
             referencedRelation: "guest";
-            referencedColumns: ["id"];
+            referencedColumns: ["event_id", "id"];
           },
         ];
       };
@@ -635,7 +668,7 @@ export interface Database {
         };
         Insert: {
           id?: never;
-          event_id?: number;
+          event_id: number;
           name: string;
           note?: string | null;
           quantity: number;
@@ -669,17 +702,17 @@ export interface Database {
           },
           {
             foreignKeyName: "order_item_guest_id_fkey";
-            columns: ["guest_id"];
+            columns: ["event_id", "guest_id"];
             isOneToOne: false;
             referencedRelation: "guest";
-            referencedColumns: ["id"];
+            referencedColumns: ["event_id", "id"];
           },
           {
             foreignKeyName: "order_item_table_id_fkey";
-            columns: ["table_id"];
+            columns: ["event_id", "table_id"];
             isOneToOne: false;
             referencedRelation: "venue_table";
-            referencedColumns: ["id"];
+            referencedColumns: ["event_id", "id"];
           },
         ];
       };
@@ -696,7 +729,7 @@ export interface Database {
         Insert: {
           order_item_id: number;
           piece: number;
-          event_id?: number;
+          event_id: number;
           marked_by: string;
           guest_id?: number | null;
           marked_at?: string;
@@ -712,10 +745,10 @@ export interface Database {
         Relationships: [
           {
             foreignKeyName: "order_piece_order_item_id_fkey";
-            columns: ["order_item_id"];
+            columns: ["event_id", "order_item_id"];
             isOneToOne: false;
             referencedRelation: "order_item";
-            referencedColumns: ["id"];
+            referencedColumns: ["event_id", "id"];
           },
           {
             foreignKeyName: "order_piece_event_id_fkey";
@@ -726,10 +759,10 @@ export interface Database {
           },
           {
             foreignKeyName: "order_piece_guest_id_fkey";
-            columns: ["guest_id"];
+            columns: ["event_id", "guest_id"];
             isOneToOne: false;
             referencedRelation: "guest";
-            referencedColumns: ["id"];
+            referencedColumns: ["event_id", "id"];
           },
         ];
       };
@@ -746,7 +779,7 @@ export interface Database {
         };
         Insert: {
           id?: never;
-          event_id?: number;
+          event_id: number;
           name: string;
           quantity: number;
           unit_price_grosze: number;
@@ -782,7 +815,7 @@ export interface Database {
         };
         Insert: {
           id?: never;
-          event_id?: number;
+          event_id: number;
           kind: string;
           text: string;
           shown_at?: string;
@@ -817,50 +850,57 @@ export interface Database {
         Args: { p_guest_id: number };
         Returns: Json;
       };
-      // guest-delivered: marks or unmarks pieces (null = all) of a line as delivered by the organizer (p_guest_id
-      // null) or a guest; raises ITEM_NOT_FOUND, PIECE_OUT_OF_RANGE or MARKED_BY_ORGANIZER.
+      // guest-delivered: marks or unmarks pieces (null = all) of a line of the event as delivered by the organizer
+      // (p_guest_id null) or a guest; raises ITEM_NOT_FOUND (also another event's line), PIECE_OUT_OF_RANGE or
+      // MARKED_BY_ORGANIZER.
       set_order_pieces: {
-        Args: { p_item_id: number; p_pieces: number[] | null; p_delivered: boolean; p_guest_id: number | null };
+        Args: {
+          p_event_id: number;
+          p_item_id: number;
+          p_pieces: number[] | null;
+          p_delivered: boolean;
+          p_guest_id: number | null;
+        };
         Returns: undefined;
       };
-      // Atomic creation of an inseparable group (2–5 existing, ungrouped guests); returns the group id.
-      // Raises GROUP_SIZE, GUEST_NOT_FOUND or GUEST_ALREADY_GROUPED.
+      // Atomic creation of an inseparable group (2–5 existing, ungrouped guests of the event); returns the group id.
+      // Raises GROUP_SIZE, GUEST_NOT_FOUND (also another event's guest) or GUEST_ALREADY_GROUPED.
       create_guest_group: {
-        Args: { p_guest_ids: number[] };
+        Args: { p_event_id: number; p_guest_ids: number[] };
         Returns: number;
       };
-      // Seats a guest on (table, seat): move, swap or replace atomically. Raises GUEST_NOT_FOUND, TABLE_NOT_FOUND,
-      // SEAT_OUT_OF_RANGE, GUEST_PINNED or SEAT_PINNED.
+      // Seats a guest of the event on (table, seat): move, swap or replace atomically. Raises GUEST_NOT_FOUND,
+      // TABLE_NOT_FOUND, SEAT_OUT_OF_RANGE, GUEST_PINNED or SEAT_PINNED.
       seat_guest: {
-        Args: { p_guest_id: number; p_table_id: number; p_seat: number };
+        Args: { p_event_id: number; p_guest_id: number; p_table_id: number; p_seat: number };
         Returns: undefined;
       };
-      // Freezes the working arrangement (present guests) and every table into a new snapshot; returns its id.
+      // Freezes the event's working arrangement (present guests) and tables into a new snapshot; returns its id.
       publish_seating: {
-        Args: never;
+        Args: { p_event_id: number };
         Returns: number;
       };
       // Replaces every non-pinned working seat with p_seats ([{ guest_id, table_id, seat }]) atomically (S-04 draft
       // or restore). Constraint violations abort the whole call.
       replace_seating: {
-        Args: { p_seats: Json };
+        Args: { p_event_id: number; p_seats: Json };
         Returns: undefined;
       };
       // venue-drawing: applies an accepted drawing proposal ({ tables, newTables, rooms, chairPitch }) atomically;
       // never deletes. Raises TABLE_NOT_FOUND, ROOM_NOT_FOUND, DUPLICATE_NAME, TOO_MANY_TABLES or NO_PLAN.
       apply_venue_layout: {
-        Args: { p_layout: Json; p_max_tables: number };
+        Args: { p_event_id: number; p_layout: Json; p_max_tables: number };
         Returns: undefined;
       };
       // S-06: saves or replaces a guest's own guess while intake is open. Raises GUEST_NOT_FOUND or INTAKE_CLOSED.
       save_guest_guess: {
-        Args: { p_guest_id: number; p_amount_grosze: number };
+        Args: { p_event_id: number; p_guest_id: number; p_amount_grosze: number };
         Returns: undefined;
       };
       // guess-place: the guest's own amount AND place prediction (null clears it), same intake lock; raises
       // GUEST_NOT_FOUND or INTAKE_CLOSED.
       save_guest_guess_with_place: {
-        Args: { p_guest_id: number; p_amount_grosze: number; p_predicted_place: number | null };
+        Args: { p_event_id: number; p_guest_id: number; p_amount_grosze: number; p_predicted_place: number | null };
         Returns: undefined;
       };
       // S-08: admits one AI topic attempt (p_guest_id null = the organizer) and returns the pending row id. Raises

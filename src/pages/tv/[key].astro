@@ -25,7 +25,7 @@ const view =
     ? {
         name: access.event.name,
         apiBase: `/api${tvPath(Astro.params.key ?? "")}`,
-        initial: await getTvScreen(db),
+        initial: await getTvScreen(db, access.event.id),
       }
     : null;
 ---

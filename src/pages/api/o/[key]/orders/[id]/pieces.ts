@@ -30,7 +30,7 @@ export const PUT: APIRoute = async ({ locals, params, request }) => {
   if (!body.ok) {
     return body.response;
   }
-  const result = await markOrderPieces(api.db, id, [body.data.piece], body.data.delivered);
+  const result = await markOrderPieces(api.db, api.access.event.id, id, [body.data.piece], body.data.delivered);
   switch (result.status) {
     case "not-found":
       return jsonError(404, t.itemNotFound);
@@ -38,6 +38,6 @@ export const PUT: APIRoute = async ({ locals, params, request }) => {
     case "marked-by-organizer":
       return jsonError(409, t.pieceOutOfRange);
     case "marked":
-      return jsonResponse(await getOrderBoard(api.db));
+      return jsonResponse(await getOrderBoard(api.db, api.access.event.id));
   }
 };

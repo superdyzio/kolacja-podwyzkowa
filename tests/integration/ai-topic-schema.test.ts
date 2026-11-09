@@ -1,15 +1,14 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import type { Database } from "@/db/database.types";
-import { EVENT_ID } from "@/lib/event";
 import type { DbClient } from "@/lib/supabase-client";
 import {
-  acquireTestEvent,
+  createTestEvent,
   createTestGuests,
   deleteTestGuests,
   hasLocalDb,
   localDb,
   localDbEnv,
-  releaseEvent,
+  releaseTestEvent,
   testTag,
   type TestEvent,
 } from "./helpers";
@@ -35,7 +34,7 @@ describe.skipIf(!hasLocalDb)("AI topic schema", () => {
 
   beforeAll(async () => {
     db = localDb();
-    event = await acquireTestEvent(db);
+    event = await createTestEvent(db);
     const env = localDbEnv();
     if (!env) {
       throw new Error("unreachable: suite is skipped without a local DB");
@@ -55,17 +54,17 @@ describe.skipIf(!hasLocalDb)("AI topic schema", () => {
   });
 
   afterAll(async () => {
-    await releaseEvent(db, event);
+    await releaseTestEvent(db, event);
   });
 
   async function guests(count: number): Promise<number[]> {
-    const created = await createTestGuests(db, testTag(), count);
+    const created = await createTestGuests(db, event.id, testTag(), count);
     guestIds.push(...created.ids);
     return created.ids;
   }
 
   async function usage(guestId: number | null = null) {
-    const { data, error } = await db.rpc("ai_topic_usage", { p_event_id: EVENT_ID, p_guest_id: guestId });
+    const { data, error } = await db.rpc("ai_topic_usage", { p_event_id: event.id, p_guest_id: guestId });
     if (error) {
       throw new Error(error.message);
     }
@@ -79,7 +78,7 @@ describe.skipIf(!hasLocalDb)("AI topic schema", () => {
   async function reserve(
     guestId: number | null,
     limits: { guest?: number; event?: number } = {},
-    eventId: number = EVENT_ID,
+    eventId: number = event.id,
   ): Promise<Reservation> {
     const { data, error } = await db.rpc("reserve_ai_topic", {
       p_event_id: eventId,
@@ -117,6 +116,7 @@ describe.skipIf(!hasLocalDb)("AI topic schema", () => {
     const { data, error } = await db
       .from("ai_topic")
       .insert({
+        event_id: event.id,
         requester: "guest",
         guest_id: guestId,
         category: "refleksyjne",
@@ -134,10 +134,10 @@ describe.skipIf(!hasLocalDb)("AI topic schema", () => {
   it("keeps requester, category and status known and organizer rows without a guest", async () => {
     const [guest] = await guests(1);
     const invalid: Database["public"]["Tables"]["ai_topic"]["Insert"][] = [
-      { requester: "organizer", category: "polityczne" },
-      { requester: "organizer", category: "generyczne", status: "lost" },
-      { requester: "tv", category: "generyczne" },
-      { requester: "organizer", category: "generyczne", guest_id: guest },
+      { event_id: event.id, requester: "organizer", category: "polityczne" },
+      { event_id: event.id, requester: "organizer", category: "generyczne", status: "lost" },
+      { event_id: event.id, requester: "tv", category: "generyczne" },
+      { event_id: event.id, requester: "organizer", category: "generyczne", guest_id: guest },
     ];
     for (const row of invalid) {
       const { error } = await db.from("ai_topic").insert(row);
@@ -258,10 +258,10 @@ describe.skipIf(!hasLocalDb)("AI topic schema", () => {
       for (const [name, body] of [
         [
           "reserve_ai_topic",
-          { p_event_id: EVENT_ID, p_guest_id: null, p_category: "generyczne", p_guest_limit: 5, p_event_limit: 300 },
+          { p_event_id: event.id, p_guest_id: null, p_category: "generyczne", p_guest_limit: 5, p_event_limit: 300 },
         ],
-        ["ai_topic_usage", { p_event_id: EVENT_ID }],
-        ["ai_topic_tokens", { p_event_id: EVENT_ID }],
+        ["ai_topic_usage", { p_event_id: event.id }],
+        ["ai_topic_tokens", { p_event_id: event.id }],
       ] as const) {
         const call = await fetch(`${restUrl}/rpc/${name}`, {
           method: "POST",

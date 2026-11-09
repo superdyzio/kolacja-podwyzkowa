@@ -27,7 +27,7 @@ const onlyGuestId = guestParam === null ? null : parseId(guestParam);
 const view =
   access && db
     ? await (async () => {
-        const links = await getGuestLinks(db);
+        const links = await getGuestLinks(db, access.event.id);
         const cards = links.guests
           .filter((guest) => guestParam === null || guest.id === onlyGuestId)
           .map((guest) => ({ id: guest.id, name: guest.displayName, url: guestUrl(Astro.url.origin, guest.key) }));

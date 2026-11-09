@@ -13,11 +13,11 @@ import {
 import type { DbClient } from "@/lib/supabase-client";
 import type { GuestDto, GuestListDto } from "@/types";
 import {
-  acquireTestEvent,
+  createTestEvent,
   deleteTestGuests,
   hasLocalDb,
   localDb,
-  releaseEvent,
+  releaseTestEvent,
   testTag,
   type TestEvent,
 } from "./helpers";
@@ -36,7 +36,7 @@ describe.skipIf(!hasLocalDb)("guest list, groups and absences against the local 
   // Adds tagged guests and returns them in the order of `bases`.
   async function add(...bases: string[]): Promise<GuestDto[]> {
     const names = bases.map(named);
-    const result = await addGuests(db, names);
+    const result = await addGuests(db, event.id, names);
     if (result.status !== "added") {
       throw new Error(`addGuests failed: ${JSON.stringify(result)}`);
     }
@@ -52,7 +52,7 @@ describe.skipIf(!hasLocalDb)("guest list, groups and absences against the local 
 
   // The part of the list this run created (other guests may exist in a real local DB).
   async function ownList(): Promise<GuestListDto> {
-    const list = await getGuestList(db);
+    const list = await getGuestList(db, event.id);
     const ids = new Set(created);
     return {
       guests: list.guests.filter((guest) => ids.has(guest.id)),
@@ -61,12 +61,12 @@ describe.skipIf(!hasLocalDb)("guest list, groups and absences against the local 
   }
 
   async function guestById(id: number): Promise<GuestDto | undefined> {
-    return (await getGuestList(db)).guests.find((guest) => guest.id === id);
+    return (await getGuestList(db, event.id)).guests.find((guest) => guest.id === id);
   }
 
   beforeAll(async () => {
     db = localDb();
-    event = await acquireTestEvent(db);
+    event = await createTestEvent(db);
   });
 
   afterEach(async () => {
@@ -75,7 +75,7 @@ describe.skipIf(!hasLocalDb)("guest list, groups and absences against the local 
   });
 
   afterAll(async () => {
-    await releaseEvent(db, event);
+    await releaseTestEvent(db, event);
   });
 
   describe("guest list (FR-001)", () => {
@@ -84,7 +84,7 @@ describe.skipIf(!hasLocalDb)("guest list, groups and absences against the local 
       const parsed = parseGuestList(lines.join("\n"));
       expect(parsed.problems).toEqual([]);
 
-      const result = await addGuests(db, parsed.names);
+      const result = await addGuests(db, event.id, parsed.names);
       expect(result.status).toBe("added");
       if (result.status !== "added") {
         return;
@@ -94,14 +94,14 @@ describe.skipIf(!hasLocalDb)("guest list, groups and absences against the local 
       expect(new Set(result.added.map((guest) => guest.displayName))).toEqual(new Set(lines));
 
       for (const guest of result.added) {
-        const renamed = await updateGuest(db, guest.id, { displayName: `${guest.displayName} x` });
+        const renamed = await updateGuest(db, event.id, guest.id, { displayName: `${guest.displayName} x` });
         expect(renamed).toEqual({
           status: "updated",
           guest: { ...guest, displayName: `${guest.displayName} x` },
         });
       }
       for (const guest of result.added) {
-        expect(await deleteGuest(db, guest.id)).toEqual({ status: "deleted" });
+        expect(await deleteGuest(db, event.id, guest.id)).toEqual({ status: "deleted" });
       }
       expect((await ownList()).guests).toEqual([]);
     });
@@ -113,50 +113,55 @@ describe.skipIf(!hasLocalDb)("guest list, groups and absences against the local 
 
     it("rejects the whole batch when a name is already on the list (any letter case)", async () => {
       await add("Ania");
-      const result = await addGuests(db, [named("Kuba"), named("ANIA")]);
+      const result = await addGuests(db, event.id, [named("Kuba"), named("ANIA")]);
       expect(result).toEqual({ status: "duplicates", names: [named("ANIA")] });
       expect((await ownList()).guests.map((guest) => guest.displayName)).toEqual([named("Ania")]);
-      const all = await getGuestList(db);
+      const all = await getGuestList(db, event.id);
       expect(all.guests.some((guest) => guest.displayName === named("Kuba"))).toBe(false);
     });
 
     it("rejects names repeated within the batch", async () => {
-      const result = await addGuests(db, [named("Ola"), named("ola")]);
+      const result = await addGuests(db, event.id, [named("Ola"), named("ola")]);
       expect(result).toEqual({ status: "duplicates", names: [named("ola")] });
-      expect((await getGuestList(db)).guests.some((guest) => guest.displayName === named("Ola"))).toBe(false);
+      expect((await getGuestList(db, event.id)).guests.some((guest) => guest.displayName === named("Ola"))).toBe(false);
     });
 
     it("rejects a batch that would exceed the guest limit, adding nothing", async () => {
-      const existing = (await getGuestList(db)).guests.length;
+      const existing = (await getGuestList(db, event.id)).guests.length;
       const names = Array.from({ length: MAX_GUESTS - existing + 1 }, (_, index) => named(`T${index}`));
-      expect(await addGuests(db, names)).toEqual({ status: "too-many", limit: MAX_GUESTS, existing });
-      expect((await getGuestList(db)).guests).toHaveLength(existing);
+      expect(await addGuests(db, event.id, names)).toEqual({ status: "too-many", limit: MAX_GUESTS, existing });
+      expect((await getGuestList(db, event.id)).guests).toHaveLength(existing);
     });
 
     it("renames with normalization and refuses duplicates or invalid names", async () => {
       const [ania, kuba] = await add("Ania", "Kuba");
-      expect(await updateGuest(db, kuba.id, { displayName: named("ANIA") })).toEqual({ status: "duplicate" });
-      expect(await updateGuest(db, kuba.id, { displayName: "  \t " })).toEqual({ status: "invalid", reason: "empty" });
-      expect(await updateGuest(db, kuba.id, { displayName: "x".repeat(MAX_DISPLAY_NAME_LENGTH + 1) })).toEqual({
+      expect(await updateGuest(db, event.id, kuba.id, { displayName: named("ANIA") })).toEqual({ status: "duplicate" });
+      expect(await updateGuest(db, event.id, kuba.id, { displayName: "  \t " })).toEqual({
+        status: "invalid",
+        reason: "empty",
+      });
+      expect(
+        await updateGuest(db, event.id, kuba.id, { displayName: "x".repeat(MAX_DISPLAY_NAME_LENGTH + 1) }),
+      ).toEqual({
         status: "invalid",
         reason: "too-long",
       });
-      expect(await updateGuest(db, kuba.id, { displayName: `  Kuba \t  ${tag} M. ` })).toEqual({
+      expect(await updateGuest(db, event.id, kuba.id, { displayName: `  Kuba \t  ${tag} M. ` })).toEqual({
         status: "updated",
         guest: { ...kuba, displayName: `Kuba ${tag} M.` },
       });
       // Changing only the letter case of one's own name is fine.
-      expect(await updateGuest(db, ania.id, { displayName: named("ANIA") })).toEqual({
+      expect(await updateGuest(db, event.id, ania.id, { displayName: named("ANIA") })).toEqual({
         status: "updated",
         guest: { ...ania, displayName: named("ANIA") },
       });
     });
 
     it("answers not-found for unknown guests", async () => {
-      expect(await updateGuest(db, UNKNOWN_ID, { displayName: "Nikt" })).toEqual({ status: "not-found" });
-      expect(await updateGuest(db, UNKNOWN_ID, { isAbsent: true })).toEqual({ status: "not-found" });
-      expect(await updateGuest(db, UNKNOWN_ID, {})).toEqual({ status: "not-found" });
-      expect(await deleteGuest(db, UNKNOWN_ID)).toEqual({ status: "not-found" });
+      expect(await updateGuest(db, event.id, UNKNOWN_ID, { displayName: "Nikt" })).toEqual({ status: "not-found" });
+      expect(await updateGuest(db, event.id, UNKNOWN_ID, { isAbsent: true })).toEqual({ status: "not-found" });
+      expect(await updateGuest(db, event.id, UNKNOWN_ID, {})).toEqual({ status: "not-found" });
+      expect(await deleteGuest(db, event.id, UNKNOWN_ID)).toEqual({ status: "not-found" });
     });
 
     it("lists guests in Polish alphabetical order", async () => {
@@ -170,14 +175,14 @@ describe.skipIf(!hasLocalDb)("guest list, groups and absences against the local 
   describe("absences (FR-003)", () => {
     it("marks a guest absent and present again without touching the group", async () => {
       const [ania, kuba] = await add("Ania", "Kuba");
-      const group = await createGroup(db, [ania.id, kuba.id]);
+      const group = await createGroup(db, event.id, [ania.id, kuba.id]);
       if (group.status !== "created") {
         throw new Error(JSON.stringify(group));
       }
-      const absent = await updateGuest(db, ania.id, { isAbsent: true });
+      const absent = await updateGuest(db, event.id, ania.id, { isAbsent: true });
       expect(absent).toEqual({ status: "updated", guest: { ...ania, isAbsent: true, groupId: group.groupId } });
       expect((await guestById(ania.id))?.isAbsent).toBe(true);
-      const present = await updateGuest(db, ania.id, { isAbsent: false });
+      const present = await updateGuest(db, event.id, ania.id, { isAbsent: false });
       expect(present).toEqual({ status: "updated", guest: { ...ania, isAbsent: false, groupId: group.groupId } });
     });
   });
@@ -185,8 +190,8 @@ describe.skipIf(!hasLocalDb)("guest list, groups and absences against the local 
   describe("groups (FR-002)", () => {
     it("creates a pair and a group of five", async () => {
       const [a, b, c, d, e, f, g] = await add("A", "B", "C", "D", "E", "F", "G");
-      const pair = await createGroup(db, [b.id, a.id]);
-      const five = await createGroup(db, [c.id, d.id, e.id, f.id, g.id]);
+      const pair = await createGroup(db, event.id, [b.id, a.id]);
+      const five = await createGroup(db, event.id, [c.id, d.id, e.id, f.id, g.id]);
       expect(pair.status).toBe("created");
       expect(five.status).toBe("created");
       if (pair.status !== "created" || five.status !== "created") {
@@ -211,27 +216,27 @@ describe.skipIf(!hasLocalDb)("guest list, groups and absences against the local 
     it("refuses groups smaller than 2 or larger than 5", async () => {
       const guests = await add("A", "B", "C", "D", "E", "F");
       const ids = guests.map((guest) => guest.id);
-      expect(await createGroup(db, [])).toEqual({ status: "invalid-size" });
-      expect(await createGroup(db, [ids[0]])).toEqual({ status: "invalid-size" });
-      expect(await createGroup(db, ids)).toEqual({ status: "invalid-size" });
+      expect(await createGroup(db, event.id, [])).toEqual({ status: "invalid-size" });
+      expect(await createGroup(db, event.id, [ids[0]])).toEqual({ status: "invalid-size" });
+      expect(await createGroup(db, event.id, ids)).toEqual({ status: "invalid-size" });
       // A repeated id counts once.
-      expect(await createGroup(db, [ids[0], ids[0]])).toEqual({ status: "invalid-size" });
+      expect(await createGroup(db, event.id, [ids[0], ids[0]])).toEqual({ status: "invalid-size" });
       expect((await ownList()).groups).toEqual([]);
-      const withRepeat = await createGroup(db, [ids[0], ids[0], ids[1]]);
+      const withRepeat = await createGroup(db, event.id, [ids[0], ids[0], ids[1]]);
       expect(withRepeat.status).toBe("created");
       expect((await ownList()).groups[0].memberIds).toEqual([ids[0], ids[1]]);
     });
 
     it("refuses unknown guests", async () => {
       const [a] = await add("A");
-      expect(await createGroup(db, [a.id, UNKNOWN_ID])).toEqual({ status: "not-found" });
+      expect(await createGroup(db, event.id, [a.id, UNKNOWN_ID])).toEqual({ status: "not-found" });
       expect((await guestById(a.id))?.groupId).toBeNull();
     });
 
     it("refuses a guest who is already in a group and leaves no partial group", async () => {
       const [a, b, c, d] = await add("A", "B", "C", "D");
-      await createGroup(db, [a.id, b.id]);
-      expect(await createGroup(db, [c.id, d.id, b.id])).toEqual({ status: "already-grouped" });
+      await createGroup(db, event.id, [a.id, b.id]);
+      expect(await createGroup(db, event.id, [c.id, d.id, b.id])).toEqual({ status: "already-grouped" });
       const list = await ownList();
       expect(list.groups).toHaveLength(1);
       expect(list.guests.filter((guest) => guest.id === c.id || guest.id === d.id).map((g) => g.groupId)).toEqual([
@@ -242,28 +247,31 @@ describe.skipIf(!hasLocalDb)("guest list, groups and absences against the local 
 
     it("lets only one of two concurrent groups take the same guest", async () => {
       const [a, b, c] = await add("A", "B", "C");
-      const outcomes = await Promise.all([createGroup(db, [a.id, b.id]), createGroup(db, [b.id, c.id])]);
+      const outcomes = await Promise.all([
+        createGroup(db, event.id, [a.id, b.id]),
+        createGroup(db, event.id, [b.id, c.id]),
+      ]);
       expect(outcomes.map((outcome) => outcome.status).sort()).toEqual(["already-grouped", "created"]);
       expect((await ownList()).groups).toHaveLength(1);
     });
 
     it("dissolves a group and keeps its members on the list", async () => {
       const [a, b, c] = await add("A", "B", "C");
-      const group = await createGroup(db, [a.id, b.id, c.id]);
+      const group = await createGroup(db, event.id, [a.id, b.id, c.id]);
       if (group.status !== "created") {
         throw new Error(JSON.stringify(group));
       }
-      expect(await dissolveGroup(db, group.groupId)).toEqual({ status: "dissolved" });
+      expect(await dissolveGroup(db, event.id, group.groupId)).toEqual({ status: "dissolved" });
       const list = await ownList();
       expect(list.groups).toEqual([]);
       expect(list.guests.map((guest) => guest.groupId)).toEqual([null, null, null]);
-      expect(await dissolveGroup(db, group.groupId)).toEqual({ status: "not-found" });
+      expect(await dissolveGroup(db, event.id, group.groupId)).toEqual({ status: "not-found" });
     });
 
     it("dissolves a pair when one member is deleted", async () => {
       const [a, b] = await add("A", "B");
-      await createGroup(db, [a.id, b.id]);
-      expect(await deleteGuest(db, b.id)).toEqual({ status: "deleted" });
+      await createGroup(db, event.id, [a.id, b.id]);
+      expect(await deleteGuest(db, event.id, b.id)).toEqual({ status: "deleted" });
       const list = await ownList();
       expect(list.groups).toEqual([]);
       expect(list.guests).toEqual([{ ...a, groupId: null }]);
@@ -271,22 +279,22 @@ describe.skipIf(!hasLocalDb)("guest list, groups and absences against the local 
 
     it("keeps a triple as a pair when one member is deleted", async () => {
       const [a, b, c] = await add("A", "B", "C");
-      const group = await createGroup(db, [a.id, b.id, c.id]);
+      const group = await createGroup(db, event.id, [a.id, b.id, c.id]);
       if (group.status !== "created") {
         throw new Error(JSON.stringify(group));
       }
-      await deleteGuest(db, a.id);
+      await deleteGuest(db, event.id, a.id);
       expect((await ownList()).groups).toEqual([{ id: group.groupId, memberIds: [b.id, c.id] }]);
     });
 
     it("lets a dissolved group's members form a new group", async () => {
       const [a, b] = await add("A", "B");
-      const first = await createGroup(db, [a.id, b.id]);
+      const first = await createGroup(db, event.id, [a.id, b.id]);
       if (first.status !== "created") {
         throw new Error(JSON.stringify(first));
       }
-      await dissolveGroup(db, first.groupId);
-      expect((await createGroup(db, [a.id, b.id])).status).toBe("created");
+      await dissolveGroup(db, event.id, first.groupId);
+      expect((await createGroup(db, event.id, [a.id, b.id])).status).toBe("created");
     });
   });
 });

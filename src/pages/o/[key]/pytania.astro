@@ -25,7 +25,14 @@ if (!access || !db) {
   Astro.response.status = 404;
 }
 
-const loaded = db ? await Promise.all([getQuestionList(db), getAiTopicUsage(db, locale), getTvSpotlight(db)]) : null;
+const loaded =
+  access && db
+    ? await Promise.all([
+        getQuestionList(db, access.event.id),
+        getAiTopicUsage(db, access.event.id, locale),
+        getTvSpotlight(db, access.event.id),
+      ])
+    : null;
 const view =
   access && loaded
     ? {

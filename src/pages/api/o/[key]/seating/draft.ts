@@ -35,13 +35,13 @@ export const POST: APIRoute = async ({ locals, request }) => {
   }
 
   const { draftStale } = seatingMessages(locals.locale);
-  const result = await saveDraft(api.db, body.data.seats, locals.locale);
+  const result = await saveDraft(api.db, api.access.event.id, body.data.seats, locals.locale);
   switch (result.status) {
     case "invalid":
       return jsonError(409, draftStale, { problems: result.problems });
     case "conflict":
       return jsonError(409, draftStale);
     case "saved":
-      return jsonResponse(await getSeatingBoard(api.db));
+      return jsonResponse(await getSeatingBoard(api.db, api.access.event.id));
   }
 };

@@ -1,5 +1,4 @@
 import { generateAccessKey } from "@/lib/access/keys";
-import { EVENT_ID } from "@/lib/event";
 import { getGuestGuess } from "@/lib/guesses/service";
 import { getGuestOrders } from "@/lib/orders/service";
 import { getPublishedVersion, readSnapshotRooms } from "@/lib/seating/service";
@@ -8,9 +7,9 @@ import { DEFAULT_CHAIR_PITCH, compareTableNames, isTableShape } from "@/lib/venu
 import type { DrawingTableDto, GuestDrawingDto, GuestLinksDto, GuestSeatDto, GuestStateDto } from "@/types";
 import { guestStateVersion, toGuestState, toTablemates } from "./state";
 
-// Personal guest links and the guest's own view (S-05, PRD FR-011..FR-013) for the singleton event. Functions take the
-// client as a parameter (no `astro:*`), so they are tested against the local DB. Supabase errors always throw;
-// expected outcomes come back as status unions.
+// Personal guest links and the guest's own view (S-05, PRD FR-011..FR-013) of one event. Functions take the client and
+// the event id as parameters (no `astro:*`), so they are tested against the local DB; every read and write is limited
+// to that event (multi-tenant-events). Supabase errors always throw; expected outcomes come back as status unions.
 //
 // Keys live in guest.access_key (the DB default gives every guest one); revoking writes a fresh key, so the old link
 // stops working at once. The guest side reads only what the guest may see: their own seat in the latest snapshot and
@@ -27,10 +26,10 @@ function fail(action: string, message: string): never {
 export type RevokeGuestKeyResult = { status: "revoked"; key: string } | { status: "not-found" };
 
 // The switch and every guest's link, guests in Polish alphabetical order (like the guest list).
-export async function getGuestLinks(db: DbClient): Promise<GuestLinksDto> {
+export async function getGuestLinks(db: DbClient, eventId: number): Promise<GuestLinksDto> {
   const [event, guests] = await Promise.all([
-    db.from("event").select("guest_access_enabled").eq("id", EVENT_ID).maybeSingle(),
-    db.from("guest").select("id, display_name, access_key"),
+    db.from("event").select("guest_access_enabled").eq("id", eventId).maybeSingle(),
+    db.from("guest").select("id, display_name, access_key").eq("event_id", eventId),
   ]);
   if (event.error) {
     fail("odczytać dostępu gości", event.error.message);
@@ -47,8 +46,8 @@ export async function getGuestLinks(db: DbClient): Promise<GuestLinksDto> {
 }
 
 // Just the switch (the organizer shell card).
-export async function getGuestAccessEnabled(db: DbClient): Promise<boolean> {
-  const { data, error } = await db.from("event").select("guest_access_enabled").eq("id", EVENT_ID).maybeSingle();
+export async function getGuestAccessEnabled(db: DbClient, eventId: number): Promise<boolean> {
+  const { data, error } = await db.from("event").select("guest_access_enabled").eq("id", eventId).maybeSingle();
   if (error) {
     fail("odczytać dostępu gości", error.message);
   }
@@ -56,20 +55,25 @@ export async function getGuestAccessEnabled(db: DbClient): Promise<boolean> {
 }
 
 // Turns guest access on or off (FR-012); answers with the whole links list.
-export async function setGuestAccess(db: DbClient, enabled: boolean): Promise<GuestLinksDto> {
-  const { error } = await db.from("event").update({ guest_access_enabled: enabled }).eq("id", EVENT_ID);
+export async function setGuestAccess(db: DbClient, eventId: number, enabled: boolean): Promise<GuestLinksDto> {
+  const { error } = await db.from("event").update({ guest_access_enabled: enabled }).eq("id", eventId);
   if (error) {
     fail("zmienić dostępu gości", error.message);
   }
-  return getGuestLinks(db);
+  return getGuestLinks(db, eventId);
 }
 
 // Revokes a guest's link by giving them a new key (FR-012). A key collision (practically impossible at 144 bits)
 // is retried once with another key.
-export async function revokeGuestKey(db: DbClient, guestId: number): Promise<RevokeGuestKeyResult> {
+export async function revokeGuestKey(db: DbClient, eventId: number, guestId: number): Promise<RevokeGuestKeyResult> {
   for (let attempt = 0; attempt < 2; attempt++) {
     const key = generateAccessKey();
-    const { data, error } = await db.from("guest").update({ access_key: key }).eq("id", guestId).select("id");
+    const { data, error } = await db
+      .from("guest")
+      .update({ access_key: key })
+      .eq("id", guestId)
+      .eq("event_id", eventId)
+      .select("id");
     if (error) {
       if (error.code === UNIQUE_VIOLATION && attempt === 0) {
         continue;
@@ -175,10 +179,15 @@ async function guestDrawing(db: DbClient, snapshotId: number): Promise<GuestDraw
 
 // What the guest's phone shows: their current name, their seat in the latest PUBLISHED arrangement with the drawing
 // of that arrangement, (S-06) the guess intake flag with their own guess and (guest-delivered) their order lines.
-export async function getGuestState(db: DbClient, guest: { id: number; displayName: string }): Promise<GuestStateDto> {
+// `eventId` is the guest's own event (GuestAccess.event.id).
+export async function getGuestState(
+  db: DbClient,
+  eventId: number,
+  guest: { id: number; displayName: string },
+): Promise<GuestStateDto> {
   const [published, guess, orders] = await Promise.all([
-    getPublishedVersion(db),
-    getGuestGuess(db, guest.id),
+    getPublishedVersion(db, eventId),
+    getGuestGuess(db, eventId, guest.id),
     getGuestOrders(db, guest.id),
   ]);
   const snapshotId = published.snapshotId;
@@ -199,10 +208,14 @@ export async function getGuestState(db: DbClient, guest: { id: number; displayNa
 
 // The guest's polling token without reading any seat (the 204 path): the published version, the own guess and the
 // order lines (the same RPC and mapping as getGuestState, so both give the same token) in parallel, one round trip.
-export async function getGuestStateVersion(db: DbClient, guest: { id: number; displayName: string }): Promise<string> {
+export async function getGuestStateVersion(
+  db: DbClient,
+  eventId: number,
+  guest: { id: number; displayName: string },
+): Promise<string> {
   const [published, guess, orders] = await Promise.all([
-    getPublishedVersion(db),
-    getGuestGuess(db, guest.id),
+    getPublishedVersion(db, eventId),
+    getGuestGuess(db, eventId, guest.id),
     getGuestOrders(db, guest.id),
   ]);
   return guestStateVersion(published.version, guest.displayName, guess, orders);

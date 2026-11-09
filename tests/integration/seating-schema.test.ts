@@ -1,21 +1,30 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import type { DbClient } from "@/lib/supabase-client";
 import {
-  acquireTestEvent,
+  createTestEvent,
   cleanupTestSeating,
   countSnapshots,
   createTestSeating,
   hasLocalDb,
   localDb,
   localDbEnv,
-  releaseEvent,
+  releaseTestEvent,
   testTag,
   type TestEvent,
   type TestSeating,
 } from "./helpers";
 
-async function seatDirect(db: DbClient, guestId: number, tableId: number, seat: number, pinned = false) {
-  return db.from("seat_assignment").insert({ guest_id: guestId, table_id: tableId, seat, is_pinned: pinned });
+async function seatDirect(
+  db: DbClient,
+  eventId: number,
+  guestId: number,
+  tableId: number,
+  seat: number,
+  pinned = false,
+) {
+  return db
+    .from("seat_assignment")
+    .insert({ event_id: eventId, guest_id: guestId, table_id: tableId, seat, is_pinned: pinned });
 }
 
 async function seatsAt(db: DbClient, tableId: number): Promise<number[]> {
@@ -36,7 +45,7 @@ describe.skipIf(!hasLocalDb)("seating schema", () => {
 
   beforeAll(async () => {
     db = localDb();
-    event = await acquireTestEvent(db);
+    event = await createTestEvent(db);
     const env = localDbEnv();
     if (!env) {
       throw new Error("unreachable: suite is skipped without a local DB");
@@ -50,12 +59,13 @@ describe.skipIf(!hasLocalDb)("seating schema", () => {
   });
 
   afterAll(async () => {
-    await releaseEvent(db, event);
+    await releaseTestEvent(db, event);
   });
 
   async function setup() {
     seating = await createTestSeating(
       db,
+      event.id,
       testTag(),
       [
         { seatCount: 8, shape: "round" },
@@ -72,7 +82,7 @@ describe.skipIf(!hasLocalDb)("seating schema", () => {
     "does not serve %s rows to anonymous requests",
     async (table) => {
       const { guestIds, tableIds, guestNames } = await setup();
-      const { error } = await seatDirect(db, guestIds[0], tableIds[0], 1);
+      const { error } = await seatDirect(db, event.id, guestIds[0], tableIds[0], 1);
       expect(error).toBeNull();
       for (const headers of anonymousHeaders) {
         const response = await fetch(`${restUrl}/${table}?select=*`, { headers });
@@ -87,38 +97,38 @@ describe.skipIf(!hasLocalDb)("seating schema", () => {
 
   it("does not let anonymous requests seat a guest or publish", async () => {
     const { guestIds, tableIds } = await setup();
-    const before = await countSnapshots(db);
+    const before = await countSnapshots(db, event.id);
     for (const headers of anonymousHeaders) {
       const seat = await fetch(`${restUrl}/rpc/seat_guest`, {
         method: "POST",
         headers: { ...headers, "Content-Type": "application/json" },
-        body: JSON.stringify({ p_guest_id: guestIds[0], p_table_id: tableIds[0], p_seat: 1 }),
+        body: JSON.stringify({ p_event_id: event.id, p_guest_id: guestIds[0], p_table_id: tableIds[0], p_seat: 1 }),
       });
       expect(seat.ok).toBe(false);
       const publish = await fetch(`${restUrl}/rpc/publish_seating`, {
         method: "POST",
         headers: { ...headers, "Content-Type": "application/json" },
-        body: "{}",
+        body: JSON.stringify({ p_event_id: event.id }),
       });
       expect(publish.ok).toBe(false);
     }
     expect(await seatsAt(db, tableIds[0])).toEqual([]);
-    expect(await countSnapshots(db)).toBe(before);
+    expect(await countSnapshots(db, event.id)).toBe(before);
   });
 
   it("gives a guest at most one seat and a seat at most one guest", async () => {
     const { guestIds, tableIds } = await setup();
     const [g1, g2] = guestIds;
     const [t1] = tableIds;
-    expect((await seatDirect(db, g1, t1, 1)).error).toBeNull();
-    expect((await seatDirect(db, g1, t1, 2)).error?.code).toBe("23505");
-    expect((await seatDirect(db, g2, t1, 1)).error?.code).toBe("23505");
+    expect((await seatDirect(db, event.id, g1, t1, 1)).error).toBeNull();
+    expect((await seatDirect(db, event.id, g1, t1, 2)).error?.code).toBe("23505");
+    expect((await seatDirect(db, event.id, g2, t1, 1)).error?.code).toBe("23505");
   });
 
   it("keeps seats within the table", async () => {
     const { guestIds, tableIds } = await setup();
-    expect((await seatDirect(db, guestIds[0], tableIds[0], 0)).error?.code).toBe("23514");
-    const tooFar = await seatDirect(db, guestIds[0], tableIds[1], 7);
+    expect((await seatDirect(db, event.id, guestIds[0], tableIds[0], 0)).error?.code).toBe("23514");
+    const tooFar = await seatDirect(db, event.id, guestIds[0], tableIds[1], 7);
     expect(tooFar.error?.message).toBe("SEAT_OUT_OF_RANGE");
   });
 
@@ -126,9 +136,9 @@ describe.skipIf(!hasLocalDb)("seating schema", () => {
     const { guestIds, tableIds } = await setup();
     const [g1, g2, g3] = guestIds;
     const t1 = tableIds[0];
-    await seatDirect(db, g1, t1, 2);
-    await seatDirect(db, g2, t1, 5, true);
-    await seatDirect(db, g3, t1, 8);
+    await seatDirect(db, event.id, g1, t1, 2);
+    await seatDirect(db, event.id, g2, t1, 5, true);
+    await seatDirect(db, event.id, g3, t1, 8);
     const { error } = await db.from("venue_table").update({ seat_count: 4 }).eq("id", t1);
     expect(error).toBeNull();
     expect(await seatsAt(db, t1)).toEqual([2]);
@@ -140,9 +150,9 @@ describe.skipIf(!hasLocalDb)("seating schema", () => {
     const { guestIds, tableIds } = await setup();
     const [g1, g2, g3] = guestIds;
     const [t1, t2] = tableIds;
-    await seatDirect(db, g1, t1, 1, true);
-    await seatDirect(db, g2, t2, 1);
-    await seatDirect(db, g3, t2, 2);
+    await seatDirect(db, event.id, g1, t1, 1, true);
+    await seatDirect(db, event.id, g2, t2, 1);
+    await seatDirect(db, event.id, g3, t2, 2);
     await db.from("venue_table").delete().eq("id", t1);
     const { data: left } = await db
       .from("seat_assignment")

@@ -14,7 +14,7 @@ export const POST: APIRoute = async ({ locals }) => {
   if (api instanceof Response) {
     return api;
   }
-  const result = await drawPersonOnTv(api.db);
+  const result = await drawPersonOnTv(api.db, api.access.event.id);
   if (result.status === "nobody") {
     return jsonError(409, tvSpotlightMessages(locals.locale).noPresentGuests);
   }

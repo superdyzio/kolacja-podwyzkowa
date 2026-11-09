@@ -10,7 +10,8 @@ import { parseLayoutText } from "./schema";
 
 // One layout read (venue-drawing): the plan image (as the browser sent it) and the venue's names and positions go to
 // the provider; its answer is parsed, clamped and matched against the venue. Nothing is written: the organizer
-// applies the lines they keep through applyVenueLayout. Nothing about guests is read or sent.
+// applies the lines they keep through applyVenueLayout. Only the event's own venue is read; nothing about guests is
+// read or sent.
 
 export type ProposeLayoutResult =
   | { status: "proposed"; proposal: VenueLayoutProposalDto; costNanoUsd: number | null }
@@ -25,6 +26,7 @@ function costOf(model: string | null, usage: AiTokenUsage | null): number | null
 
 export async function proposeVenueLayout(
   db: DbClient,
+  eventId: number,
   provider: VenueVisionProvider,
   bytes: Uint8Array,
 ): Promise<ProposeLayoutResult> {
@@ -32,7 +34,7 @@ export async function proposeVenueLayout(
   if (mimeType === null) {
     return { status: "unsupported-type" };
   }
-  const venue = await getVenue(db);
+  const venue = await getVenue(db, eventId);
   // Positions are fractions of the plan image: without one there is nothing to draw on.
   if (venue.plan === null) {
     return { status: "no-plan" };

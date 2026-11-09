@@ -16,7 +16,8 @@ export const prerender = false;
 const MAX_VERSION_LENGTH = 64;
 
 export const GET: APIRoute = async ({ locals, url }) => {
-  if (!accessFor(locals, "tv")) {
+  const access = accessFor(locals, "tv");
+  if (!access) {
     return jsonError(404, noAccessMessages(locals.locale).title);
   }
   const db = getDb();
@@ -24,8 +25,12 @@ export const GET: APIRoute = async ({ locals, url }) => {
     return jsonError(503, httpMessages(locals.locale).noDatabase);
   }
   const since = url.searchParams.get("since");
-  if (since !== null && since.length <= MAX_VERSION_LENGTH && since === (await getTvScreenVersion(db))) {
+  if (
+    since !== null &&
+    since.length <= MAX_VERSION_LENGTH &&
+    since === (await getTvScreenVersion(db, access.event.id))
+  ) {
     return new Response(null, { status: 204 });
   }
-  return jsonResponse(await getTvScreen(db));
+  return jsonResponse(await getTvScreen(db, access.event.id));
 };

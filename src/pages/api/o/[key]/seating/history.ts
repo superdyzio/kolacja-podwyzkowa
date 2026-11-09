@@ -12,5 +12,5 @@ export const GET: APIRoute = async ({ locals }) => {
   if (api instanceof Response) {
     return api;
   }
-  return jsonResponse(await getNeighbourHistory(api.db));
+  return jsonResponse(await getNeighbourHistory(api.db, api.access.event.id));
 };

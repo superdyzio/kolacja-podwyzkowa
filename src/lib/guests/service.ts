@@ -9,8 +9,9 @@ import {
   type DisplayNameProblem,
 } from "./names";
 
-// Guest list, inseparable groups and absences (PRD FR-001..FR-003) for the singleton event. Functions take the
-// client as a parameter (no `astro:*`), so they are tested against the local DB. Supabase errors always throw;
+// Guest list, inseparable groups and absences (PRD FR-001..FR-003) of one event. Functions take the client and the
+// event id as parameters (no `astro:*`), so they are tested against the local DB; every read and write is limited to
+// that event, so another event's ids behave like unknown ones (multi-tenant-events). Supabase errors always throw;
 // expected outcomes (not found, duplicate name, group rules) come back as status unions.
 //
 // Group rules live in the database: create_guest_group() creates a group of 2–5 ungrouped guests atomically, and a
@@ -63,8 +64,8 @@ function fail(action: string, message: string): never {
 }
 
 // Guests in Polish alphabetical order; groups derived from the members' group_id, ordered by their first member.
-export async function getGuestList(db: DbClient): Promise<GuestListDto> {
-  const { data, error } = await db.from("guest").select(GUEST_COLUMNS);
+export async function getGuestList(db: DbClient, eventId: number): Promise<GuestListDto> {
+  const { data, error } = await db.from("guest").select(GUEST_COLUMNS).eq("event_id", eventId);
   if (error) {
     fail("odczytać listy gości", error.message);
   }
@@ -98,8 +99,8 @@ function findDuplicates(names: readonly string[], existingNames: readonly string
   return duplicates;
 }
 
-async function readAllNames(db: DbClient): Promise<string[]> {
-  const { data, error } = await db.from("guest").select("display_name");
+async function readAllNames(db: DbClient, eventId: number): Promise<string[]> {
+  const { data, error } = await db.from("guest").select("display_name").eq("event_id", eventId);
   if (error) {
     fail("odczytać listy gości", error.message);
   }
@@ -107,7 +108,7 @@ async function readAllNames(db: DbClient): Promise<string[]> {
 }
 
 // Adds guests all-or-nothing. Expects names already parsed (parseGuestList); an invalid name is a caller bug.
-export async function addGuests(db: DbClient, names: readonly string[]): Promise<AddGuestsResult> {
+export async function addGuests(db: DbClient, eventId: number, names: readonly string[]): Promise<AddGuestsResult> {
   const normalized = names.map(normalizeDisplayName);
   const invalid = normalized.find((name) => validateDisplayName(name) !== null);
   if (invalid !== undefined) {
@@ -117,7 +118,7 @@ export async function addGuests(db: DbClient, names: readonly string[]): Promise
     return { status: "added", added: [] };
   }
 
-  const existingNames = await readAllNames(db);
+  const existingNames = await readAllNames(db, eventId);
   const duplicates = findDuplicates(normalized, existingNames);
   if (duplicates.length > 0) {
     return { status: "duplicates", names: duplicates };
@@ -128,12 +129,12 @@ export async function addGuests(db: DbClient, names: readonly string[]): Promise
 
   const { data, error } = await db
     .from("guest")
-    .insert(normalized.map((display_name) => ({ display_name })))
+    .insert(normalized.map((display_name) => ({ event_id: eventId, display_name })))
     .select(GUEST_COLUMNS);
   if (error) {
     // Someone added the same name in the meantime: the unique index is the backstop.
     if (error.code === UNIQUE_VIOLATION) {
-      const raced = findDuplicates(normalized, await readAllNames(db));
+      const raced = findDuplicates(normalized, await readAllNames(db, eventId));
       return { status: "duplicates", names: raced.length > 0 ? raced : normalized };
     }
     fail("dodać gości", error.message);
@@ -142,7 +143,12 @@ export async function addGuests(db: DbClient, names: readonly string[]): Promise
 }
 
 // Renames and/or marks a guest absent/present. Group membership is never changed here.
-export async function updateGuest(db: DbClient, id: number, patch: GuestPatch): Promise<UpdateGuestResult> {
+export async function updateGuest(
+  db: DbClient,
+  eventId: number,
+  id: number,
+  patch: GuestPatch,
+): Promise<UpdateGuestResult> {
   const update: GuestUpdate = {};
   if (patch.displayName !== undefined) {
     const name = normalizeDisplayName(patch.displayName);
@@ -158,8 +164,8 @@ export async function updateGuest(db: DbClient, id: number, patch: GuestPatch): 
 
   const query =
     Object.keys(update).length > 0
-      ? db.from("guest").update(update).eq("id", id).select(GUEST_COLUMNS).maybeSingle()
-      : db.from("guest").select(GUEST_COLUMNS).eq("id", id).maybeSingle();
+      ? db.from("guest").update(update).eq("id", id).eq("event_id", eventId).select(GUEST_COLUMNS).maybeSingle()
+      : db.from("guest").select(GUEST_COLUMNS).eq("id", id).eq("event_id", eventId).maybeSingle();
   const { data, error } = await query;
   if (error) {
     if (error.code === UNIQUE_VIOLATION) {
@@ -171,8 +177,8 @@ export async function updateGuest(db: DbClient, id: number, patch: GuestPatch): 
 }
 
 // Deletes a guest. If that leaves their group with fewer than 2 members, the DB dissolves the group.
-export async function deleteGuest(db: DbClient, id: number): Promise<DeleteGuestResult> {
-  const { data, error } = await db.from("guest").delete().eq("id", id).select("id");
+export async function deleteGuest(db: DbClient, eventId: number, id: number): Promise<DeleteGuestResult> {
+  const { data, error } = await db.from("guest").delete().eq("id", id).eq("event_id", eventId).select("id");
   if (error) {
     fail("usunąć gościa", error.message);
   }
@@ -186,8 +192,12 @@ const GROUP_ERRORS: Record<string, CreateGroupResult> = {
 };
 
 // Creates an inseparable group of 2–5 existing guests who are not in a group yet (repeated ids count once).
-export async function createGroup(db: DbClient, guestIds: readonly number[]): Promise<CreateGroupResult> {
-  const { data, error } = await db.rpc("create_guest_group", { p_guest_ids: [...guestIds] });
+export async function createGroup(
+  db: DbClient,
+  eventId: number,
+  guestIds: readonly number[],
+): Promise<CreateGroupResult> {
+  const { data, error } = await db.rpc("create_guest_group", { p_event_id: eventId, p_guest_ids: [...guestIds] });
   if (error) {
     const known = Object.hasOwn(GROUP_ERRORS, error.message) ? GROUP_ERRORS[error.message] : undefined;
     if (known) {
@@ -199,8 +209,8 @@ export async function createGroup(db: DbClient, guestIds: readonly number[]): Pr
 }
 
 // Dissolves a group: its members stay on the list without a group.
-export async function dissolveGroup(db: DbClient, groupId: number): Promise<DissolveGroupResult> {
-  const { data, error } = await db.from("guest_group").delete().eq("id", groupId).select("id");
+export async function dissolveGroup(db: DbClient, eventId: number, groupId: number): Promise<DissolveGroupResult> {
+  const { data, error } = await db.from("guest_group").delete().eq("id", groupId).eq("event_id", eventId).select("id");
   if (error) {
     fail("rozwiązać grupy", error.message);
   }

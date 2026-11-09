@@ -18,9 +18,9 @@ export const POST: APIRoute = async ({ locals, params }) => {
   if (id === null) {
     return jsonError(404, notFound);
   }
-  const result = await revokeGuestKey(api.db, id);
+  const result = await revokeGuestKey(api.db, api.access.event.id, id);
   if (result.status === "not-found") {
     return jsonError(404, notFound);
   }
-  return jsonResponse(await getGuestLinks(api.db));
+  return jsonResponse(await getGuestLinks(api.db, api.access.event.id));
 };

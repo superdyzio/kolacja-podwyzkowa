@@ -36,8 +36,8 @@ const view =
     ? {
         eventName: access.event.name,
         apiBase: `/api${guestPath(Astro.params.key ?? "")}`,
-        initial: await getGuestState(db, access.guest),
-        initialQuota: await getGuestAiQuota(db, access.guest.id),
+        initial: await getGuestState(db, access.event.id, access.guest),
+        initialQuota: await getGuestAiQuota(db, access.event.id, access.guest.id),
       }
     : null;
 ---

@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { DbClient } from "@/lib/supabase-client";
-import { acquireTestEvent, hasLocalDb, localDb, localDbEnv, releaseEvent, testTag, type TestEvent } from "./helpers";
+import { createTestEvent, hasLocalDb, localDb, localDbEnv, releaseTestEvent, testTag, type TestEvent } from "./helpers";
 
 // The browser never talks to the database: anonymous REST requests must not see the plan, rooms or tables, and
 // must not be able to create a room.
@@ -15,19 +15,24 @@ describe.skipIf(!hasLocalDb)("venue schema is closed to browser roles", () => {
 
   beforeAll(async () => {
     db = localDb();
-    event = await acquireTestEvent(db);
+    event = await createTestEvent(db);
     const env = localDbEnv();
     if (!env) {
       throw new Error("unreachable: suite is skipped without a local DB");
     }
     restUrl = `${env.url}/rest/v1`;
 
-    const { data: room, error } = await db.from("venue_room").insert({ name: roomName }).select("id").single();
+    const { data: room, error } = await db
+      .from("venue_room")
+      .insert({ event_id: event.id, name: roomName })
+      .select("id")
+      .single();
     if (error) {
       throw new Error(error.message);
     }
     roomId = room.id;
     const { error: tableError } = await db.from("venue_table").insert({
+      event_id: event.id,
       room_id: room.id,
       name: tableName,
       seat_count: 8,
@@ -48,7 +53,7 @@ describe.skipIf(!hasLocalDb)("venue schema is closed to browser roles", () => {
         throw new Error(error.message);
       }
     }
-    await releaseEvent(db, event);
+    await releaseTestEvent(db, event);
   });
 
   const anonymousHeaders: Record<string, string>[] = [{}, { apikey: "anything" }];

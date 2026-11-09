@@ -27,7 +27,7 @@ export const GET: APIRoute = async ({ locals }) => {
   if (api instanceof Response) {
     return api;
   }
-  return jsonResponse(await getQuestionList(api.db));
+  return jsonResponse(await getQuestionList(api.db, api.access.event.id));
 };
 
 export const POST: APIRoute = async ({ locals, request }) => {
@@ -47,6 +47,7 @@ export const POST: APIRoute = async ({ locals, request }) => {
 
   const result = await addQuestions(
     api.db,
+    api.access.event.id,
     body.data.category,
     parsed.items.map((item) => item.text),
   );
@@ -63,7 +64,7 @@ export const POST: APIRoute = async ({ locals, request }) => {
   const answer: QuestionPasteResultDto = {
     added: result.added.length,
     skipped: [...parsed.skipped, ...duplicates].sort((a, b) => a.line - b.line),
-    ...(await getQuestionList(api.db)),
+    ...(await getQuestionList(api.db, api.access.event.id)),
   };
   return jsonResponse(answer, answer.added > 0 ? 201 : 200);
 };

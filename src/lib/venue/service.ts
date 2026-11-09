@@ -1,5 +1,4 @@
 import type { Database } from "@/db/database.types";
-import { EVENT_ID } from "@/lib/event";
 import type { DbClient } from "@/lib/supabase-client";
 import type {
   PlanImageType,
@@ -33,8 +32,9 @@ import {
   type VenueNameProblem,
 } from "./rules";
 
-// Venue plan image, rooms and tables (PRD FR-005, FR-006) for the singleton event. Functions take the client as a
-// parameter (no `astro:*`), so they are tested against the local DB. Supabase errors always throw; expected
+// Venue plan image, rooms and tables (PRD FR-005, FR-006) of one event. Functions take the client and the event id
+// as parameters (no `astro:*`), so they are tested against the local DB; every read and write is limited to that event
+// (multi-tenant-events), and a room of another event is „room not found” (composite foreign key). Supabase errors always throw; expected
 // outcomes (not found, duplicate name, limits, invalid fields) come back as status unions.
 //
 // The image (base64) is read only by getPlanImage(); every other query selects plan metadata only.
@@ -163,11 +163,11 @@ function toTableDto(row: TableColumns): TableDto {
 }
 
 // Plan metadata, rooms in creation order, tables ordered by their room and then by name („Stolik 2” < „Stolik 10”).
-export async function getVenue(db: DbClient): Promise<VenueDto> {
+export async function getVenue(db: DbClient, eventId: number): Promise<VenueDto> {
   const [plan, rooms, tables] = await Promise.all([
-    db.from("venue_plan").select(PLAN_METADATA_COLUMNS).eq("event_id", EVENT_ID).maybeSingle(),
-    db.from("venue_room").select(ROOM_COLUMNS).order("id"),
-    db.from("venue_table").select(TABLE_COLUMNS),
+    db.from("venue_plan").select(PLAN_METADATA_COLUMNS).eq("event_id", eventId).maybeSingle(),
+    db.from("venue_room").select(ROOM_COLUMNS).eq("event_id", eventId).order("id"),
+    db.from("venue_table").select(TABLE_COLUMNS).eq("event_id", eventId),
   ]);
   if (plan.error) {
     fail("odczytać planu", plan.error.message);
@@ -198,11 +198,11 @@ export async function getVenue(db: DbClient): Promise<VenueDto> {
 }
 
 // The stored image with its sniffed type, or null before the first upload.
-export async function getPlanImage(db: DbClient): Promise<PlanImage | null> {
+export async function getPlanImage(db: DbClient, eventId: number): Promise<PlanImage | null> {
   const { data, error } = await db
     .from("venue_plan")
     .select("mime_type, image_base64, updated_at")
-    .eq("event_id", EVENT_ID)
+    .eq("event_id", eventId)
     .maybeSingle();
   if (error) {
     fail("odczytać planu", error.message);
@@ -217,7 +217,7 @@ export async function getPlanImage(db: DbClient): Promise<PlanImage | null> {
 }
 
 // Uploads or replaces the plan. The type comes from the magic bytes; tables and their pins are untouched.
-export async function savePlanImage(db: DbClient, bytes: Uint8Array): Promise<SavePlanResult> {
+export async function savePlanImage(db: DbClient, eventId: number, bytes: Uint8Array): Promise<SavePlanResult> {
   if (bytes.length > MAX_PLAN_BYTES) {
     return { status: "too-large", limit: MAX_PLAN_BYTES };
   }
@@ -229,7 +229,7 @@ export async function savePlanImage(db: DbClient, bytes: Uint8Array): Promise<Sa
     .from("venue_plan")
     .upsert(
       {
-        event_id: EVENT_ID,
+        event_id: eventId,
         mime_type: mimeType,
         byte_size: bytes.length,
         image_base64: bytesToBase64(bytes),
@@ -245,24 +245,29 @@ export async function savePlanImage(db: DbClient, bytes: Uint8Array): Promise<Sa
   return { status: "saved", plan: toPlanDto(data) };
 }
 
-async function countRows(db: DbClient, table: "venue_room" | "venue_table", action: string): Promise<number> {
-  const { count, error } = await db.from(table).select("id", { count: "exact", head: true });
+async function countRows(
+  db: DbClient,
+  eventId: number,
+  table: "venue_room" | "venue_table",
+  action: string,
+): Promise<number> {
+  const { count, error } = await db.from(table).select("id", { count: "exact", head: true }).eq("event_id", eventId);
   if (error) {
     fail(action, error.message);
   }
   return count ?? 0;
 }
 
-export async function addRoom(db: DbClient, rawName: string): Promise<AddRoomResult> {
+export async function addRoom(db: DbClient, eventId: number, rawName: string): Promise<AddRoomResult> {
   const name = normalizeVenueName(rawName);
   const reason = validateRoomName(name);
   if (reason) {
     return { status: "invalid", reason };
   }
-  if ((await countRows(db, "venue_room", "policzyć sal")) >= MAX_ROOMS) {
+  if ((await countRows(db, eventId, "venue_room", "policzyć sal")) >= MAX_ROOMS) {
     return { status: "too-many", limit: MAX_ROOMS };
   }
-  const { data, error } = await db.from("venue_room").insert({ name }).select(ROOM_COLUMNS).single();
+  const { data, error } = await db.from("venue_room").insert({ event_id: eventId, name }).select(ROOM_COLUMNS).single();
   if (error) {
     if (error.code === UNIQUE_VIOLATION) {
       return { status: "duplicate" };
@@ -272,8 +277,13 @@ export async function addRoom(db: DbClient, rawName: string): Promise<AddRoomRes
   return { status: "added", room: toRoomDto(data) };
 }
 
-export async function renameRoom(db: DbClient, id: number, rawName: string): Promise<RenameRoomResult> {
-  const result = await updateRoom(db, id, { name: rawName });
+export async function renameRoom(
+  db: DbClient,
+  eventId: number,
+  id: number,
+  rawName: string,
+): Promise<RenameRoomResult> {
+  const result = await updateRoom(db, eventId, id, { name: rawName });
   return result.status === "updated"
     ? { status: "renamed", room: result.room }
     : result.status === "invalid-outline"
@@ -290,7 +300,12 @@ function outlineColumns(outline: RoomOutline | null) {
 }
 
 // Renames a room and/or sets its outline (null clears it). Neither touches its tables or anyone's seat.
-export async function updateRoom(db: DbClient, id: number, patch: RoomPatch): Promise<UpdateRoomResult> {
+export async function updateRoom(
+  db: DbClient,
+  eventId: number,
+  id: number,
+  patch: RoomPatch,
+): Promise<UpdateRoomResult> {
   const update: Database["public"]["Tables"]["venue_room"]["Update"] = {};
   if (patch.name !== undefined) {
     const name = normalizeVenueName(patch.name);
@@ -308,8 +323,8 @@ export async function updateRoom(db: DbClient, id: number, patch: RoomPatch): Pr
   }
   const query =
     Object.keys(update).length > 0
-      ? db.from("venue_room").update(update).eq("id", id).select(ROOM_COLUMNS).maybeSingle()
-      : db.from("venue_room").select(ROOM_COLUMNS).eq("id", id).maybeSingle();
+      ? db.from("venue_room").update(update).eq("id", id).eq("event_id", eventId).select(ROOM_COLUMNS).maybeSingle()
+      : db.from("venue_room").select(ROOM_COLUMNS).eq("id", id).eq("event_id", eventId).maybeSingle();
   const { data, error } = await query;
   if (error) {
     if (error.code === UNIQUE_VIOLATION) {
@@ -321,14 +336,14 @@ export async function updateRoom(db: DbClient, id: number, patch: RoomPatch): Pr
 }
 
 // The venue-wide chair pitch; it lives with the plan, so there must be one.
-export async function setChairPitch(db: DbClient, pitch: number): Promise<SetChairPitchResult> {
+export async function setChairPitch(db: DbClient, eventId: number, pitch: number): Promise<SetChairPitchResult> {
   if (!isValidChairPitch(pitch)) {
     return { status: "invalid" };
   }
   const { data, error } = await db
     .from("venue_plan")
     .update({ chair_pitch: roundChairPitch(pitch) })
-    .eq("event_id", EVENT_ID)
+    .eq("event_id", eventId)
     .select("event_id");
   if (error) {
     fail("zmienić skali", error.message);
@@ -337,15 +352,16 @@ export async function setChairPitch(db: DbClient, pitch: number): Promise<SetCha
 }
 
 // Deletes a room together with its tables (FK on delete cascade); S-03 seat assignments at them go too.
-export async function deleteRoom(db: DbClient, id: number): Promise<DeleteRoomResult> {
+export async function deleteRoom(db: DbClient, eventId: number, id: number): Promise<DeleteRoomResult> {
   const { count, error: countError } = await db
     .from("venue_table")
     .select("id", { count: "exact", head: true })
-    .eq("room_id", id);
+    .eq("room_id", id)
+    .eq("event_id", eventId);
   if (countError) {
     fail("policzyć stolików", countError.message);
   }
-  const { data, error } = await db.from("venue_room").delete().eq("id", id).select("id");
+  const { data, error } = await db.from("venue_room").delete().eq("id", id).eq("event_id", eventId).select("id");
   if (error) {
     fail("usunąć sali", error.message);
   }
@@ -393,18 +409,19 @@ function tableWriteError(error: { code: string; message: string }, action: strin
   fail(action, error.message);
 }
 
-export async function addTable(db: DbClient, input: TableFields): Promise<AddTableResult> {
+export async function addTable(db: DbClient, eventId: number, input: TableFields): Promise<AddTableResult> {
   const fields = normalizeName(input);
   const problem = validateTableFields(fields);
   if (problem) {
     return { status: "invalid", problem };
   }
-  if ((await countRows(db, "venue_table", "policzyć stolików")) >= MAX_TABLES) {
+  if ((await countRows(db, eventId, "venue_table", "policzyć stolików")) >= MAX_TABLES) {
     return { status: "too-many", limit: MAX_TABLES };
   }
   const { data, error } = await db
     .from("venue_table")
     .insert({
+      event_id: eventId,
       room_id: fields.roomId,
       name: fields.name,
       seat_count: fields.seatCount,
@@ -423,7 +440,12 @@ export async function addTable(db: DbClient, input: TableFields): Promise<AddTab
 
 // Changes any of a table's fields (the pin needs x and y together). Seating rules for seat-count changes and
 // deletions belong to S-03 (see the venue migration).
-export async function updateTable(db: DbClient, id: number, patch: TablePatch): Promise<UpdateTableResult> {
+export async function updateTable(
+  db: DbClient,
+  eventId: number,
+  id: number,
+  patch: TablePatch,
+): Promise<UpdateTableResult> {
   const fields = normalizeName(patch);
   const problem = validateTableFields(fields);
   if (problem) {
@@ -432,8 +454,8 @@ export async function updateTable(db: DbClient, id: number, patch: TablePatch): 
   const update = toTableUpdate(fields);
   const query =
     Object.keys(update).length > 0
-      ? db.from("venue_table").update(update).eq("id", id).select(TABLE_COLUMNS).maybeSingle()
-      : db.from("venue_table").select(TABLE_COLUMNS).eq("id", id).maybeSingle();
+      ? db.from("venue_table").update(update).eq("id", id).eq("event_id", eventId).select(TABLE_COLUMNS).maybeSingle()
+      : db.from("venue_table").select(TABLE_COLUMNS).eq("id", id).eq("event_id", eventId).maybeSingle();
   const { data, error } = await query;
   if (error) {
     return tableWriteError(error, "zmienić stolika");
@@ -441,8 +463,8 @@ export async function updateTable(db: DbClient, id: number, patch: TablePatch): 
   return data ? { status: "updated", table: toTableDto(data) } : { status: "not-found" };
 }
 
-export async function deleteTable(db: DbClient, id: number): Promise<DeleteTableResult> {
-  const { data, error } = await db.from("venue_table").delete().eq("id", id).select("id");
+export async function deleteTable(db: DbClient, eventId: number, id: number): Promise<DeleteTableResult> {
+  const { data, error } = await db.from("venue_table").delete().eq("id", id).eq("event_id", eventId).select("id");
   if (error) {
     fail("usunąć stolika", error.message);
   }
@@ -459,7 +481,11 @@ const LAYOUT_ERRORS: Record<string, ApplyVenueLayoutResult> = {
 
 // Writes an accepted drawing proposal in one transaction (DB function apply_venue_layout): existing tables only move
 // and turn, so their seat assignments and pins stay; nothing is deleted. Any problem → nothing is written.
-export async function applyVenueLayout(db: DbClient, layout: VenueLayout): Promise<ApplyVenueLayoutResult> {
+export async function applyVenueLayout(
+  db: DbClient,
+  eventId: number,
+  layout: VenueLayout,
+): Promise<ApplyVenueLayoutResult> {
   const newTables = layout.newTables.map((table) => ({ ...normalizeName(table) }));
   for (const table of [...layout.tables.map((t) => ({ x: t.x, y: t.y, rotation: t.rotation })), ...newTables]) {
     const problem = validateTableFields(table);
@@ -498,7 +524,11 @@ export async function applyVenueLayout(db: DbClient, layout: VenueLayout): Promi
     }),
     chairPitch: layout.chairPitch === null ? null : roundChairPitch(layout.chairPitch),
   };
-  const { error } = await db.rpc("apply_venue_layout", { p_layout: payload, p_max_tables: MAX_TABLES });
+  const { error } = await db.rpc("apply_venue_layout", {
+    p_event_id: eventId,
+    p_layout: payload,
+    p_max_tables: MAX_TABLES,
+  });
   if (!error) {
     return { status: "applied" };
   }

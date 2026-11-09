@@ -1,5 +1,4 @@
 import { generateAccessKey } from "@/lib/access/keys";
-import { EVENT_ID } from "@/lib/event";
 import { getGuestList } from "@/lib/guests/service";
 import { toTvSeating } from "@/lib/seating/published";
 import { getLatestSnapshot, getPlanVersion } from "@/lib/seating/service";
@@ -24,9 +23,11 @@ import { organizerPrepList } from "./prep";
 import { toRestaurantView } from "./restaurant";
 import { MAX_ORDER_ITEMS, orderTotals } from "./rules";
 
-// The evening's food order and the restaurant link (restaurant-orders) for the singleton event. Functions take the
-// client as a parameter (no `astro:*`), so they are tested against the local DB. Supabase errors always throw;
-// expected outcomes come back as status unions. Inputs are already normalized and validated (rules.ts).
+// The evening's food order and the restaurant link (restaurant-orders) of one event. Functions take the client and the
+// event id as parameters (no `astro:*`), so they are tested against the local DB; every read and write is limited to
+// that event (multi-tenant-events: a guest or table of another event fails the composite foreign key → place-gone).
+// Supabase errors always throw; expected outcomes come back as status unions. Inputs are already normalized and
+// validated (rules.ts).
 
 // guest-delivered: the marked pieces come embedded (order_piece rows); `delivered` is derived from them.
 const ITEM_COLUMNS =
@@ -64,8 +65,8 @@ function toItemDto(row: ItemRow): OrderItemDto {
   };
 }
 
-export async function getOrderItems(db: DbClient): Promise<OrderItemDto[]> {
-  const { data, error } = await db.from("order_item").select(ITEM_COLUMNS).eq("event_id", EVENT_ID).order("id");
+export async function getOrderItems(db: DbClient, eventId: number): Promise<OrderItemDto[]> {
+  const { data, error } = await db.from("order_item").select(ITEM_COLUMNS).eq("event_id", eventId).order("id");
   if (error) {
     fail("odczytać zamówienia", error.message);
   }
@@ -124,25 +125,25 @@ export function toOrderBoard(
 
 // Everything the organizer's order page shows (bill-drinks: with the drinks on the bill — the organizer's board is
 // the only reader of drink_item).
-export async function getOrderBoard(db: DbClient): Promise<OrderBoardDto> {
+export async function getOrderBoard(db: DbClient, eventId: number): Promise<OrderBoardDto> {
   const [items, guestList, venue, snapshot, drinks] = await Promise.all([
-    getOrderItems(db),
-    getGuestList(db),
-    getVenue(db),
-    getLatestSnapshot(db),
-    getDrinkItems(db),
+    getOrderItems(db, eventId),
+    getGuestList(db, eventId),
+    getVenue(db, eventId),
+    getLatestSnapshot(db, eventId),
+    getDrinkItems(db, eventId),
   ]);
   return toOrderBoard(items, guestList, venue, snapshot, drinks);
 }
 
 // What the restaurant sees (one read of everything, then a fingerprint; see restaurant.ts).
-export async function getRestaurantView(db: DbClient): Promise<RestaurantViewDto> {
+export async function getRestaurantView(db: DbClient, eventId: number): Promise<RestaurantViewDto> {
   const [items, guestList, venue, snapshot, planVersion] = await Promise.all([
-    getOrderItems(db),
-    getGuestList(db),
-    getVenue(db),
-    getLatestSnapshot(db),
-    getPlanVersion(db),
+    getOrderItems(db, eventId),
+    getGuestList(db, eventId),
+    getVenue(db, eventId),
+    getLatestSnapshot(db, eventId),
+    getPlanVersion(db, eventId),
   ]);
   return toRestaurantView(items, placementSource(guestList, venue, snapshot), planVersion);
 }
@@ -166,8 +167,8 @@ function assignmentColumns(assignment: OrderAssignmentInput): { guest_id: number
 
 export type AddOrderItemResult = { status: "added" } | { status: "too-many" } | { status: "place-gone" };
 
-export async function addOrderItem(db: DbClient, input: OrderItemInput): Promise<AddOrderItemResult> {
-  const counted = await db.from("order_item").select("id", { count: "exact", head: true }).eq("event_id", EVENT_ID);
+export async function addOrderItem(db: DbClient, eventId: number, input: OrderItemInput): Promise<AddOrderItemResult> {
+  const counted = await db.from("order_item").select("id", { count: "exact", head: true }).eq("event_id", eventId);
   if (counted.error) {
     fail("dodać pozycji zamówienia", counted.error.message);
   }
@@ -175,7 +176,7 @@ export async function addOrderItem(db: DbClient, input: OrderItemInput): Promise
     return { status: "too-many" };
   }
   const { error } = await db.from("order_item").insert({
-    event_id: EVENT_ID,
+    event_id: eventId,
     name: input.name,
     note: input.note,
     quantity: input.quantity,
@@ -196,7 +197,12 @@ export type OrderItemPatch = Partial<OrderItemInput> & { delivered?: boolean };
 
 export type UpdateOrderItemResult = { status: "updated" } | { status: "not-found" } | { status: "place-gone" };
 
-export async function updateOrderItem(db: DbClient, id: number, patch: OrderItemPatch): Promise<UpdateOrderItemResult> {
+export async function updateOrderItem(
+  db: DbClient,
+  eventId: number,
+  id: number,
+  patch: OrderItemPatch,
+): Promise<UpdateOrderItemResult> {
   const { data, error } = await db
     .from("order_item")
     .update({
@@ -208,7 +214,7 @@ export async function updateOrderItem(db: DbClient, id: number, patch: OrderItem
       updated_at: new Date().toISOString(),
     })
     .eq("id", id)
-    .eq("event_id", EVENT_ID)
+    .eq("event_id", eventId)
     .select("id");
   if (error) {
     if (error.code === FOREIGN_KEY_VIOLATION) {
@@ -221,7 +227,7 @@ export async function updateOrderItem(db: DbClient, id: number, patch: OrderItem
   }
   if (patch.delivered !== undefined) {
     // After the other fields: a new quantity has already dropped the marks above it (trigger).
-    const marked = await markOrderPieces(db, id, null, patch.delivered);
+    const marked = await markOrderPieces(db, eventId, id, null, patch.delivered);
     if (marked.status === "not-found") {
       return { status: "not-found" };
     }
@@ -238,12 +244,14 @@ export type MarkPiecesResult =
 // or unmarked, and order_item.delivered kept in step — all in one transaction (set_order_pieces).
 async function setOrderPieces(
   db: DbClient,
+  eventId: number,
   itemId: number,
   pieces: number[] | null,
   delivered: boolean,
   guestId: number | null,
 ): Promise<MarkPiecesResult> {
   const { error } = await db.rpc("set_order_pieces", {
+    p_event_id: eventId,
     p_item_id: itemId,
     p_pieces: pieces,
     p_delivered: delivered,
@@ -267,27 +275,29 @@ async function setOrderPieces(
 // The organizer marks (or unmarks) pieces of a line; pieces null = the whole line. Unmarking removes anyone's mark.
 export function markOrderPieces(
   db: DbClient,
+  eventId: number,
   itemId: number,
   pieces: number[] | null,
   delivered: boolean,
 ): Promise<MarkPiecesResult> {
-  return setOrderPieces(db, itemId, pieces, delivered, null);
+  return setOrderPieces(db, eventId, itemId, pieces, delivered, null);
 }
 
 // A guest marks (or unmarks) one piece: only of their own lines and of their table's lines in the latest published
 // snapshot (else not-found), never undoing the organizer's mark (marked-by-organizer).
 export function markGuestPiece(
   db: DbClient,
+  eventId: number,
   guestId: number,
   itemId: number,
   piece: number,
   delivered: boolean,
 ): Promise<MarkPiecesResult> {
-  return setOrderPieces(db, itemId, [piece], delivered, guestId);
+  return setOrderPieces(db, eventId, itemId, [piece], delivered, guestId);
 }
 
 // What the guest's phone shows of the order: their own lines, then their table's lines (one RPC; also on the 204
-// poll path, so the token sees a tablemate's mark).
+// poll path, so the token sees a tablemate's mark). The RPC derives the event from the guest row itself.
 export async function getGuestOrders(db: DbClient, guestId: number): Promise<GuestOrderLineDto[]> {
   const { data, error } = await db.rpc("guest_order_lines", { p_guest_id: guestId });
   if (error) {
@@ -298,8 +308,8 @@ export async function getGuestOrders(db: DbClient, guestId: number): Promise<Gue
 
 export type DeleteOrderItemResult = { status: "deleted" } | { status: "not-found" };
 
-export async function deleteOrderItem(db: DbClient, id: number): Promise<DeleteOrderItemResult> {
-  const { data, error } = await db.from("order_item").delete().eq("id", id).eq("event_id", EVENT_ID).select("id");
+export async function deleteOrderItem(db: DbClient, eventId: number, id: number): Promise<DeleteOrderItemResult> {
+  const { data, error } = await db.from("order_item").delete().eq("id", id).eq("event_id", eventId).select("id");
   if (error) {
     fail("usunąć pozycji zamówienia", error.message);
   }
@@ -307,9 +317,9 @@ export async function deleteOrderItem(db: DbClient, id: number): Promise<DeleteO
 }
 
 // „Wymień link”: a fresh restaurant key; the old link opens nothing from now on. Returns the new key.
-export async function rotateRestaurantKey(db: DbClient): Promise<string> {
+export async function rotateRestaurantKey(db: DbClient, eventId: number): Promise<string> {
   const key = generateAccessKey();
-  const { error } = await db.from("event").update({ restaurant_key: key }).eq("id", EVENT_ID);
+  const { error } = await db.from("event").update({ restaurant_key: key }).eq("id", eventId);
   if (error) {
     fail("wymienić linku restauracji", error.message);
   }

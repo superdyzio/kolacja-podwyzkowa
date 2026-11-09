@@ -1,5 +1,4 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, it, type TestContext } from "vitest";
-import { EVENT_ID } from "@/lib/event";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { saveGuessByOrganizer, setCorrectAmount, setGuessIntakeOpen } from "@/lib/guesses";
 import { setGuestAccess } from "@/lib/guest-links";
 import { createGroup } from "@/lib/guests";
@@ -10,22 +9,21 @@ import type { DbClient } from "@/lib/supabase-client";
 import { savePlanImage } from "@/lib/venue";
 import type { ResetCountsDto, ResetPart } from "@/types";
 import {
-  acquireTestEvent,
+  createTestEvent,
   createTestSeating,
   hasLocalDb,
   localDb,
   localDbEnv,
-  readEvent,
+  readEventKeys,
   readGuestKeys,
-  releaseEvent,
+  releaseTestEvent,
   testTag,
   TINY_PNG,
   type TestEvent,
 } from "./helpers";
 
-// The organizer reset against the local DB. A reset wipes the WHOLE event's data, so every case that resets anything
-// runs only on an event this suite created itself (otherwise it skips: the user's data is never touched). The
-// read-only count check, the refusals that raise before anything is touched and the browser-role check always run.
+// The organizer reset against the local DB, on the suite's own event (multi-tenant-events: a reset touches only its
+// event; tests/integration/isolation.test.ts checks that another event keeps everything).
 describe.skipIf(!hasLocalDb)("organizer reset", () => {
   let db: DbClient;
   let event: TestEvent;
@@ -33,7 +31,7 @@ describe.skipIf(!hasLocalDb)("organizer reset", () => {
 
   beforeAll(async () => {
     db = localDb();
-    event = await acquireTestEvent(db);
+    event = await createTestEvent(db);
     const env = localDbEnv();
     if (!env) {
       throw new Error("unreachable: suite is skipped without a local DB");
@@ -42,13 +40,16 @@ describe.skipIf(!hasLocalDb)("organizer reset", () => {
   });
 
   afterAll(async () => {
-    await releaseEvent(db, event);
+    await releaseTestEvent(db, event);
   });
 
   async function count(
     table: "guest" | "guest_group" | "question" | "seating_snapshot" | "drink_item",
   ): Promise<number> {
-    const { count: rows, error } = await db.from(table).select("*", { count: "exact", head: true });
+    const { count: rows, error } = await db
+      .from(table)
+      .select("*", { count: "exact", head: true })
+      .eq("event_id", event.id);
     if (error) {
       throw new Error(error.message);
     }
@@ -56,7 +57,7 @@ describe.skipIf(!hasLocalDb)("organizer reset", () => {
   }
 
   async function counts(): Promise<ResetCountsDto> {
-    const preview = await getResetPreview(db);
+    const preview = await getResetPreview(db, event.id);
     if (!preview) {
       throw new Error("no event");
     }
@@ -64,7 +65,7 @@ describe.skipIf(!hasLocalDb)("organizer reset", () => {
   }
 
   async function reset(parts: readonly ResetPart[]) {
-    const outcome = await resetEvent(db, parts);
+    const outcome = await resetEvent(db, event.id, parts);
     if (outcome.status !== "reset") {
       throw new Error(`reset failed: ${outcome.status}`);
     }
@@ -72,7 +73,7 @@ describe.skipIf(!hasLocalDb)("organizer reset", () => {
   }
 
   async function guestIds(): Promise<number[]> {
-    const { data, error } = await db.from("guest").select("id").order("id");
+    const { data, error } = await db.from("guest").select("id").eq("event_id", event.id).order("id");
     if (error) {
       throw new Error(error.message);
     }
@@ -112,9 +113,10 @@ describe.skipIf(!hasLocalDb)("organizer reset", () => {
 
   async function seed(): Promise<void> {
     const tag = testTag();
-    expect((await savePlanImage(db, TINY_PNG)).status).toBe("saved");
+    expect((await savePlanImage(db, event.id, TINY_PNG)).status).toBe("saved");
     const seating = await createTestSeating(
       db,
+      event.id,
       tag,
       [
         { seatCount: 6, shape: "round" },
@@ -124,43 +126,45 @@ describe.skipIf(!hasLocalDb)("organizer reset", () => {
     );
     const [a, b, c] = seating.guestIds;
     const [round] = seating.tableIds;
-    expect((await createGroup(db, [a, b])).status).toBe("created");
+    expect((await createGroup(db, event.id, [a, b])).status).toBe("created");
     for (const [index, guestId] of [a, b, c].entries()) {
-      expect((await seatGuest(db, guestId, round, index + 1)).status).toBe("seated");
+      expect((await seatGuest(db, event.id, guestId, round, index + 1)).status).toBe("seated");
     }
-    expect((await setPinned(db, c, true)).status).toBe("updated");
-    expect((await publishSeating(db)).status).toBe("published");
-    expect((await saveGuessByOrganizer(db, a, 150_000)).status).toBe("saved");
-    expect((await saveGuessByOrganizer(db, b, 99_900)).status).toBe("saved");
-    await setCorrectAmount(db, 120_000);
-    await setGuessIntakeOpen(db, false);
+    expect((await setPinned(db, event.id, c, true)).status).toBe("updated");
+    expect((await publishSeating(db, event.id)).status).toBe("published");
+    expect((await saveGuessByOrganizer(db, event.id, a, 150_000)).status).toBe("saved");
+    expect((await saveGuessByOrganizer(db, event.id, b, 99_900)).status).toBe("saved");
+    await setCorrectAmount(db, event.id, 120_000);
+    await setGuessIntakeOpen(db, event.id, false);
     const { error } = await db.from("ai_topic").insert([
-      { requester: "guest", guest_id: a, category: "generyczne", status: "succeeded" },
-      { requester: "organizer", category: "refleksyjne", status: "failed" },
+      { event_id: event.id, requester: "guest", guest_id: a, category: "generyczne", status: "succeeded" },
+      { event_id: event.id, requester: "organizer", category: "refleksyjne", status: "failed" },
     ]);
     if (error) {
       throw new Error(error.message);
     }
-    await setGuestAccess(db, true);
+    await setGuestAccess(db, event.id, true);
     const [, rectangular] = seating.tableIds;
     const orders = await db.from("order_item").insert([
-      { name: `Schabowy ${tag}`, quantity: 1, unit_price_grosze: 4_900, guest_id: a },
-      { name: `Woda ${tag}`, quantity: 2, unit_price_grosze: 1_200, table_id: rectangular },
+      { event_id: event.id, name: `Schabowy ${tag}`, quantity: 1, unit_price_grosze: 4_900, guest_id: a },
+      { event_id: event.id, name: `Woda ${tag}`, quantity: 2, unit_price_grosze: 1_200, table_id: rectangular },
     ]);
     if (orders.error) {
       throw new Error(orders.error.message);
     }
-    const drinks = await db.from("drink_item").insert({ name: `Piwo ${tag}`, quantity: 6, unit_price_grosze: 1_400 });
+    const drinks = await db
+      .from("drink_item")
+      .insert({ event_id: event.id, name: `Piwo ${tag}`, quantity: 6, unit_price_grosze: 1_400 });
     if (drinks.error) {
       throw new Error(drinks.error.message);
     }
-    expect((await addQuestions(db, "generyczne", [`Czy reset ${tag} działa?`])).status).toBe("added");
+    expect((await addQuestions(db, event.id, "generyczne", [`Czy reset ${tag} działa?`])).status).toBe("added");
     expect(await counts()).toEqual(SEEDED);
   }
 
   describe("always (read-only or refused)", () => {
     it("counts what a reset would remove", async () => {
-      const preview = await getResetPreview(db);
+      const preview = await getResetPreview(db, event.id);
       expect(preview?.starterQuestions).toBe(starterQuestionRows().length);
       expect(preview?.counts).toMatchObject({
         guests: await count("guest"),
@@ -178,21 +182,21 @@ describe.skipIf(!hasLocalDb)("organizer reset", () => {
         [["guesses", "nope"], "UNKNOWN_PART"],
       ] as const) {
         const { error } = await db.rpc("reset_event", {
-          p_event_id: EVENT_ID,
+          p_event_id: event.id,
           p_parts: [...parts],
           p_starter_questions: [],
         });
         expect(error?.message).toBe(message);
       }
-      await expect(resetEvent(db, [])).rejects.toThrow(TypeError);
+      await expect(resetEvent(db, event.id, [])).rejects.toThrow(TypeError);
       expect(await counts()).toEqual(before);
     });
 
     it("gives browser roles neither function", async () => {
       for (const headers of [{}, { apikey: "anything" }] as Record<string, string>[]) {
         for (const [name, body] of [
-          ["reset_counts", { p_event_id: EVENT_ID }],
-          ["reset_event", { p_event_id: EVENT_ID, p_parts: ["guesses"], p_starter_questions: [] }],
+          ["reset_counts", { p_event_id: event.id }],
+          ["reset_event", { p_event_id: event.id, p_parts: ["guesses"], p_starter_questions: [] }],
         ] as const) {
           const call = await fetch(`${restUrl}/rpc/${name}`, {
             method: "POST",
@@ -205,11 +209,8 @@ describe.skipIf(!hasLocalDb)("organizer reset", () => {
     });
   });
 
-  describe("destructive (only on an event this suite created)", () => {
-    beforeEach(async (ctx: TestContext) => {
-      if (!event.createdByTest) {
-        ctx.skip();
-      }
+  describe("destructive (the suite's own event)", () => {
+    beforeEach(async () => {
       await reset(RESET_PARTS);
     });
 
@@ -268,7 +269,7 @@ describe.skipIf(!hasLocalDb)("organizer reset", () => {
     it("orders: every order line and drink, nothing else; guests and tables leave their lines unassigned", async () => {
       await seed();
       await reset(["guests", "venue"]);
-      const { data, error } = await db.from("order_item").select("guest_id, table_id");
+      const { data, error } = await db.from("order_item").select("guest_id, table_id").eq("event_id", event.id);
       expect(error).toBeNull();
       expect(data).toEqual([
         { guest_id: null, table_id: null },
@@ -308,7 +309,7 @@ describe.skipIf(!hasLocalDb)("organizer reset", () => {
       await seed();
       const result = await reset(["questions"]);
       expect(result.questionsAdded).toBe(starterQuestionRows().length);
-      const list = await getQuestionList(db);
+      const list = await getQuestionList(db, event.id);
       expect(list.questions.map(({ category, text }) => ({ category, text }))).toEqual(starterQuestionRows());
       expect(list.starterMissing).toBe(0);
       expect(await counts()).toEqual({ ...SEEDED, questions: starterQuestionRows().length });
@@ -316,7 +317,7 @@ describe.skipIf(!hasLocalDb)("organizer reset", () => {
 
     it("everything: an empty event with the starter questions, the same keys, and snapshot ids keep growing", async () => {
       await seed();
-      const keys = await readEvent(db);
+      const keys = await readEventKeys(db, event.id);
       const lastSnapshot = await maxSnapshotId();
       const result = await reset(RESET_PARTS);
       expect(result.parts).toEqual([...RESET_PARTS]);
@@ -340,15 +341,15 @@ describe.skipIf(!hasLocalDb)("organizer reset", () => {
         questions: starterQuestionRows().length,
         guestAccessEnabled: false,
       });
-      expect(await readEvent(db)).toEqual(keys);
-      const published = await publishSeating(db);
+      expect(await readEventKeys(db, event.id)).toEqual(keys);
+      const published = await publishSeating(db, event.id);
       expect(published.snapshotId).toBeGreaterThan(lastSnapshot);
     });
 
     it("refuses the questions part without starter rows and changes nothing", async () => {
       await seed();
       const { error } = await db.rpc("reset_event", {
-        p_event_id: EVENT_ID,
+        p_event_id: event.id,
         p_parts: ["questions"],
         p_starter_questions: [],
       });

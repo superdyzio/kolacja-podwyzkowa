@@ -12,6 +12,6 @@ export const POST: APIRoute = async ({ locals }) => {
   if (api instanceof Response) {
     return api;
   }
-  const result = await publishSeating(api.db);
-  return jsonResponse(await getSeatingBoard(api.db), result.status === "published" ? 201 : 200);
+  const result = await publishSeating(api.db, api.access.event.id);
+  return jsonResponse(await getSeatingBoard(api.db, api.access.event.id), result.status === "published" ? 201 : 200);
 };

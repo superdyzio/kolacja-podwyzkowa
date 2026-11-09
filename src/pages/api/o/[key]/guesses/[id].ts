@@ -44,17 +44,20 @@ export const PUT: APIRoute = async ({ locals, params, request }) => {
 
   const place = readPlaceField(body.data.place);
   if (place === "invalid") {
-    return jsonError(400, placeMessages(locals.locale).range(placeLimit(await countGuests(api.db))));
+    return jsonError(
+      400,
+      placeMessages(locals.locale).range(placeLimit(await countGuests(api.db, api.access.event.id))),
+    );
   }
 
-  const result = await saveGuessByOrganizer(api.db, id, parsed.grosze, place);
+  const result = await saveGuessByOrganizer(api.db, api.access.event.id, id, parsed.grosze, place);
   if (result.status === "not-found") {
     return jsonError(404, guessMessages(locals.locale).guestNotFound);
   }
   if (result.status === "place-out-of-range") {
     return jsonError(400, placeMessages(locals.locale).range(result.maxPlace));
   }
-  return jsonResponse(await getGuessBoard(api.db));
+  return jsonResponse(await getGuessBoard(api.db, api.access.event.id));
 };
 
 export const DELETE: APIRoute = async ({ locals, params }) => {
@@ -67,9 +70,9 @@ export const DELETE: APIRoute = async ({ locals, params }) => {
     return jsonError(404, guessMessages(locals.locale).guestNotFound);
   }
 
-  const result = await deleteGuess(api.db, id);
+  const result = await deleteGuess(api.db, api.access.event.id, id);
   if (result.status === "not-found") {
     return jsonError(404, guessMessages(locals.locale).guestNotFound);
   }
-  return jsonResponse(await getGuessBoard(api.db));
+  return jsonResponse(await getGuessBoard(api.db, api.access.event.id));
 };

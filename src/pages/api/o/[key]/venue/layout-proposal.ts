@@ -44,7 +44,7 @@ export const POST: APIRoute = async ({ locals, request }) => {
     });
   }
 
-  const result = await proposeVenueLayout(api.db, provider, body.bytes);
+  const result = await proposeVenueLayout(api.db, api.access.event.id, provider, body.bytes);
   switch (result.status) {
     case "unsupported-type":
       return jsonError(415, messages.planUnsupported);

@@ -1,5 +1,4 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { EVENT_ID } from "@/lib/event";
 import {
   addOrderItem,
   deleteOrderItem,
@@ -12,14 +11,14 @@ import { publishSeating, seatGuest } from "@/lib/seating";
 import type { DbClient } from "@/lib/supabase-client";
 import type { OrderBoardDto } from "@/types";
 import {
-  acquireTestEvent,
+  createTestEvent,
   cleanupTestSeating,
   createTestSeating,
   deleteTestGuests,
   deleteTestSnapshots,
   hasLocalDb,
   localDb,
-  releaseEvent,
+  releaseTestEvent,
   testTag,
   type TestEvent,
   type TestSeating,
@@ -37,7 +36,7 @@ describe.skipIf(!hasLocalDb)("restaurant orders", () => {
   const lineIds: number[] = [];
 
   async function readRestaurantKey(): Promise<string> {
-    const { data, error } = await db.from("event").select("restaurant_key").eq("id", EVENT_ID).single();
+    const { data, error } = await db.from("event").select("restaurant_key").eq("id", event.id).single();
     if (error) {
       throw new Error(error.message);
     }
@@ -50,10 +49,11 @@ describe.skipIf(!hasLocalDb)("restaurant orders", () => {
 
   beforeAll(async () => {
     db = localDb();
-    event = await acquireTestEvent(db);
+    event = await createTestEvent(db);
     restaurantKey = await readRestaurantKey();
     seating = await createTestSeating(
       db,
+      event.id,
       tag,
       [
         { seatCount: 4, shape: "round" },
@@ -62,9 +62,9 @@ describe.skipIf(!hasLocalDb)("restaurant orders", () => {
       3,
     );
     const [round] = seating.tableIds;
-    expect((await seatGuest(db, seating.guestIds[0], round, 2)).status).toBe("seated");
-    expect((await seatGuest(db, seating.guestIds[1], round, 1)).status).toBe("seated");
-    const published = await publishSeating(db);
+    expect((await seatGuest(db, event.id, seating.guestIds[0], round, 2)).status).toBe("seated");
+    expect((await seatGuest(db, event.id, seating.guestIds[1], round, 1)).status).toBe("seated");
+    const published = await publishSeating(db, event.id);
     snapshotId = published.status === "published" ? published.snapshotId : null;
   });
 
@@ -76,9 +76,9 @@ describe.skipIf(!hasLocalDb)("restaurant orders", () => {
     }
     await cleanupTestSeating(db, seating);
     if (restaurantKey) {
-      await db.from("event").update({ restaurant_key: restaurantKey }).eq("id", EVENT_ID);
+      await db.from("event").update({ restaurant_key: restaurantKey }).eq("id", event.id);
     }
-    await releaseEvent(db, event);
+    await releaseTestEvent(db, event);
   });
 
   it("adds lines for a guest, a table and nobody, and places them by the published seating", async () => {
@@ -87,8 +87,8 @@ describe.skipIf(!hasLocalDb)("restaurant orders", () => {
     }
     const [first, second, third] = seating.guestIds;
     const [round, rectangular] = seating.tableIds;
-    const add = (name: string, assignment: Parameters<typeof addOrderItem>[1]["assignment"], quantity = 1) =>
-      addOrderItem(db, { name: `${name} ${tag}`, note: null, quantity, unitPriceGrosze: 4_900, assignment });
+    const add = (name: string, assignment: Parameters<typeof addOrderItem>[2]["assignment"], quantity = 1) =>
+      addOrderItem(db, event.id, { name: `${name} ${tag}`, note: null, quantity, unitPriceGrosze: 4_900, assignment });
 
     expect(await add("Schabowy", { guestId: first })).toEqual({ status: "added" });
     expect(await add("Żurek", { guestId: second }, 2)).toEqual({ status: "added" });
@@ -98,7 +98,7 @@ describe.skipIf(!hasLocalDb)("restaurant orders", () => {
     expect(await add("Tort", null)).toEqual({ status: "added" });
     expect(await add("Zupa", { guestId: 2_000_000_000 })).toEqual({ status: "place-gone" });
 
-    const board = await getOrderBoard(db);
+    const board = await getOrderBoard(db, event.id);
     lineIds.push(...mine(board).map((item) => item.id));
     expect(mine(board)).toHaveLength(6);
     const table = board.placement.tables.find((placed) => placed.name === seating?.tableNames[0]);
@@ -122,21 +122,24 @@ describe.skipIf(!hasLocalDb)("restaurant orders", () => {
     if (!seating) {
       throw new Error("no seating");
     }
-    const board = await getOrderBoard(db);
+    const board = await getOrderBoard(db, event.id);
     const zurek = mine(board).find((item) => item.name.startsWith("Żurek"));
     if (!zurek) {
       throw new Error("no line");
     }
-    const before = await getRestaurantView(db);
-    expect(await updateOrderItem(db, zurek.id, { delivered: true })).toEqual({ status: "updated" });
-    const after = await getRestaurantView(db);
+    const before = await getRestaurantView(db, event.id);
+    expect(await updateOrderItem(db, event.id, zurek.id, { delivered: true })).toEqual({ status: "updated" });
+    const after = await getRestaurantView(db, event.id);
     expect(after.version).not.toBe(before.version);
     expect(after.totals.toServe).toBe(before.totals.toServe - 2);
 
     expect(
-      await updateOrderItem(db, zurek.id, { assignment: { tableId: seating.tableIds[1] }, unitPriceGrosze: 1_000 }),
+      await updateOrderItem(db, event.id, zurek.id, {
+        assignment: { tableId: seating.tableIds[1] },
+        unitPriceGrosze: 1_000,
+      }),
     ).toEqual({ status: "updated" });
-    const moved = mine(await getOrderBoard(db)).find((item) => item.id === zurek.id);
+    const moved = mine(await getOrderBoard(db, event.id)).find((item) => item.id === zurek.id);
     expect(moved).toMatchObject({
       guestId: null,
       tableId: seating.tableIds[1],
@@ -144,12 +147,12 @@ describe.skipIf(!hasLocalDb)("restaurant orders", () => {
       delivered: true,
     });
 
-    expect(await updateOrderItem(db, zurek.id, { assignment: { tableId: 2_000_000_000 } })).toEqual({
+    expect(await updateOrderItem(db, event.id, zurek.id, { assignment: { tableId: 2_000_000_000 } })).toEqual({
       status: "place-gone",
     });
-    expect(await updateOrderItem(db, 2_000_000_000, { delivered: true })).toEqual({ status: "not-found" });
-    expect(await deleteOrderItem(db, zurek.id)).toEqual({ status: "deleted" });
-    expect(await deleteOrderItem(db, zurek.id)).toEqual({ status: "not-found" });
+    expect(await updateOrderItem(db, event.id, 2_000_000_000, { delivered: true })).toEqual({ status: "not-found" });
+    expect(await deleteOrderItem(db, event.id, zurek.id)).toEqual({ status: "deleted" });
+    expect(await deleteOrderItem(db, event.id, zurek.id)).toEqual({ status: "not-found" });
   });
 
   it("keeps a deleted guest's line, unassigned", async () => {
@@ -159,12 +162,12 @@ describe.skipIf(!hasLocalDb)("restaurant orders", () => {
     const third = seating.guestIds[2];
     await deleteTestGuests(db, [third]);
     seating.guestIds = seating.guestIds.filter((id) => id !== third);
-    const pierogi = mine(await getOrderBoard(db)).find((item) => item.name.startsWith("Pierogi"));
+    const pierogi = mine(await getOrderBoard(db, event.id)).find((item) => item.name.startsWith("Pierogi"));
     expect(pierogi).toMatchObject({ guestId: null, tableId: null });
   });
 
   it("never gives the restaurant prices or ids", async () => {
-    const view = await getRestaurantView(db);
+    const view = await getRestaurantView(db, event.id);
     const json = JSON.stringify(view);
     expect(json).not.toMatch(/Grosze|guestId|tableId|"id"/);
     expect(json).not.toContain(event.organizerKey);
@@ -177,6 +180,7 @@ describe.skipIf(!hasLocalDb)("restaurant orders", () => {
       throw new Error("no seating");
     }
     const both = await db.from("order_item").insert({
+      event_id: event.id,
       name: `Oba ${tag}`,
       quantity: 1,
       unit_price_grosze: 100,
@@ -184,13 +188,15 @@ describe.skipIf(!hasLocalDb)("restaurant orders", () => {
       table_id: seating.tableIds[0],
     });
     expect(both.error?.message).toContain("order_item_one_place");
-    const zero = await db.from("order_item").insert({ name: `Zero ${tag}`, quantity: 0, unit_price_grosze: 100 });
+    const zero = await db
+      .from("order_item")
+      .insert({ event_id: event.id, name: `Zero ${tag}`, quantity: 0, unit_price_grosze: 100 });
     expect(zero.error?.message).toContain("order_item_quantity_range");
   });
 
   it("rotates the restaurant key", async () => {
     const before = await readRestaurantKey();
-    const rotated = await rotateRestaurantKey(db);
+    const rotated = await rotateRestaurantKey(db, event.id);
     expect(rotated).toMatch(/^[A-Za-z0-9_-]{24}$/);
     expect(rotated).not.toBe(before);
     expect(await readRestaurantKey()).toBe(rotated);

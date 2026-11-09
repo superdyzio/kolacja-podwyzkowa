@@ -23,9 +23,9 @@ export const POST: APIRoute = async ({ locals, request }) => {
   if (!input.ok) {
     return jsonError(400, input.message);
   }
-  const result = await addDrinkItem(api.db, input.value);
+  const result = await addDrinkItem(api.db, api.access.event.id, input.value);
   if (result.status === "too-many") {
     return jsonError(409, tooManyDrinksMessage(locals.locale));
   }
-  return jsonResponse(await getOrderBoard(api.db), 201);
+  return jsonResponse(await getOrderBoard(api.db, api.access.event.id), 201);
 };

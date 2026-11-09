@@ -24,13 +24,13 @@ export const PUT: APIRoute = async ({ locals, request }) => {
       break;
   }
 
-  const result = await savePlanImage(api.db, body.bytes);
+  const result = await savePlanImage(api.db, api.access.event.id, body.bytes);
   switch (result.status) {
     case "too-large":
       return jsonError(413, messages.planTooLarge);
     case "unsupported-type":
       return jsonError(415, messages.planUnsupported);
     case "saved":
-      return jsonResponse(await getVenue(api.db));
+      return jsonResponse(await getVenue(api.db, api.access.event.id));
   }
 };

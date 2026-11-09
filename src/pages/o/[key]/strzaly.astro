@@ -25,7 +25,7 @@ const view =
         panelPath: organizerPath(access.event.organizerKey),
         apiBase: `/api${organizerPath(access.event.organizerKey)}`,
         guestsPath: `${organizerPath(access.event.organizerKey)}/goscie`,
-        board: await getGuessBoard(db),
+        board: await getGuessBoard(db, access.event.id),
       }
     : null;
 ---

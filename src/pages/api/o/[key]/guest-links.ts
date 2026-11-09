@@ -16,7 +16,7 @@ export const GET: APIRoute = async ({ locals }) => {
   if (api instanceof Response) {
     return api;
   }
-  return jsonResponse(await getGuestLinks(api.db));
+  return jsonResponse(await getGuestLinks(api.db, api.access.event.id));
 };
 
 export const PATCH: APIRoute = async ({ locals, request }) => {
@@ -28,5 +28,5 @@ export const PATCH: APIRoute = async ({ locals, request }) => {
   if (!body.ok) {
     return body.response;
   }
-  return jsonResponse(await setGuestAccess(api.db, body.data.enabled));
+  return jsonResponse(await setGuestAccess(api.db, api.access.event.id, body.data.enabled));
 };
