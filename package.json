@@ -14,6 +14,7 @@
     "test:watch": "vitest",
     "env:local": "node scripts/local-env.mjs",
     "links": "node --env-file-if-exists=.env scripts/links.mjs",
+    "event:create": "node --experimental-strip-types --env-file-if-exists=.env scripts/create-event.mjs",
     "smoke": "node scripts/smoke.mjs",
     "demo": "node --env-file-if-exists=.env scripts/demo.mjs",
     "package:lambda": "node scripts/package-lambda.mjs",

@@ -331,13 +331,13 @@ New indexes keep per-event reads indexed (`seating_snapshot (event_id, id)` for 
 
 #### Automated
 
-- [x] 1.1 Migration applies on the populated pre-migration DB with counts and keys preserved
-- [x] 1.2 Old links of event 1 work on the new build
-- [x] 1.3 Tests pass: `AI_PROVIDER=mock npm test`
-- [x] 1.4 Lint passes: `npm run lint`
-- [x] 1.5 Type check passes: `npx astro check`
-- [x] 1.6 Build succeeds: `npm run build`
-- [x] 1.7 No `EVENT_ID`/`hasEvent` left
+- [x] 1.1 Migration applies on the populated pre-migration DB with counts and keys preserved — 8babb24
+- [x] 1.2 Old links of event 1 work on the new build — 8babb24
+- [x] 1.3 Tests pass: `AI_PROVIDER=mock npm test` — 8babb24
+- [x] 1.4 Lint passes: `npm run lint` — 8babb24
+- [x] 1.5 Type check passes: `npx astro check` — 8babb24
+- [x] 1.6 Build succeeds: `npm run build` — 8babb24
+- [x] 1.7 No `EVENT_ID`/`hasEvent` left — 8babb24
 
 #### Manual
 
@@ -347,10 +347,10 @@ New indexes keep per-event reads indexed (`seating_snapshot (event_id, id)` for 
 
 #### Automated
 
-- [ ] 2.1 Tests pass incl. isolation: `AI_PROVIDER=mock npm test`
-- [ ] 2.2 Lint passes: `npm run lint`
-- [ ] 2.3 Type check passes: `npx astro check`
-- [ ] 2.4 `npm run event:create` prints three links with 90 questions; `npm run links` lists it
+- [x] 2.1 Tests pass incl. isolation: `AI_PROVIDER=mock npm test`
+- [x] 2.2 Lint passes: `npm run lint`
+- [x] 2.3 Type check passes: `npx astro check`
+- [x] 2.4 `npm run event:create` prints three links with 90 questions; `npm run links` lists it
 
 ### Phase 3: Smoke and demo on their own events
 
