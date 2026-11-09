@@ -8,8 +8,8 @@ timeline_budget:
   hard_deadline: null
   after_hours_only: false
 checkpoint:
-  current_phase: 5
-  phases_completed: [1, 2, 3, 4]
+  current_phase: 6
+  phases_completed: [1, 2, 3, 4, 5]
   gray_areas_resolved:
     - topic: context type
       decision: "brownfield (171 commitów, package-lock.json, src/, .github/); v1 shape-notes zarchiwizowane w context/foundation/archive/shape-notes-2026-11-09-1534.md"
@@ -53,6 +53,14 @@ checkpoint:
       decision: "klient prowadzi też zamówienia, ceny, napoje i rachunek; w trybie „lokal prowadzi” robi to menedżer; reset danych tylko dla lokalu; gry i zabawy (pytania, tematy AI, gra w zgadywanie, losowanie miejsc, pub quiz itp.) to opcjonalne moduły per wydarzenie; gra w zgadywanie i tematy AI domyślnie wyłączone"
     - topic: zakres i koszt
       decision: "cały backlog must-have, dostarczenie ok. 2 tygodnie; użytkownik świadomie przyjął koszt"
+    - topic: reguła biznesowa
+      decision: "lokal udostępnia, klient wybiera"
+    - topic: NFR przy 150
+      decision: "wydajność v1 przy 150 gościach i 200 telefonach; logowanie odporne na zgadywanie; PL/EN wszędzie; wiele imprez naraz bez wzajemnego spowalniania"
+    - topic: dostępność
+      decision: "zawsze dostępna (bez usypiania), bez formalnego SLA"
+    - topic: odczyt bez sieci
+      decision: "rozszerzony na tablet obsługi i kelnera (ostatni stan zamówień i rozsadzenia, tylko odczyt)"
   frs_drafted: 49
   quality_check_status: pending
 ---
@@ -309,3 +317,61 @@ Wszystkie nowe i zmienione FR mają priorytet must-have (decyzja użytkownika, z
   > Socrates: Preserved capability; no challenge (zachowana z v1/po v1).
 - FR-047: Klient can bez sieci zobaczyć ostatni opublikowany rozkład i ranking strzałów. Priority: must-have. Change: preserved
   > Socrates: Preserved capability; no challenge (zachowana z v1/po v1).
+
+## Business Logic
+
+Każde wydarzenie należy do jednej restauracji: lokal określa, co jest dostępne (sala z szablonu, menu, moduły), klient wybiera i przygotowuje imprezę z tego, co dostępne, a goście i obsługa dostają tylko swoją część.
+
+**Istniejące reguły (v1) zostają bez zmian,** w obrębie jednego wydarzenia: losowanie rozsadza obecnych gości tak, by jak najmniej osób siedziało obok sąsiadów z poprzednich rozkładów, z twardymi grupami, przypięciami i pominięciem nieobecnych; ranking strzałów liczy odległość od prawidłowej kwoty, z remisami 1, 2, 2, 4. Moduły, w tym losowanie miejsc i gra w zgadywanie, mogą być teraz w wydarzeniu wyłączone.
+
+**Co lokal udostępnia:**
+- salę z szablonu (aktualizowaną na żądanie);
+- pełne albo okrojone menu z cenami lokalu;
+- zestaw modułów możliwych w lokalu (np. zależnie od sprzętu). Moduły płatne odblokowuje dla wydarzenia administrator platformy.
+
+**Co wybiera klient:**
+- gości (także z importu) i ich diety;
+- grupy i rozsadzenie;
+- pozycje zamówień z dostępnego menu (ceny tylko do odczytu);
+- które z dostępnych modułów włączyć.
+
+**Kto prowadzi wydarzenie** (przełącznik „lokal prowadzi”): klient albo lokal. Prowadzący edytuje, druga strona ma podgląd.
+
+**Kto co dostaje:**
+- gość: tylko swoje dane i opublikowane rozsadzenie;
+- obsługa (tablet, kelner): rozsadzenie, zamówienia, diety i serwowanie;
+- TV: tylko odczyt.
+
+## Non-Functional Requirements
+
+Zachowane z v1 (każde w obrębie wydarzenia): NFR-001, NFR-003, NFR-004, NFR-008, NFR-009, a także NFR-010 w wersji PL/EN wprowadzonej po v1. Zmienione: NFR-002, NFR-005, NFR-006 i NFR-007, opisane niżej.
+
+- NFR-011: 95% akcji gościa jest potwierdzonych w ≤ 1 s; publikacja rozkładu dociera na TV i otwarte telefony w ≤ 5 s; projekt losowania jest gotowy w ≤ 3 s. Dotyczy wydarzeń do 150 gości i do 200 telefonów naraz (zastępuje cele 60 gości z NFR-002 i NFR-007).
+- NFR-012: Żadna osoba ani link nie widzi danych innej restauracji ani innego wydarzenia. Odmowa dla cudzego, nieznanego i usuniętego zasobu jest identyczna. Jedynym wyjątkiem jest administrator platformy, a jego wejścia trafiają do dziennika widocznego dla lokalu.
+- NFR-013: Kilka pomyłek w haśle z rzędu nie blokuje pracownika, a masowe zgadywanie haseł zostaje odrzucone, zanim cokolwiek ujawni.
+- NFR-014: Każdy tekst nowych widoków (panel lokalu, panel platformy, logowanie, wydruki, quiz, import, komunikaty błędów) istnieje po polsku i po angielsku.
+- NFR-015: Kilka imprez jednego lokalu tego samego dnia i imprezy wielu lokali naraz nie spowalniają się nawzajem poniżej celów NFR-011.
+- NFR-016: Platforma jest dostępna cały czas, bez usypiania po okresie bezczynności. Nie ma formalnego SLA.
+- NFR-017: Bez sieci tablet obsługi i kelner widzą ostatni stan zamówień i rozsadzenia swojego wydarzenia, także po odświeżeniu strony (tylko odczyt). Rozszerza NFR-004 na lokal.
+- NFR-018: TV pokazuje imiona czytelnie według celu NFR-006 (≥ 2,5% wysokości ekranu). Gdy cały lokal nie mieści się czytelnie, TV przechodzi po salach (zastępuje warunek „cały plan bez przewijania”).
+- NFR-019: Dane gości wydarzenia znikają z platformy po upływie ustawionej liczby dni od imprezy (domyślnie 30).
+- NFR-020: Platforma nie wysyła e-maili ani wiadomości. Zaproszenia i reset hasła przekazuje człowiek.
+- NFR-021: Dane gości (imiona, diety, uwagi) nigdy nie trafiają do usług AI.
+- NFR-022: Zalogowanie trwa 30 dni na urządzeniu; wylogowanie i zmiana hasła kończą sesje tej osoby.
+- NFR-023: Gry i zabawy z AI (tematy) zachowują limity z NFR-005 per wydarzenie i są domyślnie wyłączone (zmienia NFR-005).
+
+## Constraints & Preserved Behavior
+
+- **Zgodność adresów i linków.** Formaty `/o/<klucz>`, `/tv/<klucz>`, `/g/<klucz>`, `/r/<klucz>` i postać kluczy zostają. Linki gości i karteczki z QR działają jak w v1, w obrębie swojego wydarzenia.
+- **Dane.** Platforma startuje na nowym projekcie bazy. Baza kolacji 2026-11-08 zostaje nietkniętym archiwum (żadnych migracji M-2 na niej). Migracje muszą jednak zachować dane istniejącego wydarzenia na bazach lokalnych i w CI: wydarzenie 1 trafia do restauracji „domyślnej”.
+- **Integracje.** Dostawca AI (tematy, odczyt planu ze zdjęcia) dostaje wyłącznie dane sali i kategorie, nigdy dane gości. Testy działają na atrapie, bez płatnych wywołań.
+- **Środowisko uruchomieniowe.** Ograniczenia obecnego hostingu: ok. 6 MB na żądanie i odpowiedź, do 30 s na żądanie, brak zapisu na dysk w trakcie działania, jedno żądanie na instancję. Kształtują np. limit obrazu planu i logo.
+- **Zachowane zachowania v1** (Guardrails):
+  - prywatność strzałów (ranking tylko u prowadzącego);
+  - publikacja ≤ 5 s;
+  - odczyt bez sieci u klienta;
+  - karteczki QR;
+  - PL/EN;
+  - reset (teraz: pełny dla lokalu, prób dla klienta);
+  - losowanie z twardymi regułami.
+- **Wdrożenia** robi wyłącznie użytkownik. Kolejność to zawsze migracje bazy przed kodem.
