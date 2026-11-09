@@ -333,7 +333,7 @@ Additive and backfilled; the code reads the new columns, so the migration goes t
 
 #### Automated
 
-- [x] 4.1 Lint and type check pass; only docs touched
+- [x] 4.1 Lint and type check pass; only docs touched — 3dcb0df
 
 #### Manual
 
