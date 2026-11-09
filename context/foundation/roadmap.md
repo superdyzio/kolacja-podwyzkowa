@@ -1,255 +1,461 @@
 ---
 project: kolacja-podwyzkowa
-version: 1
+version: 2
 status: draft
 created: 2026-10-27
-updated: 2026-10-27
-prd_version: 1
+updated: 2026-11-09
+prd_version: 2
 main_goal: speed
 top_blocker: time
-milestone_id: full-evening-in-app
-milestone_seq: 1
+milestone_id: restaurant-platform
+milestone_seq: 2
 milestone_status: open
 ---
 
 # Roadmap: kolacja-podwyzkowa
 
-> Derived from `context/foundation/prd.md` (v1) + `shape-notes.md` (`## Forward: technical-roadmap`) + auto-researched codebase baseline.
-> Edit-in-place; archive when superseded.
+> Derived from `context/foundation/prd-v2.md` (v2) + `shape-notes.md` (`## Forward: technical-roadmap`) + auto-researched codebase baseline.
+> Edit-in-place; archive when superseded. Treść M-1 (F-01, S-01..S-09) jest w historii gita (commit sprzed 2026-11-09) i w `context/archive/`.
 > Slices below are listed in dependency order. The "At a glance" table is the index.
-> Framing: `main_goal: speed` i gwiazda przewodnia US-02 wybrał użytkownik; `top_blocker: time` przyjęty z rekomendacji (użytkownik poszedł spać i polecił przyjmować rekomendowane odpowiedzi).
+> Numeracja ciągnie się od M-1 (F-02, F-03, S-10+), bo PRD v2 i shape-notes już tak je nazywają. Backlog w `m2-product-notes.md` jest nieaktualny w trzech punktach: numeracja, tabela ról (dwie role) i zakres rozdziału klient/lokal. Wygrywa PRD v2.
+> Framing: `main_goal: speed`, gwiazda przewodnia S-11 (najmniejszy kompletny przepływ, który dowodzi tezy produktu; patrz „North star”) i `top_blocker: time` przyjęte z rekomendacji (sesja 2026-11-09 kontynuowana bez dodatkowych pytań; każdą linię można nadpisać).
 
 ## Milestone
 
-**M-1: Cały wieczór w apce** — Status: open
+**M-2: Platforma dla restauracji** — Status: open
 
-- **Intent:** organizator może przygotować i poprowadzić całą kolację 2026-11-08 (rozsadzenie, przelosowania, pytania, strzały, ranking) z jednej apki, gotowej do próby generalnej.
-- **Source materials:** `context/foundation/prd.md` (v1)
-- **Done when:** every F-NN and S-NN below is `done`.
-- **Scope anchors:** FR-001..FR-020, US-01..US-04, NFR-001..NFR-010.
+- **Intent:** restauracja sama prowadzi w aplikacji swoje imprezy. Zakłada wydarzenia z szablonu sali i przekazuje klientowi link do przygotowania gości i rozsadzenia. W dniu imprezy prowadzi zamówienia, obsługę i TV. Wiele restauracji działa obok siebie, a ich dane są od siebie odizolowane.
+- **Source materials:**
+  - `context/foundation/prd-v2.md` (v2);
+  - kolejność: `context/foundation/shape-notes.md` `## Forward: technical-roadmap`;
+  - uwagi projektowe dla planerów: `context/foundation/m2-product-notes.md` (podrzędne wobec PRD v2).
+- **Done when:** każdy F-NN i S-NN poniżej jest `done`, a przepływ 1–7 z PRD v2 przechodzi lokalnie w samej aplikacji, bez komend i bez ręcznych zmian w bazie (poza pierwszym kontem administratora platformy).
+- **Scope anchors:**
+  - FR-021..FR-042, FR-048, FR-049 (nowe i zmienione);
+  - FR-001..FR-020, FR-043, FR-044, FR-045, FR-046, FR-047 (zachowane, w obrębie jednego wydarzenia);
+  - US-05..US-10 (oraz US-01..US-04 z PRD v1 w obrębie wydarzenia);
+  - NFR-011..NFR-023.
 
 ## Vision recap
 
-Organizator co roku prowadzi kolację podwyżkową dla 35–40 przyjaciół i dziś trzyma rozsadzenie oraz przebieg wieczoru w arkuszach i na kartkach. Apka daje jeden wspólny stan wieczoru i trzy widoki: organizator (steruje), TV (pokazuje rozsadzenie na planie) i telefon gościa (miejsce, pytania, strzał). Wbudowane są reguły, których arkusz nie obsłuży: rotacja bez powtarzania sąsiadów z zachowaniem nierozdzielnych grup oraz ranking strzałów czytany od końca.
+Restauracja, która gościła kolację 2026-11-08, chce tego narzędzia do własnych dużych imprez: firmowych, wigilii, komunii i urodzin. Dziś uzgadnia je mailem i telefonem, a listy i plany stołów prowadzi w Excelu i Wordzie. Aplikacja staje się platformą dla wielu restauracji. Lokal zakłada wydarzenie z szablonu sali i udostępnia menu i moduły. Klient przygotowuje gości, rozsadzenie i zamówienia. W dniu imprezy TV, kelnerzy i kuchnia pracują na jednym stanie. Gość widzi markę lokalu i wydarzenia, bez nazwy platformy (tzw. white-label).
 
 ## North star
 
-**S-04: Organizator przelosowuje rozkład z zachowaniem grup i bez powtórek sąsiadów, przegląda projekt i publikuje go na TV** — gwiazda przewodnia, czyli najmniejszy kompletny przepływ, którego działanie dowodzi, że produkt robi coś, czego arkusz nie umie; stawiamy go tak wcześnie, jak pozwalają zależności, bo to kluczowe ułatwienie organizatora i najtrudniejsza reguła domenowa.
+**S-11: Lokal zakłada wydarzenie w swoim panelu i kopiuje klientowi link do przygotowania imprezy** — to wydarzenie po raz pierwszy należy do restauracji, a nie do wdrożenia. Dowodzi to głównego kryterium „od «Nowe wydarzenie» do skopiowanego linku klienta < 3 minuty”. Przy `main_goal: speed` stawiamy je zaraz po fundamentach, a wszystko dalej to dodatki do tego przepływu.
+
+> „Gwiazda przewodnia” to najmniejszy kompletny przepływ, którego działanie dowodzi głównej tezy produktu. Stawiamy go tak wcześnie, jak pozwalają zależności, bo reszta ma sens tylko wtedy, gdy on działa.
 
 ## At a glance
 
-| ID   | Change ID                   | Outcome (user can …)                                                                 | Prerequisites       | PRD refs                                             | Status   |
-| ---- | --------------------------- | ------------------------------------------------------------------------------------ | ------------------- | ---------------------------------------------------- | -------- |
-| F-01 | link-access-foundation      | (foundation) wydarzenie z sekretnym linkiem organizatora i adresem TV; reszta bez dostępu; testy działają | —                   | NFR-009, Access Control                              | done     |
-| S-01 | guest-list-and-groups       | organizator wkleja i edytuje listę gości, tworzy grupy i oznacza nieobecnych          | F-01                | US-01, FR-001, FR-002, FR-003                        | done     |
-| S-02 | rooms-and-tables-on-plan    | organizator wgrywa plan, nazywa sale i stawia pinezki stolików z miejscami i typem    | F-01                | US-01, FR-005, FR-006                                | done     |
-| S-03 | manual-seating-on-tv        | organizator sadza gości ręcznie, przypina miejsca, publikuje, a TV pokazuje imiona na planie | S-01, S-02          | US-01, FR-004, FR-007, FR-008, NFR-003, NFR-006      | done     |
-| S-04 | reshuffle-draft-and-publish | organizator losuje projekt rozkładu bez powtórek sąsiadów, poprawia go, publikuje i cofa | S-03                | US-02, FR-009, FR-010, NFR-007                       | done     |
-| S-05 | guest-links-and-seat-view   | gość otwiera osobisty link/QR i widzi swój stolik i miejsce, odświeżane na żywo       | S-03                | US-03, FR-011, FR-012, FR-013, NFR-003, NFR-008, NFR-009 | done        |
-| S-06 | guesses-and-ranking         | goście oddają strzały, organizator zamyka przyjmowanie i czyta ranking od końca       | S-05                | US-04, FR-017, FR-018, FR-019, FR-020, NFR-001       | done        |
-| S-07 | question-base-and-draw      | organizator prowadzi bazę pytań, a każdy losuje pytanie z wybranej kategorii          | S-05                | US-03, FR-014, FR-015                                | done        |
-| S-08 | ai-topics-with-limits       | organizator i goście generują tematy AI w kategorii, z limitami                       | S-07                | US-03, FR-016, NFR-005, NFR-010                      | done        |
-| S-09 | organizer-offline-readout   | organizator bez sieci widzi ostatni rozkład i ranking zebranych strzałów              | S-04, S-06          | US-04, FR-020, NFR-004                               | done        |
+| ID   | Change ID               | Outcome (user can …)                                                                                                     | Prerequisites     | PRD refs                                                                  | Status   |
+| ---- | ----------------------- | ------------------------------------------------------------------------------------------------------------------------ | ----------------- | ------------------------------------------------------------------------- | -------- |
+| F-02 | multi-tenant-events     | (foundation) dane trzymają wiele restauracji i wydarzeń; każdy link i każda operacja działa tylko w swoim wydarzeniu       | —                 | NFR-012, NFR-015, US-10, US-01..US-04, FR-001..FR-020, FR-043, FR-044, FR-045, FR-046, FR-047     | ready    |
+| F-03 | staff-accounts          | (foundation) zaproszona osoba ustawia hasło z jednorazowego linku, loguje się na 30 dni, wylogowuje się i zmienia hasło     | F-02              | FR-022, US-05, NFR-013, NFR-020, NFR-022                                  | proposed |
+| S-10 | platform-restaurants    | administrator platformy zakłada restaurację z zaproszeniem właściciela, widzi listę, wyłącza i włącza restaurację          | F-03              | FR-021, US-05                                                             | proposed |
+| S-11 | restaurant-events       | lokal zakłada wydarzenie, przegląda nadchodzące, minione i archiwum, kopiuje i wymienia linki, archiwizuje i usuwa         | S-10              | FR-024, FR-025, US-06, US-09, US-10                                       | proposed |
+| S-12 | restaurant-team         | właściciel i menedżer zapraszają zespół, zmieniają role, usuwają osoby i dają jednorazowy link resetu hasła               | S-10              | FR-023, US-05                                                             | proposed |
+| S-13 | admin-support-log       | administrator platformy wchodzi w dane lokalu w trybie wsparcia, a właściciel widzi każde wejście w dzienniku              | S-11              | FR-021, US-05, US-10, NFR-012                                             | proposed |
+| S-14 | client-restaurant-split | lokal przełącza „lokal prowadzi”; klient prowadzi zamówienia i robi reset prób; pełny reset i koszty AI tylko w panelu    | S-11              | FR-026, FR-027, FR-028, US-07                                             | proposed |
+| S-15 | venue-templates         | menedżer zapisuje salę jako szablon, tworzy z niego wydarzenia i aktualizuje wydarzenie z szablonu                        | S-11              | FR-030, US-06, US-09                                                      | proposed |
+| S-16 | menu-catalog-courses    | menedżer prowadzi katalog menu z kursami i menu wydarzenia; klient zamawia z niego bez zmiany cen; kuchnia widzi kursy     | S-14              | FR-037, FR-027, US-07                                                     | proposed |
+| S-17 | event-modules           | lokal oznacza dostępne moduły, klient je włącza, administrator odblokowuje płatne; wyłączony moduł znika wszędzie          | S-14              | FR-031, US-07, NFR-023                                                    | proposed |
+| S-18 | event-branding          | właściciel ustawia markę lokalu, klient markę wydarzenia; gość, TV, karteczki i panel pokazują je bez nazwy platformy      | S-11              | FR-032                                                                    | proposed |
+| S-19 | scale-150               | klient prowadzi wydarzenie do 150 gości, stołów do 30 miejsc i ok. 60 stolików w dotychczasowych czasach reakcji           | F-02              | FR-033, US-08, NFR-011, NFR-015                                           | proposed |
+| S-20 | tv-room-rotation        | TV przy wejściu pokazuje cały lokal i sam przechodzi po salach, gdy imiona byłyby nieczytelne; TV da się przypiąć do sali  | S-19              | FR-034, US-08, NFR-018                                                    | proposed |
+| S-21 | waiter-day-and-refills  | kelner (konto albo dostęp „na imprezę”) widzi dzisiejsze imprezy, oznacza wydane sztuki i dopisuje dokładki               | S-12, S-14        | FR-029, FR-023, US-08                                                     | proposed |
+| S-22 | guest-map-search        | gość, klient, personel i tablet wyszukują gościa po imieniu, a mapa podświetla jego miejsce                                | S-21              | FR-048, US-08                                                             | proposed |
+| S-23 | guest-import-diets      | klient importuje gości z CSV lub wklejki z dietami, a kuchnia i kelnerzy widzą diety przy miejscu i w zliczeniach          | S-14, S-21        | FR-035, FR-036, US-07, NFR-021                                            | proposed |
+| S-24 | room-prints             | klient i lokal drukują tablicę „znajdź swój stolik”, karty stołów, winietki w formacie i listę dla obsługi z dietami      | S-18, S-23        | FR-038                                                                    | proposed |
+| S-25 | guest-rsvp-menu         | gość potwierdza obecność i wybiera danie do terminu, klient wpisuje za gościa, a klient i lokal widzą zliczenia           | S-16              | FR-039, US-07                                                             | proposed |
+| S-26 | privacy-retention       | dane gości znikają N dni po imprezie, menedżer eksportuje dane wydarzenia, a gość czyta informację o prywatności          | S-11              | FR-040, US-09, NFR-019                                                    | proposed |
+| S-27 | staff-offline-readout   | tablet obsługi i kelner bez sieci widzą ostatni stan zamówień i rozsadzenia, także po odświeżeniu                          | S-21              | FR-047, US-08, NFR-017                                                    | proposed |
+| S-28 | pub-quiz                | klient przygotowuje pub quiz i prowadzi go na TV, a goście odpowiadają na telefonach                                       | S-17              | FR-049                                                                    | proposed |
+| S-29 | demo-restaurant         | administrator platformy przygotowuje restaurację demo na prawdziwym planie i menu z przykładową imprezą firmową            | S-15, S-16, S-21  | FR-042, US-05, US-06, US-07, US-08, US-09                                 | proposed |
+| S-30 | landing-legal           | odwiedzający widzi publiczną stronę produktu z logowaniem oraz szkice regulaminu i polityki prywatności                   | S-29              | FR-041                                                                    | proposed |
 
 ## Streams
 
 Navigation aid — groups items that share a Prerequisites chain. Canonical ordering still lives in the dependency graph below; this table is the proposed reading order across parallel tracks.
 
-| Stream | Theme             | Chain                                      | Note                                                                 |
-| ------ | ----------------- | ------------------------------------------ | -------------------------------------------------------------------- |
-| A      | Rozsadzanie       | `F-01` → `S-01` → `S-02` → `S-03` → `S-04` | Ścieżka do gwiazdy przewodniej; S-01 i S-02 mogą iść równolegle.      |
-| B      | Telefon gościa    | `S-05` → `S-06` → `S-09`                   | Dołącza do strumienia A w S-03 (S-09 także w S-04).                   |
-| C      | Rozmowy           | `S-07` → `S-08`                            | Dołącza do strumienia B w S-05; najmniej krytyczne dla terminu.       |
+| Stream | Theme                               | Chain                                                              | Note                                                                                       |
+| ------ | ----------------------------------- | ------------------------------------------------------------------ | ------------------------------------------------------------------------------------------ |
+| A      | Platforma i panel lokalu            | `F-02` → `F-03` → `S-10` → `S-11` → `S-12` → `S-13`                | Najkrótsza droga do gwiazdy przewodniej S-11; S-12 może iść obok S-11.                     |
+| B      | Lokal udostępnia, klient wybiera    | `S-14` → `S-15` → `S-16` → `S-17` → `S-18` → `S-25` → `S-28`       | Dołącza do strumienia A w S-11; reguła biznesowa PRD v2 („lokal udostępnia, klient wybiera”). |
+| C      | Dzień imprezy i skala               | `S-19` → `S-20` → `S-21` → `S-22` → `S-27`                         | S-19 wymaga tylko F-02; S-21 dołącza do A w S-12 i do B w S-14.                            |
+| D      | Goście, wydruki, prywatność         | `S-23` → `S-24` → `S-26`                                           | Dołącza do B w S-14 i do C w S-21; S-24 także do B w S-18.                                 |
+| E      | Demo i strona produktu              | `S-29` → `S-30`                                                    | Zbiera strumienie A–C; strona produktu po demo (PRD v2 FR-041).                            |
 
 ## Baseline
 
-What's already in place in the codebase as of `2026-10-27` (auto-researched + user-confirmed).
-Foundations below assume these are present and do NOT re-scaffold them.
+Stan kodu na `2026-11-09` (auto-researched z `CLAUDE.md` i kodu; potwierdzony faktami z sesji shape 2026-11-09).
+Fundamenty poniżej zakładają, że to istnieje, i NIE budują tego od nowa.
 
-- **Frontend:** present — per tech-stack.md: Astro 7 SSR + React 19 + Tailwind 4 + shadcn/ui (`astro.config.mjs`, `src/components/ui/`).
-- **Backend / API:** present (szkielet) — trasy API Astro (`src/pages/api/auth/*`), middleware (`src/middleware.ts`).
-- **Data:** partial — klient Supabase (`src/lib/supabase.ts`), `supabase/config.toml`; brak migracji i schematu.
-- **Auth:** partial / nie pasuje — logowanie e-mail+hasło (strony `src/pages/auth/*`, `PROTECTED_ROUTES`); PRD wymaga dostępu przez klucze w linkach, bez kont.
-- **Deploy / infra:** partial — `wrangler.jsonc` + adapter Cloudflare; CI w `.github/workflows/ci.yml` ustawione na gałąź `master` (repo używa `main`); brak frameworka testów.
-- **Observability:** absent.
+- **Frontend:** present. Astro 7 SSR, wyspy React 19, Tailwind 4 i shadcn/ui (`astro.config.mjs`, `src/components/`). Słowniki PL/EN są w `src/lib/i18n/`.
+- **Backend / API:** present. Trasy API Astro mają osobny prefiks dla każdej roli (`src/pages/api/{o,tv,g,r}/[key]/…`). Strażnicy to `organizerApi`, `guestApi` i `restaurantApi` oraz `src/middleware.ts`.
+- **Data:** present, ale dla jednego wydarzenia. Postgres (Supabase) ma 17 migracji (`supabase/migrations/`), klient service role działa tylko na serwerze, a typy są pisane ręcznie (`src/db/database.types.ts`). Luka, którą zamyka F-02:
+  - CHECK `event_singleton` (`id = 1`);
+  - `EVENT_ID` z `src/lib/event.ts`, użyty 45 razy w 10 plikach;
+  - `default 1` na każdej kolumnie `event_id`;
+  - funkcje DB bez parametru wydarzenia;
+  - globalne blokady doradcze.
+- **Auth:** absent, jeśli chodzi o konta. Jest tylko dostęp przez klucze w linkach (`src/lib/access/`, cztery role). Nie ma kont, haseł ani sesji. `tech-stack.md` (`has_auth: false`) przestanie być aktualny po F-03.
+- **Deploy / infra:** present. Działa AWS Lambda za Function URL (`scripts/package-lambda.mjs`, `scripts/deploy-aws.mjs`), a CI w `.github/workflows/ci.yml` uruchamia smoke. Nie ma jeszcze nowego projektu bazy dla platformy (Otwarte pytanie 4). Stary projekt to nietykalne archiwum kolacji.
+- **Observability:** absent. Są tylko logi konsoli, bez biblioteki logowania i śledzenia błędów.
 
 ## Foundations
 
-### F-01: Dostęp przez klucze w linkach
+### F-02: Restauracje i wiele wydarzeń
 
-- **Outcome:** (foundation) istnieje jedno wydarzenie z sekretnym linkiem organizatora i osobnym adresem TV; wejście bez ważnego klucza pokazuje stronę braku dostępu; przykładowe logowanie e-mail startera jest usunięte; testy jednostkowe uruchamiają się jedną komendą, a CI działa na `main`.
-- **Change ID:** link-access-foundation
-- **PRD refs:** NFR-009, Access Control
-- **Unlocks:** S-01, S-02 (widok organizatora za kluczem), S-03 (adres TV); ścieżka weryfikacji testami jednostkowymi dla S-04 (algorytm losowania).
+- **Outcome:** (foundation) Dane trzymają wiele restauracji i wiele wydarzeń, a każde wydarzenie należy do jednej restauracji. Istniejące wydarzenie 1 trafia do restauracji „domyślnej” bez utraty danych. Każdy link i każda operacja (rozsadzanie, publikacja, strzały, zamówienia, reset) działa tylko w obrębie swojego wydarzenia. Strona główna przestaje zakładać wydarzenia. Wszystko z v1 działa jak na kolacji, w obrębie jednego wydarzenia.
+- **Change ID:** multi-tenant-events
+- **PRD refs:** NFR-012, NFR-015, US-10, US-01..US-04, FR-001..FR-020, FR-043, FR-044, FR-045, FR-046, FR-047
+- **Unlocks:** F-03, S-10 i każdy dalszy slice (wydarzenie należy do restauracji); S-19 (skala per wydarzenie). Daje też ścieżkę weryfikacji izolacji: testy, w których klucz i dane wydarzenia A nie dotykają wydarzenia B.
 - **Prerequisites:** —
 - **Parallel with:** —
 - **Blockers:** —
+- **Unknowns:**
+  - Jak smoke i `npm run demo` zakładają wydarzenie, gdy `/` przestaje to robić, zanim powstanie panel (S-11). — Owner: planer F-02. Block: no.
+- **Risk:** Przeróbka szeroka, ale mechaniczna. Dotyka każdej migracji, funkcji DB i serwisu. Uwagi dla planera są w `shape-notes.md` (`## Forward: technical-roadmap`) i w `m2-product-notes.md` (punkt 1). Migracje muszą zachować dane wydarzenia 1 i nigdy nie trafiają do starego projektu (archiwum kolacji). Aktualizacja CLAUDE.md jest częścią slice'a.
+- **Status:** ready
+
+### F-03: Konta personelu i sesje
+
+- **Outcome:** (foundation) Zaproszona osoba otwiera jednorazowy link, ustawia hasło i loguje się e-mailem i hasłem na 30 dni na urządzeniu. Może się wylogować i zmienić hasło, co zamyka jej inne sesje. Masowe zgadywanie haseł jest odrzucane. Pierwszy administrator platformy powstaje z wiersza poleceń. Wejście do panelu bez zalogowania prowadzi do logowania. Aplikacja nie wysyła e-maili.
+- **Change ID:** staff-accounts
+- **PRD refs:** FR-022, US-05, NFR-013, NFR-020, NFR-022
+- **Unlocks:** S-10, S-11, S-12, S-13 (każdy wymaga zalogowanego personelu). Daje ścieżkę weryfikacji dostępu krzyżowego w smoke: personel lokalu A pytający o wydarzenie B dostaje odmowę.
+- **Prerequisites:** F-02
+- **Parallel with:** S-19
+- **Blockers:** —
 - **Unknowns:** —
-- **Risk:** Model dostępu wpływa na każdą trasę; ustalony raz na początku zapobiega wyciekowi rankingu (guardrail). Nie buduje całej warstwy danych: tylko wydarzenie i klucze.
-- **Status:** done
+- **Risk:** Ciasteczko sesji wprowadza zagrożenia, których model kluczy w linkach nie miał. Wymagania bezpieczeństwa dla planera są w `shape-notes.md` (`## Forward: tech-stack` i `## Forward: technical-roadmap`). Bez nowych zależności. Fundament ma tylko logowanie, sesje i zaproszenia, bez paneli.
+- **Status:** proposed
 
 ## Slices
 
-### S-01: Lista gości, grupy, nieobecni
+### S-10: Panel platformy: restauracje i zaproszenie właściciela
 
-- **Outcome:** organizator wkleja listę gości (jedna osoba na linię), edytuje i usuwa gości z wyświetlaną nazwą, tworzy i rozwiązuje grupy 2–5 osób oraz oznacza nieobecnych.
-- **Change ID:** guest-list-and-groups
-- **PRD refs:** US-01, FR-001, FR-002, FR-003
-- **Prerequisites:** F-01
-- **Parallel with:** S-02
+- **Outcome:** Administrator platformy zakłada restaurację i dostaje jednorazowy link zaproszenia dla właściciela. Widzi listę restauracji z licznikami (wydarzenia, zespół). Wyłącza i włącza restaurację. Daje właścicielowi link resetu hasła, gdy ten zgubi dostęp. Właściciel po przyjęciu zaproszenia widzi swój pusty panel lokalu.
+- **Change ID:** platform-restaurants
+- **PRD refs:** FR-021, US-05
+- **Prerequisites:** F-03
+- **Parallel with:** S-19
 - **Blockers:** —
 - **Unknowns:** —
-- **Risk:** Prosty CRUD, ale walidacja grup (2–5, gość w jednej grupie) musi być twarda, bo losowanie na niej polega.
-- **Status:** done
+- **Risk:** Wgląd administratora w dane lokalu (FR-021) celowo przechodzi do S-13 razem z dziennikiem wejść. Do tego czasu administrator nie widzi danych gości, co jest bezpiecznym stanem pośrednim.
+- **Status:** proposed
 
-### S-02: Sale i stoliki na planie
+### S-11: Wydarzenia lokalu i linki dla klienta
 
-- **Outcome:** organizator wgrywa zrzut planu, nazywa sale i stawia na planie pinezki stolików z nazwą, liczbą miejsc i typem (okrągły / prostokątny).
-- **Change ID:** rooms-and-tables-on-plan
-- **PRD refs:** US-01, FR-005, FR-006
-- **Prerequisites:** F-01
-- **Parallel with:** S-01
+- **Outcome:** Lokal (właściciel, a po S-12 także menedżer) zakłada wydarzenie z nazwą, datą i przewidywaną liczbą gości. Przegląda wydarzenia nadchodzące, minione i archiwum. Na karcie wydarzenia kopiuje linki klienta, TV i tabletu obsługi. Wymienia każdy z nich po potwierdzeniu, które mówi, kogo wymiana odetnie. Archiwizuje i przywraca wydarzenia, a właściciel trwale je usuwa. Personel innej restauracji dostaje dla tego wydarzenia tę samą odmowę co dla nieznanego.
+- **Change ID:** restaurant-events
+- **PRD refs:** FR-024, FR-025, US-06, US-09, US-10
+- **Prerequisites:** S-10
+- **Parallel with:** S-12, S-19
+- **Blockers:** —
+- **Unknowns:** —
+- **Risk:** To gwiazda przewodnia. Jeśli lokal nie umie sam założyć wydarzenia i przekazać linku w < 3 minuty, reszta M-2 traci sens. Tworzenie z szablonu sali dochodzi w S-15.
+- **Status:** proposed
+
+### S-12: Zespół lokalu
+
+- **Outcome:** Właściciel zaprasza menedżerów i kelnerów, a menedżer zaprasza kelnerów, jednorazowymi linkami. W swoim zakresie zmieniają role, usuwają osoby z zespołu i generują jednorazowy link resetu hasła. Menedżer ma uprawnienia z tabeli dostępu PRD v2, bez zarządzania menedżerami i bez ustawień lokalu.
+- **Change ID:** restaurant-team
+- **PRD refs:** FR-023, US-05
+- **Prerequisites:** S-10
+- **Parallel with:** S-11, S-19
+- **Blockers:** —
+- **Unknowns:** —
+- **Risk:** Granice ról (właściciel, menedżer, kelner) muszą być sprawdzane po stronie serwera dla każdej akcji. Kelner „na imprezę” (część FR-023) jest w S-21 razem z widokiem kelnera.
+- **Status:** proposed
+
+### S-13: Wgląd administratora platformy z dziennikiem wejść
+
+- **Outcome:** Administrator platformy otwiera dane dowolnej restauracji w trybie wsparcia. Każde takie wejście (kto, kiedy, co) trafia do dziennika, który właściciel lokalu widzi w swoim panelu. Poza tym trybem odmowa dla cudzej restauracji jest identyczna jak dla nieznanej.
+- **Change ID:** admin-support-log
+- **PRD refs:** FR-021, US-05, US-10, NFR-012
+- **Prerequisites:** S-11
+- **Parallel with:** S-12, S-14, S-15
 - **Blockers:** —
 - **Unknowns:**
-  - Dokładny układ lokalu i zrzut planu (Open Question 1) — Owner: user. Block: no (apka elastyczna, do testów dane demo).
-- **Risk:** Pinezki na obrazie to najcięższa część UI przygotowań; trzymać prosty model (pozycja jako procent szerokości/wysokości obrazu).
-- **Status:** done
+  - Treść umowy powierzenia i informacji o dzienniku dla lokalu (Otwarte pytanie 6). — Owner: user + prawnik. Block: no.
+- **Risk:** Jedyny wyjątek od izolacji danych. Musi być niemożliwy bez wpisu w dzienniku.
+- **Status:** proposed
 
-### S-03: Ręczne rozsadzenie i widok TV
+### S-14: Rozdział klient / lokal i „lokal prowadzi”
 
-- **Outcome:** organizator sadza gości na konkretnych miejscach, zamienia ich, przypina miejsca i publikuje rozkład, a widok TV pokazuje imiona przy stolikach na planie i sam się odświeża po publikacji.
-- **Change ID:** manual-seating-on-tv
-- **PRD refs:** US-01, FR-004, FR-007, FR-008, NFR-003, NFR-006
-- **Prerequisites:** S-01, S-02
+- **Outcome:** Personel lokalu podgląda w panelu pracę klienta nad wydarzeniem: gości, grupy, rozsadzenie i zamówienia. Po włączeniu przełącznika „lokal prowadzi” personel edytuje wszystko, co robi klient, a klient ma tylko podgląd. Klient nadal prowadzi zamówienia, napoje i rachunek jak w v1, ale nie zmienia cen. Może zresetować próby (rozsadzenia i ich historię, strzały, quiz) bez gości, sali i zamówień. Pełny reset i koszty AI są tylko w panelu lokalu, a ich trasy z linku klienta dają odmowę.
+- **Change ID:** client-restaurant-split
+- **PRD refs:** FR-026, FR-027, FR-028, US-07
+- **Prerequisites:** S-11
+- **Parallel with:** S-12, S-13, S-15
+- **Blockers:** —
+- **Unknowns:**
+  - Kto ustala ceny pozycji, zanim powstanie katalog menu (S-16): klient wpisuje jak w v1 czy już tylko personel. Docelowo ceny są z cennika lokalu. — Owner: planer S-14. Block: no.
+- **Risk:** `m2-product-notes.md` (S-11) opisuje nieaktualny zakres („zamówienia tylko u lokalu”). Obowiązuje PRD v2 (FR-027, FR-028 i tabela dostępu): zamówienia zostają u klienta. Dwie strony edytujące naraz wyklucza przełącznik.
+- **Status:** proposed
+
+### S-15: Szablony sal lokalu
+
+- **Outcome:** Menedżer zapisuje układ sali jako szablon lokalu: plan, sale, stoliki, rysunek. Robi to od zera albo z istniejącego wydarzenia. Edytuje szablon i tworzy z niego nowe wydarzenia z gotową salą. Zmiana szablonu nie rusza istniejących wydarzeń, a osobna akcja „zaktualizuj z szablonu” przenosi zmiany do wybranego wydarzenia.
+- **Change ID:** venue-templates
+- **PRD refs:** FR-030, US-06, US-09
+- **Prerequisites:** S-11
+- **Parallel with:** S-13, S-14
+- **Blockers:** —
+- **Unknowns:** —
+- **Risk:** Szablon nie może się otworzyć żadnym linkiem ani pojawić na listach, w retencji, resecie i licznikach (uwaga w `shape-notes.md` `## Forward: technical-roadmap` i w `m2-product-notes.md`, punkt 5). „Zaktualizuj z szablonu” może zabrać miejsca przy usuniętych stolikach, więc ostrzega przed tym jak edytor sal w v1.
+- **Status:** proposed
+
+### S-16: Katalog menu z kursami
+
+- **Outcome:** Menedżer prowadzi katalog dań i napojów lokalu z cenami i kursem (przystawka, zupa, danie główne, deser, napoje). Dla każdego wydarzenia ustala, czy dostępne jest pełne menu, czy okrojone. Klient wybiera pozycje zamówień z dostępnego menu i widzi ceny, ale ich nie zmienia. Lista dla kuchni na tablecie jest pogrupowana po kursach.
+- **Change ID:** menu-catalog-courses
+- **PRD refs:** FR-037, FR-027, US-07
+- **Prerequisites:** S-14
+- **Parallel with:** S-15, S-17, S-18
+- **Blockers:** —
+- **Unknowns:** —
+- **Risk:** Istniejące zamówienia z dowolnym tekstem (v1 i demo) muszą dalej działać. Zmiana ceny w katalogu nie może zmienić rachunku już zamówionych pozycji bez decyzji lokalu.
+- **Status:** proposed
+
+### S-17: Moduły wydarzenia
+
+- **Outcome:** Lokal oznacza, które moduły mogą być dostępne: pytania, tematy AI, gra w zgadywanie rachunku, losowanie miejsc, „Pokaż na TV”, pub quiz. Klient włącza i wyłącza moduły spośród dostępnych. Tematy AI i gra w zgadywanie są domyślnie wyłączone. Moduły płatne są widoczne jako niedostępne, dopóki administrator platformy ręcznie nie odblokuje ich dla wydarzenia. Wyłączony moduł znika u klienta, gości i na TV, a jego trasy dają odmowę.
+- **Change ID:** event-modules
+- **PRD refs:** FR-031, US-07, NFR-023
+- **Prerequisites:** S-14
+- **Parallel with:** S-15, S-16, S-18
+- **Blockers:** —
+- **Unknowns:**
+  - Które moduły są płatne i ile kosztują (Otwarte pytanie 5). — Owner: user. Block: no (odblokowanie ręczne działa niezależnie od cennika).
+- **Risk:** Wyłączenie modułu nie może zepsuć istniejących danych ani wspólnego odpytywania telefonu gościa. Moduł znika, a jego dane zostają.
+- **Status:** proposed
+
+### S-18: Marka lokalu i wydarzenia
+
+- **Outcome:** Właściciel ustawia nazwę, logo i kolor lokalu. Klient dodaje nazwę i logo swojej firmy lub wydarzenia. Widać je na telefonach gości, TV, karteczkach z QR i w panelu. Gość nie widzi nazwy platformy, a „Kolacja podwyżkowa” znika z produktu, także z promptu AI.
+- **Change ID:** event-branding
+- **PRD refs:** FR-032
+- **Prerequisites:** S-11
+- **Parallel with:** S-15, S-16, S-17
+- **Blockers:** —
+- **Unknowns:**
+  - Nazwa produktu (Otwarte pytanie 1). — Owner: user. Block: no (nazwa robocza w jednej stałej, łatwa do zmiany).
+- **Risk:** Logo to obraz od użytkownika, więc tylko bezpieczne formaty i mały rozmiar (limity ładunku hostingu). Treści v1 pisane pod jedną kolację, np. pytanie gry o koszt kolacji, trzeba przejrzeć.
+- **Status:** proposed
+
+### S-19: Skala do 150 gości
+
+- **Outcome:** Klient prowadzi wydarzenie do 150 gości, ze stołami do 30 miejsc i ok. 60 stolikami. Projekt losowania jest gotowy w ≤ 3 s, a publikacja dociera na TV i do 200 otwartych telefonów w ≤ 5 s. Kilka imprez naraz nie spowalnia się poniżej tych celów.
+- **Change ID:** scale-150
+- **PRD refs:** FR-033, US-08, NFR-011, NFR-015
+- **Prerequisites:** F-02
+- **Parallel with:** F-03, S-10, S-11, S-12
+- **Blockers:** —
+- **Unknowns:**
+  - Rzeczywiste obciążenie odpytywania przez 200 telefonów na wybranym hostingu (Otwarte pytanie 4). — Owner: planer S-19 (szacunek) + user (pomiar po wdrożeniu). Block: no.
+- **Risk:** Limity siedzą w bazie, snapshotach, losowaniu i rysunku sali naraz. Losowanie z twardymi regułami musi zostać tak samo poprawne przy 150 osobach.
+- **Status:** proposed
+
+### S-20: TV z rotacją sal i przypięciem do sali
+
+- **Outcome:** TV przy wejściu pokazuje cały lokal. Gdy imiona byłyby mniejsze niż cel czytelności, sam przechodzi po salach co kilka sekund. Klient i lokal mogą przypiąć TV do jednej sali.
+- **Change ID:** tv-room-rotation
+- **PRD refs:** FR-034, US-08, NFR-018
+- **Prerequisites:** S-19
+- **Parallel with:** S-21, S-22
+- **Blockers:** —
+- **Unknowns:** —
+- **Risk:** Rotacja nie może przeszkadzać „Pokaż na TV” ani odświeżaniu po publikacji. Cel czytelności z v1 (≥ 2,5% wysokości ekranu) zostaje.
+- **Status:** proposed
+
+### S-21: Kelner w dniu imprezy i dokładki
+
+- **Outcome:** Kelner ze swoim kontem widzi wydarzenia trwające dziś. Okno obejmuje czas po północy, do południa dnia następnego. Widzi plan z gośćmi, zamówienia z cenami i rachunek, oznacza wydane sztuki i dopisuje zamówienia na sali (dokładki, dodatkowe napoje). Menedżer dodaje kelnera „na imprezę”: imię i jednorazowy link lub kod ważny do końca okna imprezy, bez hasła.
+- **Change ID:** waiter-day-and-refills
+- **PRD refs:** FR-029, FR-023, US-08
+- **Prerequisites:** S-12, S-14
+- **Parallel with:** S-20
+- **Blockers:** —
+- **Unknowns:** —
+- **Risk:** Drugi sposób wejścia personelu, bez hasła, musi mieć ten sam zakres co konto kelnera, wygasać sam i nie otwierać niczego poza dzisiejszymi wydarzeniami lokalu.
+- **Status:** proposed
+
+### S-22: Wyszukiwanie gościa na mapie sali
+
+- **Outcome:** Każdy, kto widzi pełną mapę sali na urządzeniu z klawiaturą (gość na telefonie, klient, personel, tablet obsługi), wyszukuje gościa po imieniu, a mapa podświetla jego miejsce. TV tego nie ma.
+- **Change ID:** guest-map-search
+- **PRD refs:** FR-048, US-08
+- **Prerequisites:** S-21
+- **Parallel with:** S-20, S-23
+- **Blockers:** —
+- **Unknowns:** —
+- **Risk:** Gość wyszukuje tylko w opublikowanym rozsadzeniu, które już widzi. Wyszukiwanie nie może ujawnić niczego ponad snapshot.
+- **Status:** proposed
+
+### S-23: Import gości i diety
+
+- **Outcome:** Klient (albo lokal w trybie „lokal prowadzi”) importuje gości z pliku CSV lub wklejki z arkusza (nazwa, dieta, uwagi) i ogląda podgląd przed zapisem. Grupy tworzy po imporcie na liście. Oznacza dietę lub alergię gościa, a kuchnia na tablecie i kelnerzy widzą ją przy miejscu gościa i w zliczeniach. Dane gości nigdy nie trafiają do AI.
+- **Change ID:** guest-import-diets
+- **PRD refs:** FR-035, FR-036, US-07, NFR-021
+- **Prerequisites:** S-14, S-21
+- **Parallel with:** S-22, S-25
+- **Blockers:** —
+- **Unknowns:**
+  - Czy po demo potrzebny będzie natywny import `.xlsx` (Otwarte pytanie 7). — Owner: user. Block: no.
+- **Risk:** Alergia to dana o zdrowiu, więc pokazujemy ją tylko obsłudze tego wydarzenia, nigdy innym gościom ani na TV. Bez nowych zależności.
+- **Status:** proposed
+
+### S-24: Wydruki dla sali
+
+- **Outcome:** Klient i lokal drukują tablicę „znajdź swój stolik”, karty stołów, winietki (z wyborem formatu i rozmiaru) i listę dla obsługi przy każdym stole (z dietami). Wydruki mają markę lokalu i wydarzenia.
+- **Change ID:** room-prints
+- **PRD refs:** FR-038
+- **Prerequisites:** S-18, S-23
+- **Parallel with:** S-25, S-26
+- **Blockers:** —
+- **Unknowns:** —
+- **Risk:** Druk w przeglądarce różni się między przeglądarkami. Trzymamy wzorzec karteczek z QR z v1 (strona A4 bez nagłówków przeglądarki).
+- **Status:** proposed
+
+### S-25: Potwierdzenie obecności i wybór dania
+
+- **Outcome:** Gość przed imprezą potwierdza obecność i wybiera danie z opcji ustawionych dla wydarzenia, do terminu. Klient wpisuje wybór za gościa. Klient i lokal widzą zliczenia.
+- **Change ID:** guest-rsvp-menu
+- **PRD refs:** FR-039, US-07
+- **Prerequisites:** S-16
+- **Parallel with:** S-23, S-24, S-26
+- **Blockers:** —
+- **Unknowns:** —
+- **Risk:** Termin wyboru i nieobecność z RSVP muszą się zgadzać z oznaczaniem nieobecnych w v1, które pomija ich w losowaniu.
+- **Status:** proposed
+
+### S-26: Prywatność i retencja danych gości
+
+- **Outcome:** Właściciel ustawia, po ilu dniach od imprezy dane gości są usuwane (domyślnie 30), a dane faktycznie znikają po tym terminie. Menedżer eksportuje dane wydarzenia przed usunięciem. Gość czyta informację o prywatności z linku na swoim telefonie.
+- **Change ID:** privacy-retention
+- **PRD refs:** FR-040, US-09, NFR-019
+- **Prerequisites:** S-11
+- **Parallel with:** S-24, S-25
+- **Blockers:** —
+- **Unknowns:**
+  - Treść informacji o prywatności i umowy powierzenia (Otwarte pytanie 6). — Owner: user + prawnik. Block: no (szkic oznaczony „do przeglądu prawnika”).
+- **Risk:** Usuwanie bez harmonogramu zadań (brak zadań w tle na hostingu) musi być pewne i nie może dotknąć szablonów ani wydarzeń w trakcie.
+- **Status:** proposed
+
+### S-27: Odczyt bez sieci dla obsługi
+
+- **Outcome:** Bez sieci tablet obsługi i kelner widzą ostatni stan zamówień i rozsadzenia swojego wydarzenia, także po odświeżeniu strony (tylko odczyt).
+- **Change ID:** staff-offline-readout
+- **PRD refs:** FR-047, US-08, NFR-017
+- **Prerequisites:** S-21
+- **Parallel with:** S-22, S-23
+- **Blockers:** —
+- **Unknowns:** —
+- **Risk:** Wzorzec z v1 (odczyt bez sieci u organizatora) przenosi się na nowe widoki. Zapisany stan nie może się pokazać pod innym linkiem ani innemu wydarzeniu.
+- **Status:** proposed
+
+### S-28: Pub quiz
+
+- **Outcome:** Klient przygotowuje pub quiz (np. o jubilacie) i prowadzi go na TV, a goście odpowiadają na telefonach.
+- **Change ID:** pub-quiz
+- **PRD refs:** FR-049
+- **Prerequisites:** S-17
+- **Parallel with:** S-23, S-24, S-25, S-26, S-27
+- **Blockers:** —
+- **Unknowns:**
+  - Wynik quizu na TV jako wyjątek od zasady v1 „ranking tylko u prowadzącego” (PRD v2, Poza zakresem: „szczegóły należą do planu modułu”). — Owner: planer S-28. Block: no.
+- **Risk:** Największy nowy moduł gry. Wspólne odpytywanie telefonu gościa ma pomieścić quiz bez drugiego kanału.
+- **Status:** proposed
+
+### S-29: Restauracja demo
+
+- **Outcome:** Administrator platformy przygotowuje restaurację demo na prawdziwym planie sali i menu tej restauracji. Ma ona konto właściciela, zespół, szablon sali i przykładową imprezę firmową z fikcyjnymi gośćmi, rozsadzeniem i zamówieniami. Przepływ 1–7 z PRD v2 da się na niej przejść na żywo.
+- **Change ID:** demo-restaurant
+- **PRD refs:** FR-042, US-05, US-06, US-07, US-08, US-09
+- **Prerequisites:** S-15, S-16, S-21
+- **Parallel with:** —
+- **Blockers:**
+  - Plan sali i menu restauracji od użytkownika (Otwarte pytanie 2); do tego czasu demo działa na wygenerowanym planie i przykładowym menu.
+- **Unknowns:**
+  - Data demo z restauracją (Otwarte pytanie 3). — Owner: user. Block: no.
+- **Risk:** Każdy wcześniejszy slice utrzymuje działające `npm run demo`. Ten slice tylko przenosi je na restaurację demo i dopisuje scenariusz pokazu.
+- **Status:** proposed
+
+### S-30: Strona produktu i szkice dokumentów
+
+- **Outcome:** Odwiedzający widzi publiczną stronę produktu z logowaniem oraz szkice regulaminu i polityki prywatności oznaczone „do przeglądu prawnika”.
+- **Change ID:** landing-legal
+- **PRD refs:** FR-041
+- **Prerequisites:** S-29
 - **Parallel with:** —
 - **Blockers:** —
 - **Unknowns:**
-  - Czytelność imion na planie na prawdziwym TV (Open Question 2) — Owner: user. Block: no (cel mierzalny NFR-006, weryfikacja na próbie).
-- **Risk:** Wprowadza pojęcie opublikowanego rozkładu i historii, na którym stoją S-04 i S-05; czytelność 40 imion na planie to ryzyko UX.
-- **Status:** done
-
-### S-04: Przelosowanie: projekt, poprawki, publikacja, cofnięcie
-
-- **Outcome:** organizator losuje projekt nowego rozkładu (grupy razem na kolejnych miejscach, przypięci na miejscach, nieobecni pominięci, jak najmniej powtórzonych sąsiadów), przegląda go, losuje ponownie lub poprawia ręcznie, publikuje na TV i telefony albo wraca do poprzedniego rozkładu.
-- **Change ID:** reshuffle-draft-and-publish
-- **PRD refs:** US-02, FR-009, FR-010, NFR-007
-- **Prerequisites:** S-03
-- **Parallel with:** S-05
-- **Blockers:** —
-- **Unknowns:** —
-- **Risk:** Najtrudniejsza reguła domenowa (sąsiedzi zależni od typu stolika, grupy na kolejnych miejscach, przypadki niewykonalne); musi mieć gęste testy jednostkowe.
-- **Status:** done
-
-### S-05: Osobiste linki gości i widok miejsca
-
-- **Outcome:** organizator drukuje karteczki z osobistymi kodami QR i kopiuje linki, włącza i wyłącza dostęp gości, unieważnia link; gość po otwarciu linku widzi swój stolik i miejsce, odświeżane na żywo.
-- **Change ID:** guest-links-and-seat-view
-- **PRD refs:** US-03, FR-011, FR-012, FR-013, NFR-003, NFR-008, NFR-009
-- **Prerequisites:** S-03
-- **Parallel with:** S-04
-- **Blockers:** —
-- **Unknowns:** —
-- **Risk:** Pierwszy widok gościa; dostęp musi przestrzegać macierzy z Access Control (wyłączony dostęp, unieważniony link).
-- **Status:** done
-
-### S-06: Strzały i ranking
-
-- **Outcome:** gość wpisuje i zmienia swój strzał do zamknięcia; organizator wpisuje strzały za gości, widzi kto nie oddał, zamyka i otwiera przyjmowanie, wpisuje prawidłową kwotę i czyta ranking od ostatniego miejsca z remisami.
-- **Change ID:** guesses-and-ranking
-- **PRD refs:** US-04, FR-017, FR-018, FR-019, FR-020, NFR-001
-- **Prerequisites:** S-05
-- **Parallel with:** S-07
-- **Blockers:** —
-- **Unknowns:** —
-- **Risk:** Ranking ani cudze strzały nie mogą wyciec do gościa ani na TV (guardrail); testy dostępu obowiązkowe.
-- **Status:** done
-
-### S-07: Baza pytań i losowanie pytań
-
-- **Outcome:** organizator dodaje, edytuje, usuwa i hurtowo wkleja pytania z kategorią (baza startowa ok. 30 na kategorię gotowa), a organizator i goście losują pytanie z wybranej kategorii lub ze wszystkich, widoczne tylko dla losującego.
-- **Change ID:** question-base-and-draw
-- **PRD refs:** US-03, FR-014, FR-015
-- **Prerequisites:** S-05
-- **Parallel with:** S-06
-- **Blockers:** —
-- **Unknowns:**
-  - Przegląd startowej bazy pytań (Open Question 4) — Owner: user. Block: no.
-- **Risk:** Niskie; baza startowa to treść, którą użytkownik musi przejrzeć przed kolacją.
-- **Status:** done
-
-### S-08: Tematy AI z limitami
-
-- **Outcome:** organizator i goście generują temat do rozmowy w wybranej kategorii; gość ma limit 5 na wieczór, łącznie 300; przy braku odpowiedzi widać komunikat, a nieudana próba nie zjada limitu.
-- **Change ID:** ai-topics-with-limits
-- **PRD refs:** US-03, FR-016, NFR-005, NFR-010
-- **Prerequisites:** S-07
-- **Parallel with:** S-06
-- **Blockers:**
-  - Klucz do usługi AI i limit wydatków (Open Question 5) — do tego czasu atrapa.
-- **Unknowns:** —
-- **Risk:** Płatna usługa zewnętrzna; w nocy wyłącznie atrapa, prawdziwe wywołanie dopiero po dodaniu klucza przez użytkownika.
-- **Status:** done
-
-### S-09: Odczyt bez sieci u organizatora
-
-- **Outcome:** organizator bez sieci widzi ostatni opublikowany rozkład i ranking strzałów zebranych przed awarią, także po odświeżeniu strony.
-- **Change ID:** organizer-offline-readout
-- **PRD refs:** US-04, FR-020, NFR-004
-- **Prerequisites:** S-04, S-06
-- **Parallel with:** S-08
-- **Blockers:** —
-- **Unknowns:** —
-- **Risk:** Odczyt po odświeżeniu bez sieci wymaga, żeby strona organizatora w ogóle się załadowała offline; zakres zawężony do odczytu.
-- **Status:** done
+  - Nazwa produktu (Otwarte pytanie 1) i treść dokumentów prawnych (Otwarte pytanie 6). — Owner: user. Block: no.
+- **Risk:** PRD v2 świadomie stawia ten slice na końcu, po demo, bo demo prowadzi użytkownik.
+- **Status:** proposed
 
 ## Backlog Handoff
 
-| Roadmap ID | Change ID                   | Suggested issue title                                   | Ready for `/10x-plan` | Notes                                  |
-| ---------- | --------------------------- | ------------------------------------------------------- | --------------------- | -------------------------------------- |
-| F-01       | link-access-foundation      | Dostęp przez klucze w linkach + testy + CI na main      | yes                   | Run `/10x-plan link-access-foundation` |
-| S-01       | guest-list-and-groups       | Lista gości, grupy 2–5, nieobecni                       | no                    | po F-01                                |
-| S-02       | rooms-and-tables-on-plan    | Plan sal, sale, stoliki z pinezkami                     | no                    | po F-01                                |
-| S-03       | manual-seating-on-tv        | Ręczne rozsadzenie, publikacja, widok TV                | no                    | po S-01, S-02                          |
-| S-04       | reshuffle-draft-and-publish | Przelosowanie bez powtórek sąsiadów (gwiazda przewodnia) | no                    | po S-03                                |
-| S-05       | guest-links-and-seat-view   | Osobiste linki/QR i widok miejsca gościa                | no                    | po S-03                                |
-| S-06       | guesses-and-ranking         | Strzały, zamknięcie, ranking od końca                   | no                    | po S-05                                |
-| S-07       | question-base-and-draw      | Baza pytań i losowanie pytań                            | no                    | po S-05                                |
-| S-08       | ai-topics-with-limits       | Tematy AI z limitami (na atrapie)                       | no                    | po S-07; klucz AI od użytkownika       |
-| S-09       | organizer-offline-readout   | Odczyt rozkładu i rankingu bez sieci                    | no                    | po S-04, S-06                          |
+| Roadmap ID | Change ID               | Suggested issue title                                              | Ready for `/10x-plan` | Notes                                   |
+| ---------- | ----------------------- | ------------------------------------------------------------------ | --------------------- | --------------------------------------- |
+| F-02       | multi-tenant-events     | Restauracje i wiele wydarzeń (izolacja per wydarzenie)              | yes                   | Run `/10x-plan multi-tenant-events`     |
+| F-03       | staff-accounts          | Konta personelu, logowanie i sesje bez e-maili                      | no                    | po F-02                                 |
+| S-10       | platform-restaurants    | Panel platformy: restauracje i zaproszenie właściciela              | no                    | po F-03                                 |
+| S-11       | restaurant-events       | Wydarzenia lokalu i linki dla klienta (gwiazda przewodnia)          | no                    | po S-10                                 |
+| S-12       | restaurant-team         | Zespół lokalu: zaproszenia, role, reset hasła                       | no                    | po S-10                                 |
+| S-13       | admin-support-log       | Wgląd administratora platformy z dziennikiem wejść                  | no                    | po S-11                                 |
+| S-14       | client-restaurant-split | Rozdział klient / lokal, „lokal prowadzi”, reset prób               | no                    | po S-11                                 |
+| S-15       | venue-templates         | Szablony sal i „zaktualizuj z szablonu”                             | no                    | po S-11                                 |
+| S-16       | menu-catalog-courses    | Katalog menu z kursami i menu wydarzenia                            | no                    | po S-14                                 |
+| S-17       | event-modules           | Moduły wydarzenia: dostępność, włączanie, odblokowanie płatnych     | no                    | po S-14                                 |
+| S-18       | event-branding          | Marka lokalu i wydarzenia, white-label u gościa                     | no                    | po S-11                                 |
+| S-19       | scale-150               | Skala do 150 gości, 30 miejsc, 60 stolików                          | no                    | po F-02                                 |
+| S-20       | tv-room-rotation        | TV z rotacją sal i przypięciem do sali                              | no                    | po S-19                                 |
+| S-21       | waiter-day-and-refills  | Kelner w dniu imprezy, kelner „na imprezę”, dokładki                | no                    | po S-12, S-14                           |
+| S-22       | guest-map-search        | Wyszukiwanie gościa na mapie sali                                   | no                    | po S-21                                 |
+| S-23       | guest-import-diets      | Import gości z CSV/wklejki i diety                                  | no                    | po S-14, S-21                           |
+| S-24       | room-prints             | Wydruki dla sali: tablica, karty stołów, winietki, lista obsługi    | no                    | po S-18, S-23                           |
+| S-25       | guest-rsvp-menu         | Potwierdzenie obecności i wybór dania                               | no                    | po S-16                                 |
+| S-26       | privacy-retention       | Retencja danych gości, eksport, informacja o prywatności            | no                    | po S-11                                 |
+| S-27       | staff-offline-readout   | Odczyt bez sieci dla tabletu i kelnera                              | no                    | po S-21                                 |
+| S-28       | pub-quiz                | Pub quiz na TV z odpowiedziami na telefonach                        | no                    | po S-17                                 |
+| S-29       | demo-restaurant         | Restauracja demo na planie i menu restauracji                       | no                    | po S-15, S-16, S-21; plan i menu od użytkownika |
+| S-30       | landing-legal           | Strona produktu i szkice regulaminu i polityki prywatności          | no                    | po S-29                                 |
 
 ## Open Roadmap Questions
 
-1. **Dokładny układ lokalu na 2026-11-08 (liczba sal, stolików, miejsc, typy stolików) i zrzut planu.** — Owner: user. Block: — (S-02 działa na danych demo). By: 2026-11-05.
-2. **Czytelność imion na planie na TV (NFR-006) przy realnym telewizorze i układzie.** — Owner: user. Block: — (weryfikacja S-03 na próbie). By: 2026-11-06.
-3. **Próba generalna całego flow z prawdziwymi telefonami, urządzeniem przy TV i siecią lokalu (oraz hotspotem jako zapasem).** — Owner: user. Block: roadmap-wide (akceptacja milestone'u). By: 2026-11-06.
-4. **Przegląd startowej bazy pytań przygotowanej przez asystenta.** — Owner: user. Block: — (S-07). By: 2026-11-05.
-5. **Klucz do usługi AI i limit wydatków po stronie dostawcy; do tego czasu apka działa na atrapie AI.** — Owner: user. Block: — (S-08 na atrapie). By: 2026-11-05.
-6. **Publiczny adres apki (hosting, konto) na kolację.** — Owner: user + asystent. Block: roadmap-wide (wieczór na żywo). By: 2026-11-04.
+1. **Nazwa produktu (white-label u gościa, ale w panelu i na stronie produktu potrzebna).** — Owner: user. Block: — (S-18, S-30 na nazwie roboczej w jednej stałej).
+2. **Plan sali i menu restauracji do demo (FR-042).** — Owner: user, przed demo. Block: S-29 (Blocker; do tego czasu dane przykładowe).
+3. **Data demo z restauracją.** — Owner: user. Block: —.
+4. **Hosting platformy:** nowe środowisko danych; „zawsze dostępna” (NFR-016) oznacza płatny plan albo inny sposób na brak usypiania; własna domena, bo adres trafia na karteczki z QR. Decyzja kosztowa należy do użytkownika. — Owner: user. Block: roadmap-wide dla wdrożenia (nie dla budowy; slice'y działają lokalnie).
+5. **Cennik:** za które gry i zabawy płaci klient i ile; czy lokal płaci abonament. — Owner: user (po demo). Block: — (S-17: odblokowanie ręczne).
+6. **Regulamin, polityka prywatności, umowa powierzenia z lokalem (dziennik wejść administratora, alergie jako dane o zdrowiu).** — Owner: user + prawnik. Block: — (S-13, S-26, S-30 na szkicach).
+7. **Natywny import `.xlsx` (FR-035):** w M-2 jest CSV i wklejka z arkusza; czy `.xlsx` będzie potrzebny po demo. — Owner: user. Block: —.
+8. **Koszt AI na platformie:** kto płaci za tematy AI i odczyt planu ze zdjęcia, czy jest miesięczny limit per lokal. — Owner: user. Block: — (S-17: tematy AI domyślnie wyłączone; limity per wydarzenie jak w v1).
 
 ## Parked
 
-- **Konta i logowanie** — Why parked: PRD §Non-Goals (dostęp wyłącznie przez linki).
-- **Pokazywanie cudzych strzałów i rankingu gościom lub na TV** — Why parked: PRD §Non-Goals.
-- **Wiele wydarzeń i archiwum edycji** — Why parked: PRD §Non-Goals.
-- **Rysowanie planu sal w apce** — Why parked: PRD §Non-Goals (wgrany zrzut + pinezki).
-- **Wysyłanie linków przez apkę** — Why parked: PRD §Non-Goals.
-- **Wspólny QR na TV i wybór siebie z listy** — Why parked: PRD §Non-Goals.
-- **Pełna praca offline z synchronizacją** — Why parked: PRD §Non-Goals (tylko odczyt, S-09).
-- **Strzały w procentach lub innej walucie** — Why parked: PRD §Non-Goals.
-- **Moderacja pytań organizatora** — Why parked: PRD §Non-Goals.
-- **Monitoring i obserwowalność produkcyjna** — Why parked: baseline absent, a `main_goal: speed` i jednorazowy wieczór nie uzasadniają inwestycji.
+- **Płatności online** — Why parked: PRD v2 §Poza zakresem (płatne moduły odblokowuje ręcznie administrator platformy).
+- **Samodzielna rejestracja lokali i wysyłanie e-maili** — Why parked: PRD v2 §Poza zakresem, NFR-020.
+- **Integracje z kasą (POS), systemem rezerwacji i księgowością** — Why parked: PRD v2 §Poza zakresem.
+- **Aplikacja do instalacji ze sklepu** — Why parked: PRD v2 §Poza zakresem.
+- **Ekran kuchni z kolejnością i czasami kursów (KDS)** — Why parked: PRD v2 §Poza zakresem (kuchnia ma listę po kursach, S-16).
+- **Kalendarz rezerwacji, CRM i statystyki lokalu** — Why parked: PRD v2 §Poza zakresem.
+- **Nowe kształty stołów (podkowa, owal, stół prezydialny)** — Why parked: PRD v2 §Poza zakresem.
+- **Języki inne niż PL/EN i logowanie dwuskładnikowe** — Why parked: PRD v2 §Poza zakresem.
+- **Formalne SLA** — Why parked: PRD v2 §Poza zakresem (NFR-016 bez gwarancji umownej).
+- **Cudze strzały i ranking gry w zgadywanie u gości lub na TV** — Why parked: PRD v2 §Poza zakresem (z v1; wyjątek quizu rozstrzyga S-28).
+- **Własna domena, płatny plan bazy, monitoring, alarmy i śledzenie błędów** — Why parked: decyzja kosztowa użytkownika (Otwarte pytanie 4); baseline observability absent, a nocna budowa niczego nie wdraża.
+- **Budżet AI per restauracja i własny klucz AI restauracji** — Why parked: Otwarte pytanie 8; `m2-product-notes.md` §Zaparkowane.
+- **Dziennik działań personelu (poza dziennikiem wejść administratora)** — Why parked: `m2-product-notes.md` §Zaparkowane.
+- **Agenda wieczoru i pokaz slajdów na TV** — Why parked: `m2-product-notes.md` §Zaparkowane.
 
 ## Milestone History
 
+- **M-1: Cały wieczór w apce** (`full-evening-in-app`) — closed 2026-11-09. Kolacja 2026-11-08 przeszła w całości w apce (36 gości, 4 stoły): F-01 i S-01..S-09 done, plus dodatki po M-1 (venue-drawing, restaurant-orders, guest-delivered, guess-place, guest-venue-names, draw-neighbour, bill-drinks).
+
 ## Done
 
-- **F-01: (foundation) istnieje jedno wydarzenie z sekretnym linkiem organizatora i osobnym adresem TV; wejście bez ważnego klucza pokazuje stronę braku dostępu; przykładowe logowanie e-mail startera jest usunięte; testy jednostkowe uruchamiają się jedną komendą, a CI działa na `main`.** — Archived 2026-10-27 → `context/archive/2026-10-27-link-access-foundation/`. Lesson: —.
-- **S-01: organizator wkleja listę gości (jedna osoba na linię), edytuje i usuwa gości z wyświetlaną nazwą, tworzy i rozwiązuje grupy 2–5 osób oraz oznacza nieobecnych.** — Archived 2026-10-27 → `context/archive/2026-10-27-guest-list-and-groups/`. Lesson: —.
-- **S-02: organizator wgrywa zrzut planu, nazywa sale i stawia na planie pinezki stolików z nazwą, liczbą miejsc i typem (okrągły / prostokątny).** — Archived 2026-10-27 → `context/archive/2026-10-27-rooms-and-tables-on-plan/`. Lesson: —.
-- **S-03: organizator sadza gości na konkretnych miejscach, zamienia ich, przypina miejsca i publikuje rozkład, a widok TV pokazuje imiona przy stolikach na planie i sam się odświeża po publikacji.** — Archived 2026-10-27 → `context/archive/2026-10-27-manual-seating-on-tv/`. Lesson: —.
-- **S-04: organizator losuje projekt nowego rozkładu (grupy razem na kolejnych miejscach, przypięci na miejscach, nieobecni pominięci, jak najmniej powtórzonych sąsiadów), przegląda go, losuje ponownie lub poprawia ręcznie, publikuje na TV i telefony albo wraca do poprzedniego rozkładu.** — Archived 2026-10-27 → `context/archive/2026-10-27-reshuffle-draft-and-publish/`. Lesson: —.
-- **S-05: organizator drukuje karteczki z osobistymi kodami QR i kopiuje linki, włącza i wyłącza dostęp gości, unieważnia link; gość po otwarciu linku widzi swój stolik i miejsce, odświeżane na żywo.** — Archived 2026-10-27 → `context/archive/2026-10-27-guest-links-and-seat-view/`. Lesson: —.
-- **S-06: gość wpisuje i zmienia swój strzał do zamknięcia; organizator wpisuje strzały za gości, widzi kto nie oddał, zamyka i otwiera przyjmowanie, wpisuje prawidłową kwotę i czyta ranking od ostatniego miejsca z remisami.** — Archived 2026-10-27 → `context/archive/2026-10-27-guesses-and-ranking/`. Lesson: —.
-- **S-07: organizator dodaje, edytuje, usuwa i hurtowo wkleja pytania z kategorią (baza startowa ok. 30 na kategorię gotowa), a organizator i goście losują pytanie z wybranej kategorii lub ze wszystkich, widoczne tylko dla losującego.** — Archived 2026-10-27 → `context/archive/2026-10-27-question-base-and-draw/`. Lesson: —.
-- **S-08: organizator i goście generują temat do rozmowy w wybranej kategorii; gość ma limit 5 na wieczór, łącznie 300; przy braku odpowiedzi widać komunikat, a nieudana próba nie zjada limitu.** — Archived 2026-10-27 → `context/archive/2026-10-27-ai-topics-with-limits/`. Lesson: —.
-- **S-09: organizator bez sieci widzi ostatni opublikowany rozkład i ranking strzałów zebranych przed awarią, także po odświeżeniu strony.** — Archived 2026-10-27 → `context/archive/2026-10-27-organizer-offline-readout/`. Lesson: —.
