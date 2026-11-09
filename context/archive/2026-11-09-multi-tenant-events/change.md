@@ -1,10 +1,10 @@
 ---
 change_id: multi-tenant-events
 title: Restaurants and many events, every link and operation scoped to its own event
-status: implemented
+status: archived
 created: 2026-11-09
 updated: 2026-11-09
-archived_at: null
+archived_at: 2026-11-09T21:35:30Z
 ---
 
 ## Notes
