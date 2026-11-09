@@ -48,43 +48,43 @@ Restauracja, która gościła kolację 2026-11-08, chce tego narzędzia do włas
 
 ## At a glance
 
-| ID   | Change ID               | Outcome (user can …)                                                                                                     | Prerequisites     | PRD refs                                                                  | Status   |
-| ---- | ----------------------- | ------------------------------------------------------------------------------------------------------------------------ | ----------------- | ------------------------------------------------------------------------- | -------- |
-| F-02 | multi-tenant-events     | (foundation) dane trzymają wiele restauracji i wydarzeń; każdy link i każda operacja działa tylko w swoim wydarzeniu       | —                 | NFR-012, NFR-015, US-10, US-01..US-04, FR-001..FR-020, FR-043, FR-044, FR-045, FR-046, FR-047     | done        |
-| F-03 | staff-accounts          | (foundation) zaproszona osoba ustawia hasło z jednorazowego linku, loguje się na 30 dni, wylogowuje się i zmienia hasło     | F-02              | FR-022, US-05, NFR-013, NFR-020, NFR-022                                  | done        |
-| S-10 | platform-restaurants    | administrator platformy zakłada restaurację z zaproszeniem właściciela, widzi listę, wyłącza i włącza restaurację          | F-03              | FR-021, US-05                                                             | done        |
-| S-11 | restaurant-events       | lokal zakłada wydarzenie, przegląda nadchodzące, minione i archiwum, kopiuje i wymienia linki, archiwizuje i usuwa         | S-10              | FR-024, FR-025, US-06, US-09, US-10                                       | in-progress |
-| S-12 | restaurant-team         | właściciel i menedżer zapraszają zespół, zmieniają role, usuwają osoby i dają jednorazowy link resetu hasła               | S-10              | FR-023, US-05                                                             | proposed |
-| S-13 | admin-support-log       | administrator platformy wchodzi w dane lokalu w trybie wsparcia, a właściciel widzi każde wejście w dzienniku              | S-11              | FR-021, US-05, US-10, NFR-012                                             | proposed |
-| S-14 | client-restaurant-split | lokal przełącza „lokal prowadzi”; klient prowadzi zamówienia i robi reset prób; pełny reset i koszty AI tylko w panelu    | S-11              | FR-026, FR-027, FR-028, US-07                                             | proposed |
-| S-15 | venue-templates         | menedżer zapisuje salę jako szablon, tworzy z niego wydarzenia i aktualizuje wydarzenie z szablonu                        | S-11              | FR-030, US-06, US-09                                                      | proposed |
-| S-16 | menu-catalog-courses    | menedżer prowadzi katalog menu z kursami i menu wydarzenia; klient zamawia z niego bez zmiany cen; kuchnia widzi kursy     | S-14              | FR-037, FR-027, US-07                                                     | proposed |
-| S-17 | event-modules           | lokal oznacza dostępne moduły, klient je włącza, administrator odblokowuje płatne; wyłączony moduł znika wszędzie          | S-14              | FR-031, US-07, NFR-023                                                    | proposed |
-| S-18 | event-branding          | właściciel ustawia markę lokalu, klient markę wydarzenia; gość, TV, karteczki i panel pokazują je bez nazwy platformy      | S-11              | FR-032                                                                    | proposed |
-| S-19 | scale-150               | klient prowadzi wydarzenie do 150 gości, stołów do 30 miejsc i ok. 60 stolików w dotychczasowych czasach reakcji           | F-02              | FR-033, US-08, NFR-011, NFR-015                                           | proposed |
-| S-20 | tv-room-rotation        | TV przy wejściu pokazuje cały lokal i sam przechodzi po salach, gdy imiona byłyby nieczytelne; TV da się przypiąć do sali  | S-19              | FR-034, US-08, NFR-018                                                    | proposed |
-| S-21 | waiter-day-and-refills  | kelner (konto albo dostęp „na imprezę”) widzi dzisiejsze imprezy, oznacza wydane sztuki i dopisuje dokładki               | S-12, S-14        | FR-029, FR-023, US-08                                                     | proposed |
-| S-22 | guest-map-search        | gość, klient, personel i tablet wyszukują gościa po imieniu, a mapa podświetla jego miejsce                                | S-21              | FR-048, US-08                                                             | proposed |
-| S-23 | guest-import-diets      | klient importuje gości z CSV lub wklejki z dietami, a kuchnia i kelnerzy widzą diety przy miejscu i w zliczeniach          | S-14, S-21        | FR-035, FR-036, US-07, NFR-021                                            | proposed |
-| S-24 | room-prints             | klient i lokal drukują tablicę „znajdź swój stolik”, karty stołów, winietki w formacie i listę dla obsługi z dietami      | S-18, S-23        | FR-038                                                                    | proposed |
-| S-25 | guest-rsvp-menu         | gość potwierdza obecność i wybiera danie do terminu, klient wpisuje za gościa, a klient i lokal widzą zliczenia           | S-16              | FR-039, US-07                                                             | proposed |
-| S-26 | privacy-retention       | dane gości znikają N dni po imprezie, menedżer eksportuje dane wydarzenia, a gość czyta informację o prywatności          | S-11              | FR-040, US-09, NFR-019                                                    | proposed |
-| S-27 | staff-offline-readout   | tablet obsługi i kelner bez sieci widzą ostatni stan zamówień i rozsadzenia, także po odświeżeniu                          | S-21              | FR-047, US-08, NFR-017                                                    | proposed |
-| S-28 | pub-quiz                | klient przygotowuje pub quiz i prowadzi go na TV, a goście odpowiadają na telefonach                                       | S-17              | FR-049                                                                    | proposed |
-| S-29 | demo-restaurant         | administrator platformy przygotowuje restaurację demo na prawdziwym planie i menu z przykładową imprezą firmową            | S-15, S-16, S-21  | FR-042, US-05, US-06, US-07, US-08, US-09                                 | proposed |
-| S-30 | landing-legal           | odwiedzający widzi publiczną stronę produktu z logowaniem oraz szkice regulaminu i polityki prywatności                   | S-29              | FR-041                                                                    | proposed |
+| ID   | Change ID               | Outcome (user can …)                                                                                                      | Prerequisites    | PRD refs                                                                                      | Status   |
+| ---- | ----------------------- | ------------------------------------------------------------------------------------------------------------------------- | ---------------- | --------------------------------------------------------------------------------------------- | -------- |
+| F-02 | multi-tenant-events     | (foundation) dane trzymają wiele restauracji i wydarzeń; każdy link i każda operacja działa tylko w swoim wydarzeniu      | —                | NFR-012, NFR-015, US-10, US-01..US-04, FR-001..FR-020, FR-043, FR-044, FR-045, FR-046, FR-047 | done     |
+| F-03 | staff-accounts          | (foundation) zaproszona osoba ustawia hasło z jednorazowego linku, loguje się na 30 dni, wylogowuje się i zmienia hasło   | F-02             | FR-022, US-05, NFR-013, NFR-020, NFR-022                                                      | done     |
+| S-10 | platform-restaurants    | administrator platformy zakłada restaurację z zaproszeniem właściciela, widzi listę, wyłącza i włącza restaurację         | F-03             | FR-021, US-05                                                                                 | done     |
+| S-11 | restaurant-events       | lokal zakłada wydarzenie, przegląda nadchodzące, minione i archiwum, kopiuje i wymienia linki, archiwizuje i usuwa        | S-10             | FR-024, FR-025, US-06, US-09, US-10                                                           | done     |
+| S-12 | restaurant-team         | właściciel i menedżer zapraszają zespół, zmieniają role, usuwają osoby i dają jednorazowy link resetu hasła               | S-10             | FR-023, US-05                                                                                 | proposed |
+| S-13 | admin-support-log       | administrator platformy wchodzi w dane lokalu w trybie wsparcia, a właściciel widzi każde wejście w dzienniku             | S-11             | FR-021, US-05, US-10, NFR-012                                                                 | proposed |
+| S-14 | client-restaurant-split | lokal przełącza „lokal prowadzi”; klient prowadzi zamówienia i robi reset prób; pełny reset i koszty AI tylko w panelu    | S-11             | FR-026, FR-027, FR-028, US-07                                                                 | proposed |
+| S-15 | venue-templates         | menedżer zapisuje salę jako szablon, tworzy z niego wydarzenia i aktualizuje wydarzenie z szablonu                        | S-11             | FR-030, US-06, US-09                                                                          | proposed |
+| S-16 | menu-catalog-courses    | menedżer prowadzi katalog menu z kursami i menu wydarzenia; klient zamawia z niego bez zmiany cen; kuchnia widzi kursy    | S-14             | FR-037, FR-027, US-07                                                                         | proposed |
+| S-17 | event-modules           | lokal oznacza dostępne moduły, klient je włącza, administrator odblokowuje płatne; wyłączony moduł znika wszędzie         | S-14             | FR-031, US-07, NFR-023                                                                        | proposed |
+| S-18 | event-branding          | właściciel ustawia markę lokalu, klient markę wydarzenia; gość, TV, karteczki i panel pokazują je bez nazwy platformy     | S-11             | FR-032                                                                                        | proposed |
+| S-19 | scale-150               | klient prowadzi wydarzenie do 150 gości, stołów do 30 miejsc i ok. 60 stolików w dotychczasowych czasach reakcji          | F-02             | FR-033, US-08, NFR-011, NFR-015                                                               | proposed |
+| S-20 | tv-room-rotation        | TV przy wejściu pokazuje cały lokal i sam przechodzi po salach, gdy imiona byłyby nieczytelne; TV da się przypiąć do sali | S-19             | FR-034, US-08, NFR-018                                                                        | proposed |
+| S-21 | waiter-day-and-refills  | kelner (konto albo dostęp „na imprezę”) widzi dzisiejsze imprezy, oznacza wydane sztuki i dopisuje dokładki               | S-12, S-14       | FR-029, FR-023, US-08                                                                         | proposed |
+| S-22 | guest-map-search        | gość, klient, personel i tablet wyszukują gościa po imieniu, a mapa podświetla jego miejsce                               | S-21             | FR-048, US-08                                                                                 | proposed |
+| S-23 | guest-import-diets      | klient importuje gości z CSV lub wklejki z dietami, a kuchnia i kelnerzy widzą diety przy miejscu i w zliczeniach         | S-14, S-21       | FR-035, FR-036, US-07, NFR-021                                                                | proposed |
+| S-24 | room-prints             | klient i lokal drukują tablicę „znajdź swój stolik”, karty stołów, winietki w formacie i listę dla obsługi z dietami      | S-18, S-23       | FR-038                                                                                        | proposed |
+| S-25 | guest-rsvp-menu         | gość potwierdza obecność i wybiera danie do terminu, klient wpisuje za gościa, a klient i lokal widzą zliczenia           | S-16             | FR-039, US-07                                                                                 | proposed |
+| S-26 | privacy-retention       | dane gości znikają N dni po imprezie, menedżer eksportuje dane wydarzenia, a gość czyta informację o prywatności          | S-11             | FR-040, US-09, NFR-019                                                                        | proposed |
+| S-27 | staff-offline-readout   | tablet obsługi i kelner bez sieci widzą ostatni stan zamówień i rozsadzenia, także po odświeżeniu                         | S-21             | FR-047, US-08, NFR-017                                                                        | proposed |
+| S-28 | pub-quiz                | klient przygotowuje pub quiz i prowadzi go na TV, a goście odpowiadają na telefonach                                      | S-17             | FR-049                                                                                        | proposed |
+| S-29 | demo-restaurant         | administrator platformy przygotowuje restaurację demo na prawdziwym planie i menu z przykładową imprezą firmową           | S-15, S-16, S-21 | FR-042, US-05, US-06, US-07, US-08, US-09                                                     | proposed |
+| S-30 | landing-legal           | odwiedzający widzi publiczną stronę produktu z logowaniem oraz szkice regulaminu i polityki prywatności                   | S-29             | FR-041                                                                                        | proposed |
 
 ## Streams
 
 Navigation aid — groups items that share a Prerequisites chain. Canonical ordering still lives in the dependency graph below; this table is the proposed reading order across parallel tracks.
 
-| Stream | Theme                               | Chain                                                              | Note                                                                                       |
-| ------ | ----------------------------------- | ------------------------------------------------------------------ | ------------------------------------------------------------------------------------------ |
-| A      | Platforma i panel lokalu            | `F-02` → `F-03` → `S-10` → `S-11` → `S-12` → `S-13`                | Najkrótsza droga do gwiazdy przewodniej S-11; S-12 może iść obok S-11.                     |
-| B      | Lokal udostępnia, klient wybiera    | `S-14` → `S-15` → `S-16` → `S-17` → `S-18` → `S-25` → `S-28`       | Dołącza do strumienia A w S-11; reguła biznesowa PRD v2 („lokal udostępnia, klient wybiera”). |
-| C      | Dzień imprezy i skala               | `S-19` → `S-20` → `S-21` → `S-22` → `S-27`                         | S-19 wymaga tylko F-02; S-21 dołącza do A w S-12 i do B w S-14.                            |
-| D      | Goście, wydruki, prywatność         | `S-23` → `S-24` → `S-26`                                           | Dołącza do B w S-14 i do C w S-21; S-24 także do B w S-18.                                 |
-| E      | Demo i strona produktu              | `S-29` → `S-30`                                                    | Zbiera strumienie A–C; strona produktu po demo (PRD v2 FR-041).                            |
+| Stream | Theme                            | Chain                                                        | Note                                                                                          |
+| ------ | -------------------------------- | ------------------------------------------------------------ | --------------------------------------------------------------------------------------------- |
+| A      | Platforma i panel lokalu         | `F-02` → `F-03` → `S-10` → `S-11` → `S-12` → `S-13`          | Najkrótsza droga do gwiazdy przewodniej S-11; S-12 może iść obok S-11.                        |
+| B      | Lokal udostępnia, klient wybiera | `S-14` → `S-15` → `S-16` → `S-17` → `S-18` → `S-25` → `S-28` | Dołącza do strumienia A w S-11; reguła biznesowa PRD v2 („lokal udostępnia, klient wybiera”). |
+| C      | Dzień imprezy i skala            | `S-19` → `S-20` → `S-21` → `S-22` → `S-27`                   | S-19 wymaga tylko F-02; S-21 dołącza do A w S-12 i do B w S-14.                               |
+| D      | Goście, wydruki, prywatność      | `S-23` → `S-24` → `S-26`                                     | Dołącza do B w S-14 i do C w S-21; S-24 także do B w S-18.                                    |
+| E      | Demo i strona produktu           | `S-29` → `S-30`                                              | Zbiera strumienie A–C; strona produktu po demo (PRD v2 FR-041).                               |
 
 ## Baseline
 
@@ -156,7 +156,7 @@ Fundamenty poniżej zakładają, że to istnieje, i NIE budują tego od nowa.
 - **Blockers:** —
 - **Unknowns:** —
 - **Risk:** To gwiazda przewodnia. Jeśli lokal nie umie sam założyć wydarzenia i przekazać linku w < 3 minuty, reszta M-2 traci sens. Tworzenie z szablonu sali dochodzi w S-15.
-- **Status:** in-progress
+- **Status:** done
 
 ### S-12: Zespół lokalu
 
@@ -399,31 +399,31 @@ Fundamenty poniżej zakładają, że to istnieje, i NIE budują tego od nowa.
 
 ## Backlog Handoff
 
-| Roadmap ID | Change ID               | Suggested issue title                                              | Ready for `/10x-plan` | Notes                                   |
-| ---------- | ----------------------- | ------------------------------------------------------------------ | --------------------- | --------------------------------------- |
-| F-02       | multi-tenant-events     | Restauracje i wiele wydarzeń (izolacja per wydarzenie)              | yes                   | Run `/10x-plan multi-tenant-events`     |
-| F-03       | staff-accounts          | Konta personelu, logowanie i sesje bez e-maili                      | no                    | po F-02                                 |
-| S-10       | platform-restaurants    | Panel platformy: restauracje i zaproszenie właściciela              | no                    | po F-03                                 |
-| S-11       | restaurant-events       | Wydarzenia lokalu i linki dla klienta (gwiazda przewodnia)          | no                    | po S-10                                 |
-| S-12       | restaurant-team         | Zespół lokalu: zaproszenia, role, reset hasła                       | no                    | po S-10                                 |
-| S-13       | admin-support-log       | Wgląd administratora platformy z dziennikiem wejść                  | no                    | po S-11                                 |
-| S-14       | client-restaurant-split | Rozdział klient / lokal, „lokal prowadzi”, reset prób               | no                    | po S-11                                 |
-| S-15       | venue-templates         | Szablony sal i „zaktualizuj z szablonu”                             | no                    | po S-11                                 |
-| S-16       | menu-catalog-courses    | Katalog menu z kursami i menu wydarzenia                            | no                    | po S-14                                 |
-| S-17       | event-modules           | Moduły wydarzenia: dostępność, włączanie, odblokowanie płatnych     | no                    | po S-14                                 |
-| S-18       | event-branding          | Marka lokalu i wydarzenia, white-label u gościa                     | no                    | po S-11                                 |
-| S-19       | scale-150               | Skala do 150 gości, 30 miejsc, 60 stolików                          | no                    | po F-02                                 |
-| S-20       | tv-room-rotation        | TV z rotacją sal i przypięciem do sali                              | no                    | po S-19                                 |
-| S-21       | waiter-day-and-refills  | Kelner w dniu imprezy, kelner „na imprezę”, dokładki                | no                    | po S-12, S-14                           |
-| S-22       | guest-map-search        | Wyszukiwanie gościa na mapie sali                                   | no                    | po S-21                                 |
-| S-23       | guest-import-diets      | Import gości z CSV/wklejki i diety                                  | no                    | po S-14, S-21                           |
-| S-24       | room-prints             | Wydruki dla sali: tablica, karty stołów, winietki, lista obsługi    | no                    | po S-18, S-23                           |
-| S-25       | guest-rsvp-menu         | Potwierdzenie obecności i wybór dania                               | no                    | po S-16                                 |
-| S-26       | privacy-retention       | Retencja danych gości, eksport, informacja o prywatności            | no                    | po S-11                                 |
-| S-27       | staff-offline-readout   | Odczyt bez sieci dla tabletu i kelnera                              | no                    | po S-21                                 |
-| S-28       | pub-quiz                | Pub quiz na TV z odpowiedziami na telefonach                        | no                    | po S-17                                 |
-| S-29       | demo-restaurant         | Restauracja demo na planie i menu restauracji                       | no                    | po S-15, S-16, S-21; plan i menu od użytkownika |
-| S-30       | landing-legal           | Strona produktu i szkice regulaminu i polityki prywatności          | no                    | po S-29                                 |
+| Roadmap ID | Change ID               | Suggested issue title                                            | Ready for `/10x-plan` | Notes                                           |
+| ---------- | ----------------------- | ---------------------------------------------------------------- | --------------------- | ----------------------------------------------- |
+| F-02       | multi-tenant-events     | Restauracje i wiele wydarzeń (izolacja per wydarzenie)           | yes                   | Run `/10x-plan multi-tenant-events`             |
+| F-03       | staff-accounts          | Konta personelu, logowanie i sesje bez e-maili                   | no                    | po F-02                                         |
+| S-10       | platform-restaurants    | Panel platformy: restauracje i zaproszenie właściciela           | no                    | po F-03                                         |
+| S-11       | restaurant-events       | Wydarzenia lokalu i linki dla klienta (gwiazda przewodnia)       | no                    | po S-10                                         |
+| S-12       | restaurant-team         | Zespół lokalu: zaproszenia, role, reset hasła                    | no                    | po S-10                                         |
+| S-13       | admin-support-log       | Wgląd administratora platformy z dziennikiem wejść               | no                    | po S-11                                         |
+| S-14       | client-restaurant-split | Rozdział klient / lokal, „lokal prowadzi”, reset prób            | no                    | po S-11                                         |
+| S-15       | venue-templates         | Szablony sal i „zaktualizuj z szablonu”                          | no                    | po S-11                                         |
+| S-16       | menu-catalog-courses    | Katalog menu z kursami i menu wydarzenia                         | no                    | po S-14                                         |
+| S-17       | event-modules           | Moduły wydarzenia: dostępność, włączanie, odblokowanie płatnych  | no                    | po S-14                                         |
+| S-18       | event-branding          | Marka lokalu i wydarzenia, white-label u gościa                  | no                    | po S-11                                         |
+| S-19       | scale-150               | Skala do 150 gości, 30 miejsc, 60 stolików                       | no                    | po F-02                                         |
+| S-20       | tv-room-rotation        | TV z rotacją sal i przypięciem do sali                           | no                    | po S-19                                         |
+| S-21       | waiter-day-and-refills  | Kelner w dniu imprezy, kelner „na imprezę”, dokładki             | no                    | po S-12, S-14                                   |
+| S-22       | guest-map-search        | Wyszukiwanie gościa na mapie sali                                | no                    | po S-21                                         |
+| S-23       | guest-import-diets      | Import gości z CSV/wklejki i diety                               | no                    | po S-14, S-21                                   |
+| S-24       | room-prints             | Wydruki dla sali: tablica, karty stołów, winietki, lista obsługi | no                    | po S-18, S-23                                   |
+| S-25       | guest-rsvp-menu         | Potwierdzenie obecności i wybór dania                            | no                    | po S-16                                         |
+| S-26       | privacy-retention       | Retencja danych gości, eksport, informacja o prywatności         | no                    | po S-11                                         |
+| S-27       | staff-offline-readout   | Odczyt bez sieci dla tabletu i kelnera                           | no                    | po S-21                                         |
+| S-28       | pub-quiz                | Pub quiz na TV z odpowiedziami na telefonach                     | no                    | po S-17                                         |
+| S-29       | demo-restaurant         | Restauracja demo na planie i menu restauracji                    | no                    | po S-15, S-16, S-21; plan i menu od użytkownika |
+| S-30       | landing-legal           | Strona produktu i szkice regulaminu i polityki prywatności       | no                    | po S-29                                         |
 
 ## Open Roadmap Questions
 
@@ -462,3 +462,4 @@ Fundamenty poniżej zakładają, że to istnieje, i NIE budują tego od nowa.
 - **F-02: (foundation) Dane trzymają wiele restauracji i wiele wydarzeń, a każde wydarzenie należy do jednej restauracji. Istniejące wydarzenie 1 trafia do restauracji „domyślnej” bez utraty danych. Każdy link i każda operacja (rozsadzanie, publikacja, strzały, zamówienia, reset) działa tylko w obrębie swojego wydarzenia. Strona główna przestaje zakładać wydarzenia. Wszystko z v1 działa jak na kolacji, w obrębie jednego wydarzenia.** — Archived 2026-11-09 → `context/archive/2026-11-09-multi-tenant-events/`. Lesson: —.
 - **F-03: (foundation) Zaproszona osoba otwiera jednorazowy link, ustawia hasło i loguje się e-mailem i hasłem na 30 dni na urządzeniu. Może się wylogować i zmienić hasło, co zamyka jej inne sesje. Masowe zgadywanie haseł jest odrzucane. Pierwszy administrator platformy powstaje z wiersza poleceń. Wejście do panelu bez zalogowania prowadzi do logowania. Aplikacja nie wysyła e-maili.** — Archived 2026-11-09 → `context/archive/2026-11-09-staff-accounts/`. Lesson: —.
 - **S-10: Administrator platformy zakłada restaurację i dostaje jednorazowy link zaproszenia dla właściciela. Widzi listę restauracji z licznikami (wydarzenia, zespół). Wyłącza i włącza restaurację. Daje właścicielowi link resetu hasła, gdy ten zgubi dostęp. Właściciel po przyjęciu zaproszenia widzi swój pusty panel lokalu.** — Archived 2026-11-09 → `context/archive/2026-11-09-platform-restaurants/`. Lesson: —.
+- **S-11: Lokal (właściciel, a po S-12 także menedżer) zakłada wydarzenie z nazwą, datą i przewidywaną liczbą gości. Przegląda wydarzenia nadchodzące, minione i archiwum. Na karcie wydarzenia kopiuje linki klienta, TV i tabletu obsługi. Wymienia każdy z nich po potwierdzeniu, które mówi, kogo wymiana odetnie. Archiwizuje i przywraca wydarzenia, a właściciel trwale je usuwa. Personel innej restauracji dostaje dla tego wydarzenia tę samą odmowę co dla nieznanego.** — Archived 2026-11-09 → `context/archive/2026-11-10-restaurant-events/`. Lesson: —.
