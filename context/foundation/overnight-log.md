@@ -4,7 +4,7 @@ Dziennik decyzji, zależności i blokerów nocnego przebiegu M-2 (zasady: `overn
 
 ## Start
 
-- Start: 2026-11-09 21:28 CET (polecenie użytkownika: „no to lecisz z tym wszystkim”). Ostatni nowy element może ruszyć do 2026-11-10 04:28.
+- Start: 2026-11-09 21:28 CET (polecenie użytkownika: „no to lecisz z tym wszystkim”). Ostatni nowy element może ruszyć do 2026-11-10 04:28, a po przedłużeniu przez użytkownika („możesz pracować do 8:00”) do 06:45. Raport ma być gotowy przed 08:00.
 - Gałąź: `overnight/m2` z `plan/m2-saas`.
 - Środowisko: lokalny Supabase działa (baza, REST, gateway); `.env` → `127.0.0.1`; CLI podlinkowany do starego projektu (tylko polecenia lokalne); `.env` ma `AI_PROVIDER=anthropic`, więc serwery idą z `AI_PROVIDER=mock`.
 

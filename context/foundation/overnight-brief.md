@@ -78,7 +78,7 @@ Subject: `[<model>] <message>`, gdzie `<model>` to model, który faktycznie prac
 
 ## Czas
 
-- Nie zaczynaj nowego elementu później niż 7 h po godzinie startu z `overnight-log.md`. Ostatnia godzina idzie na domknięcie i raport.
+- Nie zaczynaj nowego elementu po 06:45 (2026-11-10). Raport poranny jest gotowy przed 08:00. Okno przedłużył użytkownik 2026-11-09: „możesz pracować do 8:00”.
 - Element, który po 2 próbach naprawy nie jest zielony, traktuj według sekcji „Blokery”.
 - Prawie wszystko zależy od F-02. Jeśli F-02 nie przejdzie, noc kończy się raportem, a gałąź zostaje na ostatnim zielonym commicie.
 
