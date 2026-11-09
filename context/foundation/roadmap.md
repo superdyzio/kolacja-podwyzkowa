@@ -51,7 +51,7 @@ Restauracja, która gościła kolację 2026-11-08, chce tego narzędzia do włas
 | ID   | Change ID               | Outcome (user can …)                                                                                                     | Prerequisites     | PRD refs                                                                  | Status   |
 | ---- | ----------------------- | ------------------------------------------------------------------------------------------------------------------------ | ----------------- | ------------------------------------------------------------------------- | -------- |
 | F-02 | multi-tenant-events     | (foundation) dane trzymają wiele restauracji i wydarzeń; każdy link i każda operacja działa tylko w swoim wydarzeniu       | —                 | NFR-012, NFR-015, US-10, US-01..US-04, FR-001..FR-020, FR-043, FR-044, FR-045, FR-046, FR-047     | done        |
-| F-03 | staff-accounts          | (foundation) zaproszona osoba ustawia hasło z jednorazowego linku, loguje się na 30 dni, wylogowuje się i zmienia hasło     | F-02              | FR-022, US-05, NFR-013, NFR-020, NFR-022                                  | in-progress |
+| F-03 | staff-accounts          | (foundation) zaproszona osoba ustawia hasło z jednorazowego linku, loguje się na 30 dni, wylogowuje się i zmienia hasło     | F-02              | FR-022, US-05, NFR-013, NFR-020, NFR-022                                  | done        |
 | S-10 | platform-restaurants    | administrator platformy zakłada restaurację z zaproszeniem właściciela, widzi listę, wyłącza i włącza restaurację          | F-03              | FR-021, US-05                                                             | proposed |
 | S-11 | restaurant-events       | lokal zakłada wydarzenie, przegląda nadchodzące, minione i archiwum, kopiuje i wymienia linki, archiwizuje i usuwa         | S-10              | FR-024, FR-025, US-06, US-09, US-10                                       | proposed |
 | S-12 | restaurant-team         | właściciel i menedżer zapraszają zespół, zmieniają role, usuwają osoby i dają jednorazowy link resetu hasła               | S-10              | FR-023, US-05                                                             | proposed |
@@ -130,7 +130,7 @@ Fundamenty poniżej zakładają, że to istnieje, i NIE budują tego od nowa.
 - **Blockers:** —
 - **Unknowns:** —
 - **Risk:** Ciasteczko sesji wprowadza zagrożenia, których model kluczy w linkach nie miał. Wymagania bezpieczeństwa dla planera są w `shape-notes.md` (`## Forward: tech-stack` i `## Forward: technical-roadmap`). Bez nowych zależności. Fundament ma tylko logowanie, sesje i zaproszenia, bez paneli.
-- **Status:** in-progress
+- **Status:** done
 
 ## Slices
 
@@ -460,3 +460,4 @@ Fundamenty poniżej zakładają, że to istnieje, i NIE budują tego od nowa.
 ## Done
 
 - **F-02: (foundation) Dane trzymają wiele restauracji i wiele wydarzeń, a każde wydarzenie należy do jednej restauracji. Istniejące wydarzenie 1 trafia do restauracji „domyślnej” bez utraty danych. Każdy link i każda operacja (rozsadzanie, publikacja, strzały, zamówienia, reset) działa tylko w obrębie swojego wydarzenia. Strona główna przestaje zakładać wydarzenia. Wszystko z v1 działa jak na kolacji, w obrębie jednego wydarzenia.** — Archived 2026-11-09 → `context/archive/2026-11-09-multi-tenant-events/`. Lesson: —.
+- **F-03: (foundation) Zaproszona osoba otwiera jednorazowy link, ustawia hasło i loguje się e-mailem i hasłem na 30 dni na urządzeniu. Może się wylogować i zmienić hasło, co zamyka jej inne sesje. Masowe zgadywanie haseł jest odrzucane. Pierwszy administrator platformy powstaje z wiersza poleceń. Wejście do panelu bez zalogowania prowadzi do logowania. Aplikacja nie wysyła e-maili.** — Archived 2026-11-09 → `context/archive/2026-11-09-staff-accounts/`. Lesson: —.
