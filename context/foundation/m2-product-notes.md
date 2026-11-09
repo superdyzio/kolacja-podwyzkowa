@@ -29,11 +29,13 @@ Restauracja, w której odbyła się kolacja 2026-11-08, była zachwycona narzęd
 | Rola | Jak wchodzi | Zakres |
 |---|---|---|
 | Administrator platformy | konto (flaga platformowa), pierwsze z CLI | zakłada restauracje, zaprasza właścicieli, wyłącza restauracje; nie widzi danych gości bez potrzeby |
-| Właściciel lokalu | konto | wszystko w swojej restauracji + zespół (zaproszenia, role, reset hasła, usunięcie) |
-| Menedżer lokalu | konto | wydarzenia, szablony sal, menu, zamówienia, linki, moduły, branding |
-| Obsługa (kelner) | konto lub dotychczasowy link `/r/<klucz>` na tablecie | podgląd wydarzeń i serwowanie (bez cen, gdy rola na to nie pozwala) |
-| Klient (organizator) | link `/o/<klucz>` od restauracji | goście, grupy, sale tylko do odczytu albo do edycji (do ustalenia w slice'ie), rozsadzenie, linki gości, karteczki, pytania, gra w zgadywanie, „Pokaż na TV” |
+| Właściciel lokalu | konto | wszystko w swojej restauracji + zespół (zaproszenia, link resetu hasła, usunięcie) |
+| Personel lokalu | konto | wydarzenia, szablony sal, menu, zamówienia, linki, moduły, branding; bez zarządzania zespołem |
+| Obsługa (kelner) | dotychczasowy link `/r/<klucz>` na tablecie (bez kont) | podgląd serwowania, bez cen |
+| Klient (organizator) | link `/o/<klucz>` od restauracji | goście, grupy, sale i stoliki (edycja jak dziś; blokada układu przez lokal zaparkowana), rozsadzenie, linki gości, karteczki, pytania, gra w zgadywanie, „Pokaż na TV” |
 | TV, gość | bez zmian (`/tv/<klucz>`, `/g/<klucz>`) | bez zmian, w obrębie swojego wydarzenia |
+
+Na noc są dwie role personelu: właściciel i personel. Rola menedżera i konta kelnerów są zaparkowane, bo da się je dodać później bez przeróbek.
 
 ## Stan kodu (najważniejsze dla planu)
 
@@ -55,6 +57,10 @@ Każdy slice zostawia zielone testy, lint, `astro check`, build, smoke i działa
    - Serwisy biorą `eventId` z dostępu. `EVENT_ID` znika.
    - Migracja przenosi istniejące wydarzenie 1 do restauracji „domyślnej”.
    - Testy izolacji: klucz i dane wydarzenia A nigdy nie dotykają wydarzenia B. `/` przestaje zakładać wydarzenia. Ścieżkę przejściową dla smoke i demo (CLI albo trasa tylko lokalna) wybiera planer.
+   - Uwagi projektowe:
+     - `event.id` jako `integer`, bo dwuargumentowe `pg_advisory_xact_lock(int4, int4)` bierze `int4`.
+     - Nowy parametr funkcji to nowa przeciążona wersja, a nie zamiana. Migracja musi jawnie wykonać `drop function` każdej starej sygnatury, inaczej wywołania PostgREST staną się niejednoznaczne (repo już raz na to trafiło przy `save_guest_guess_with_place`).
+     - CLAUDE.md (sekcja o singletonie, `EVENT_ID`, „Created once from `/`”) jest częścią slice'a.
 2. **F-03 `staff-accounts`: konta personelu i sesje.**
    - Tabele kont, członkostw (rola w restauracji), sesji (token losowy, w bazie tylko hash), zaproszeń i resetów (jednorazowe, z terminem ważności, hash).
    - Strony logowania i wylogowania, zmiana hasła, unieważnienie innych sesji przy zmianie hasła.
@@ -62,6 +68,10 @@ Każdy slice zostawia zielone testy, lint, `astro check`, build, smoke i działa
    - Middleware strzeże `/panel/**` i `/api/panel/**`.
    - Pierwszy administrator platformy powstaje z CLI (`npm run platform:admin -- <email>` drukuje link zaproszenia).
    - PL/EN.
+   - Bezpieczeństwo: ciasteczko sesji idzie z każdym żądaniem, więc pojawiają się zagrożenia, których model kluczy w linku nie miał.
+     - **CSRF:** middleware sprawdza `Origin` przy każdej mutacji `/api/panel/**` niezależnie od typu treści. Wbudowane sprawdzenie Astro obejmuje tylko formularze. Ciasteczko ma `SameSite=Lax`, `HttpOnly` i `Secure` na https.
+     - **IDOR:** trasy panelu niosą numer wydarzenia zamiast klucza. Jeden centralny strażnik (analog `organizerApi`) sprawdza członkostwo sesji w `event.restaurant_id`. Cudze albo nieznane id dostaje tę samą odpowiedź 404.
+     - Smoke sprawdza dostęp krzyżowy: personel restauracji A pytający o wydarzenie B dostaje 404.
 3. **S-10 `restaurant-panel`: panel platformy i panel lokalu.**
    - Administrator platformy: lista restauracji, zakładanie, link zaproszenia właściciela, wyłączenie restauracji.
    - Lokal: lista wydarzeń (nadchodzące / minione / archiwum), nowe wydarzenie (nazwa, data, liczba gości), karta wydarzenia z linkami (organizator dla klienta, TV, obsługa), wymiana każdego klucza (także organizatora), archiwizacja, trwałe usunięcie z potwierdzeniem.
@@ -72,6 +82,10 @@ Każdy slice zostawia zielone testy, lint, `astro check`, build, smoke i działa
 5. **S-12 `venue-templates`: szablony sal lokalu.**
    - Plan, sale, stoliki, kontury i skala krzeseł zapisane raz na poziomie restauracji. „Nowe wydarzenie z szablonu” kopiuje je do wydarzenia. „Zapisz układ jako szablon” działa z wydarzenia.
    - Sugestia: szablon jako wiersz `event` rodzaju `template` (bez gości i linków, ukryty na listach). Edytor `/sale` działa wtedy bez zmian, a kopiowanie robi jedna funkcja DB.
+   - Przy tym wariancie trzeba jawnie zadbać, żeby:
+     - `resolveAccess` odmawiał każdemu kluczowi szablonu (szablon ma klucze z DEFAULT/NOT NULL, ale nie wolno ich nigdzie pokazać);
+     - listy, retencja, reset i liczniki pomijały szablony;
+     - szablon edytował tylko personel lokalu przez sesję.
 6. **S-13 `event-modules-branding`: moduły i branding.**
    - Włączniki per wydarzenie, ustawia je lokal: zgadywanie rachunku, pytania, tematy AI, zamówienia na telefonie gościa, „Pokaż na TV”.
    - Wyłączony moduł znika z UI, a jego API odpowiada 404.
@@ -116,11 +130,11 @@ Każdy slice zostawia zielone testy, lint, `astro check`, build, smoke i działa
 - Kalendarz wydarzeń i dane kontaktowe klienta (lekki CRM), statystyki lokalu.
 - Kolejne języki (np. DE, UK), natywny import `.xlsx`, aplikacja PWA dla obsługi.
 
-## Otwarte pytania do użytkownika (nie blokują nocy)
+## Otwarte pytania do użytkownika (nie blokują nocy; w nawiasie domyślna odpowiedź dla nocy)
 
-1. Nazwa produktu. Do tego czasu nazwa robocza w jednej stałej i18n.
-2. Termin demo z restauracją, a co za tym idzie data, do której backlog ma być „demo-ready”.
-3. Hosting platformy: nowy projekt Supabase (Free czy Pro), nowa funkcja Lambda czy obecna, własna domena. Kody QR drukują adres.
-4. Kto płaci za AI i jaki jest limit na restaurację miesięcznie.
-5. Teksty regulaminu i polityki prywatności (prawnik) oraz umowa powierzenia danych z restauracją.
-6. Czy klient (link organizatora) może edytować sale i stoliki, czy tylko lokal.
+1. Nazwa produktu. (Nazwa robocza „Stolik” w jednej stałej i18n, łatwa do zmiany.)
+2. Termin demo z restauracją. (Noc robi backlog po kolei, a każdy slice kończy się stanem gotowym do pokazania.)
+3. Hosting platformy: nowy projekt Supabase (Free czy Pro), nowa funkcja Lambda czy obecna, własna domena. Kody QR drukują adres. (Noc niczego nie wdraża ani nie zakłada.)
+4. Kto płaci za AI i jaki jest limit na restaurację miesięcznie. (Tematy AI domyślnie wyłączone w nowych wydarzeniach; limity per wydarzenie jak dziś; atrapa w testach.)
+5. Teksty regulaminu i polityki prywatności (prawnik) oraz umowa powierzenia danych z restauracją. (Noc pisze tylko szkice oznaczone „do przeglądu prawnika”.)
+6. Czy klient (link organizatora) może edytować sale i stoliki, czy tylko lokal. (Klient edytuje jak dziś; blokada układu przez lokal zaparkowana.)
