@@ -20,7 +20,7 @@ export const LWA_LAYER_ACCOUNT = "753240598075";
 export const LWA_LAYER_NAME = "LambdaAdapterLayerArm64";
 export const LWA_LAYER_VERSION = 30;
 export const APP_PORT = "8080";
-// A static file: the adapter's readiness check must not hit the database (`/` reads the event).
+// A static file: the adapter's readiness check must not depend on the database or render a page.
 export const READINESS_CHECK_PATH = "/favicon.png";
 export const LOG_GROUP = `/aws/lambda/${FUNCTION_NAME}`;
 export const LOG_RETENTION_DAYS = 7;

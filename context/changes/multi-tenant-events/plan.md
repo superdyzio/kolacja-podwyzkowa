@@ -356,11 +356,11 @@ New indexes keep per-event reads indexed (`seating_snapshot (event_id, id)` for 
 
 #### Automated
 
-- [x] 3.1 From scratch: `npx supabase db reset`, then `AI_PROVIDER=mock npm test` passes
-- [x] 3.2 Build succeeds: `npm run build`
-- [x] 3.3 Smoke passes twice in a row on the same DB
-- [x] 3.4 Demo fills a new event
-- [x] 3.5 Lint passes: `npm run lint`
+- [x] 3.1 From scratch: `npx supabase db reset`, then `AI_PROVIDER=mock npm test` passes — d85a6cd
+- [x] 3.2 Build succeeds: `npm run build` — d85a6cd
+- [x] 3.3 Smoke passes twice in a row on the same DB — d85a6cd
+- [x] 3.4 Demo fills a new event — d85a6cd
+- [x] 3.5 Lint passes: `npm run lint` — d85a6cd
 
 #### Manual
 
@@ -370,5 +370,5 @@ New indexes keep per-event reads indexed (`seating_snapshot (event_id, id)` for 
 
 #### Automated
 
-- [ ] 4.1 Prettier/lint clean: `npm run lint`
-- [ ] 4.2 No stale singleton wording in CLAUDE.md and README
+- [x] 4.1 Prettier/lint clean: `npm run lint`
+- [x] 4.2 No stale singleton wording in CLAUDE.md and README

@@ -20,7 +20,7 @@ npm run env:local   # zapisuje SUPABASE_URL i SUPABASE_SERVICE_ROLE_KEY do .env
 npm run dev
 ```
 
-Otwórz http://localhost:4321/, kliknij „Utwórz wydarzenie” i od razu dodaj link organizatora do zakładek. Adres TV jest w panelu organizatora. Jeśli zgubisz link, wypisze go `npm run links`.
+Załóż restaurację i wydarzenie: `npm run event:create -- --restaurant "Pod Lipą" --name "Kolacja firmowa"` (z bazą startową pytań). Skrypt wypisze link organizatora, adres TV i link restauracji — link organizatora od razu dodaj do zakładek. Kolejne wydarzenie tej samej restauracji: `--restaurant-id <id>`. Panel restauracji, w którym zakłada się wydarzenia, przyjdzie później; strona `/` tylko mówi, że dostęp jest przez link. Jeśli zgubisz link, `npm run links` wypisze linki wszystkich wydarzeń.
 
 ## Dostęp
 
@@ -112,11 +112,12 @@ Na produkcji ta zmiana wymaga migracji bazy **przed** wdrożeniem kodu (bez niej
 - `npm test`: testy jednostkowe i integracyjne. Integracyjne działają tylko z lokalnym Supabase (`SUPABASE_URL` na `127.0.0.1`), inaczej są pomijane.
 - `npm run lint`, `npx astro check`: lint i sprawdzanie typów.
 - `npm run env:local`: zapisuje dane lokalnego Supabase do `.env` (jedyny plik ze zmiennymi; stary `.dev.vars` z czasów Cloudflare nie jest już używany).
-- `npm run links`: wypisuje link organizatora, adres TV i link restauracji z bazy.
-- `npm run smoke`: test HTTP macierzy dostępu na działającym serwerze (`BASE_URL`, domyślnie `http://localhost:4321`). Wymaga bazy bez wydarzenia. `npm run preview` czyta `.env` przy starcie, więc po zmianie `.env` uruchom podgląd ponownie.
+- `npm run event:create`: zakłada wydarzenie (z nową restauracją albo w istniejącej: `--restaurant-id`) z bazą startową pytań w bazie z `.env` i wypisuje jego linki; najpierw podaje, do jakiej bazy pisze.
+- `npm run links`: wypisuje wszystkie wydarzenia (restauracja · nazwa, id) z linkiem organizatora, adresem TV i linkiem restauracji.
+- `npm run smoke`: test HTTP macierzy dostępu na działającym serwerze (`BASE_URL`, domyślnie `http://localhost:4321`). Działa tylko z lokalnym Supabase w `.env` (tym samym co serwer): przy każdym uruchomieniu zakłada w nim własne dwie restauracje z wydarzeniami (A do wszystkich sprawdzeń, B do sprawdzenia, że linki A nie sięgają do B) i nie rusza innych wydarzeń, więc można go puszczać wielokrotnie na tej samej bazie. `npm run preview` czyta `.env` przy starcie, więc po zmianie `.env` uruchom podgląd ponownie.
 - `npm run package:lambda`: build do `dist-lambda/build` (nie rusza `dist/` podglądu) i paczka `dist-lambda/function.zip` dla AWS Lambda, ze sprawdzeniem (bez plików env i sekretów, bez modułów natywnych, zip < 50 MB, rozpakowany zip startuje poza repozytorium).
 - `npm run deploy:aws`: wdrożenie na AWS Lambda (patrz niżej); `-- --dry-run` tylko wypisuje plan.
-- `npm run demo`: wypełnia lokalną aplikację danymi demo do sprawdzeń ręcznych (40 gości, plan, 3 sale, 7 stolików, grupy 4/2/2, 1 nieobecny, 1 przypięty, opublikowany rozkład, 30 strzałów z remisem, 12 z typem miejsca, zamówienie z 9 pozycjami) przez API działającego serwera (`BASE_URL`) i wypisuje linki. Tworzy wydarzenie, gdy go nie ma; odmawia, gdy wydarzenie ma już gości, sale albo plan.
+- `npm run demo`: wypełnia lokalną aplikację danymi demo do sprawdzeń ręcznych (40 gości, plan, 3 sale, 7 stolików, grupy 4/2/2, 1 nieobecny, 1 przypięty, opublikowany rozkład, 30 strzałów z remisem, 12 z typem miejsca, zamówienie z 9 pozycjami) przez API działającego serwera (`BASE_URL`) i wypisuje linki. Za każdym razem zakłada w lokalnej bazie nową restaurację „Restauracja demo” z wydarzeniem „Kolacja podwyżkowa (demo)”.
 
 ## CI
 
@@ -160,10 +161,9 @@ AWS_REGION=eu-central-1 npm run deploy:aws
 ### Pierwsze uruchomienie
 
 1. Pierwsze wdrożenie na `AI_PROVIDER=mock` (pusta baza).
-2. Smoke na prawdziwym adresie: `BASE_URL=https://<id>.lambda-url.<region>.on.aws npm run smoke` (bez `/` na końcu; tworzy wydarzenie testowe i odmawia na prawdziwym AI).
-3. Wyczyść dane smoke: Supabase → SQL Editor → `delete from public.event;` (reszta usuwa się kaskadowo).
-4. AI: w `.env.aws` ustaw `AI_PROVIDER=anthropic` i `ANTHROPIC_API_KEY` (z limitem wydatków w konsoli Anthropic) i wdroż ponownie tą samą komendą.
-5. Otwórz adres, „Utwórz wydarzenie”, link organizatora do zakładek. Linki gości i karteczki drukuj z tego adresu (są `https://`).
+2. Smoke działa tylko lokalnie (zakłada wydarzenia bezpośrednio w lokalnej bazie), więc na prawdziwym adresie sprawdź ręcznie: załóż wydarzenie testowe jak w kroku 4, otwórz jego linki, potem usuń je w Supabase → SQL Editor: `delete from public.restaurant where id = <id>;` (wydarzenie i jego dane usuwają się kaskadowo).
+3. AI: w `.env.aws` ustaw `AI_PROVIDER=anthropic` i `ANTHROPIC_API_KEY` (z limitem wydatków w konsoli Anthropic) i wdroż ponownie tą samą komendą.
+4. Załóż wydarzenie w bazie produkcyjnej: `BASE_URL=https://<id>.lambda-url.<region>.on.aws SUPABASE_URL=<z .env.aws> SUPABASE_SERVICE_ROLE_KEY=<z .env.aws> npm run event:create -- --restaurant "<restauracja>" --name "<wydarzenie>"` (zmienne z wiersza poleceń mają pierwszeństwo przed `.env`; skrypt najpierw wypisuje host bazy). Link organizatora do zakładek. Linki gości i karteczki drukuj z adresu produkcyjnego (są `https://`).
 
 ### Koszty i limity
 
