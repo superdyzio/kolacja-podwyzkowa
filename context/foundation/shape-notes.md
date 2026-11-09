@@ -3,9 +3,13 @@ project: kolacja-podwyzkowa
 context_type: brownfield
 created: 2026-11-09
 updated: 2026-11-09
+timeline_budget:
+  delivery_weeks: 2
+  hard_deadline: null
+  after_hours_only: false
 checkpoint:
-  current_phase: 3
-  phases_completed: [1, 2]
+  current_phase: 4
+  phases_completed: [1, 2, 3]
   gray_areas_resolved:
     - topic: context type
       decision: "brownfield (171 commitów, package-lock.json, src/, .github/); v1 shape-notes zarchiwizowane w context/foundation/archive/shape-notes-2026-11-09-1534.md"
@@ -43,6 +47,10 @@ checkpoint:
       decision: "30 dni na urządzeniu; wylogowanie i zmiana hasła zamykają sesje"
     - topic: linki bez logowania
       decision: "linki lokalu (/r/, TV) tylko do odczytu; każda zmiana po stronie lokalu wymaga konta; link klienta (/o/) i linki gości (/g/) zachowują swoje dotychczasowe akcje"
+    - topic: przepływ demo (MVP zmiany)
+      decision: "przepływ 1–7: administrator zakłada lokal → zespół → szablon sali → wydarzenie z szablonu i link dla klienta → klient rozsadza → zamówienia, TV, kelner, tablet → archiwum i kolejne wydarzenie z szablonu"
+    - topic: zakres i koszt
+      decision: "cały backlog must-have, dostarczenie ok. 2 tygodnie; użytkownik świadomie przyjął koszt"
   frs_drafted: 0
   quality_check_status: pending
 ---
@@ -103,3 +111,43 @@ Zasady:
 - **Sesja** trwa 30 dni na urządzeniu. Wylogowanie i zmiana hasła ją zamykają.
 - **Konta bez e-maili.** Zaproszenia i reset hasła to jednorazowe linki z terminem ważności, które przekazuje zapraszający.
 - **Odmowa.** Wejście do panelu bez zalogowania prowadzi do logowania. Cudze lub nieznane wydarzenie albo restauracja daje tę samą odmowę bez danych, jak dziś dla kluczy.
+
+## Change flow (MVP zmiany)
+
+Przepływ, który ma zadziałać na demo z restauracją (delta względem v1):
+
+1. Administrator platformy zakłada restaurację i daje właścicielowi link zaproszenia.
+2. Właściciel ustawia hasło i zaprasza menedżera i kelnera.
+3. Menedżer raz wprowadza szablon sali (plan, sale, stoły).
+4. Menedżer tworzy wydarzenie (np. „Wigilia firmy Y, 12.12, 80 osób”) z szablonu i kopiuje klientowi link organizatora.
+5. Klient wkleja gości, rozsadza i publikuje (jak v1). Lokal widzi to w podglądzie.
+6. Menedżer wpisuje zamówienia. W dniu imprezy TV pokazuje rozsadzenie, kelner na swoim koncie oznacza wydane, a kuchnia patrzy na tablet `/r/`.
+7. Po imprezie wydarzenie idzie do archiwum, a następne powstaje z tego samego szablonu w minutę.
+
+**Zasięg zmiany:**
+- Każdy serwis i każda funkcja bazy dostają wydarzenie zamiast stałego `id = 1`.
+- Zmieniają się też middleware dostępu, smoke i dane demo.
+- Użytkownik pierwszy zauważyłby wyciek danych między wydarzeniami albo restauracjami.
+
+## Success Criteria
+
+### Primary
+- Przepływ 1–7 przechodzi na żywo na demo wyłącznie w aplikacji, bez komend i ręcznych zmian w bazie (poza pierwszym kontem administratora platformy).
+- Od „Nowe wydarzenie” z szablonu do skopiowanego linku dla klienta mijają mniej niż 3 minuty.
+- Restauracja prowadzi w aplikacji swoją pierwszą prawdziwą imprezę, bez Excela w dniu imprezy.
+
+### Secondary
+- Po demo restauracja deklaruje użycie na kolejnych imprezach i gotowość do płacenia.
+- Druga restauracja działa na platformie bez zmian w kodzie.
+- W dniu imprezy kuchnia i kelnerzy nie używają wydrukowanej listy zamówień.
+- Klient przygotowuje gości i rozsadzenie bez pomocy lokalu.
+
+### Guardrails
+- **Izolacja danych:** żadna osoba ani link nie zobaczy danych innej restauracji ani innego wydarzenia (wyjątek: wgląd administratora platformy).
+- **v1 bez regresji:** prywatność strzałów, publikacja na TV i telefony w ≤ 5 s, odczyt bez sieci, karteczki QR i PL/EN działają jak na kolacji 2026-11-08.
+- **Linki lokalu tylko do odczytu:** żadna zmiana po stronie lokalu bez zalogowania; dane gości nigdy nie trafiają do AI.
+- **Utrata hasła nie blokuje lokalu:** zawsze jest droga odzyskania dostępu (link resetu od właściciela lub menedżera albo od administratora platformy), bez ręcznych zmian w bazie.
+
+## Timeline acknowledgment
+
+Acknowledged on 2026-11-09: 2-week delivery of the full M-2 backlog (all must-have) requires sustained dedication; user accepted.
