@@ -1,7 +1,7 @@
 ---
 change_id: staff-accounts
 title: Staff accounts, password login and 30-day sessions without e-mail
-status: implementing
+status: implemented
 created: 2026-11-09
 updated: 2026-11-09
 archived_at: null

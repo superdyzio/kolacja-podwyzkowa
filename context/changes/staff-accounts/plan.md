@@ -383,5 +383,5 @@ Additive (five new tables, four functions); no existing row or function changes,
 
 #### Automated
 
-- [x] 4.1 Lint passes: `npm run lint`
-- [x] 4.2 `grep -n "has_auth: true" context/foundation/tech-stack.md` finds the line
+- [x] 4.1 Lint passes: `npm run lint` — 5771c2b
+- [x] 4.2 `grep -n "has_auth: true" context/foundation/tech-stack.md` finds the line — 5771c2b
