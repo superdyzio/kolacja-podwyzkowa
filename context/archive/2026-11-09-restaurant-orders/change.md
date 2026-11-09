@@ -1,10 +1,10 @@
 ---
 change_id: restaurant-orders
 title: Food orders in the organizer panel and a read-only restaurant link with the prep list and serving placement
-status: implemented
+status: archived
 created: 2026-11-02
-updated: 2026-11-03
-archived_at: null
+updated: 2026-11-09
+archived_at: 2026-11-09T19:50:25Z
 ---
 
 ## Notes

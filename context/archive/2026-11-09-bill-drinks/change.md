@@ -1,10 +1,10 @@
 ---
 change_id: bill-drinks
 title: The organizer enters the drinks on the restaurant's bill to check the bill when settling up
-status: implemented
+status: archived
 created: 2026-11-08
-updated: 2026-11-08
-archived_at: null
+updated: 2026-11-09
+archived_at: 2026-11-09T19:50:25Z
 ---
 
 ## Notes

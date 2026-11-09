@@ -1,10 +1,10 @@
 ---
 change_id: guest-delivered
 title: Guests mark which pieces of their order arrived; the organizer marks single pieces and sees who marked what
-status: implemented
+status: archived
 created: 2026-11-07
-updated: 2026-11-07
-archived_at: null
+updated: 2026-11-09
+archived_at: 2026-11-09T19:50:25Z
 ---
 
 ## Notes

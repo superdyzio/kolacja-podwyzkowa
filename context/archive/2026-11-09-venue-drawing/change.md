@@ -1,10 +1,10 @@
 ---
 change_id: venue-drawing
 title: Drawn venue plan on the TV with names at the chairs, redrawn from a photo by AI
-status: impl_reviewed
+status: archived
 created: 2026-10-31
-updated: 2026-11-02
-archived_at: null
+updated: 2026-11-09
+archived_at: 2026-11-09T19:50:25Z
 ---
 
 ## Notes

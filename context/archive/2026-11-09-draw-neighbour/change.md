@@ -1,10 +1,10 @@
 ---
 change_id: draw-neighbour
 title: The seating draw never leaves anyone without a neighbour
-status: implemented
+status: archived
 created: 2026-11-07
-updated: 2026-11-07
-archived_at: null
+updated: 2026-11-09
+archived_at: 2026-11-09T19:50:25Z
 ---
 
 ## Notes
