@@ -837,6 +837,177 @@ export interface Database {
           },
         ];
       };
+      // staff-accounts (F-03): a staff account (platform admin, owner, manager, waiter); e-mail lowercase, scrypt
+      // password hash null until the invitation link is used.
+      staff_account: {
+        Row: {
+          id: number;
+          email: string;
+          display_name: string | null;
+          password_hash: string | null;
+          is_platform_admin: boolean;
+          created_at: string;
+          password_changed_at: string | null;
+        };
+        Insert: {
+          id?: never;
+          email: string;
+          display_name?: string | null;
+          password_hash?: string | null;
+          is_platform_admin?: boolean;
+          created_at?: string;
+          password_changed_at?: string | null;
+        };
+        Update: {
+          id?: never;
+          email?: string;
+          display_name?: string | null;
+          password_hash?: string | null;
+          is_platform_admin?: boolean;
+          created_at?: string;
+          password_changed_at?: string | null;
+        };
+        Relationships: [];
+      };
+      // staff-accounts: the account's role in a restaurant ('owner' | 'manager' | 'waiter').
+      restaurant_member: {
+        Row: {
+          restaurant_id: number;
+          account_id: number;
+          role: string;
+          created_at: string;
+        };
+        Insert: {
+          restaurant_id: number;
+          account_id: number;
+          role: string;
+          created_at?: string;
+        };
+        Update: {
+          restaurant_id?: number;
+          account_id?: number;
+          role?: string;
+          created_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "restaurant_member_restaurant_id_fkey";
+            columns: ["restaurant_id"];
+            isOneToOne: false;
+            referencedRelation: "restaurant";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "restaurant_member_account_id_fkey";
+            columns: ["account_id"];
+            isOneToOne: false;
+            referencedRelation: "staff_account";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      // staff-accounts: a login on one device (SHA-256 of the session token, fixed expiry).
+      staff_session: {
+        Row: {
+          id: number;
+          account_id: number;
+          token_hash: string;
+          created_at: string;
+          expires_at: string;
+        };
+        Insert: {
+          id?: never;
+          account_id: number;
+          token_hash: string;
+          created_at?: string;
+          expires_at: string;
+        };
+        Update: {
+          id?: never;
+          account_id?: number;
+          token_hash?: string;
+          created_at?: string;
+          expires_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "staff_session_account_id_fkey";
+            columns: ["account_id"];
+            isOneToOne: false;
+            referencedRelation: "staff_account";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      // staff-accounts: a one-time link ('invite' | 'reset'), SHA-256 of the token. Two FKs to staff_account: embeds
+      // must name staff_account!staff_token_account_id_fkey.
+      staff_token: {
+        Row: {
+          id: number;
+          account_id: number;
+          kind: string;
+          token_hash: string;
+          created_at: string;
+          expires_at: string;
+          used_at: string | null;
+          created_by: number | null;
+        };
+        Insert: {
+          id?: never;
+          account_id: number;
+          kind: string;
+          token_hash: string;
+          created_at?: string;
+          expires_at: string;
+          used_at?: string | null;
+          created_by?: number | null;
+        };
+        Update: {
+          id?: never;
+          account_id?: number;
+          kind?: string;
+          token_hash?: string;
+          created_at?: string;
+          expires_at?: string;
+          used_at?: string | null;
+          created_by?: number | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "staff_token_account_id_fkey";
+            columns: ["account_id"];
+            isOneToOne: false;
+            referencedRelation: "staff_account";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "staff_token_created_by_fkey";
+            columns: ["created_by"];
+            isOneToOne: false;
+            referencedRelation: "staff_account";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      // staff-accounts: password attempts per typed e-mail (hashed key) for throttling.
+      login_attempt: {
+        Row: {
+          id: number;
+          key_hash: string;
+          created_at: string;
+        };
+        Insert: {
+          id?: never;
+          key_hash: string;
+          created_at?: string;
+        };
+        Update: {
+          id?: never;
+          key_hash?: string;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
     };
     Views: { [_ in never]: never };
     Functions: {
@@ -937,6 +1108,34 @@ export interface Database {
       reset_event: {
         Args: { p_event_id: number; p_parts: string[]; p_starter_questions: Json };
         Returns: Json;
+      };
+      // staff-accounts: stores a new one-time link for the account (its unused links are deleted); returns the id.
+      // Raises ACCOUNT_NOT_FOUND.
+      issue_staff_token: {
+        Args: {
+          p_account_id: number;
+          p_kind: string;
+          p_token_hash: string;
+          p_expires_at: string;
+          p_created_by?: number | null;
+        };
+        Returns: number;
+      };
+      // staff-accounts: uses a one-time link (sets the password, ends earlier sessions, opens a new one); returns the
+      // account id. Raises TOKEN_INVALID (unknown, used or expired alike).
+      redeem_staff_token: {
+        Args: { p_token_hash: string; p_password_hash: string; p_session_hash: string; p_session_expires_at: string };
+        Returns: number;
+      };
+      // staff-accounts: new password hash, every other session of the account ends. Raises ACCOUNT_NOT_FOUND.
+      change_staff_password: {
+        Args: { p_account_id: number; p_keep_session_id: number; p_password_hash: string };
+        Returns: undefined;
+      };
+      // staff-accounts: admits one password attempt for a key (records it) or refuses with retry-after seconds.
+      begin_login_attempt: {
+        Args: { p_key_hash: string; p_limit: number; p_window_seconds: number };
+        Returns: { allowed: boolean; retry_after_seconds: number }[];
       };
     };
     Enums: { [_ in never]: never };
