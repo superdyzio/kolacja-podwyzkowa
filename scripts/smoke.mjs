@@ -2,8 +2,9 @@
 // Needs the server's LOCAL Supabase in .env (SUPABASE_URL on 127.0.0.1/localhost, like the server): it creates its own
 // two restaurants with one event each straight in the database (multi-tenant-events: nothing in the app creates events
 // yet), runs every section on event A and proves at the end that A's links never reach event B. Staff accounts of its
-// own (e-mails tagged with the run, so a throttle of an earlier run never applies) check login, sessions and the panel
-// guard. Other events and accounts in the database are never touched, so it runs again and again on the same database.
+// own (e-mails tagged with the run, so a throttle of an earlier run never applies) check login, sessions, the panel
+// guard and the platform panel (which adds restaurants of the run). Other events and accounts in the database are
+// never touched, so it runs again and again on the same database.
 // Zero dependencies on purpose. Usage: BASE_URL=http://localhost:4321 npm run smoke
 
 import { Buffer } from "node:buffer";
@@ -16,6 +17,7 @@ import {
   createRestaurant,
   ensureStaffAccount,
   issueStaffLink,
+  listRestaurants,
   PlatformError,
   readDbEnv,
 } from "./lib/platform.mjs";
@@ -4560,6 +4562,387 @@ check(
   "staff: an organizer key as a session cookie opens nothing",
   keyAsSession.status === 401,
   String(keyAsSession.status),
+);
+
+// 26. Platform panel (platform-restaurants, S-10): only the platform admin lists the restaurants (counters and owners,
+// never an event's data), creates one with its owner's one-time invitation, gives an owner a fresh link (invitation
+// or password reset), adds owners and switches a restaurant off and on. Other staff get the guard's identical 404,
+// no session the identical 401; every mutation needs the page's own Origin. A disabled restaurant opens nothing to its
+// staff, while its events' links keep working. Uses the sessions of section 25.
+const PLATFORM_API = "/api/panel/platform/restaurants";
+const RESET_STAFF_PASSWORD = "smoke-reset-haslo-3";
+const HASLO_PATH = /^\/haslo\/([A-Za-z0-9_-]{43})$/;
+const platformCall = (token, path = "", options = {}) =>
+  request(`${PLATFORM_API}${path}`, { ...(token ? { cookie: asStaff(token) } : {}), ...options });
+const idPath = (id) => `/${String(id)}`;
+const listedOf = (res) => (Array.isArray(res.data?.restaurants) ? res.data.restaurants : []);
+const findListed = (res, id) => listedOf(res).find((restaurant) => restaurant.id === id);
+const sortedIds = (rows) =>
+  rows
+    .map((row) => row.id)
+    .sort((a, b) => a - b)
+    .join(",");
+const isNoAccessPage = (res) => res.status === 404 && res.body.includes(NO_ACCESS_TEXT);
+// The panel hub's entry of a restaurant (`<li … data-restaurant-id="<id>">…</li>`).
+const hubEntry = (res, id) => {
+  const start = res.body.indexOf(`data-restaurant-id="${String(id)}"`);
+  return start === -1 ? "" : res.body.slice(start, res.body.indexOf("</li>", start));
+};
+
+let dbRestaurants = [];
+try {
+  dbRestaurants = await listRestaurants(platformEnv);
+} catch (error) {
+  check(
+    "platform: the restaurants are read from the database",
+    false,
+    error instanceof PlatformError ? error.message : String(error),
+  );
+}
+const adminList = await platformCall(sessionAdmin);
+const listedA = findListed(adminList, restaurantA.id);
+check(
+  "platform: the admin lists every restaurant of the database (no-store), A with 1 event, 2 people and owner A with a password",
+  adminList.status === 200 &&
+    adminList.cacheControl.includes("no-store") &&
+    dbRestaurants.length > 0 &&
+    sortedIds(listedOf(adminList)) === sortedIds(dbRestaurants) &&
+    listedA?.name === `Restauracja smoke A ${RUN_TAG}` &&
+    listedA.disabled === false &&
+    listedA.eventCount === 1 &&
+    listedA.memberCount === 2 &&
+    listedA.owners.length === 1 &&
+    listedA.owners[0].email === staff.ownerA.email &&
+    listedA.owners[0].accountId === staff.ownerA.id &&
+    listedA.owners[0].hasPassword === true,
+  `${adminList.status} ${listedOf(adminList).length}/${dbRestaurants.length} ${JSON.stringify(listedA)}`,
+);
+check(
+  "platform: the admin's list carries no event data (event A's name and keys are not in it)",
+  adminList.status === 200 &&
+    ![EVENT_NAME, organizerKey, tvKey, eventA.restaurantKey].some((secret) => adminList.body.includes(secret)),
+);
+const platformPage = await request("/panel/platforma", { cookie: asStaff(sessionAdmin) });
+const adminHub = await request("/panel", { cookie: asStaff(sessionAdmin) });
+check(
+  "platform: /panel/platforma opens for the admin with A's name and the auth headers; /panel links to it",
+  platformPage.status === 200 &&
+    platformPage.body.includes(`Restauracja smoke A ${RUN_TAG}`) &&
+    authHeaders(platformPage) &&
+    adminHub.status === 200 &&
+    adminHub.body.includes('href="/panel/platforma"') &&
+    adminHub.body.includes("Panel platformy"),
+  `${platformPage.status} ${adminHub.status}`,
+);
+
+// Everyone but the admin: the identical 404 (staff) or 401 (no session), and nothing happens.
+const platformAttempts = [
+  ["list", "", {}],
+  ["disable A", idPath(restaurantA.id), { method: "PATCH", json: { disabled: true } }],
+  ["add an owner to A", `${idPath(restaurantA.id)}/owners`, { method: "POST", json: { email: staffEmail("intruz") } }],
+  ["link for owner A", `${idPath(restaurantA.id)}/owners/${String(staff.ownerA.id)}/link`, { method: "POST" }],
+  [
+    "create a restaurant",
+    "",
+    { method: "POST", json: { name: `Restauracja intruza ${RUN_TAG}`, ownerEmail: staffEmail("intruz") } },
+  ],
+];
+const unknownForStaff = await panelGet(sessionOwner, "/restaurants/2000000000");
+const platformDenied = [];
+for (const [who, token] of [
+  ["owner A", sessionOwner],
+  ["owner B", sessionB],
+  ["waiter A", sessionWaiter],
+]) {
+  for (const [name, path, options] of platformAttempts) {
+    const res = await platformCall(token, path, options);
+    if (!noAccessJson(res) || res.body !== unknownForStaff.body) {
+      platformDenied.push(`${who}, ${name}: ${String(res.status)} ${res.body.slice(0, 60)}`);
+    }
+  }
+}
+check(
+  "platform: owners and waiters get the identical 404 of an unknown restaurant on every platform route",
+  noAccessJson(unknownForStaff) && platformDenied.length === 0,
+  platformDenied.join("; "),
+);
+const anonymousDenied = [];
+for (const [name, path, options] of platformAttempts) {
+  const res = await platformCall(null, path, options);
+  if (res.status !== 401 || res.body !== meNoCookie.body) {
+    anonymousDenied.push(`${name}: ${String(res.status)} ${res.body.slice(0, 60)}`);
+  }
+}
+check(
+  "platform: without a session every platform route → the identical 401 of /api/panel/me",
+  anonymousDenied.length === 0,
+  anonymousDenied.join("; "),
+);
+const platformPageOwner = await request("/panel/platforma", { cookie: asStaff(sessionOwner) });
+const platformPageAnonymous = await request("/panel/platforma");
+check(
+  "platform: /panel/platforma → the no-access page for an owner, 303 /logowanie without a session",
+  isNoAccessPage(platformPageOwner) && redirectsTo(platformPageAnonymous, "/logowanie"),
+  `${platformPageOwner.status} ${platformPageAnonymous.status} ${platformPageAnonymous.location}`,
+);
+
+// Origin: every platform mutation without the page's own Origin → 403, also for the admin.
+const platformOriginResults = [];
+for (const [name, path, options] of platformAttempts.filter(([, , options]) => options.method)) {
+  for (const [how, extra] of [
+    ["no Origin", { noOrigin: true }],
+    ["foreign Origin", { extraHeaders: FOREIGN }],
+  ]) {
+    const res = await platformCall(sessionAdmin, path, { ...options, ...extra });
+    if (res.status !== 403) {
+      platformOriginResults.push(`${name}, ${how}: ${String(res.status)}`);
+    }
+  }
+}
+const listAfterRefusals = await platformCall(sessionAdmin);
+check(
+  "platform: create, disable, add owner and link without the page's Origin → 403 (admin too), nothing changed",
+  platformOriginResults.length === 0 &&
+    listedOf(listAfterRefusals).length === listedOf(adminList).length &&
+    findListed(listAfterRefusals, restaurantA.id)?.disabled === false &&
+    findListed(listAfterRefusals, restaurantA.id)?.owners.length === 1,
+  platformOriginResults.join("; "),
+);
+
+// Validation and unknown targets (admin).
+const platformInvalid = [];
+for (const [name, path, options] of [
+  ["empty name", "", { method: "POST", json: { name: "", ownerEmail: staffEmail("walidacja") } }],
+  ["81-character name", "", { method: "POST", json: { name: "x".repeat(81), ownerEmail: staffEmail("walidacja") } }],
+  ["bad e-mail", "", { method: "POST", json: { name: `Walidacja ${RUN_TAG}`, ownerEmail: "nie-email" } }],
+  [
+    "extra field",
+    "",
+    { method: "POST", json: { name: `Walidacja ${RUN_TAG}`, ownerEmail: staffEmail("walidacja"), extra: 1 } },
+  ],
+  ["disabled as text", idPath(restaurantA.id), { method: "PATCH", json: { disabled: "yes" } }],
+  ["owner with a bad e-mail", `${idPath(restaurantA.id)}/owners`, { method: "POST", json: { email: "nie-email" } }],
+]) {
+  const res = await platformCall(sessionAdmin, path, options);
+  if (res.status !== 400 || typeof res.data?.error !== "string") {
+    platformInvalid.push(`${name}: ${String(res.status)}`);
+  }
+}
+check(
+  "platform: an empty or 81-character name, a bad e-mail, an extra field, disabled as text → 400 with a message",
+  platformInvalid.length === 0,
+  platformInvalid.join("; "),
+);
+const platformUnknown = [];
+for (const [name, path, options] of [
+  ["disable unknown", "/2000000000", { method: "PATCH", json: { disabled: true } }],
+  ["disable huge", "/99999999999", { method: "PATCH", json: { disabled: true } }],
+  ["disable malformed", "/abc", { method: "PATCH", json: { disabled: true } }],
+  ["owner of unknown", "/2000000000/owners", { method: "POST", json: { email: staffEmail("walidacja") } }],
+  ["link of unknown restaurant", `/2000000000/owners/${String(staff.ownerA.id)}/link`, { method: "POST" }],
+  ["link of a waiter", `${idPath(restaurantA.id)}/owners/${String(staff.waiterA.id)}/link`, { method: "POST" }],
+  ["link of another's owner", `${idPath(restaurantB.id)}/owners/${String(staff.ownerA.id)}/link`, { method: "POST" }],
+  ["link of a malformed account", `${idPath(restaurantA.id)}/owners/abc/link`, { method: "POST" }],
+]) {
+  const res = await platformCall(sessionAdmin, path, options);
+  if (!noAccessJson(res)) {
+    platformUnknown.push(`${name}: ${String(res.status)} ${res.body.slice(0, 60)}`);
+  }
+}
+const listAfterInvalid = await platformCall(sessionAdmin);
+check(
+  "platform: unknown, huge or malformed ids and an account that is not an owner there → the identical 404, nothing created",
+  platformUnknown.length === 0 && listedOf(listAfterInvalid).length === listedOf(adminList).length,
+  platformUnknown.join("; "),
+);
+
+// Flow: a new restaurant with a new owner, the owner's invitation, their empty restaurant panel.
+const nameC = `Restauracja smoke C ${RUN_TAG}`;
+const emailC = staffEmail("ownerc");
+const createdC = await platformCall(sessionAdmin, "", {
+  method: "POST",
+  json: { name: nameC, ownerEmail: emailC, ownerName: "Smoke ownerC" },
+});
+const restaurantCId = typeof createdC.data?.restaurantId === "number" ? createdC.data.restaurantId : 2000000001;
+const ownerC = createdC.data?.owner ?? null;
+const listedC = findListed(createdC, restaurantCId);
+check(
+  "platform: the admin creates restaurant C with a new owner → 201, the owner's invitation /haslo/<token>, C listed without events",
+  createdC.status === 201 &&
+    ownerC?.email === emailC &&
+    ownerC.created === true &&
+    ownerC.hasPassword === false &&
+    ownerC.link?.kind === "invite" &&
+    HASLO_PATH.test(ownerC.link.path) &&
+    listedC?.name === nameC &&
+    listedC.disabled === false &&
+    listedC.eventCount === 0 &&
+    listedC.memberCount === 1 &&
+    listedC.owners[0]?.hasPassword === false,
+  `${createdC.status} ${createdC.body.slice(0, 200)}`.replace(/\/haslo\/[A-Za-z0-9_-]+/g, "/haslo/<token>"),
+);
+const firstInviteC = HASLO_PATH.exec(ownerC?.link?.path ?? "")?.[1] ?? "brak";
+const newInviteC = await platformCall(
+  sessionAdmin,
+  `${idPath(restaurantCId)}/owners/${String(ownerC?.accountId)}/link`,
+  {
+    method: "POST",
+  },
+);
+const inviteCToken = HASLO_PATH.exec(newInviteC.data?.link?.path ?? "")?.[1] ?? "brak";
+const firstInvitePage = await request(`/haslo/${firstInviteC}`);
+const inviteCPage = await request(`/haslo/${inviteCToken}`);
+check(
+  "platform: „Nowy link” for an owner without a password → a new invitation; the earlier one stops working",
+  newInviteC.status === 200 &&
+    newInviteC.data?.link?.kind === "invite" &&
+    inviteCToken !== firstInviteC &&
+    firstInvitePage.status === 404 &&
+    firstInvitePage.body === linkUnknown.body &&
+    inviteCPage.status === 200 &&
+    inviteCPage.body.includes(emailC),
+  `${newInviteC.status} ${newInviteC.data?.link?.kind} ${firstInvitePage.status} ${inviteCPage.status}`,
+);
+const redeemedC = await redeem(inviteCToken);
+const sessionC = sessionOf(redeemedC);
+const hubC = await request("/panel", { cookie: asStaff(sessionC) });
+const pageC = await request(`/panel/restauracje/${String(restaurantCId)}`, { cookie: asStaff(sessionC) });
+check(
+  "platform: the owner of C sets the password, /panel links C to its restaurant panel, which shows C and „Właściciel”",
+  redirectsTo(redeemedC, "/panel") &&
+    sessionC !== null &&
+    hubC.status === 200 &&
+    hubC.body.includes(nameC) &&
+    hubC.body.includes(`href="/panel/restauracje/${String(restaurantCId)}"`) &&
+    pageC.status === 200 &&
+    pageC.body.includes(nameC) &&
+    pageC.body.includes("Właściciel") &&
+    authHeaders(pageC),
+  `${redeemedC.status} ${hubC.status} ${pageC.status}`,
+);
+const cReadsC = await panelGet(sessionC, `/restaurants/${String(restaurantCId)}`);
+const cReadsA = await panelGet(sessionC, `/restaurants/${String(restaurantA.id)}`);
+const cPageA = await request(`/panel/restauracje/${String(restaurantA.id)}`, { cookie: asStaff(sessionC) });
+const cPageUnknown = await request("/panel/restauracje/2000000000", { cookie: asStaff(sessionC) });
+const cPageMalformed = await request("/panel/restauracje/abc", { cookie: asStaff(sessionC) });
+check(
+  "platform: the owner of C reads C but restaurant A, an unknown and a malformed id are the identical 404 (API and page)",
+  cReadsC.status === 200 &&
+    cReadsC.data?.role === "owner" &&
+    noAccessJson(cReadsA) &&
+    isNoAccessPage(cPageA) &&
+    cPageA.body === cPageUnknown.body &&
+    cPageA.body === cPageMalformed.body &&
+    cPageUnknown.status === 404 &&
+    cPageMalformed.status === 404,
+  `${cReadsC.status} ${cReadsA.status} ${cPageA.status} ${cPageUnknown.status} ${cPageMalformed.status}`,
+);
+const listWithC = await platformCall(sessionAdmin);
+check(
+  "platform: after the invitation the admin sees C's owner with a password",
+  findListed(listWithC, restaurantCId)?.owners[0]?.hasPassword === true,
+  JSON.stringify(findListed(listWithC, restaurantCId)),
+);
+
+// A lost password: „Nowy link” for an owner with a password is a reset link; setting the new password ends their
+// sessions and only the new password logs in (US-05).
+const resetC = await platformCall(sessionAdmin, `${idPath(restaurantCId)}/owners/${String(ownerC?.accountId)}/link`, {
+  method: "POST",
+});
+const resetCToken = HASLO_PATH.exec(resetC.data?.link?.path ?? "")?.[1] ?? "brak";
+const redeemedResetC = await redeem(resetCToken, RESET_STAFF_PASSWORD);
+const meCAfterReset = await me(sessionC);
+const oldPasswordC = await logIn(emailC, STAFF_PASSWORD);
+const newPasswordC = await logIn(emailC, RESET_STAFF_PASSWORD);
+check(
+  "platform: a reset link for an owner with a password → the old session gets 401 and only the new password logs in",
+  resetC.status === 200 &&
+    resetC.data?.link?.kind === "reset" &&
+    redirectsTo(redeemedResetC, "/panel") &&
+    meCAfterReset.status === 401 &&
+    redirectsTo(oldPasswordC, "/logowanie?blad=dane") &&
+    redirectsTo(newPasswordC, "/panel"),
+  `${resetC.status} ${resetC.data?.link?.kind} ${redeemedResetC.status} ${meCAfterReset.status} ${oldPasswordC.location} ${newPasswordC.location}`,
+);
+
+// One more owner: an account that already has a password gets no link and sees the restaurant after logging in.
+const ownerAToB = await platformCall(sessionAdmin, `${idPath(restaurantB.id)}/owners`, {
+  method: "POST",
+  json: { email: staff.ownerA.email.toUpperCase() },
+});
+const meOwnerAWithB = await me(sessionOwner);
+check(
+  "platform: adding owner A (who has a password) to B → no link, B lists them, and owner A's /api/panel/me shows B",
+  ownerAToB.status === 200 &&
+    ownerAToB.data?.owner?.link === null &&
+    ownerAToB.data.owner.hasPassword === true &&
+    ownerAToB.data.owner.created === false &&
+    findListed(ownerAToB, restaurantB.id)?.owners.some((owner) => owner.email === staff.ownerA.email) === true &&
+    meOwnerAWithB.data?.restaurants?.some(
+      (restaurant) => restaurant.id === restaurantB.id && restaurant.role === "owner",
+    ) === true,
+  `${ownerAToB.status} ${ownerAToB.body.slice(0, 160)}`,
+);
+
+// Disable A: its staff open nothing of it at once; its event's links keep working; enable → back.
+const disableA = await platformCall(sessionAdmin, idPath(restaurantA.id), {
+  method: "PATCH",
+  json: { disabled: true },
+});
+const disabledReads = [];
+for (const [who, token] of [
+  ["owner A", sessionOwner],
+  ["waiter A", sessionWaiter],
+]) {
+  for (const path of [`/restaurants/${String(restaurantA.id)}`, `/events/${String(eventA.id)}`]) {
+    const res = await panelGet(token, path);
+    if (!noAccessJson(res)) {
+      disabledReads.push(`${who} ${path}: ${String(res.status)}`);
+    }
+  }
+}
+const ownerAReadsBWhileAOff = await panelGet(sessionOwner, `/restaurants/${String(restaurantB.id)}`);
+const pageAOff = await request(`/panel/restauracje/${String(restaurantA.id)}`, { cookie: asStaff(sessionOwner) });
+const hubAOff = await request("/panel", { cookie: asStaff(sessionOwner) });
+const meAOff = await me(sessionOwner);
+check(
+  "platform: the admin disables A → owner A and the waiter get the identical 404 for A and its event, owner A still opens B",
+  disableA.status === 200 &&
+    findListed(disableA, restaurantA.id)?.disabled === true &&
+    disabledReads.length === 0 &&
+    ownerAReadsBWhileAOff.status === 200,
+  `${disableA.status} ${disabledReads.join("; ")} ${ownerAReadsBWhileAOff.status}`,
+);
+check(
+  "platform: a disabled restaurant's page is the no-access page and /panel marks it „Wyłączona” without a link",
+  isNoAccessPage(pageAOff) &&
+    pageAOff.body === cPageUnknown.body &&
+    hubEntry(hubAOff, restaurantA.id).includes("Wyłączona") &&
+    !hubAOff.body.includes(`href="/panel/restauracje/${String(restaurantA.id)}"`) &&
+    meAOff.data?.restaurants?.find((restaurant) => restaurant.id === restaurantA.id)?.disabled === true,
+  `${pageAOff.status} ${hubEntry(hubAOff, restaurantA.id).length}`,
+);
+const organizerWhileOff = await request(`/o/${organizerKey}`);
+const guestsWhileOff = await request(`/api/o/${organizerKey}/guests`);
+check(
+  "platform: the event links of a disabled restaurant keep working (organizer page and API)",
+  organizerWhileOff.status === 200 && guestsWhileOff.status === 200,
+  `${organizerWhileOff.status} ${guestsWhileOff.status}`,
+);
+const enableA = await platformCall(sessionAdmin, idPath(restaurantA.id), {
+  method: "PATCH",
+  json: { disabled: false },
+});
+const ownerAReadsAAgain = await panelGet(sessionOwner, `/restaurants/${String(restaurantA.id)}`);
+const pageAOn = await request(`/panel/restauracje/${String(restaurantA.id)}`, { cookie: asStaff(sessionOwner) });
+check(
+  "platform: enabling A gives its staff access back (API and restaurant page)",
+  enableA.status === 200 &&
+    findListed(enableA, restaurantA.id)?.disabled === false &&
+    ownerAReadsAAgain.status === 200 &&
+    pageAOn.status === 200 &&
+    pageAOn.body.includes(`Restauracja smoke A ${RUN_TAG}`),
+  `${enableA.status} ${ownerAReadsAAgain.status} ${pageAOn.status}`,
 );
 
 finish();

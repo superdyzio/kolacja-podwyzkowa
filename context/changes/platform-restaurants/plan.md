@@ -358,11 +358,11 @@ Additive (one nullable column, three functions); existing rows are active (`disa
 
 #### Automated
 
-- [x] 2.1 Tests pass: `AI_PROVIDER=mock npm test`
-- [x] 2.2 Lint passes: `npm run lint`
-- [x] 2.3 Type check passes: `npx astro check`
-- [x] 2.4 Build succeeds: `npm run build`
-- [x] 2.5 On `AI_PROVIDER=mock npm run preview`, an admin session gets 200 from `GET /api/panel/platform/restaurants` and an owner session the identical 404
+- [x] 2.1 Tests pass: `AI_PROVIDER=mock npm test` — 23433dc
+- [x] 2.2 Lint passes: `npm run lint` — 23433dc
+- [x] 2.3 Type check passes: `npx astro check` — 23433dc
+- [x] 2.4 Build succeeds: `npm run build` — 23433dc
+- [x] 2.5 On `AI_PROVIDER=mock npm run preview`, an admin session gets 200 from `GET /api/panel/platform/restaurants` and an owner session the identical 404 — 23433dc
 
 #### Manual
 
@@ -372,11 +372,11 @@ Additive (one nullable column, three functions); existing rows are active (`disa
 
 #### Automated
 
-- [ ] 3.1 From scratch: `npx supabase db reset`, then `AI_PROVIDER=mock npm test` passes
-- [ ] 3.2 Build succeeds: `npm run build`
-- [ ] 3.3 Smoke passes twice in a row against `AI_PROVIDER=mock npm run preview`: `npm run smoke`
-- [ ] 3.4 Demo prints the owner's and the admin's logins: `npm run demo` (twice in a row)
-- [ ] 3.5 Lint passes: `npm run lint`
+- [x] 3.1 From scratch: `npx supabase db reset`, then `AI_PROVIDER=mock npm test` passes
+- [x] 3.2 Build succeeds: `npm run build`
+- [x] 3.3 Smoke passes twice in a row against `AI_PROVIDER=mock npm run preview`: `npm run smoke`
+- [x] 3.4 Demo prints the owner's and the admin's logins: `npm run demo` (twice in a row)
+- [x] 3.5 Lint passes: `npm run lint`
 
 #### Manual
 

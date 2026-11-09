@@ -4,9 +4,10 @@
 // unassigned, one delivered). Every run creates a NEW restaurant „Restauracja demo” with a new event „Kolacja
 // podwyżkowa (demo)” in the LOCAL database (like `npm run event:create`; refused for any other SUPABASE_URL), so other
 // events are never touched, and its owner's staff account (staff-accounts: an invitation link redeemed over HTTP with
-// a fixed local demo password, printed at the end with the panel login). Every write after that goes through the HTTP API of a running server, so it passes the
-// same validation as the UI. Defaults stay as they are: guest access OFF, guess intake OPEN, no correct amount, only
-// the starter questions.
+// a fixed local demo password, printed at the end with the panel login). It also keeps ONE platform admin account
+// admin@demo.stolik with a fixed local password (platform-restaurants: the platform panel's login, printed at the end).
+// Every write after that goes through the HTTP API of a running server, so it passes the same validation as the UI.
+// Defaults stay as they are: guest access OFF, guess intake OPEN, no correct amount, only the starter questions.
 // Usage: npm run build && npm run preview, then npm run demo   (BASE_URL, default http://localhost:4321)
 // Zero dependencies.
 
@@ -28,6 +29,9 @@ const RESTAURANT_NAME = "Restauracja demo";
 const EVENT_NAME = "Kolacja podwyżkowa (demo)";
 // The demo owner's password (local demo data only; the account's e-mail carries the restaurant id).
 const OWNER_PASSWORD = "demo-wlasciciel-1";
+// The demo platform admin (local demo data only): one account for every run, its password set again when needed.
+const ADMIN_EMAIL = "admin@demo.stolik";
+const ADMIN_PASSWORD = "demo-admin-1";
 
 // --- Demo data -------------------------------------------------------------------------------------------------
 
@@ -283,10 +287,12 @@ const fraction = (value, total) => Math.round((value / total) * 10_000) / 10_000
 
 // --- 1. A new restaurant and event in the local database; the running server must know its key ------------------
 
+let env;
 let event;
 let owner;
+let admin;
 try {
-  const env = readDbEnv({ requireLocal: true });
+  env = readDbEnv({ requireLocal: true });
   const restaurant = await createRestaurant(env, RESTAURANT_NAME);
   event = await createEvent(env, restaurant.id, EVENT_NAME);
   console.log(
@@ -300,6 +306,17 @@ try {
   await addMembership(env, restaurant.id, account.id, "owner");
   const invite = await issueStaffLink(env, account.id, "invite", BASE_URL);
   owner = { email: account.email, token: invite.token };
+  // The platform admin (platform-restaurants): created once; a new account gets an invitation, redeemed below.
+  const adminAccount = await ensureStaffAccount(env, {
+    email: ADMIN_EMAIL,
+    displayName: "Administrator demo",
+    isPlatformAdmin: true,
+  });
+  admin = {
+    id: adminAccount.id,
+    email: adminAccount.email,
+    token: adminAccount.hasPassword ? null : (await issueStaffLink(env, adminAccount.id, "invite", BASE_URL)).token,
+  };
 } catch (error) {
   fail(error instanceof PlatformError ? error.message : String(error));
 }
@@ -321,6 +338,31 @@ const ownerRedeem = await request("/api/auth/password-link", {
 });
 if (ownerRedeem.status !== 303 || !/\/panel$/.test(new URL(ownerRedeem.location, BASE_URL).pathname)) {
   fail(`Nie udało się ustawić hasła właściciela demo (HTTP ${ownerRedeem.status} → ${ownerRedeem.location || "-"}).`);
+}
+
+// The platform admin: a new account sets the password from its invitation; an existing one logs in with the demo
+// password, and only when that fails (changed by hand) a password-reset link sets it again.
+const toPanel = (res) => res.status === 303 && new URL(res.location, BASE_URL).pathname === "/panel";
+const setAdminPassword = (token) =>
+  request("/api/auth/password-link", {
+    method: "POST",
+    form: { token, password: ADMIN_PASSWORD, repeat: ADMIN_PASSWORD },
+  });
+let adminReady = admin.token
+  ? toPanel(await setAdminPassword(admin.token))
+  : toPanel(
+      await request("/api/auth/login", { method: "POST", form: { email: admin.email, password: ADMIN_PASSWORD } }),
+    );
+if (!adminReady) {
+  try {
+    const reset = await issueStaffLink(env, admin.id, "reset", BASE_URL);
+    adminReady = toPanel(await setAdminPassword(reset.token));
+  } catch (error) {
+    fail(error instanceof PlatformError ? error.message : String(error));
+  }
+}
+if (!adminReady) {
+  fail(`Nie udało się ustawić hasła administratora demo (${ADMIN_EMAIL}).`);
 }
 
 // --- 2. Venue: plan image, rooms, tables with pins ----------------------------------------------------------------
@@ -465,4 +507,5 @@ TV:          ${new URL(`/tv/${event.tvKey}`, BASE_URL).href}
 Restauracja: ${new URL(`/r/${event.restaurantKey}`, BASE_URL).href}
 Linki gości: włącz dostęp na ${organizerUrl}/linki
 Panel lokalu: ${new URL("/logowanie", BASE_URL).href} — e-mail ${owner.email}, hasło ${OWNER_PASSWORD} (rola: właściciel)
+Panel platformy: ${new URL("/logowanie", BASE_URL).href} — e-mail ${ADMIN_EMAIL}, hasło ${ADMIN_PASSWORD}
 Linki są sekretne: nie wklejaj ich publicznie.`);

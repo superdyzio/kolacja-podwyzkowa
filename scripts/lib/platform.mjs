@@ -122,6 +122,15 @@ export async function insertStarterQuestions(env, eventId, rows) {
   return result.data.length;
 }
 
+// Every restaurant (id and name), by id — the smoke compares the platform panel's list with it.
+export async function listRestaurants(env) {
+  const result = await rest(env, "restaurant?select=id,name&order=id");
+  if (!result.ok || !Array.isArray(result.data)) {
+    throw new PlatformError(`Nie udało się odczytać restauracji z bazy (${describeFailure(result)}).`);
+  }
+  return result.data.map((row) => ({ id: row.id, name: row.name }));
+}
+
 // Every event with its restaurant's name, by id.
 export async function listEvents(env) {
   const result = await rest(
