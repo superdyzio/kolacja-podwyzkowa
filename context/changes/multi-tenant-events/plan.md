@@ -370,5 +370,5 @@ New indexes keep per-event reads indexed (`seating_snapshot (event_id, id)` for 
 
 #### Automated
 
-- [x] 4.1 Prettier/lint clean: `npm run lint`
-- [x] 4.2 No stale singleton wording in CLAUDE.md and README
+- [x] 4.1 Prettier/lint clean: `npm run lint` — baf86a8
+- [x] 4.2 No stale singleton wording in CLAUDE.md and README — baf86a8
