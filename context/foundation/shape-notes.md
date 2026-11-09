@@ -160,44 +160,74 @@ Wszystkie nowe i zmienione FR mają priorytet must-have (decyzja użytkownika, z
 
 ### Zachowane z v1 (w obrębie jednego wydarzenia; klient w roli organizatora)
 - FR-001..FR-020: jak w PRD v1 (goście i grupy, nieobecni, przypięcia, plan i stoliki, ręczne sadzanie, TV, losowanie bez powtórek i publikacja, karteczki i linki gości, włącznik dostępu gości, widok miejsca gościa, pytania, tematy AI, strzały i ranking). Priority: must-have. Change: preserved. Wyjątki są opisane w FR-027, FR-031 i FR-033.
+  > Socrates: Preserved capability; no challenge (v1, sprawdzone na kolacji 2026-11-08).
 
 ### Platforma, konta i zespół
-- FR-021: Administrator platformy can założyć restaurację z jednorazowym linkiem zaproszenia dla właściciela, widzieć listę restauracji z licznikami, wyłączać i włączać restaurację oraz wejść w dane każdej restauracji (wsparcie). Priority: must-have. Change: new
+- FR-021: Administrator platformy can założyć restaurację z jednorazowym linkiem zaproszenia dla właściciela, widzieć listę restauracji z licznikami, wyłączać i włączać restaurację oraz wejść w dane każdej restauracji (wsparcie); każde jego wejście w dane lokalu jest zapisane i widoczne dla właściciela lokalu. Priority: must-have. Change: new
+  > Socrates: Counter-argument considered: "Pełny wgląd czyni administratora platformy podmiotem przetwarzającym dane gości wszystkich lokali (RODO)." Resolution: wgląd zostaje, ale z dziennikiem wejść (kto, kiedy, co), który widzi właściciel lokalu.
 - FR-022: Zaproszona osoba can ustawić hasło i logować się e-mailem i hasłem; sesja trwa 30 dni na urządzeniu; can się wylogować i zmienić hasło, co zamyka jej inne sesje. Priority: must-have. Change: new
-- FR-023: Właściciel can zapraszać menedżerów i kelnerów, a menedżer kelnerów; obaj w swoim zakresie can zmieniać role, usuwać osoby z zespołu i generować jednorazowy link resetu hasła. Priority: must-have. Change: new
+  > Socrates: Counter-arguments considered: wspólny tablet kelnerów przy 30-dniowej sesji; administrator platformy jako wąskie gardło resetu haseł bez e-maili. Resolution: bez zastrzeżeń, FR zostaje.
+- FR-023: Właściciel can zapraszać menedżerów i kelnerów, a menedżer kelnerów; obaj w swoim zakresie can zmieniać role, usuwać osoby z zespołu i generować jednorazowy link resetu hasła; menedżer can też dodać kelnera „na imprezę” (imię + jednorazowy link lub kod logowania ważny do końca okna imprezy, bez hasła). Priority: must-have. Change: new
+  > Socrates: Counter-argument considered: "Kelnerzy są sezonowi; zaproszenie i hasło dla każdego przed każdą imprezą to tarcie." Resolution: dostęp kelnera „na imprezę” obok zwykłych kont stałego personelu.
 
 ### Wydarzenia lokalu
 - FR-024: Menedżer can utworzyć wydarzenie (nazwa, data, przewidywana liczba gości) od zera lub z szablonu sali, przeglądać wydarzenia nadchodzące, minione i archiwum oraz archiwizować i przywracać wydarzenia; właściciel can trwale usunąć wydarzenie. Priority: must-have. Change: new
-- FR-025: Menedżer can skopiować linki wydarzenia (klient, TV, tablet obsługi) i wymienić każdy z nich na nowy. Priority: must-have. Change: modified (v1: wymiana tylko linku restauracji)
-- FR-026: Menedżer can włączyć w wydarzeniu przełącznik „lokal prowadzi”, który daje personelowi edycję wszystkiego, co robi klient; bez niego personel ma podgląd. Priority: must-have. Change: new
-- FR-027: Klient can przygotować i poprowadzić swoje wydarzenie jak organizator v1, łącznie z zamówieniami, napojami, cenami i rachunkiem, oraz korzystać z gier i zabaw włączonych w wydarzeniu; resetu danych nie ma. Priority: must-have. Change: modified
-- FR-028: Menedżer can w trybie „lokal prowadzi” prowadzić zamówienia, napoje i rachunek za klienta; reset danych wydarzenia i koszty AI są dostępne tylko w panelu lokalu. Priority: must-have. Change: modified (v1: organizator)
-- FR-029: Kelner can zobaczyć wydarzenia na dziś (plan z gośćmi, zamówienia z cenami, rachunek) i oznaczać wydane sztuki. Priority: must-have. Change: new
+  > Socrates: Counter-arguments considered: domyślny widok „Dziś”; usunięcie na żądanie klienta pod nieobecność właściciela; kopia wydarzenia „jak w zeszłym roku”. Resolution: bez zastrzeżeń, FR zostaje.
+- FR-025: Menedżer can skopiować linki wydarzenia (klient, TV, tablet obsługi) i wymienić każdy z nich na nowy, po potwierdzeniu, które mówi, kogo wymiana odetnie. Priority: must-have. Change: modified (v1: wymiana tylko linku restauracji)
+  > Socrates: Counter-argument considered: "Wymiana linku klienta w trakcie przygotowań odcina go bez ostrzeżenia." Resolution: wymiana wymaga potwierdzenia z informacją, kogo dotknie.
+- FR-026: Menedżer can włączyć w wydarzeniu przełącznik „lokal prowadzi”, który daje personelowi edycję wszystkiego, co robi klient, a klientowi zostawia podgląd; bez przełącznika edytuje klient, a personel ma podgląd. Priority: must-have. Change: new
+  > Socrates: Counter-argument considered: "Klient i lokal edytujący naraz nadpisują sobie zmiany." Resolution (użytkownik): „jak lokal prowadzi, to klient nie edytuje”.
+- FR-027: Klient can przygotować i poprowadzić swoje wydarzenie jak organizator v1, łącznie z zamówieniami (pozycje z menu udostępnionego przez lokal), napojami i rachunkiem; widzi ceny, ale ich nie zmienia; korzysta z gier i zabaw włączonych w wydarzeniu. Priority: must-have. Change: modified
+  > Socrates: Counter-arguments considered: klient zmieniający ceny lokalu; zmiany zamówień po terminie kuchni. Resolution (użytkownik): „klient widzi ceny, ale nie zmienia ich”.
+- FR-028: Menedżer can w trybie „lokal prowadzi” prowadzić zamówienia, napoje i rachunek za klienta; pełny reset danych wydarzenia i koszty AI są dostępne tylko w panelu lokalu; klient can zresetować próby (rozsadzenia i ich historię, strzały, quiz) bez gości, sali i zamówień. Priority: must-have. Change: modified (v1: organizator)
+  > Socrates: Counter-argument considered: "Przed imprezą klient chce sam wyczyścić próbne rozsadzenia i strzały." Resolution: częściowy reset prób dla klienta; pełny reset tylko lokal.
+- FR-029: Kelner can zobaczyć wydarzenia trwające dziś (okno imprezy obejmuje czas po północy, do południa dnia następnego), z planem z gośćmi, zamówieniami z cenami i rachunkiem, oznaczać wydane sztuki i dopisywać zamówienia na sali (dokładki, dodatkowe napoje). Priority: must-have. Change: new
+  > Socrates: Counter-arguments considered: impreza po północy znika z „dziś”; kelner nie może dopisać dokładki. Resolution: oba przyjęte, czyli okno po północy i dopisywanie przez kelnera.
 
 ### Zasoby, wygląd i skala
-- FR-030: Menedżer can zapisać układ sali (plan, sale, stoliki, rysunek) jako szablon lokalu, także z istniejącego wydarzenia, edytować szablon i tworzyć z niego wydarzenia; zmiana szablonu nie zmienia istniejących wydarzeń. Priority: must-have. Change: new
-- FR-031: Gry i zabawy are opcjonalnymi modułami włączanymi per wydarzenie: pytania, tematy AI (domyślnie wyłączone), gra w zgadywanie rachunku (domyślnie wyłączona), losowanie miejsc, „Pokaż na TV”, pub quiz; wyłączony moduł znika u klienta, gości i na TV. Priority: must-have. Change: new
-- FR-032: Właściciel can ustawić nazwę, logo i kolor lokalu widoczne na telefonach gości, TV, karteczkach i w panelu; wszędzie pojawia się nazwa produktu zamiast „Kolacja podwyżkowa”. Priority: must-have. Change: new / modified
+- FR-030: Menedżer can zapisać układ sali (plan, sale, stoliki, rysunek) jako szablon lokalu, także z istniejącego wydarzenia, edytować szablon i tworzyć z niego wydarzenia; zmiana szablonu nie zmienia istniejących wydarzeń, ale menedżer can zaktualizować układ wydarzenia z szablonu. Priority: must-have. Change: new
+  > Socrates: Counter-argument considered: "Stół dostawiony na stałe nie dociera do zaplanowanych wydarzeń." Resolution: akcja „zaktualizuj z szablonu” dla wydarzenia.
+- FR-031: Gry i zabawy are opcjonalnymi modułami per wydarzenie: pytania, tematy AI (domyślnie wyłączone), gra w zgadywanie rachunku (domyślnie wyłączona), losowanie miejsc, „Pokaż na TV”, pub quiz. Lokal oznacza, które moduły mogą być dostępne (np. zależnie od sprzętu, jak rzutnik), klient włącza je i wyłącza z dostępnych, a moduły płatne odblokowuje dla wydarzenia administrator platformy (ręcznie, np. po przelewie). Wyłączony moduł znika u klienta, gości i na TV. Priority: must-have. Change: new
+  > Socrates: Counter-argument considered: kto włącza moduły. Resolution (użytkownik): „lokal oznacza, które mogą być dostępne (np. mogą mieć rzutnik albo nie), ale klient (który normalnie używa apki darmowo) może zapłacić mi za dodatkowe gry i zabawy”; w M-2 odblokowanie ręczne, płatności online później.
+- FR-032: Właściciel can ustawić nazwę, logo i kolor lokalu, a klient can dodać nazwę i logo swojej firmy lub wydarzenia; widać je na telefonach gości, TV, karteczkach i w panelu. Gość nie widzi nazwy platformy; „Kolacja podwyżkowa” znika z produktu. Priority: must-have. Change: new / modified
+  > Socrates: Counter-arguments considered: firma-klient chce swojego logo na imprezie; nazwa platformy jest zbędna u gościa. Resolution: oba przyjęte, czyli branding wydarzenia obok brandingu lokalu i white-label u gościa.
 - FR-033: Klient can prowadzić wydarzenie do 150 gości, ze stołami do 30 miejsc i ok. 60 stolikami. Priority: must-have. Change: modified (v1: 100 gości, 20 miejsc, 40 stolików)
-- FR-034: Klient i lokal can otworzyć widok TV dla jednej sali. Priority: must-have. Change: new
-- FR-048: Każdy, kto widzi pełną mapę sali (gość na telefonie, klient, personel, tablet obsługi), can wyszukać gościa po imieniu, a mapa podświetla jego miejsce. Priority: must-have. Change: new
+  > Socrates: Counter-arguments considered: 150 to za mało dla dużej firmy; 30 imion przy długim stole może być nieczytelne. Resolution: bez zastrzeżeń, FR zostaje.
+- FR-034: TV przy wejściu can pokazać cały lokal i, gdy imiona byłyby nieczytelne, samo przechodzić po salach co kilka sekund; klient i lokal can też przypiąć TV do jednej sali. Priority: must-have. Change: new
+  > Socrates: Counter-argument considered: "Jeden TV przy wejściu z całym lokalem jest ważniejszy niż TV per sala." Resolution: oba tryby, czyli rotacja sal na TV przy wejściu oraz przypięcie TV do sali.
+- FR-048: Każdy, kto widzi pełną mapę sali na urządzeniu z klawiaturą (gość na telefonie, klient, personel, tablet obsługi), can wyszukać gościa po imieniu, a mapa podświetla jego miejsce; TV tego nie ma. Priority: must-have. Change: new
+  > Socrates: Counter-argument considered: "Na TV nie ma klawiatury." Resolution: wyszukiwanie wszędzie poza TV.
 
 ### Funkcje restauracyjne
-- FR-035: Klient (albo lokal w trybie „lokal prowadzi”) can zaimportować gości z pliku CSV lub wklejki z arkusza (nazwa, grupa, dieta, uwagi) z podglądem przed zapisem. Priority: must-have. Change: new
+- FR-035: Klient (albo lokal w trybie „lokal prowadzi”) can zaimportować gości z pliku CSV lub wklejki z arkusza (nazwa, dieta, uwagi) z podglądem przed zapisem; grupy tworzy się po imporcie na liście. Priority: must-have. Change: new
+  > Socrates: Counter-argument considered: "Kolumna grupa myli klientów." Resolution: import bez kolumny grupy; grupowanie na liście po imporcie.
 - FR-036: Klient can oznaczyć dietę lub alergię gościa, a kuchnia i kelnerzy can widzieć ją przy miejscu gościa i w zliczeniach. Priority: must-have. Change: new
-- FR-037: Menedżer can prowadzić katalog dań i napojów lokalu z cenami i kursem (przystawka, zupa, danie główne, deser, napoje), z którego wybiera się pozycje zamówień; lista dla kuchni jest pogrupowana po kursach. Priority: must-have. Change: new
-- FR-038: Klient i lokal can wydrukować tablicę „znajdź swój stolik”, karty stołów, winietki i listę dla obsługi przy stole (z dietami). Priority: must-have. Change: new
-- FR-039: Gość can przed imprezą potwierdzić obecność i wybrać danie z opcji ustawionych dla wydarzenia, do terminu; klient i lokal can widzieć zliczenia. Priority: must-have. Change: new
+  > Socrates: Counter-arguments considered: alergia to dana o zdrowiu (RODO art. 9); dieta mogłaby wynikać z wybranego dania. Resolution: bez zastrzeżeń, FR zostaje.
+- FR-037: Menedżer can prowadzić katalog dań i napojów lokalu z cenami i kursem (przystawka, zupa, danie główne, deser, napoje) i ustalić per wydarzenie, czy dostępne jest pełne menu, czy okrojone; klient wybiera pozycje zamówień z tego, co dostępne; lista dla kuchni jest pogrupowana po kursach. Priority: must-have. Change: new
+  > Socrates: Counter-argument considered: imprezy sprzedawane jako pakiety. Resolution (użytkownik): „ma być dostępne pełne menu albo jakoś okrojone, to ustala restauracja, klient potem wybiera z tego, co jest dostępne”.
+- FR-038: Klient i lokal can wydrukować tablicę „znajdź swój stolik”, karty stołów, winietki (z wyborem formatu) i listę dla obsługi przy stole (z dietami). Priority: must-have. Change: new
+  > Socrates: Counter-argument considered: "Winietki drukuje się na kartonikach konkretnego formatu." Resolution: wybór formatu i rozmiaru winietek.
+- FR-039: Gość can przed imprezą potwierdzić obecność i wybrać danie z opcji ustawionych dla wydarzenia, do terminu; klient can wpisać wybór za gościa; klient i lokal can widzieć zliczenia. Priority: must-have. Change: new
+  > Socrates: Counter-arguments considered: goście dostają linki dopiero na stole; kuchnia woli wybory zebrane przez klienta. Resolution: oba tory, czyli gość wybiera z linku, jeśli go dostał, a klient może wpisać za gościa.
 - FR-040: Właściciel can ustawić, po ilu dniach od imprezy dane gości są usuwane (domyślnie 30); menedżer can wyeksportować dane wydarzenia; gość can przeczytać informację o prywatności. Priority: must-have. Change: new
+  > Socrates: Counter-arguments considered: firmy wracające co roku tracą „jak w zeszłym roku”; eksport wynosi dane poza platformę. Resolution: bez zastrzeżeń, FR zostaje.
 - FR-049: Klient can przygotować pub quiz (np. o jubilacie) i poprowadzić go na TV, a goście odpowiadają na telefonach. Priority: must-have. Change: new
+  > Socrates: Counter-arguments considered: ranking na TV jako wyjątek od zasady v1; rozmiar modułu; drużyny przy stołach. Resolution: bez zastrzeżeń, FR zostaje.
 
 ### Produkt
 - FR-041: Odwiedzający can zobaczyć publiczną stronę produktu z logowaniem oraz szkice regulaminu i polityki prywatności. Priority: must-have. Change: new
-- FR-042: Administrator platformy can przygotować restaurację demo z kontem, szablonem sali i przykładową imprezą firmową (goście, rozsadzenie, zamówienia). Priority: must-have. Change: new
+  > Socrates: Counter-argument considered: "Zbędna przed demo, bo demo prowadzi użytkownik." Resolution: zostaje w M-2, ale na końcu kolejki, po demo.
+- FR-042: Administrator platformy can przygotować restaurację demo na prawdziwym planie sali i menu tej restauracji, z kontem, szablonem sali i przykładową imprezą firmową (fikcyjni goście, rozsadzenie, zamówienia). Priority: must-have. Change: new
+  > Socrates: Counter-argument considered: "Demo na ich prawdziwej sali przekona bardziej niż fikcja." Resolution: demo na ich planie i menu (użytkownik je dostarczy); goście fikcyjni.
 
 ### Zachowane po v1 (funkcje dodane po PRD v1)
 - FR-043: Kuchnia i obsługa can widzieć na tablecie (`/r/`) plan z opublikowanym rozsadzeniem, listę do przygotowania i serwowanie per miejsce, tylko do odczytu. Priority: must-have. Change: preserved
+  > Socrates: Preserved capability; no challenge (zachowana z v1/po v1).
 - FR-044: Gość can oznaczać „Dotarło” przy swoich daniach i daniach na środek stołu. Priority: must-have. Change: preserved
+  > Socrates: Preserved capability; no challenge (zachowana z v1/po v1).
 - FR-045: Klient can pokazać na TV pytanie, temat AI albo wylosowaną osobę. Priority: must-have. Change: preserved
+  > Socrates: Preserved capability; no challenge (zachowana z v1/po v1).
 - FR-046: TV i telefon gościa can pokazać rysunek sali z imionami przy krzesłach, a klient can ułożyć ten rysunek w edytorze (także z propozycji AI ze zdjęcia planu). Priority: must-have. Change: preserved
+  > Socrates: Preserved capability; no challenge (zachowana z v1/po v1).
 - FR-047: Klient can bez sieci zobaczyć ostatni opublikowany rozkład i ranking strzałów. Priority: must-have. Change: preserved
+  > Socrates: Preserved capability; no challenge (zachowana z v1/po v1).
