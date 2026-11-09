@@ -3,13 +3,18 @@ project: kolacja-podwyzkowa
 context_type: brownfield
 created: 2026-11-09
 updated: 2026-11-09
+product_type: web-app
+target_scale:
+  users: large
+  qps: low-medium
+  data_volume: small
 timeline_budget:
   delivery_weeks: 2
   hard_deadline: null
   after_hours_only: false
 checkpoint:
-  current_phase: 6
-  phases_completed: [1, 2, 3, 4, 5]
+  current_phase: 8
+  phases_completed: [1, 2, 3, 4, 5, 6, 7, 8]
   gray_areas_resolved:
     - topic: context type
       decision: "brownfield (171 commitów, package-lock.json, src/, .github/); v1 shape-notes zarchiwizowane w context/foundation/archive/shape-notes-2026-11-09-1534.md"
@@ -61,8 +66,16 @@ checkpoint:
       decision: "zawsze dostępna (bez usypiania), bez formalnego SLA"
     - topic: odczyt bez sieci
       decision: "rozszerzony na tablet obsługi i kelnera (ostatni stan zamówień i rozsadzenia, tylko odczyt)"
+    - topic: typ produktu
+      decision: "bez zmian: aplikacja webowa (panel lokalu i platformy dochodzą jako nowe widoki tej samej aplikacji)"
+    - topic: skala użytkowników
+      decision: "kilka lokali, tysiące gości w ciągu roku (users: large, ≤ 10 tys.); v1: jedna kolacja, ok. 40 osób"
+    - topic: czas pracy
+      decision: "w ramach dnia pracy (after_hours_only: false); demo ok. 2 tygodnie, bez ustalonej daty"
+    - topic: non-goals
+      decision: "płatności online; samodzielna rejestracja lokali i e-maile; integracje z POS/rezerwacjami; aplikacja do instalacji; ekran kuchni z czasami kursów; kalendarz i CRM; nowe kształty stołów; kolejne języki i 2FA; formalne SLA"
   frs_drafted: 49
-  quality_check_status: pending
+  quality_check_status: accepted
 ---
 
 # Shape notes — M-2: platforma dla restauracji
@@ -375,3 +388,69 @@ Zachowane z v1 (każde w obrębie wydarzenia): NFR-001, NFR-003, NFR-004, NFR-00
   - reset (teraz: pełny dla lokalu, prób dla klienta);
   - losowanie z twardymi regułami.
 - **Wdrożenia** robi wyłącznie użytkownik. Kolejność to zawsze migracje bazy przed kodem.
+
+## Product framing
+
+- **Typ produktu:** bez zmian, aplikacja webowa. Panel lokalu i panel platformy to nowe widoki tej samej aplikacji.
+- **Skala:** v1 to jedna kolacja dla ok. 40 osób. Teraz kilka lokali i tysiące gości w ciągu roku (do ok. 10 tys.), wydarzenia do 150 gości, kilka imprez naraz.
+- **Czas:** dostarczenie w ok. 2 tygodnie w ramach dnia pracy. Demo z restauracją za ok. 2 tygodnie, data nieustalona.
+
+## Non-Goals
+
+- **Płatności online:** płatne moduły odblokowuje ręcznie administrator platformy; operator płatności przyjdzie później.
+- **Samodzielna rejestracja lokali i wysyłanie e-maili:** lokale zakłada administrator platformy, a zaproszenia i reset hasła to linki przekazywane przez człowieka.
+- **Integracje z kasą (POS), systemem rezerwacji i księgowością lokalu:** platforma działa samodzielnie.
+- **Aplikacja do instalacji ze sklepu:** wszystko działa w przeglądarce.
+- **Ekran kuchni z kolejnością i czasami wydawania kursów (KDS):** kuchnia ma listę po kursach i serwowanie per miejsce.
+- **Kalendarz rezerwacji, CRM (kontakty klientów) i statystyki lokalu.**
+- **Nowe kształty stołów:** zostają okrągłe i prostokątne, bez podkowy, owalu i stołu prezydialnego.
+- **Języki inne niż PL/EN i logowanie dwuskładnikowe.**
+- **(Niefunkcjonalne) Formalne SLA:** platforma jest stale dostępna, ale bez gwarancji umownej i dyżuru.
+- **(Z v1, nadal) Pokazywanie cudzych strzałów i rankingu gry w zgadywanie gościom albo na TV.** Wyjątkiem może być pub quiz (FR-049); szczegóły należą do planu modułu.
+
+## Open Questions
+
+1. **Nazwa produktu (white-label u gościa, ale w panelu i na stronie produktu potrzebna).** Owner: user. Do tego czasu nazwa robocza w jednym miejscu.
+2. **Plan sali i menu restauracji do demo (FR-042).** Owner: user, przed demo.
+3. **Data demo z restauracją.** Owner: user.
+4. **Hosting platformy:** nowy projekt bazy; „zawsze dostępna” (NFR-016) oznacza płatny plan bazy albo inny sposób na brak usypiania; własna domena, bo adres trafia na karteczki z QR. Decyzja kosztowa należy do użytkownika.
+5. **Cennik:** za które gry i zabawy płaci klient i ile; czy lokal płaci abonament. Owner: user (po demo).
+6. **Regulamin, polityka prywatności, umowa powierzenia z lokalem (dziennik wejść administratora, alergie jako dane o zdrowiu).** Owner: user + prawnik.
+7. **Natywny import `.xlsx` (FR-035):** w M-2 jest CSV i wklejka z arkusza; czy `.xlsx` będzie potrzebny po demo. Owner: user.
+8. **Koszt AI na platformie:** kto płaci za tematy AI i odczyt planu ze zdjęcia, czy jest miesięczny limit per lokal. Owner: user.
+
+## Quality cross-check
+
+Wszystkie elementy obecne (2026-11-09): Access Control, Business Logic (jedno zdanie), shape-notes z checkpointem, Timeline acknowledgment (2 tygodnie, koszt przyjęty), Non-Goals, Constraints & Preserved Behavior. Status: accepted.
+
+## Forward: tech-stack
+
+Do oceny stacku (stack-assess). To nie są treści PRD:
+- **Konta bez zależności:** hasła hashowane wbudowanym `node:crypto` (scrypt), sesje w bazie (w bazie tylko hash tokenu), ciasteczko HttpOnly + SameSite=Lax + Secure, limit prób w bazie (Lambda nie ma wspólnej pamięci), bez usługi auth dostawcy bazy i bez SMTP.
+- **Hosting:** nowy projekt Supabase dla platformy (stary to archiwum kolacji). NFR-016 („zawsze dostępna”) koliduje z planem Free (usypianie po ~7 dniach), więc to decyzja kosztowa. Lambda z Function URL bez zmian. Własna domena wymagałaby CloudFront lub API Gateway (poza dotychczasowym „tylko free tier”).
+- **Bez nowych zależności na noc,** chyba że slice ich naprawdę wymaga. Natywne `.xlsx` wymagałoby biblioteki i jest odłożone.
+
+## Forward: technical-roadmap
+
+Do roadmapy i planów slice'ów. To nie są treści PRD. Backlog, kolejność i uwagi projektowe są w `context/foundation/m2-product-notes.md`, z poprawkami z tej rozmowy:
+- **Rdzeń najpierw:**
+  - F-02 restauracje i wiele wydarzeń (`event.id` jako `integer`, blokady doradcze per wydarzenie, jawne `drop function` starych sygnatur, usunięcie `EVENT_ID` i `default 1`, aktualizacja CLAUDE.md);
+  - F-03 konta i sesje (CSRF: sprawdzenie `Origin` przy każdej mutacji panelu; IDOR: jeden strażnik członkostwa dla tras z numerem wydarzenia; smoke dostępu krzyżowego);
+  - panel platformy i lokalu (z dziennikiem wejść administratora);
+  - rozdział klient / lokal z przełącznikiem „lokal prowadzi” i resetem prób.
+- **Kolejność dalej:**
+  - szablony sal (z „zaktualizuj z szablonu”; szablon nie może się otwierać żadnym kluczem);
+  - katalog menu z dostępnością per wydarzenie (wymagany przez FR-027: klient wybiera z cennika);
+  - moduły (dostępność lokalu, włączanie przez klienta, odblokowanie przez administratora) i branding (lokal + wydarzenie, white-label);
+  - skala 150 (TV z rotacją sal i przypięciem do sali);
+  - kelner na imprezę i dokładki;
+  - wyszukiwanie gościa na mapie;
+  - import i diety;
+  - wydruki z formatami winietek;
+  - RSVP z wyborem dania;
+  - prywatność i retencja;
+  - odczyt bez sieci dla obsługi;
+  - pub quiz;
+  - demo na planie restauracji;
+  - strona produktu (po demo).
+- **Koszt AI w testach:** zero płatnych wywołań w nocy (atrapa).
