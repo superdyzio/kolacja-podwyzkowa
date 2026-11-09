@@ -308,8 +308,8 @@ Additive and backfilled; the code reads the new columns, so the migration goes t
 
 #### Automated
 
-- [x] 2.1 Tests, lint, type check and build pass
-- [x] 2.2 Existing smoke (updated section-25 assertion) passes on the preview
+- [x] 2.1 Tests, lint, type check and build pass — e020e1a
+- [x] 2.2 Existing smoke (updated section-25 assertion) passes on the preview — e020e1a
 
 #### Manual
 
@@ -321,9 +321,9 @@ Additive and backfilled; the code reads the new columns, so the migration goes t
 
 #### Automated
 
-- [ ] 3.1 `npm run smoke` passes twice in a row on the preview
-- [ ] 3.2 `npm run demo` passes with upcoming, past and archived events in the demo restaurant
-- [ ] 3.3 Tests, lint and type check pass
+- [x] 3.1 `npm run smoke` passes twice in a row on the preview
+- [x] 3.2 `npm run demo` passes with upcoming, past and archived events in the demo restaurant
+- [x] 3.3 Tests, lint and type check pass
 
 #### Manual
 

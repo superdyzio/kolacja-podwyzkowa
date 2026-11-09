@@ -4,8 +4,10 @@
 // unassigned, one delivered). Every run creates a NEW restaurant „Restauracja demo” with a new event „Kolacja
 // podwyżkowa (demo)” in the LOCAL database (like `npm run event:create`; refused for any other SUPABASE_URL), so other
 // events are never touched, and its owner's staff account (staff-accounts: an invitation link redeemed over HTTP with
-// a fixed local demo password, printed at the end with the panel login). It also keeps ONE platform admin account
-// admin@demo.stolik with a fixed local password (platform-restaurants: the platform panel's login, printed at the end).
+// a fixed local demo password, printed at the end with the panel login). Through the panel API that owner then adds
+// three more events of the restaurant (restaurant-events): an upcoming, a past and an archived one, so the restaurant
+// page shows every tab filled. It also keeps ONE platform admin account admin@demo.stolik with a fixed local password
+// (platform-restaurants: the platform panel's login, printed at the end).
 // Every write after that goes through the HTTP API of a running server, so it passes the same validation as the UI.
 // Defaults stay as they are: guest access OFF, guess intake OPEN, no correct amount, only the starter questions.
 // Usage: npm run build && npm run preview, then npm run demo   (BASE_URL, default http://localhost:4321)
@@ -165,8 +167,8 @@ function fail(message) {
 
 let dataWritten = false;
 
-async function request(path, { method = "GET", json, form, bytes, contentType } = {}) {
-  const headers = { Origin: BASE_URL };
+async function request(path, { method = "GET", json, form, bytes, contentType, cookie } = {}) {
+  const headers = { Origin: BASE_URL, ...(cookie ? { Cookie: cookie } : {}) };
   let body;
   if (json !== undefined) {
     headers["Content-Type"] = "application/json";
@@ -191,7 +193,13 @@ async function request(path, { method = "GET", json, form, bytes, contentType } 
   } catch {
     // not JSON
   }
-  return { status: response.status, location: response.headers.get("location") ?? "", text, data };
+  return {
+    status: response.status,
+    location: response.headers.get("location") ?? "",
+    setCookie: response.headers.get("set-cookie") ?? "",
+    text,
+    data,
+  };
 }
 
 // One API step that must answer with `expected`; anything else stops the script and says what is left behind.
@@ -288,12 +296,14 @@ const fraction = (value, total) => Math.round((value / total) * 10_000) / 10_000
 // --- 1. A new restaurant and event in the local database; the running server must know its key ------------------
 
 let env;
+let restaurantId;
 let event;
 let owner;
 let admin;
 try {
   env = readDbEnv({ requireLocal: true });
   const restaurant = await createRestaurant(env, RESTAURANT_NAME);
+  restaurantId = restaurant.id;
   event = await createEvent(env, restaurant.id, EVENT_NAME);
   console.log(
     `Baza ${env.host}: restauracja „${restaurant.name}” (id ${String(restaurant.id)}), wydarzenie „${event.name}” (id ${String(event.id)}).`,
@@ -339,6 +349,12 @@ const ownerRedeem = await request("/api/auth/password-link", {
 if (ownerRedeem.status !== 303 || !/\/panel$/.test(new URL(ownerRedeem.location, BASE_URL).pathname)) {
   fail(`Nie udało się ustawić hasła właściciela demo (HTTP ${ownerRedeem.status} → ${ownerRedeem.location || "-"}).`);
 }
+// The redeem logs the owner in: their session drives the panel API below (restaurant-events).
+const ownerSession = /(?:^|[\s,])kp-session=([A-Za-z0-9_-]{43});/.exec(ownerRedeem.setCookie)?.[1];
+if (!ownerSession) {
+  fail("Ustawienie hasła właściciela demo nie zalogowało go (brak ciasteczka sesji).");
+}
+const ownerCookie = `kp-session=${ownerSession}`;
 
 // The platform admin: a new account sets the password from its invitation; an existing one logs in with the demo
 // password, and only when that fails (changed by hand) a password-reset link sets it again.
@@ -485,7 +501,40 @@ orderBoard = await step(`wydane: ${firstLine.name}`, `${api}/orders/${firstLine.
   json: { delivered: true },
 });
 
-// --- 7. Summary -------------------------------------------------------------------------------------------------
+// --- 7. More events of the restaurant (restaurant-events): upcoming, past and archived ---------------------------
+
+const eventsApi = `/api/panel/restaurants/${String(restaurantId)}/events`;
+const { today } = await step("lista wydarzeń lokalu", eventsApi, { cookie: ownerCookie });
+const shiftDate = (date, days) => {
+  const [year, month, day] = date.split("-").map(Number);
+  return new Date(Date.UTC(year, month - 1, day + days)).toISOString().slice(0, 10);
+};
+const MORE_EVENTS = [
+  { name: "Wigilia firmowa (demo)", date: shiftDate(today, 32), expectedGuests: 80, archived: false },
+  { name: "Urodziny Ani (demo)", date: shiftDate(today, -10), expectedGuests: 30, archived: false },
+  { name: "Komunia Zosi (demo)", date: shiftDate(today, -60), expectedGuests: null, archived: true },
+];
+for (const { name, date, expectedGuests, archived } of MORE_EVENTS) {
+  const created = await step(
+    `wydarzenie ${name}`,
+    eventsApi,
+    { method: "POST", json: { name, date, expectedGuests }, cookie: ownerCookie },
+    201,
+  );
+  if (archived) {
+    await step(`archiwum: ${name}`, `/api/panel/events/${String(created.event.id)}`, {
+      method: "PATCH",
+      json: { archived: true },
+      cookie: ownerCookie,
+    });
+  }
+}
+const eventLists = await step("listy wydarzeń lokalu", eventsApi, { cookie: ownerCookie });
+if (eventLists.upcoming.length === 0 || eventLists.past.length === 0 || eventLists.archived.length === 0) {
+  fail("Lista wydarzeń lokalu demo nie ma wszystkich trzech zakładek (nadchodzące, minione, archiwum).");
+}
+
+// --- 8. Summary -------------------------------------------------------------------------------------------------
 
 const seatTotal = venue.tables.reduce((sum, table) => sum + table.seatCount, 0);
 const guessCount = guessBoard.guests.filter((guest) => guest.amountGrosze !== null).length;
@@ -501,11 +550,13 @@ Dane demo gotowe („${RESTAURANT_NAME}” · „${EVENT_NAME}”, id ${String(e
 - typy miejsc: ${placeCount} (wpisz prawidłową kwotę 1500, żeby zobaczyć podium i trafione miejsca)
 - zamówienie: ${orderBoard.totals.lines} pozycji, ${orderBoard.totals.quantity} szt., wydane: ${orderBoard.totals.deliveredQuantity}
 - bez zmian: przyjmowanie strzałów otwarte, prawidłowa kwota niewpisana, dostęp gości wyłączony, pytania startowe
+- wydarzenia lokalu: nadchodzące ${String(eventLists.upcoming.length)}, minione ${String(eventLists.past.length)}, archiwum ${String(eventLists.archived.length)}
 
 Organizator: ${organizerUrl}
 TV:          ${new URL(`/tv/${event.tvKey}`, BASE_URL).href}
 Restauracja: ${new URL(`/r/${event.restaurantKey}`, BASE_URL).href}
 Linki gości: włącz dostęp na ${organizerUrl}/linki
 Panel lokalu: ${new URL("/logowanie", BASE_URL).href} — e-mail ${owner.email}, hasło ${OWNER_PASSWORD} (rola: właściciel)
+Wydarzenia lokalu: ${new URL(`/panel/restauracje/${String(restaurantId)}`, BASE_URL).href} (po zalogowaniu)
 Panel platformy: ${new URL("/logowanie", BASE_URL).href} — e-mail ${ADMIN_EMAIL}, hasło ${ADMIN_PASSWORD}
 Linki są sekretne: nie wklejaj ich publicznie.`);

@@ -4948,4 +4948,515 @@ check(
   `${enableA.status} ${ownerAReadsAAgain.status} ${pageAOn.status}`,
 );
 
+// 27. Restaurant events (restaurant-events, S-11): owners and managers of a restaurant list its events (upcoming, past,
+// archive), create one (it lands on its card with the client, TV and staff tablet links), edit, archive and restore
+// it and replace each link (the old one opens nothing at once); only the owner deletes an event, with everything in
+// it. A waiter, another restaurant's owner and the platform admin get the identical 404 of an unknown id, no session
+// the identical 401, a foreign Origin 403. Every event changed here is created here (never event A or B). Uses the
+// sessions of sections 25–26 and a manager of A created here.
+const eventsApiOf = (restaurantId) => `/api/panel/restaurants/${String(restaurantId)}/events`;
+const eventApi = (id) => `/api/panel/events/${String(id)}`;
+const eventPage = (id) => `/panel/wydarzenia/${String(id)}`;
+const restaurantPageOf = (id, list = "") => `/panel/restauracje/${String(id)}${list ? `?lista=${list}` : ""}`;
+const asSession = (token, options = {}) => ({ ...(token ? { cookie: asStaff(token) } : {}), ...options });
+const staffCall = (token, path, options = {}) => request(path, asSession(token, options));
+const listIds = (res, list) => (Array.isArray(res.data?.[list]) ? res.data[list].map((event) => event.id) : []);
+const keyOfPath = (path) => (typeof path === "string" ? (path.split("/")[2] ?? "") : "");
+const LINK_KINDS = ["organizer", "tv", "restaurant"];
+const LINK_PREFIX = { organizer: "o", tv: "tv", restaurant: "r" };
+const hasFreshLinks = (event) =>
+  LINK_KINDS.every((kind) =>
+    new RegExp(`^/${LINK_PREFIX[kind]}/${KEY}$`).test(
+      typeof event?.links?.[kind] === "string" ? event.links[kind] : "",
+    ),
+  ) && new Set(LINK_KINDS.map((kind) => keyOfPath(event.links[kind]))).size === 3;
+// The restaurant page's row of an event (`<li … data-event-id="<id>">…</li>`).
+const eventRow = (res, id) => {
+  const start = res.body.indexOf(`data-event-id="${String(id)}"`);
+  return start === -1 ? "" : res.body.slice(start, res.body.indexOf("</li>", start));
+};
+const shiftDate = (date, days) => {
+  const [year, month, day] = date.split("-").map(Number);
+  return new Date(Date.UTC(year, month - 1, day + days)).toISOString().slice(0, 10);
+};
+const RESTAURANT_DENIED_JSON = JSON.stringify({ error: "No access" });
+// What a replaced or deleted link answers: the identical denial of its area (page and JSON).
+const LINK_ROUTES = {
+  organizer: { page: (key) => `/o/${key}`, api: (key) => `/api/o/${key}/guests` },
+  tv: { page: (key) => `/tv/${key}`, api: (key) => `/api/tv/${key}/seating` },
+  restaurant: { page: (key) => `/r/${key}`, api: (key) => `/api/r/${key}/orders` },
+};
+const linkDenied = async (kind, key) => {
+  const page = await request(LINK_ROUTES[kind].page(key));
+  const json = await request(LINK_ROUTES[kind].api(key));
+  return (
+    page.status === 404 &&
+    page.body === (kind === "restaurant" ? restaurantDeniedBody : deniedBody) &&
+    (kind === "restaurant" ? json.status === 404 && json.body === RESTAURANT_DENIED_JSON : noAccessJson(json))
+  );
+};
+const linkOpens = async (kind, key) => {
+  const page = await request(LINK_ROUTES[kind].page(key));
+  const json = await request(LINK_ROUTES[kind].api(key));
+  return page.status === 200 && json.status === 200;
+};
+
+let sessionManager = null;
+try {
+  const account = await ensureStaffAccount(platformEnv, {
+    email: staffEmail("managera"),
+    displayName: "Smoke managerA",
+  });
+  await addMembership(platformEnv, restaurantA.id, account.id, "manager");
+  const invite = await issueStaffLink(platformEnv, account.id, "invite", BASE_URL);
+  sessionManager = sessionOf(await redeem(invite.token));
+} catch (error) {
+  check(
+    "events: the manager of A is created in the local database",
+    false,
+    error instanceof PlatformError ? error.message : String(error),
+  );
+  finish();
+}
+check("events: the manager of A has a session", Boolean(sessionManager));
+
+// Lists: event A (created today by section 3) is under upcoming as today; no keys in the list.
+const listA = await staffCall(sessionOwner, eventsApiOf(restaurantA.id));
+const today = typeof listA.data?.today === "string" ? listA.data.today : "";
+check(
+  "events: owner A lists A's events (no-store) — event A today under upcoming, past and archive empty, no keys",
+  listA.status === 200 &&
+    listA.cacheControl.includes("no-store") &&
+    /^\d{4}-\d{2}-\d{2}$/.test(today) &&
+    listA.data.upcoming.some((event) => event.id === eventA.id && event.timing === "today") &&
+    listIds(listA, "past").length === 0 &&
+    listIds(listA, "archived").length === 0 &&
+    ![organizerKey, tvKey].some((secret) => listA.body.includes(secret)),
+  `${listA.status} ${listA.body.slice(0, 200)}`,
+);
+if (!today) finish();
+
+// Create: 201 with the card and three fresh links; the card page and the restaurant page show it.
+const futureDate = shiftDate(today, 30);
+const createIn = (token, json, options = {}) =>
+  staffCall(token, eventsApiOf(restaurantA.id), { method: "POST", json, ...options });
+const createdFuture = await createIn(sessionOwner, {
+  name: `  Wigilia   smoke ${RUN_TAG} `,
+  date: futureDate,
+  expectedGuests: 80,
+});
+let party = createdFuture.data?.event;
+check(
+  "events: owner A creates an event → 201 with its card: normalized name, date, 80 guests, upcoming, three fresh links",
+  createdFuture.status === 201 &&
+    createdFuture.data.role === "owner" &&
+    party?.name === `Wigilia smoke ${RUN_TAG}` &&
+    party.date === futureDate &&
+    party.expectedGuests === 80 &&
+    party.archived === false &&
+    party.archivedAt === null &&
+    party.timing === "upcoming" &&
+    party.guestCount === 0 &&
+    party.restaurantId === restaurantA.id &&
+    party.restaurantName === `Restauracja smoke A ${RUN_TAG}` &&
+    hasFreshLinks(party) &&
+    ![organizerKey, tvKey, eventA.restaurantKey].some((key) => createdFuture.body.includes(key)),
+  `${createdFuture.status} ${createdFuture.body.slice(0, 200)}`,
+);
+if (!party || !hasFreshLinks(party)) finish();
+const partyCard = await staffCall(sessionOwner, eventApi(party.id));
+const partyPage = await staffCall(sessionOwner, eventPage(party.id));
+check(
+  "events: the card API and the card page (auth headers) show the event and its client link",
+  partyCard.status === 200 &&
+    JSON.stringify(partyCard.data?.event) === JSON.stringify(party) &&
+    partyPage.status === 200 &&
+    authHeaders(partyPage) &&
+    partyPage.body.includes(`Wigilia smoke ${RUN_TAG}`) &&
+    partyPage.body.includes(party.links.organizer) &&
+    partyPage.body.includes("Usuń wydarzenie trwale"),
+  `${partyCard.status} ${partyPage.status}`,
+);
+const restaurantEventsPage = await staffCall(sessionOwner, restaurantPageOf(restaurantA.id));
+const restaurantPageOddList = await staffCall(sessionOwner, restaurantPageOf(restaurantA.id, "cokolwiek"));
+check(
+  "events: the restaurant page has the create form and lists the event under „Nadchodzące” (also for an unknown ?lista)",
+  restaurantEventsPage.status === 200 &&
+    restaurantEventsPage.body.includes("Nowe wydarzenie") &&
+    restaurantEventsPage.body.includes('data-event-list="upcoming"') &&
+    eventRow(restaurantEventsPage, party.id).includes(`href="${eventPage(party.id)}"`) &&
+    eventRow(restaurantEventsPage, eventA.id).includes("Dziś") &&
+    eventRow(restaurantPageOddList, party.id) !== "" &&
+    !restaurantEventsPage.body.includes(party.links.organizer),
+  `${restaurantEventsPage.status} ${restaurantPageOddList.status}`,
+);
+const partyOrganizer = await request(party.links.organizer);
+const partyQuestions = await request(`/api/o/${keyOfPath(party.links.organizer)}/questions`);
+check(
+  "events: the new client link opens the organizer view with the starter question base (90)",
+  partyOrganizer.status === 200 && partyQuestions.status === 200 && partyQuestions.data?.questions?.length === 90,
+  `${partyOrganizer.status} ${partyQuestions.status} ${partyQuestions.data?.questions?.length}`,
+);
+const createdPast = await createIn(sessionOwner, { name: `Urodziny smoke ${RUN_TAG}`, date: shiftDate(today, -10) });
+const birthday = createdPast.data?.event;
+const listWithPast = await staffCall(sessionOwner, eventsApiOf(restaurantA.id));
+const pastPage = await staffCall(sessionOwner, restaurantPageOf(restaurantA.id, "minione"));
+check(
+  "events: a past date without a guest count → the past list and ?lista=minione",
+  createdPast.status === 201 &&
+    birthday?.timing === "past" &&
+    birthday.expectedGuests === null &&
+    listIds(listWithPast, "past").includes(birthday.id) &&
+    !listIds(listWithPast, "upcoming").includes(birthday.id) &&
+    listIds(listWithPast, "upcoming").includes(party.id) &&
+    pastPage.body.includes('data-event-list="past"') &&
+    eventRow(pastPage, birthday.id) !== "" &&
+    eventRow(pastPage, party.id) === "",
+  `${createdPast.status} ${createdPast.body.slice(0, 160)}`,
+);
+
+// Validation: 400 with a message, nothing created or changed.
+const invalidCreates = [
+  { name: "", date: futureDate },
+  { name: "   ", date: futureDate },
+  { name: "x".repeat(121), date: futureDate },
+  { name: "Zła data", date: "2026-02-30" },
+  { name: "Zła data", date: "12.12.2026" },
+  { name: "Za mało gości", date: futureDate, expectedGuests: 0 },
+  { name: "Za dużo gości", date: futureDate, expectedGuests: 1001 },
+  { name: "Ułamek gości", date: futureDate, expectedGuests: 2.5 },
+  { name: "Bez daty" },
+  { name: "Dodatkowe pole", date: futureDate, restaurantId: restaurantB.id },
+];
+const createProblems = [];
+for (const json of invalidCreates) {
+  const res = await createIn(sessionOwner, json);
+  if (res.status !== 400 || typeof res.data?.error !== "string") {
+    createProblems.push(`${JSON.stringify(json).slice(0, 40)} ${String(res.status)}`);
+  }
+}
+const tooLongEvent = await createIn(sessionOwner, { name: "x".repeat(121), date: futureDate });
+const listAfterInvalidEvents = await staffCall(sessionOwner, eventsApiOf(restaurantA.id));
+check(
+  "events: invalid new events → 400 with a message (the 121-character name names the limit), nothing created",
+  createProblems.length === 0 &&
+    tooLongEvent.data?.error?.includes("120") === true &&
+    JSON.stringify(listAfterInvalidEvents.data) === JSON.stringify(listWithPast.data),
+  createProblems.join("; "),
+);
+const invalidPatches = [{}, { name: "" }, { date: "2026-13-01" }, { expectedGuests: 0 }, { archived: "tak" }, { x: 1 }];
+const patchProblems = [];
+for (const json of invalidPatches) {
+  const res = await staffCall(sessionOwner, eventApi(party.id), { method: "PATCH", json });
+  if (res.status !== 400 || typeof res.data?.error !== "string") {
+    patchProblems.push(`${JSON.stringify(json)} ${String(res.status)}`);
+  }
+}
+const partyAfterInvalid = await staffCall(sessionOwner, eventApi(party.id));
+check(
+  "events: invalid edits (empty, bad fields, unknown field) → 400 with a message, the card unchanged",
+  patchProblems.length === 0 && JSON.stringify(partyAfterInvalid.data?.event) === JSON.stringify(party),
+  patchProblems.join("; "),
+);
+
+// Edit.
+const editedEvent = await staffCall(sessionOwner, eventApi(party.id), {
+  method: "PATCH",
+  json: { name: `Wigilia firmowa smoke ${RUN_TAG}`, date: shiftDate(today, 32), expectedGuests: 90 },
+});
+const guestsCleared = await staffCall(sessionOwner, eventApi(party.id), {
+  method: "PATCH",
+  json: { expectedGuests: null },
+});
+check(
+  "events: editing the name, date and guest count (then clearing it) → the card answers with the new values, links kept",
+  editedEvent.status === 200 &&
+    editedEvent.data?.event?.name === `Wigilia firmowa smoke ${RUN_TAG}` &&
+    editedEvent.data.event.date === shiftDate(today, 32) &&
+    editedEvent.data.event.expectedGuests === 90 &&
+    guestsCleared.status === 200 &&
+    guestsCleared.data?.event?.expectedGuests === null &&
+    guestsCleared.data.event.name === `Wigilia firmowa smoke ${RUN_TAG}` &&
+    JSON.stringify(guestsCleared.data.event.links) === JSON.stringify(party.links),
+  `${editedEvent.status} ${guestsCleared.status}`,
+);
+party = guestsCleared.data?.event ?? party;
+
+// Replace each link: a fresh key, the other two unchanged, the old link dead at once (page and API), the new one open.
+for (const kind of LINK_KINDS) {
+  const oldKey = keyOfPath(party.links[kind]);
+  const openedBefore = await linkOpens(kind, oldKey);
+  const rotated = await staffCall(sessionOwner, `${eventApi(party.id)}/links/${kind}`, { method: "POST" });
+  const next = rotated.data?.event;
+  const newKey = keyOfPath(next?.links?.[kind]);
+  const othersKept = LINK_KINDS.filter((other) => other !== kind).every(
+    (other) => next?.links?.[other] === party.links[other],
+  );
+  const oldDenied = await linkDenied(kind, oldKey);
+  const newOpens = await linkOpens(kind, newKey);
+  check(
+    `events: replacing the ${kind} link → a new key, the other links kept; the old page and API get the identical 404, the new ones open`,
+    openedBefore &&
+      rotated.status === 200 &&
+      new RegExp(`^${KEY}$`).test(newKey) &&
+      newKey !== oldKey &&
+      othersKept &&
+      oldDenied &&
+      newOpens,
+    `${String(openedBefore)} ${rotated.status} ${String(othersKept)} ${String(oldDenied)} ${String(newOpens)}`,
+  );
+  party = next ?? party;
+}
+const guestKind = await staffCall(sessionOwner, `${eventApi(party.id)}/links/guest`, { method: "POST" });
+const oddKind = await staffCall(sessionOwner, `${eventApi(party.id)}/links/organizer-key`, { method: "POST" });
+const partyAfterKinds = await staffCall(sessionOwner, eventApi(party.id));
+check(
+  "events: any other link kind (guests' links are the client's) → the identical 404, nothing replaced",
+  noAccessJson(guestKind) &&
+    noAccessJson(oddKind) &&
+    JSON.stringify(partyAfterKinds.data?.event) === JSON.stringify(party),
+  `${guestKind.status} ${oddKind.status}`,
+);
+
+// Archive and restore: the event moves between the lists; its links keep working.
+const archivedParty = await staffCall(sessionOwner, eventApi(party.id), { method: "PATCH", json: { archived: true } });
+const listArchived = await staffCall(sessionOwner, eventsApiOf(restaurantA.id));
+const archivePage = await staffCall(sessionOwner, restaurantPageOf(restaurantA.id, "archiwum"));
+const clientWhileArchived = await linkOpens("organizer", keyOfPath(party.links.organizer));
+const tvWhileArchived = await linkOpens("tv", keyOfPath(party.links.tv));
+const tabletWhileArchived = await linkOpens("restaurant", keyOfPath(party.links.restaurant));
+check(
+  "events: archiving → only in the archive (also ?lista=archiwum), the client, TV and tablet links keep working",
+  archivedParty.status === 200 &&
+    archivedParty.data?.event?.archived === true &&
+    typeof archivedParty.data.event.archivedAt === "string" &&
+    listIds(listArchived, "archived").includes(party.id) &&
+    !listIds(listArchived, "upcoming").includes(party.id) &&
+    eventRow(archivePage, party.id) !== "" &&
+    clientWhileArchived &&
+    tvWhileArchived &&
+    tabletWhileArchived,
+  `${archivedParty.status} ${String(clientWhileArchived)} ${String(tvWhileArchived)} ${String(tabletWhileArchived)}`,
+);
+const restoredParty = await staffCall(sessionOwner, eventApi(party.id), { method: "PATCH", json: { archived: false } });
+const listRestored = await staffCall(sessionOwner, eventsApiOf(restaurantA.id));
+check(
+  "events: restoring → back under upcoming, archive mark cleared",
+  restoredParty.status === 200 &&
+    restoredParty.data?.event?.archived === false &&
+    restoredParty.data.event.archivedAt === null &&
+    listIds(listRestored, "upcoming").includes(party.id) &&
+    !listIds(listRestored, "archived").includes(party.id),
+  `${restoredParty.status}`,
+);
+party = restoredParty.data?.event ?? party;
+
+// The manager of A: everything but the permanent delete.
+const managerList = await staffCall(sessionManager, eventsApiOf(restaurantA.id));
+const managerCreated = await createIn(sessionManager, { name: `Komunia smoke ${RUN_TAG}`, date: shiftDate(today, 60) });
+const communion = managerCreated.data?.event;
+const managerRotated = communion
+  ? await staffCall(sessionManager, `${eventApi(communion.id)}/links/tv`, { method: "POST" })
+  : null;
+const managerArchived = communion
+  ? await staffCall(sessionManager, eventApi(communion.id), { method: "PATCH", json: { archived: true } })
+  : null;
+const managerDelete = communion ? await staffCall(sessionManager, eventApi(communion.id), { method: "DELETE" }) : null;
+const communionAfter = communion ? await staffCall(sessionOwner, eventApi(communion.id)) : null;
+const managerPage = communion ? await staffCall(sessionManager, eventPage(communion.id)) : null;
+check(
+  "events: the manager of A lists, creates, replaces a link and archives, but DELETE → the identical 404 and the event stays",
+  managerList.status === 200 &&
+    listIds(managerList, "upcoming").includes(party.id) &&
+    managerCreated.status === 201 &&
+    managerCreated.data?.role === "manager" &&
+    managerRotated?.status === 200 &&
+    managerRotated.data?.event?.links?.tv !== communion?.links?.tv &&
+    managerArchived?.status === 200 &&
+    managerArchived.data?.event?.archived === true &&
+    noAccessJson(managerDelete) &&
+    communionAfter?.status === 200 &&
+    communionAfter.data?.event?.archived === true,
+  `${managerList.status} ${managerCreated.status} ${managerRotated?.status} ${managerArchived?.status} ${managerDelete?.status} ${communionAfter?.status}`,
+);
+check(
+  "events: the manager's card page has the links but no permanent delete",
+  managerPage?.status === 200 &&
+    managerPage.body.includes(`Komunia smoke ${RUN_TAG}`) &&
+    !managerPage.body.includes("Usuń wydarzenie trwale"),
+  String(managerPage?.status),
+);
+
+// Waiter A, owner B and the platform admin: the identical 404 of an unknown id, and nothing changes.
+const outsiderAttempts = (id) => [
+  ["list A", eventsApiOf(restaurantA.id), {}],
+  ["create in A", eventsApiOf(restaurantA.id), { method: "POST", json: { name: "Intruz", date: futureDate } }],
+  ["card", eventApi(id), {}],
+  ["edit", eventApi(id), { method: "PATCH", json: { name: "Intruz" } }],
+  ["archive", eventApi(id), { method: "PATCH", json: { archived: true } }],
+  ["replace the client link", `${eventApi(id)}/links/organizer`, { method: "POST" }],
+  ["delete", eventApi(id), { method: "DELETE" }],
+];
+const listBeforeOutsiders = await staffCall(sessionOwner, eventsApiOf(restaurantA.id));
+const outsiderDenied = [];
+const unknownPageOf = {};
+for (const [who, token] of [
+  ["waiter A", sessionWaiter],
+  ["owner B", sessionB],
+  ["admin", sessionAdmin],
+]) {
+  for (const [name, path, options] of outsiderAttempts(party.id)) {
+    const res = await staffCall(token, path, options);
+    if (!noAccessJson(res)) {
+      outsiderDenied.push(`${who} ${name}: ${String(res.status)}`);
+    }
+  }
+  const unknown = await staffCall(token, eventApi(2_000_000_000));
+  if (!noAccessJson(unknown)) {
+    outsiderDenied.push(`${who} unknown id: ${String(unknown.status)}`);
+  }
+  const page = await staffCall(token, eventPage(party.id));
+  const unknownPage = await staffCall(token, eventPage(2_000_000_000));
+  unknownPageOf[who] = unknownPage.body;
+  if (!isNoAccessPage(page) || page.body !== unknownPage.body || page.body.includes(party.links.organizer)) {
+    outsiderDenied.push(`${who} card page: ${String(page.status)}`);
+  }
+}
+const listAfterOutsiders = await staffCall(sessionOwner, eventsApiOf(restaurantA.id));
+const partyAfterOutsiders = await staffCall(sessionOwner, eventApi(party.id));
+check(
+  "events: waiter A, owner B and the admin get the identical 404 (API and card page) for A's events, nothing changes",
+  outsiderDenied.length === 0 &&
+    JSON.stringify(partyAfterOutsiders.data?.event) === JSON.stringify(party) &&
+    JSON.stringify(listAfterOutsiders.data) === JSON.stringify(listBeforeOutsiders.data) &&
+    unknownPageOf["waiter A"] === unknownPageOf["owner B"],
+  outsiderDenied.join("; "),
+);
+const waiterRestaurantPage = await staffCall(sessionWaiter, restaurantPageOf(restaurantA.id));
+check(
+  "events: the waiter's restaurant page shows no events, no create form and no links, only the note",
+  waiterRestaurantPage.status === 200 &&
+    waiterRestaurantPage.body.includes("Dzisiejsze wydarzenia dla kelnerów") &&
+    !waiterRestaurantPage.body.includes("Nowe wydarzenie") &&
+    !waiterRestaurantPage.body.includes("data-event-id") &&
+    !waiterRestaurantPage.body.includes(party.name),
+  String(waiterRestaurantPage.status),
+);
+const malformedDenied = [];
+for (const path of [
+  eventApi("abc"),
+  eventApi("99999999999"),
+  eventApi("-1"),
+  eventApi("1.5"),
+  eventsApiOf("abc"),
+  eventsApiOf("99999999999"),
+  eventsApiOf(2_000_000_000),
+]) {
+  const res = await staffCall(sessionOwner, path);
+  if (!noAccessJson(res)) {
+    malformedDenied.push(`${path} ${String(res.status)}`);
+  }
+}
+for (const id of [2_000_000_000, "abc"]) {
+  const res = await staffCall(sessionOwner, `${eventApi(id)}/links/organizer`, { method: "POST" });
+  if (!noAccessJson(res)) {
+    malformedDenied.push(`POST ${eventApi(id)}/links/organizer ${String(res.status)}`);
+  }
+}
+const ownerUnknownPage = await staffCall(sessionOwner, eventPage(2_000_000_000));
+for (const id of ["abc", "99999999999", "-1"]) {
+  const page = await staffCall(sessionOwner, eventPage(id));
+  if (!isNoAccessPage(page) || page.body !== ownerUnknownPage.body) {
+    malformedDenied.push(`${eventPage(id)} ${String(page.status)}`);
+  }
+}
+check(
+  "events: unknown, huge and malformed ids → the identical 404 (API and card page)",
+  malformedDenied.length === 0 && isNoAccessPage(ownerUnknownPage),
+  malformedDenied.join("; "),
+);
+
+// No session: the identical 401 of /api/panel/me; the card page sends to the login page.
+const noSessionDenied = [];
+for (const [name, path, options] of outsiderAttempts(party.id)) {
+  const res = await staffCall(null, path, options);
+  if (res.status !== 401 || res.body !== meNoCookie.body) {
+    noSessionDenied.push(`${name}: ${String(res.status)}`);
+  }
+}
+const cardPageNoSession = await request(eventPage(party.id));
+check(
+  "events: without a session every event route → the identical 401 and the card page → 303 to /logowanie",
+  noSessionDenied.length === 0 && redirectsTo(cardPageNoSession, "/logowanie"),
+  `${noSessionDenied.join("; ")} ${cardPageNoSession.status} ${cardPageNoSession.location}`,
+);
+
+// Origin: a mutation without the page's own Origin → 403, nothing changes.
+const originRefused = [];
+for (const [name, path, options] of outsiderAttempts(party.id).filter(([, , options]) => options.method)) {
+  for (const variant of [{ noOrigin: true }, { extraHeaders: { Origin: "https://evil.example" } }]) {
+    const res = await staffCall(sessionOwner, path, { ...options, ...variant });
+    if (res.status !== 403) {
+      originRefused.push(`${name} ${variant.noOrigin ? "no Origin" : "foreign"}: ${String(res.status)}`);
+    }
+  }
+}
+const partyAfterOrigin = await staffCall(sessionOwner, eventApi(party.id));
+const listAfterOrigin = await staffCall(sessionOwner, eventsApiOf(restaurantA.id));
+check(
+  "events: create, edit, archive, replace and delete without the page's Origin → 403, nothing changes",
+  originRefused.length === 0 &&
+    JSON.stringify(partyAfterOrigin.data?.event) === JSON.stringify(party) &&
+    JSON.stringify(listAfterOrigin.data) === JSON.stringify(listBeforeOutsiders.data),
+  originRefused.join("; "),
+);
+
+// Delete (owner): the event goes with its guest, and every link of it (client, TV, tablet, the guest's) dies at once.
+// Event A and event B read the same as before.
+const aGuestsBeforeDelete = (await request(`/api/o/${organizerKey}/guests`)).body;
+const bBeforeDelete = await readB();
+const createdDoomed = await createIn(sessionOwner, { name: `Do usunięcia smoke ${RUN_TAG}`, date: futureDate });
+const doomed = createdDoomed.data?.event;
+const doomedKey = keyOfPath(doomed?.links?.organizer);
+await request(`/api/o/${doomedKey}/guests`, { method: "POST", json: { text: "Gość do usunięcia" } });
+await request(`/api/o/${doomedKey}/guest-links`, { method: "PATCH", json: { enabled: true } });
+const doomedGuestKey = (await request(`/api/o/${doomedKey}/guest-links`)).data?.guests?.[0]?.key ?? "brak";
+const doomedGuestBefore = await request(`/api/g/${doomedGuestKey}/state`);
+const doomedCardBefore = await staffCall(sessionOwner, eventApi(doomed?.id ?? 0));
+const eventDeleted = await staffCall(sessionOwner, eventApi(doomed?.id ?? 0), { method: "DELETE" });
+const doomedCardAfter = await staffCall(sessionOwner, eventApi(doomed?.id ?? 0));
+const doomedPageAfter = await staffCall(sessionOwner, eventPage(doomed?.id ?? 0));
+const eventDeletedAgain = await staffCall(sessionOwner, eventApi(doomed?.id ?? 0), { method: "DELETE" });
+const listAfterDelete = await staffCall(sessionOwner, eventsApiOf(restaurantA.id));
+const doomedLinksDead = doomed
+  ? (await Promise.all(LINK_KINDS.map((kind) => linkDenied(kind, keyOfPath(doomed.links[kind]))))).every(Boolean)
+  : false;
+const doomedGuestAfter = await request(`/api/g/${doomedGuestKey}/state`);
+const doomedGuestPage = await request(`/g/${doomedGuestKey}`);
+check(
+  "events: the owner deletes an event with a guest → 200; card, page and list gone; client, TV, tablet and guest links → the identical 404",
+  createdDoomed.status === 201 &&
+    doomedCardBefore.data?.event?.guestCount === 1 &&
+    doomedGuestBefore.status === 200 &&
+    eventDeleted.status === 200 &&
+    eventDeleted.data?.deleted === true &&
+    eventDeleted.data.restaurantId === restaurantA.id &&
+    noAccessJson(doomedCardAfter) &&
+    isNoAccessPage(doomedPageAfter) &&
+    doomedPageAfter.body === ownerUnknownPage.body &&
+    noAccessJson(eventDeletedAgain) &&
+    ![...listIds(listAfterDelete, "upcoming"), ...listIds(listAfterDelete, "past")].includes(doomed?.id) &&
+    doomedLinksDead &&
+    noAccessJson(doomedGuestAfter) &&
+    doomedGuestPage.status === 404 &&
+    doomedGuestPage.body === deniedBody,
+  `${createdDoomed.status} ${doomedGuestBefore.status} ${eventDeleted.status} ${doomedCardAfter.status} ${String(doomedLinksDead)} ${doomedGuestAfter.status}`,
+);
+const aGuestsAfterDelete = (await request(`/api/o/${organizerKey}/guests`)).body;
+const bAfterDelete = await readB();
+check(
+  "events: deleting an event leaves event A and event B as they were",
+  aGuestsAfterDelete === aGuestsBeforeDelete && JSON.stringify(bAfterDelete) === JSON.stringify(bBeforeDelete),
+);
+
 finish();

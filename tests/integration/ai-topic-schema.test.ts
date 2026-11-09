@@ -197,7 +197,8 @@ describe.skipIf(!hasLocalDb)("AI topic schema", () => {
 
   it("refuses an unknown guest or event", async () => {
     expect((await reserve(UNKNOWN_ID)).error).toBe("GUEST_NOT_FOUND");
-    expect((await reserve(null, {}, 99)).error).toBe("EVENT_NOT_FOUND");
+    // An id no event gets in a local run (event ids are int4 since multi-tenant-events; 99 exists after enough runs).
+    expect((await reserve(null, {}, 2_000_000_000)).error).toBe("EVENT_NOT_FOUND");
   });
 
   it("admits exactly the limit under parallel calls", async () => {
