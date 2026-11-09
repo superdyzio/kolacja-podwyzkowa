@@ -63,6 +63,7 @@ Dziennik decyzji, zależności i blokerów nocnego przebiegu M-2 (zasady: `overn
 - 2026-11-10 — S-11 implementacja: test `tests/integration/ai-topic-schema.test.ts` („refuses an unknown guest or event”) zakładał, że wydarzenie o id 99 nie istnieje; po kilku przebiegach smoke i demo lokalna baza je ma — id zmienione na 2 000 000 000 (int4 od F-02), bez zmian w kodzie aplikacji.
 - 2026-11-10 — S-11 implementacja: demo loguje właściciela ciasteczkiem z odebranego zaproszenia i przez API panelu dokłada „Wigilia firmowa (demo)” (+32 dni, 80 gości), „Urodziny Ani (demo)” (−10 dni, 30) i „Komunia Zosi (demo)” (−60 dni, w archiwum); główne wydarzenie demo zostaje „dziś”. Smoke 27 tworzy menedżera A wprost w bazie i zmienia/usuwa tylko wydarzenia z tej sekcji.
 - 2026-11-10 — S-11 zaimplementowane: commity 97ed6a7 (plan), 4262d15 (p1), e020e1a (p2), 3cd5951 (p3), 3dcb0df (p4) + epilog; testy 105 plików / 1138, smoke 646 PASS dwa razy z rzędu, demo z listami 2/1/1. Ręczne sprawdzenia w przeglądarce (2.3–2.5, 3.4, 4.2: schowek, okna potwierdzeń, odczucie „< 3 min”) zostawione użytkownikowi — zakładki, karty, teksty EN i macierz ról sprawdzone przez HTTP.
+- 2026-11-10 — S-11 /10x-archive: ostrzeżenia „5 ręcznych pozycji Progress (0 automatycznych)” i „brak impl-review” — wybrana rekomendowana opcja „Continue archiving” (ręczne sprawdzenia w przeglądarce czekają na użytkownika); zmiana w `context/archive/2026-11-10-restaurant-events/`, S-11 `done` w roadmapie (5e18b80; prettier wyrównał przy tym tabele roadmapy, same spacje).
 
 ## Dodane zależności
 
