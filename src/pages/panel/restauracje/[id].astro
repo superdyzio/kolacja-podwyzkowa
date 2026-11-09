@@ -1,20 +1,37 @@
 ---
 import Layout from "@/layouts/Layout.astro";
 import NoAccess from "@/components/NoAccess.astro";
+import { NewEventForm } from "@/components/events/NewEventForm";
 import { authMessages } from "@/lib/auth/messages";
+import { canManageEvents, eventPanelMessages, formatEventDate, listRestaurantEvents } from "@/lib/events";
 import { findPanelRestaurant } from "@/lib/panel-api";
 import { getRestaurantOverview, restaurantPanelMessages } from "@/lib/restaurants";
 
-// The restaurant panel (platform-restaurants, S-10): what an owner sees after accepting the invitation — the
-// restaurant, their role, how many events it has and (owners and managers) the team. Events (S-11) and team
-// management (S-12) come next. Through the central lookup: a foreign, unknown, malformed or disabled restaurant gets
-// the no-access page (404), the same for every reason.
+// The restaurant panel (platform-restaurants, S-10; restaurant-events, S-11): the restaurant, the person's role, its
+// events and (owners and managers) the team. Owners and managers create an event („Nowe wydarzenie” → its card) and
+// browse the tabs „Nadchodzące / Minione / Archiwum” (?lista=nadchodzace|minione|archiwum, anything else = upcoming);
+// waiters get a note until their day view (S-21). Through the central lookup: a foreign, unknown, malformed or
+// disabled restaurant gets the no-access page (404), the same for every reason.
 const locale = Astro.locals.locale;
 const t = restaurantPanelMessages(locale);
+const te = eventPanelMessages(locale);
 const roles = authMessages(locale).roleLabels;
 const panel = await findPanelRestaurant(Astro.locals, Astro.params.id);
 const overview = panel ? await getRestaurantOverview(panel.db, panel.restaurant.id) : null;
 const showTeam = panel?.role === "owner" || panel?.role === "manager";
+const manages = panel ? canManageEvents(panel.role) : false;
+const lists = panel && manages ? await listRestaurantEvents(panel.db, panel.restaurant.id, new Date()) : null;
+const listParam = Astro.url.searchParams.get("lista");
+const tab = listParam === "minione" ? "past" : listParam === "archiwum" ? "archived" : "upcoming";
+const tabs = lists
+  ? ([
+      { key: "upcoming", slug: "nadchodzace", label: te.tabUpcoming(lists.upcoming.length), empty: te.emptyUpcoming },
+      { key: "past", slug: "minione", label: te.tabPast(lists.past.length), empty: te.emptyPast },
+      { key: "archived", slug: "archiwum", label: te.tabArchived(lists.archived.length), empty: te.emptyArchived },
+    ] as const)
+  : [];
+const shown = lists ? lists[tab] : [];
+const emptyText = tabs.find((candidate) => candidate.key === tab)?.empty ?? "";
 if (!panel) {
   Astro.response.status = 404;
 }
@@ -33,12 +50,62 @@ if (!panel) {
         </p>
       </header>
 
-      <section aria-labelledby="events-heading" class="flex flex-col gap-2 rounded-xl border p-4 sm:p-6">
+      {manages && <NewEventForm client:load restaurantId={panel.restaurant.id} locale={locale} />}
+
+      <section aria-labelledby="events-heading" class="flex flex-col gap-3 rounded-xl border p-4 sm:p-6">
         <h2 id="events-heading" class="text-xl font-semibold">
-          {t.eventsHeading}
+          {te.listsHeading}
         </h2>
-        <p>{t.eventCount(overview.eventCount)}</p>
-        <p class="text-sm text-muted-foreground">{t.eventsComingSoon}</p>
+        {lists ? (
+          <>
+            <nav aria-label={te.tabsLabel} class="flex flex-wrap gap-2">
+              {tabs.map((candidate) => (
+                <a
+                  href={`?lista=${candidate.slug}`}
+                  aria-current={candidate.key === tab ? "page" : undefined}
+                  class:list={[
+                    "rounded-full border px-3 py-1.5 text-sm font-medium",
+                    candidate.key === tab && "bg-primary text-primary-foreground",
+                  ]}
+                >
+                  {candidate.label}
+                </a>
+              ))}
+            </nav>
+            {shown.length === 0 ? (
+              <p class="text-muted-foreground" data-event-list={tab}>
+                {emptyText}
+              </p>
+            ) : (
+              <ul class="flex flex-col divide-y" data-event-list={tab}>
+                {shown.map((event) => (
+                  <li class="flex flex-wrap items-center justify-between gap-2 py-3" data-event-id={event.id}>
+                    <span class="flex flex-col">
+                      <a
+                        href={`/panel/wydarzenia/${String(event.id)}`}
+                        class="font-medium underline-offset-4 hover:underline"
+                        aria-label={te.openCardFor(event.name)}
+                      >
+                        {event.name}
+                      </a>
+                      <span class="text-sm text-muted-foreground">
+                        {formatEventDate(event.date, locale)}
+                        {event.expectedGuests !== null && ` · ${te.guestsExpected(event.expectedGuests)}`}
+                      </span>
+                    </span>
+                    {!event.archived && event.timing === "today" && (
+                      <span class="rounded-full bg-primary px-2 py-0.5 text-xs text-primary-foreground">
+                        {te.timingLabels.today}
+                      </span>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </>
+        ) : (
+          <p class="text-sm text-muted-foreground">{te.waiterNote}</p>
+        )}
       </section>
 
       {showTeam && (

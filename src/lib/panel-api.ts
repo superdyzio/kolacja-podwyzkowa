@@ -89,6 +89,25 @@ export async function panelRestaurantApi(
   return (await findPanelRestaurant(locals, idParam, roles)) ?? denied(locals);
 }
 
+// The event of a panel page or route with the person's role in its restaurant, or null — decided exactly like
+// findPanelRestaurant (restaurant-events, S-11: the event card page and the event routes share it).
+export async function findPanelEvent(
+  locals: App.Locals,
+  idParam: string | undefined,
+  roles: readonly StaffRole[] = STAFF_ROLES,
+): Promise<(PanelApi & EventMembership) | null> {
+  const db = getDb();
+  if (!locals.staff || !db) {
+    return null;
+  }
+  const id = parseIntId(idParam);
+  const membership = id === null ? null : await findEventMembership(db, locals.staff.accountId, id);
+  if (!membership || !roles.includes(membership.role)) {
+    return null;
+  }
+  return { staff: locals.staff, db, ...membership };
+}
+
 export async function panelEventApi(
   locals: App.Locals,
   idParam: string | undefined,
@@ -98,10 +117,5 @@ export async function panelEventApi(
   if (api instanceof Response) {
     return api;
   }
-  const id = parseIntId(idParam);
-  const membership = id === null ? null : await findEventMembership(api.db, api.staff.accountId, id);
-  if (!membership || !roles.includes(membership.role)) {
-    return denied(locals);
-  }
-  return { ...api, ...membership };
+  return (await findPanelEvent(locals, idParam, roles)) ?? denied(locals);
 }

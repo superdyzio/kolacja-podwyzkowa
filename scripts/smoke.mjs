@@ -4497,8 +4497,11 @@ check(
     ownRestaurant.data.role === "owner" &&
     ownEvent.status === 200 &&
     ownEvent.data?.event?.id === eventA.id &&
-    !ownEvent.body.includes(organizerKey) &&
-    !ownEvent.body.includes(tvKey),
+    // Owners and managers hold the event's links since restaurant-events (S-11); the tablet key was replaced in the
+    // orders section, so only its shape is checked.
+    ownEvent.data.event.links?.organizer === `/o/${organizerKey}` &&
+    ownEvent.data.event.links.tv === `/tv/${tvKey}` &&
+    new RegExp(`^/r/${KEY}$`).test(ownEvent.data.event.links.restaurant ?? ""),
   `${ownRestaurant.status} ${ownEvent.status} ${ownEvent.body.slice(0, 160)}`,
 );
 const guardDenied = [];

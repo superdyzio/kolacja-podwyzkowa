@@ -1,0 +1,35 @@
+---
+import Layout from "@/layouts/Layout.astro";
+import NoAccess from "@/components/NoAccess.astro";
+import { EventCard } from "@/components/events/EventCard";
+import { EVENT_STAFF_ROLES, eventPanelMessages, getEventCard } from "@/lib/events";
+import { findPanelEvent } from "@/lib/panel-api";
+
+// The event card (restaurant-events, S-11; US-06, US-09, FR-025): owners and managers of the event's restaurant see
+// what it is, copy, open and replace its client, TV and staff tablet links, edit it, archive or restore it; owners also
+// delete it. Through the central lookup: a waiter (S-21 brings their day view), another restaurant's event, a
+// disabled restaurant and an unknown or malformed id all get the same no-access page (404).
+const locale = Astro.locals.locale;
+const t = eventPanelMessages(locale);
+const panel = await findPanelEvent(Astro.locals, Astro.params.id, EVENT_STAFF_ROLES);
+const card = panel ? await getEventCard(panel.db, panel.event.restaurantId, panel.event.id, new Date()) : null;
+if (!panel || !card) {
+  Astro.response.status = 404;
+}
+---
+
+{panel && card ? (
+  <Layout title={t.pageTitle(card.name)}>
+    <main class="mx-auto flex max-w-3xl flex-col gap-6 p-4 sm:p-8">
+      <a
+        href={`/panel/restauracje/${String(card.restaurantId)}`}
+        class="self-start py-2 text-sm text-muted-foreground underline-offset-4 hover:underline"
+      >
+        {t.backTo(card.restaurantName)}
+      </a>
+      <EventCard client:load initial={card} role={panel.role} origin={Astro.url.origin} locale={locale} />
+    </main>
+  </Layout>
+) : (
+  <NoAccess />
+)}

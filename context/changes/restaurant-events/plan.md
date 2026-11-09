@@ -295,21 +295,21 @@ Additive and backfilled; the code reads the new columns, so the migration goes t
 
 #### Automated
 
-- [x] 1.1 Migration applies from scratch: `npx supabase db reset`
-- [x] 1.2 Migration applies on the populated local DB with every existing row and key unchanged
-- [x] 1.3 Unit and integration tests pass: `AI_PROVIDER=mock npm test`
-- [x] 1.4 Lint and type check pass: `npm run lint`, `npx astro check`
+- [x] 1.1 Migration applies from scratch: `npx supabase db reset` — 4262d15
+- [x] 1.2 Migration applies on the populated local DB with every existing row and key unchanged — 4262d15
+- [x] 1.3 Unit and integration tests pass: `AI_PROVIDER=mock npm test` — 4262d15
+- [x] 1.4 Lint and type check pass: `npm run lint`, `npx astro check` — 4262d15
 
 #### Manual
 
-- [x] 1.5 After `migration up`, pre-existing events have their creation day as date, no archive mark, and show in their restaurant's list
+- [x] 1.5 After `migration up`, pre-existing events have their creation day as date, no archive mark, and show in their restaurant's list — 4262d15
 
 ### Phase 2: Guard, API routes, pages and islands
 
 #### Automated
 
-- [ ] 2.1 Tests, lint, type check and build pass
-- [ ] 2.2 Existing smoke (updated section-25 assertion) passes on the preview
+- [x] 2.1 Tests, lint, type check and build pass
+- [x] 2.2 Existing smoke (updated section-25 assertion) passes on the preview
 
 #### Manual
 
