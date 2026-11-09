@@ -25,7 +25,7 @@ checkpoint:
     - topic: logowanie personelu
       decision: "własne konta e-mail + hasło, bez wysyłania e-maili; zaproszenia i reset hasła jako jednorazowe linki do skopiowania"
     - topic: kto prowadzi wydarzenie
-      decision: "lokal tworzy wydarzenie (z szablonu sali) i daje klientowi link organizatora; zamówienia, ceny, rachunek, koszty AI, moduły i usuwanie widzi tylko lokal"
+      decision: "lokal tworzy wydarzenie (z szablonu sali) i daje klientowi link organizatora (zakres klienta doprecyzowany niżej: „zakres klienta (poprawka FR-027/028)”)"
     - topic: skala
       decision: "do 150 gości na wydarzenie"
     - topic: dane produkcyjne
@@ -45,7 +45,7 @@ checkpoint:
     - topic: role personelu
       decision: "właściciel + menedżer + kelner; kelner widzi ceny i rachunek; menedżer zarządza kelnerami; właściciel także menedżerami, ustawieniami lokalu i usuwaniem"
     - topic: wgląd administratora platformy
-      decision: "pełny wgląd w dane każdej restauracji (wsparcie)"
+      decision: "pełny wgląd w dane każdej restauracji (wsparcie), z dziennikiem wejść widocznym dla właściciela lokalu (rozstrzygnięcie FR-021)"
     - topic: personel a praca klienta
       decision: "domyślnie podgląd; per wydarzenie przełącznik „lokal prowadzi” daje personelowi edycję tego, co robi klient"
     - topic: długość sesji
@@ -119,18 +119,18 @@ Luka: aplikacja obsługuje jedną kolację na wdrożenie, nie ma kont, panelu lo
 
 | Rola | Jak wchodzi | Może | Nie może |
 |---|---|---|---|
-| Administrator platformy | konto | zakładać restauracje, zapraszać właścicieli, wyłączać restauracje; pełny wgląd w dane każdej restauracji (wsparcie) | — |
-| Właściciel lokalu | konto (zaproszenie od administratora platformy) | wszystko w swojej restauracji: wydarzenia, szablony sal, menu, zamówienia, ceny, rachunek, linki, moduły, archiwum; zespół (menedżerowie i kelnerzy); ustawienia lokalu (branding); usuwanie | widzieć inne restauracje |
-| Menedżer | konto (zaproszenie od właściciela) | wydarzenia, szablony sal, menu, zamówienia, ceny, rachunek, linki, moduły, archiwum; zaprasza i usuwa kelnerów | zarządzać menedżerami i właścicielem, zmieniać ustawienia lokalu, usuwać restaurację |
-| Kelner | konto (zaproszenie od właściciela lub menedżera) | wydarzenia na dziś: plan z gośćmi, zamówienia z cenami i rachunkiem, oznaczanie wydanych | widzieć i wydawać linki, zmieniać wydarzenia, zespół, ustawienia |
-| Klient (organizator) | link `/o/` od lokalu, bez logowania | jak organizator w v1 w obrębie swojego wydarzenia: goście, grupy, sale i stoliki, rozsadzenie, linki gości, karteczki, zamówienia z cenami, napoje, rachunek, gry i zabawy z włączonych modułów, „Pokaż na TV” | resetować danych, usuwać wydarzenia (tylko lokal) |
+| Administrator platformy | konto | zakładać restauracje, zapraszać właścicieli, wyłączać restauracje, odblokowywać płatne moduły wydarzenia; pełny wgląd w dane każdej restauracji (wsparcie), a każde wejście trafia do dziennika widocznego dla właściciela lokalu | — |
+| Właściciel lokalu | konto (zaproszenie od administratora platformy) | wszystko w swojej restauracji: wydarzenia, szablony sal, menu i ceny, dostępne moduły, linki, archiwum, pełny reset, koszty AI, przełącznik „lokal prowadzi”; zespół (menedżerowie i kelnerzy); ustawienia lokalu (branding, czas przechowywania danych gości); trwałe usuwanie | widzieć inne restauracje |
+| Menedżer | konto (zaproszenie od właściciela) | wydarzenia, szablony sal, menu i ceny, dostępne moduły, linki, archiwum, eksport, pełny reset, koszty AI, przełącznik „lokal prowadzi”; w trybie „lokal prowadzi” to samo, co klient; zaprasza i usuwa kelnerów, dodaje kelnerów „na imprezę” | zarządzać menedżerami i właścicielem, zmieniać ustawienia lokalu, trwale usuwać wydarzenia i restaurację |
+| Kelner | konto (zaproszenie od właściciela lub menedżera) albo dostęp „na imprezę” (jednorazowy link lub kod ważny do końca okna imprezy) | wydarzenia trwające dziś (także po północy): plan z gośćmi, zamówienia z cenami i rachunkiem, oznaczanie wydanych, dopisywanie zamówień na sali | widzieć i wydawać linki, zmieniać wydarzenia, zespół, ustawienia |
+| Klient (organizator) | link `/o/` od lokalu, bez logowania | jak organizator w v1 w obrębie swojego wydarzenia: goście (także import), diety, grupy, sale i stoliki, rozsadzenie, linki gości, karteczki i wydruki, zamówienia z dostępnego menu, napoje, rachunek, włączanie dostępnych gier i zabaw, „Pokaż na TV”, branding swojego wydarzenia, reset prób; w trybie „lokal prowadzi” tylko podgląd | zmieniać ceny, robić pełny reset, usuwać wydarzenie, widzieć koszty AI |
 | TV | link `/tv/`, bez logowania | tylko odczyt, jak w v1 | cokolwiek zmieniać |
 | Tablet obsługi | link `/r/`, bez logowania | tylko odczyt, jak w v1 (plan, zamówienia do wydania) | cokolwiek zmieniać; oznaczanie wydanych wymaga konta kelnera |
 | Gość | osobisty link `/g/`, bez logowania | jak w v1, tylko własne dane: miejsce, strzał, „Dotarło”, pytania, tematy AI | widzieć dane innych poza opublikowanym rozsadzeniem |
 
 Zasady:
 - **Linki lokalu są tylko do odczytu.** Każda zmiana po stronie lokalu (`/r/`, TV) wymaga zalogowania. Link klienta i linki gości zachowują swoje akcje z v1.
-- **Personel a praca klienta.** Domyślnie personel lokalu tylko podgląda to, co robi klient (goście, grupy, rozsadzenie). Przełącznik „lokal prowadzi” w wydarzeniu daje personelowi edycję za klienta, na przykład gdy klient przysyła listę mailem albo prosi o przesadzenie przez telefon.
+- **Personel a praca klienta.** Domyślnie personel lokalu tylko podgląda to, co robi klient (goście, grupy, rozsadzenie, zamówienia). Przełącznik „lokal prowadzi” w wydarzeniu daje personelowi edycję za klienta, na przykład gdy klient przysyła listę mailem albo prosi o przesadzenie przez telefon; klient ma wtedy tylko podgląd.
 - **Sesja** trwa 30 dni na urządzeniu. Wylogowanie i zmiana hasła ją zamykają.
 - **Konta bez e-maili.** Zaproszenia i reset hasła to jednorazowe linki z terminem ważności, które przekazuje zapraszający.
 - **Odmowa.** Wejście do panelu bez zalogowania prowadzi do logowania. Cudze lub nieznane wydarzenie albo restauracja daje tę samą odmowę bez danych, jak dziś dla kluczy.
@@ -144,7 +144,7 @@ Przepływ, który ma zadziałać na demo z restauracją (delta względem v1):
 3. Menedżer raz wprowadza szablon sali (plan, sale, stoły).
 4. Menedżer tworzy wydarzenie (np. „Wigilia firmy Y, 12.12, 80 osób”) z szablonu i kopiuje klientowi link organizatora.
 5. Klient wkleja gości, rozsadza i publikuje (jak v1). Lokal widzi to w podglądzie.
-6. Menedżer wpisuje zamówienia. W dniu imprezy TV pokazuje rozsadzenie, kelner na swoim koncie oznacza wydane, a kuchnia patrzy na tablet `/r/`.
+6. Zamówienia są wpisane (przez klienta albo menedżera w trybie „lokal prowadzi”). W dniu imprezy TV pokazuje rozsadzenie, kelner na swoim koncie oznacza wydane, a kuchnia patrzy na tablet `/r/`.
 7. Po imprezie wydarzenie idzie do archiwum, a następne powstaje z tego samego szablonu w minutę.
 
 **Zasięg zmiany:**
