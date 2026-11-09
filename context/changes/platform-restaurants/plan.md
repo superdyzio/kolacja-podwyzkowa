@@ -348,11 +348,11 @@ Additive (one nullable column, three functions); existing rows are active (`disa
 
 #### Automated
 
-- [ ] 1.1 Migration applies on the populated local DB with every existing table's row count unchanged: `npx supabase migration up`
-- [ ] 1.2 Tests pass: `AI_PROVIDER=mock npm test`
-- [ ] 1.3 Lint passes: `npm run lint`
-- [ ] 1.4 Type check passes: `npx astro check`
-- [ ] 1.5 Build succeeds: `npm run build`
+- [x] 1.1 Migration applies on the populated local DB with every existing table's row count unchanged: `npx supabase migration up`
+- [x] 1.2 Tests pass: `AI_PROVIDER=mock npm test`
+- [x] 1.3 Lint passes: `npm run lint`
+- [x] 1.4 Type check passes: `npx astro check`
+- [x] 1.5 Build succeeds: `npm run build`
 
 ### Phase 2: Guard, routes and pages
 

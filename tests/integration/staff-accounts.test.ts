@@ -273,7 +273,12 @@ describe.skipIf(!hasLocalDb)("staff accounts (integration)", () => {
 
     const memberships = await getMemberships(db, owner.id);
     expect(memberships).toEqual([
-      { restaurantId: eventA.restaurantId, restaurantName: expect.any(String) as string, role: "owner" },
+      {
+        restaurantId: eventA.restaurantId,
+        restaurantName: expect.any(String) as string,
+        role: "owner",
+        disabled: false,
+      },
     ]);
     expect(await findRestaurantMembership(db, owner.id, eventA.restaurantId)).toMatchObject({
       restaurant: { id: eventA.restaurantId },

@@ -14,11 +14,13 @@ export interface StaffSession {
   expiresAt: string;
 }
 
-// The person's role in one restaurant.
+// The person's role in one restaurant; `disabled` = switched off by the platform administrator (platform-restaurants):
+// listed in the panel with a note, but its data opens to nobody.
 export interface StaffMembership {
   restaurantId: number;
   restaurantName: string;
   role: StaffRole;
+  disabled: boolean;
 }
 
 // A new session's secret (goes only into the Set-Cookie header) and its end.

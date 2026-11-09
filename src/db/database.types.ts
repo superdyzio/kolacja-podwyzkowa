@@ -17,16 +17,20 @@ export interface Database {
           id: number;
           name: string;
           created_at: string;
+          // platform-restaurants: null = active, set = switched off by the platform administrator.
+          disabled_at: string | null;
         };
         Insert: {
           id?: never;
           name: string;
           created_at?: string;
+          disabled_at?: string | null;
         };
         Update: {
           id?: never;
           name?: string;
           created_at?: string;
+          disabled_at?: string | null;
         };
         Relationships: [];
       };
@@ -1136,6 +1140,32 @@ export interface Database {
       begin_login_attempt: {
         Args: { p_key_hash: string; p_limit: number; p_window_seconds: number };
         Returns: { allowed: boolean; retry_after_seconds: number }[];
+      };
+      // platform-restaurants: owners, atomic restaurant creation and the platform's restaurant list.
+      add_restaurant_owner: {
+        Args: { p_restaurant_id: number; p_email: string; p_display_name?: string | null };
+        Returns: { owner_account_id: number; owner_created: boolean; owner_has_password: boolean }[];
+      };
+      create_restaurant_with_owner: {
+        Args: { p_name: string; p_email: string; p_display_name?: string | null };
+        Returns: {
+          new_restaurant_id: number;
+          owner_account_id: number;
+          owner_created: boolean;
+          owner_has_password: boolean;
+        }[];
+      };
+      platform_restaurant_list: {
+        Args: Record<PropertyKey, never>;
+        Returns: {
+          id: number;
+          name: string;
+          created_at: string;
+          disabled_at: string | null;
+          event_count: number;
+          member_count: number;
+          owners: Json;
+        }[];
       };
     };
     Enums: { [_ in never]: never };

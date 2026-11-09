@@ -743,3 +743,55 @@ export interface RestaurantViewDto {
   placement: OrderPlacementDto<RestaurantItemDto>;
   totals: { quantity: number; toServe: number };
 }
+
+// --- Platform panel (platform-restaurants, S-10) -------------------------------------------------------------------
+
+// An owner of a restaurant as the platform administrator sees them: no hashes, no sessions.
+export interface PlatformOwnerDto {
+  accountId: number;
+  email: string;
+  displayName: string | null;
+  // false = the invitation was not accepted yet (no password set).
+  hasPassword: boolean;
+}
+
+// A restaurant in the platform list: counters only, never its events, guests or keys (support access is S-13).
+export interface PlatformRestaurantDto {
+  id: number;
+  name: string;
+  disabled: boolean;
+  eventCount: number;
+  memberCount: number;
+  owners: PlatformOwnerDto[];
+}
+
+// GET /api/panel/platform/restaurants and part of every answer of the platform API.
+export interface PlatformRestaurantListDto {
+  restaurants: PlatformRestaurantDto[];
+}
+
+// A one-time link for a staff account (invitation or password reset), shown once to the person who issued it.
+export interface StaffLinkDto {
+  kind: "invite" | "reset";
+  // "/haslo/<token>"; the page adds its origin.
+  path: string;
+  expiresAt: string;
+}
+
+// The owner after „Załóż restaurację” or „Dodaj właściciela”: `link` is null when the account already has a password
+// (the person sees the restaurant after logging in).
+export interface OwnerResultDto {
+  accountId: number;
+  email: string;
+  created: boolean;
+  hasPassword: boolean;
+  link: StaffLinkDto | null;
+}
+
+// A member of the restaurant's team in the restaurant panel (owners and managers see it).
+export interface RestaurantTeamMemberDto {
+  email: string;
+  displayName: string | null;
+  role: "owner" | "manager" | "waiter";
+  hasPassword: boolean;
+}

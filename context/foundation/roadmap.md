@@ -52,7 +52,7 @@ Restauracja, która gościła kolację 2026-11-08, chce tego narzędzia do włas
 | ---- | ----------------------- | ------------------------------------------------------------------------------------------------------------------------ | ----------------- | ------------------------------------------------------------------------- | -------- |
 | F-02 | multi-tenant-events     | (foundation) dane trzymają wiele restauracji i wydarzeń; każdy link i każda operacja działa tylko w swoim wydarzeniu       | —                 | NFR-012, NFR-015, US-10, US-01..US-04, FR-001..FR-020, FR-043, FR-044, FR-045, FR-046, FR-047     | done        |
 | F-03 | staff-accounts          | (foundation) zaproszona osoba ustawia hasło z jednorazowego linku, loguje się na 30 dni, wylogowuje się i zmienia hasło     | F-02              | FR-022, US-05, NFR-013, NFR-020, NFR-022                                  | done        |
-| S-10 | platform-restaurants    | administrator platformy zakłada restaurację z zaproszeniem właściciela, widzi listę, wyłącza i włącza restaurację          | F-03              | FR-021, US-05                                                             | planning |
+| S-10 | platform-restaurants    | administrator platformy zakłada restaurację z zaproszeniem właściciela, widzi listę, wyłącza i włącza restaurację          | F-03              | FR-021, US-05                                                             | in-progress |
 | S-11 | restaurant-events       | lokal zakłada wydarzenie, przegląda nadchodzące, minione i archiwum, kopiuje i wymienia linki, archiwizuje i usuwa         | S-10              | FR-024, FR-025, US-06, US-09, US-10                                       | proposed |
 | S-12 | restaurant-team         | właściciel i menedżer zapraszają zespół, zmieniają role, usuwają osoby i dają jednorazowy link resetu hasła               | S-10              | FR-023, US-05                                                             | proposed |
 | S-13 | admin-support-log       | administrator platformy wchodzi w dane lokalu w trybie wsparcia, a właściciel widzi każde wejście w dzienniku              | S-11              | FR-021, US-05, US-10, NFR-012                                             | proposed |
@@ -144,7 +144,7 @@ Fundamenty poniżej zakładają, że to istnieje, i NIE budują tego od nowa.
 - **Blockers:** —
 - **Unknowns:** —
 - **Risk:** Wgląd administratora w dane lokalu (FR-021) celowo przechodzi do S-13 razem z dziennikiem wejść. Do tego czasu administrator nie widzi danych gości, co jest bezpiecznym stanem pośrednim.
-- **Status:** planning
+- **Status:** in-progress
 
 ### S-11: Wydarzenia lokalu i linki dla klienta
 

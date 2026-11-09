@@ -326,7 +326,7 @@ export async function changePassword(
 export async function getMemberships(db: DbClient, accountId: number): Promise<StaffMembership[]> {
   const { data, error } = await db
     .from("restaurant_member")
-    .select("role, restaurant(id, name)")
+    .select("role, restaurant(id, name, disabled_at)")
     .eq("account_id", accountId);
   if (error) {
     fail("odczyt restauracji", error);
@@ -337,6 +337,7 @@ export async function getMemberships(db: DbClient, accountId: number): Promise<S
       restaurantId: row.restaurant.id,
       restaurantName: row.restaurant.name,
       role: row.role as StaffRole,
+      disabled: row.restaurant.disabled_at !== null,
     }))
     .sort((a, b) => a.restaurantName.localeCompare(b.restaurantName, "pl") || a.restaurantId - b.restaurantId);
 }
@@ -346,7 +347,8 @@ export interface RestaurantMembership {
   role: StaffRole;
 }
 
-// The person's role in the restaurant, or null (not a member, unknown restaurant — the same).
+// The person's role in the restaurant, or null (not a member, unknown restaurant, a restaurant switched off by the
+// platform administrator — platform-restaurants — all the same). Every panel guard goes through here.
 export async function findRestaurantMembership(
   db: DbClient,
   accountId: number,
@@ -354,14 +356,14 @@ export async function findRestaurantMembership(
 ): Promise<RestaurantMembership | null> {
   const { data, error } = await db
     .from("restaurant_member")
-    .select("role, restaurant(id, name)")
+    .select("role, restaurant(id, name, disabled_at)")
     .eq("account_id", accountId)
     .eq("restaurant_id", restaurantId)
     .maybeSingle();
   if (error) {
     fail("sprawdzanie członkostwa", error);
   }
-  if (!data || !isStaffRole(data.role)) {
+  if (!data || !isStaffRole(data.role) || data.restaurant.disabled_at !== null) {
     return null;
   }
   return { restaurant: { id: data.restaurant.id, name: data.restaurant.name }, role: data.role };
