@@ -369,11 +369,11 @@ Additive (five new tables, four functions); no existing row or function changes,
 
 #### Automated
 
-- [x] 3.1 From scratch: `npx supabase db reset`, then `AI_PROVIDER=mock npm test` passes
-- [x] 3.2 Build succeeds: `npm run build`
-- [x] 3.3 Smoke passes twice in a row against `AI_PROVIDER=mock npm run preview`: `npm run smoke`
-- [x] 3.4 Demo prints the panel login and the event links: `npm run demo`
-- [x] 3.5 Lint passes: `npm run lint`
+- [x] 3.1 From scratch: `npx supabase db reset`, then `AI_PROVIDER=mock npm test` passes — aa63866
+- [x] 3.2 Build succeeds: `npm run build` — aa63866
+- [x] 3.3 Smoke passes twice in a row against `AI_PROVIDER=mock npm run preview`: `npm run smoke` — aa63866
+- [x] 3.4 Demo prints the panel login and the event links: `npm run demo` — aa63866
+- [x] 3.5 Lint passes: `npm run lint` — aa63866
 
 #### Manual
 
@@ -383,5 +383,5 @@ Additive (five new tables, four functions); no existing row or function changes,
 
 #### Automated
 
-- [ ] 4.1 Lint passes: `npm run lint`
-- [ ] 4.2 `grep -n "has_auth: true" context/foundation/tech-stack.md` finds the line
+- [x] 4.1 Lint passes: `npm run lint`
+- [x] 4.2 `grep -n "has_auth: true" context/foundation/tech-stack.md` finds the line

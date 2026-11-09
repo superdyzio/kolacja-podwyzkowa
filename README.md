@@ -1,6 +1,6 @@
 # Kolacja podwyżkowa
 
-Aplikacja webowa do prowadzenia corocznej kolacji podwyżkowej: rozsadzenie gości z rotacją, widok TV z planem sal, telefony gości (miejsce, pytania, strzały) i ranking strzałów dla organizatora. Nie ma kont: każdy widok otwiera się wyłącznie przez link z niezgadywalnym kluczem.
+Aplikacja webowa do prowadzenia corocznej kolacji podwyżkowej: rozsadzenie gości z rotacją, widok TV z planem sal, telefony gości (miejsce, pytania, strzały) i ranking strzałów dla organizatora. Widoki wydarzenia otwierają się wyłącznie przez link z niezgadywalnym kluczem; personel restauracji loguje się do panelu e-mailem i hasłem.
 
 Dokumentacja produktu (PRD, roadmapa, stack) jest w `context/foundation/`.
 
@@ -30,7 +30,22 @@ Załóż restaurację i wydarzenie: `npm run event:create -- --restaurant "Pod L
 | TV          | `/tv/<klucz>` | tylko do odczytu, na urządzeniu przy telewizorze |
 | Gość        | `/g/<klucz>`  | osobisty link/QR (w kolejnych etapach)           |
 | Restauracja | `/r/<klucz>`  | tylko do odczytu: zamówienie i plan, bez cen     |
+| Personel    | `/panel`      | logowanie e-mailem i hasłem na `/logowanie`      |
 | Inne        | —             | strona „Brak dostępu” (HTTP 404), żadnych danych |
+
+## Konta personelu
+
+Personel restauracji (właściciel, menedżer, kelner) i administrator platformy logują się na `/logowanie` e-mailem i hasłem; sesja trwa 30 dni na danym urządzeniu. Panel `/panel` pokazuje, kto jest zalogowany, jego restauracje z rolą, zmianę hasła (kończy sesje na innych urządzeniach) oraz „Wyloguj” i „Wyloguj wszędzie”. Po 10 nieudanych próbach w 15 minut logowanie na dany e-mail czeka do końca tych 15 minut (zalogowane urządzenia działają dalej).
+
+Aplikacja nie wysyła e-maili. Konto zakłada się z jednorazowym linkiem `/haslo/<token>` (zaproszenie ważne 7 dni, reset hasła 24 godziny), który przekazujesz tej osobie sam; link działa raz, a nowy link unieważnia poprzednie.
+
+Pierwszy administrator platformy (lokalnie):
+
+```bash
+npm run platform:admin -- ja@example.com --name "Imię Nazwisko"
+```
+
+Skrypt wypisuje host bazy i link do ustawienia hasła. Konto bez hasła dostaje zaproszenie, konto z hasłem — link do ustawienia nowego (tak administrator wraca po zgubieniu hasła). Na produkcji patrz „Pierwsze uruchomienie”. Panel restauracji, zakładanie wydarzeń i zapraszanie personelu przyjdą w kolejnych etapach; `npm run demo` zakłada konto właściciela „Restauracji demo” i wypisuje jego e-mail i hasło.
 
 ## Języki
 
@@ -114,10 +129,11 @@ Na produkcji ta zmiana wymaga migracji bazy **przed** wdrożeniem kodu (bez niej
 - `npm run env:local`: zapisuje dane lokalnego Supabase do `.env` (jedyny plik ze zmiennymi; stary `.dev.vars` z czasów Cloudflare nie jest już używany).
 - `npm run event:create`: zakłada wydarzenie (z nową restauracją albo w istniejącej: `--restaurant-id`) z bazą startową pytań w bazie z `.env` i wypisuje jego linki; najpierw podaje, do jakiej bazy pisze.
 - `npm run links`: wypisuje wszystkie wydarzenia (restauracja · nazwa, id) z linkiem organizatora, adresem TV i linkiem restauracji.
-- `npm run smoke`: test HTTP macierzy dostępu na działającym serwerze (`BASE_URL`, domyślnie `http://localhost:4321`). Działa tylko z lokalnym Supabase w `.env` (tym samym co serwer): przy każdym uruchomieniu zakłada w nim własne dwie restauracje z wydarzeniami (A do wszystkich sprawdzeń, B do sprawdzenia, że linki A nie sięgają do B) i nie rusza innych wydarzeń, więc można go puszczać wielokrotnie na tej samej bazie. `npm run preview` czyta `.env` przy starcie, więc po zmianie `.env` uruchom podgląd ponownie.
+- `npm run platform:admin -- <email> [--name "<imię>"] [--remote]`: zakłada (albo znajduje) konto administratora platformy i wypisuje jednorazowy link do ustawienia hasła; najpierw podaje host bazy, a baza inna niż lokalna wymaga `--remote`. Link jest sekretny.
+- `npm run smoke`: test HTTP macierzy dostępu na działającym serwerze (`BASE_URL`, domyślnie `http://localhost:4321`). Działa tylko z lokalnym Supabase w `.env` (tym samym co serwer): przy każdym uruchomieniu zakłada w nim własne dwie restauracje z wydarzeniami (A do wszystkich sprawdzeń, B do sprawdzenia, że linki A nie sięgają do B) i własne konta personelu (logowanie, limit prób, sesje, panel) i nie rusza innych wydarzeń ani kont, więc można go puszczać wielokrotnie na tej samej bazie. `npm run preview` czyta `.env` przy starcie, więc po zmianie `.env` uruchom podgląd ponownie.
 - `npm run package:lambda`: build do `dist-lambda/build` (nie rusza `dist/` podglądu) i paczka `dist-lambda/function.zip` dla AWS Lambda, ze sprawdzeniem (bez plików env i sekretów, bez modułów natywnych, zip < 50 MB, rozpakowany zip startuje poza repozytorium).
 - `npm run deploy:aws`: wdrożenie na AWS Lambda (patrz niżej); `-- --dry-run` tylko wypisuje plan.
-- `npm run demo`: wypełnia lokalną aplikację danymi demo do sprawdzeń ręcznych (40 gości, plan, 3 sale, 7 stolików, grupy 4/2/2, 1 nieobecny, 1 przypięty, opublikowany rozkład, 30 strzałów z remisem, 12 z typem miejsca, zamówienie z 9 pozycjami) przez API działającego serwera (`BASE_URL`) i wypisuje linki. Za każdym razem zakłada w lokalnej bazie nową restaurację „Restauracja demo” z wydarzeniem „Kolacja podwyżkowa (demo)”.
+- `npm run demo`: wypełnia lokalną aplikację danymi demo do sprawdzeń ręcznych (40 gości, plan, 3 sale, 7 stolików, grupy 4/2/2, 1 nieobecny, 1 przypięty, opublikowany rozkład, 30 strzałów z remisem, 12 z typem miejsca, zamówienie z 9 pozycjami) przez API działającego serwera (`BASE_URL`) i wypisuje linki. Za każdym razem zakłada w lokalnej bazie nową restaurację „Restauracja demo” z wydarzeniem „Kolacja podwyżkowa (demo)” i kontem jej właściciela (e-mail i hasło do `/logowanie` na końcu wydruku).
 
 ## CI
 
@@ -164,6 +180,7 @@ AWS_REGION=eu-central-1 npm run deploy:aws
 2. Smoke działa tylko lokalnie (zakłada wydarzenia bezpośrednio w lokalnej bazie), więc na prawdziwym adresie sprawdź ręcznie: załóż wydarzenie testowe jak w kroku 4, otwórz jego linki, potem usuń je w Supabase → SQL Editor: `delete from public.restaurant where id = <id>;` (wydarzenie i jego dane usuwają się kaskadowo).
 3. AI: w `.env.aws` ustaw `AI_PROVIDER=anthropic` i `ANTHROPIC_API_KEY` (z limitem wydatków w konsoli Anthropic) i wdroż ponownie tą samą komendą.
 4. Załóż wydarzenie w bazie produkcyjnej: `BASE_URL=https://<id>.lambda-url.<region>.on.aws SUPABASE_URL=<z .env.aws> SUPABASE_SERVICE_ROLE_KEY=<z .env.aws> npm run event:create -- --restaurant "<restauracja>" --name "<wydarzenie>"` (zmienne z wiersza poleceń mają pierwszeństwo przed `.env`; skrypt najpierw wypisuje host bazy). Link organizatora do zakładek. Linki gości i karteczki drukuj z adresu produkcyjnego (są `https://`).
+5. Pierwszy administrator platformy (po `npx supabase db push`, gdy baza ma migrację kont personelu): `BASE_URL=https://<id>.lambda-url.<region>.on.aws SUPABASE_URL=<z .env.aws> SUPABASE_SERVICE_ROLE_KEY=<z .env.aws> npm run platform:admin -- <twój e-mail> --remote`. Skrypt wypisuje host bazy (sprawdź, że to projekt platformy, nie archiwum kolacji) i link `https://…/haslo/<token>`; otwórz go, ustaw hasło i zaloguj się na `/logowanie`. Link jest sekretny i działa raz.
 
 ### Koszty i limity
 

@@ -12,7 +12,7 @@ hints:
   path_taken: standard
   quality_override: false
   self_check_answers: null
-  has_auth: false
+  has_auth: true
   has_payments: false
   has_realtime: true
   has_ai: true
@@ -32,3 +32,13 @@ Cloudflare zastąpione przez AWS Lambda — decyzja użytkownika z 2026-10-30:
 - tylko darmowe usługi: bez API Gateway, CloudFront, S3, ECR, VPC/NAT;
 - paczka `npm run package:lambda` (serwer zbundlowany, bez `node_modules`), wdrożenie `AWS_REGION=<region> npm run deploy:aws` uruchamia użytkownik (CI niczego nie wdraża);
 - konsekwencje: plan sali ≤ 4 MB (limit 6 MB ładunku Lambdy z base64), `security.allowedDomains` ufa `X-Forwarded-Proto: https` od proxy (linki gości i kody QR jako https).
+
+## Konta personelu (zmiana 2026-11-09, F-03 staff-accounts)
+
+Platforma restauracji (M-2) dostała logowanie personelu — `has_auth: true`, ale bez dostawcy tożsamości i bez nowych zależności:
+
+- własne konta w Postgresie (`staff_account`, `restaurant_member` z rolami właściciel / menedżer / kelner, `staff_session`, `staff_token`, `login_attempt`), hasła scrypt z `node:crypto`, sesja 30 dni w ciasteczku `kp-session` (HttpOnly, SameSite=Lax, Secure za proxy https), tokeny przechowywane tylko jako SHA-256;
+- Supabase Auth (GoTrue) nadal wyłączone (`supabase start -x gotrue,…`): baza, REST i bramka wystarczają;
+- aplikacja nie wysyła e-maili: zaproszenie i reset hasła to jednorazowe linki `/haslo/<token>`, które przekazuje człowiek; pierwszego administratora platformy zakłada `npm run platform:admin`;
+- limit prób logowania w bazie (10 na 15 minut na e-mail), bez limitu po IP (za Function URL nie ma zaufanego adresu klienta);
+- linki z kluczami (`/o/ /tv/ /g/ /r/`) działają jak dotąd, niezależnie od kont.
