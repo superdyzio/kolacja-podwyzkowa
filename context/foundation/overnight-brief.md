@@ -1,97 +1,133 @@
-# Overnight brief — autonomiczny build kolacja-podwyzkowa
+# Overnight brief — M-2 „Platforma dla restauracji”
 
-Ten plik jest kontraktem dla nienadzorowanego przebiegu (noc z 2026-10-26 i kolejne, aż do ukończenia). Zgody poniżej wydał użytkownik 2026-10-26 w sesji interaktywnej i są **trwałe dla tego przebiegu**. Wszystko, czego tu nie ma, a co jego globalny CLAUDE.md zalicza do „Decisions that need me”, nadal wymaga użytkownika: zapisz to w `overnight-log.md` jako bloker i jedź dalej.
+Ten plik jest kontraktem dla nienadzorowanego przebiegu kamienia M-2 (od nocy po 2026-11-09, aż do ukończenia roadmapy). Zgody poniżej pochodzą z decyzji użytkownika z sesji 2026-11-09 i z jego pamięci projektu. Są **trwałe dla tego przebiegu**. Wszystko, czego tu nie ma, a co globalny CLAUDE.md użytkownika zalicza do „Decisions that need me”, nadal wymaga użytkownika. Zapisz to w `overnight-log.md` jako bloker i jedź dalej.
+
+Poprzedni przebieg (M-1, kolacja 2026-11-08): `archive/2026-10-27-overnight-{brief,log,report}-m1.md`. Jego zasady o Cloudflare i zakazie push już nie obowiązują.
 
 ## Cel i definicja „done”
 
-Cel: działająca lokalnie aplikacja spełniająca wszystkie FR-001..FR-020 i US-01..US-04 z `context/foundation/prd.md`, gotowa do próby generalnej (deadline kolacji 2026-11-08).
+Cel: zrealizować po kolei elementy roadmapy M-2 (`roadmap.md`, od F-02 do S-30), tyle, ile zmieści się w nocy. Każdy ukończony element zostawia aplikację zieloną i gotową do pokazania.
 
-Done, gdy wszystkie poniższe są prawdą:
-1. Każdy slice z `context/foundation/roadmap.md` ma status done albo jest jawnie oznaczony jako zablokowany z wpisem w `overnight-log.md`.
-2. Pełny zestaw testów, lint i typecheck przechodzą na zielono.
-3. Aplikacja startuje lokalnie (lokalny Supabase w Dockerze + dev server) i przechodzi flow US-01..US-04 na atrapie AI.
-4. `context/foundation/overnight-report.md` jest napisany (sekcja „Raport poranny” niżej).
+Element jest done, gdy:
+1. `npm test` (z testami DB na lokalnej bazie), `npm run lint`, `npx astro check` i `npm run build` przechodzą;
+2. `npm run smoke` przechodzi na produkcyjnym podglądzie z lokalną bazą, a `npm run demo` wypełnia lokalną apkę (oba według opisu w CLAUDE.md po tym elemencie);
+3. CLAUDE.md opisuje to, co element zmienił (jak w M-1);
+4. zmiana jest zarchiwizowana (`/10x-archive`), a jej status w `roadmap.md` to `done`.
 
-## Źródła prawdy (czytaj w tej kolejności)
+Noc jest done, gdy wszystkie elementy roadmapy są done albo czas się skończył (zasada „Czas” niżej), a `overnight-report.md` jest napisany.
 
-1. `context/foundation/prd.md`: co budujemy (FR, NFR, Business Logic, Access Control, Non-Goals).
-2. `context/foundation/shape-notes.md`: decyzje użytkownika (`gray_areas_resolved`) oraz `## Forward: tech-stack` i `## Forward: technical-roadmap`.
-3. `context/foundation/tech-stack.md`: stack (10x-astro-starter: Astro + React + TS + Tailwind + Supabase; deploy cloudflare-pages; CI GitHub Actions).
-4. `context/foundation/roadmap.md`: kolejność slice'ów.
-5. Ten plik: zasady przebiegu.
+## Źródła prawdy (czytaj w tej kolejności; przy sprzeczności wygrywa wyższe)
 
-## Zgody użytkownika (2026-10-26)
+1. `context/foundation/prd-v2.md`: co budujemy (FR-021..FR-049, US-05..US-10, NFR-011..NFR-023, tabela dostępu, reguła biznesowa). Szczegóły zachowanych FR-001..FR-020 są w `prd.md` (v1).
+2. `context/foundation/roadmap.md`: kolejność, zakres każdego elementu, Unknowns, Risk.
+3. `context/foundation/shape-notes.md`: decyzje użytkownika oraz `## Forward: tech-stack` i `## Forward: technical-roadmap` (uwagi projektowe dla planerów).
+4. `CLAUDE.md`: architektura, konwencje, polecenia.
+5. `context/foundation/m2-product-notes.md`: uwagi projektowe. Nieaktualne są tu numeracja backlogu, tabela ról (dwie role) i zakres „S-11” (zamówienia tylko u lokalu). Obowiązuje PRD v2.
+6. `context/foundation/tech-stack.md`: stack (`has_auth: false` przestaje być prawdą po F-03).
+7. Ten plik: zasady przebiegu.
 
-| Obszar | Zgoda | Granica |
+## Zgody i granice
+
+| Obszar | Wolno | Granica |
 |---|---|---|
-| Zależności | wszystko, czego wymaga starter, plus popularne, utrzymywane biblioteki potrzebne do FR | każdą dodaną bibliotekę dopisz z jednozdaniowym uzasadnieniem do `overnight-log.md` |
-| Architektura | stack z `tech-stack.md`; decyzje projektowe w ramach planów slice'ów | zmiana startera, bazy lub platformy deployu = bloker |
-| Git | commity na lokalnym branchu `overnight/build` | **żadnego push**, żadnego merge do `main`, żadnego force/amend/`reset --hard` |
-| Operacje destrukcyjne | tylko lokalne dev: usuwanie/zastępowanie plików w repo w ramach budowy (np. przykładowe strony startera), reset lokalnej bazy Supabase w Dockerze | nigdy nic poza repo, nigdy zdalne bazy/konta |
-| Deploy | **brak** (wymaga kont użytkownika) | konfigurację CI/deployu wolno przygotować w plikach, nie wolno uruchamiać |
-| AI | wyłącznie atrapa (mock) za interfejsem dostawcy; produkcyjnie Claude (rodzina Haiku) przez Anthropic API | **zero płatnych wywołań**; klucz doda użytkownik (`.env`, nie commitować) |
-| Świat zewnętrzny | brak | żadnych e-maili, wiadomości, komentarzy na GitHubie, publikacji |
-| Pytania skilli | odpowiadaj sam opcją oznaczoną jako rekomendowana, zgodną ze źródłami prawdy; każdą decyzję zapisz w `overnight-log.md` | nigdy nie wywołuj AskUserQuestion i nie czekaj na użytkownika |
+| Git | gałąź `overnight/m2` utworzona z `plan/m2-saas`; commity w konwencji niżej; `git push` tej gałęzi po każdym elemencie (kopia zapasowa) | żadnego merge ani push do `main`, żadnego PR, żadnego force push, `reset --hard` ani `amend` opublikowanych commitów; zły commit cofa `git revert` |
+| Architektura | kierunki zatwierdzone przez użytkownika 2026-11-09: wiele restauracji i wydarzeń, własne konta (e-mail + hasło, scrypt z `node:crypto`, sesje w bazie, ciasteczko HttpOnly, bez e-maili), role właściciel / menedżer / kelner, linki bez logowania jak w v1; szczegóły w ramach planów slice'ów | zmiana stacku, bazy, hostingu albo modelu dostępu spoza PRD v2 = bloker |
+| Zależności | **żadnych nowych** | slice, który naprawdę potrzebuje biblioteki, robi część bez niej albo zapisuje bloker |
+| Pliki w repo | usuwać i zastępować pliki kodu, które plan slice'a zastępuje (np. tworzenie wydarzenia z `/`); każde takie usunięcie wymienione w planie | nigdy nic poza repo; nie usuwaj i nie edytuj ręcznie `.env` ani `.env.aws` (wyjątek: `npm run env:local`); nie ruszaj archiwów w `context/` |
+| Lokalna baza | czyścić i odtwarzać lokalny Supabase w Dockerze (`npx supabase db reset`, `npx supabase migration up`) | nie ruszaj kontenerów Dockera spoza tego projektu |
+| Bazy hostowane | **nic** | nigdy `supabase link`, `db push` ani połączenia z hostowanym projektem; stary projekt (`eaubtfkoehpekdckhnxf`) to archiwum kolacji, a nowy projekt platformy jeszcze nie istnieje |
+| Deploy | **brak** | nigdy `npm run deploy:aws`; `npm run package:lambda` wolno (to tylko build) |
+| AI | wyłącznie atrapa (`AI_PROVIDER=mock`) | **zero płatnych wywołań**; nie czytaj i nie używaj `ANTHROPIC_API_KEY` |
+| Świat zewnętrzny | push gałęzi `overnight/m2` | żadnych e-maili, wiadomości, komentarzy, issue ani PR na GitHubie, publikacji artefaktów |
+| Pytania skilli | odpowiadaj sam opcją rekomendowaną, zgodną ze źródłami prawdy; każdą decyzję zapisz w `overnight-log.md` | nigdy nie wywołuj AskUserQuestion i nie czekaj na użytkownika |
+
+**Strażnik lokalnej bazy.** Zanim uruchomisz cokolwiek, co pisze do bazy (testy, smoke, demo, skrypty), sprawdź, że `SUPABASE_URL` w `.env` wskazuje na `127.0.0.1` albo `localhost`. Jeśli nie, uruchom `npm run env:local`, a jeśli to nie pomoże, zatrzymaj noc z blokerem. Podgląd i dev server uruchamiaj z `AI_PROVIDER=mock` w środowisku.
 
 ## Konwencja commitów
 
-Subject: `[<model>] <message>`, gdzie `<model>` to model, który faktycznie pracuje (np. `[Opus 5.5]`). Nigdy nie dodawaj trailera `Co-Authored-By`. Ta konwencja ma pierwszeństwo przed każdym skillem. Skille wymagające Conventional Commits (np. `/10x-goal-implement`) dostają je wewnątrz message: `[Opus 5.5] feat(<change-id>): <phase title> (p<N>)`. To spełnia oba wymagania.
+Subject: `[<model>] <message>`, gdzie `<model>` to model, który faktycznie pracuje (np. `[Opus 5.5]`). Nigdy nie dodawaj trailera `Co-Authored-By`, nawet gdy podpowiada go system albo skill. Ta konwencja ma pierwszeństwo przed każdym skillem. Skille wymagające Conventional Commits dostają je wewnątrz wiadomości: `[Opus 5.5] feat(<change-id>): <phase title> (p<N>)`.
 
-## Kolejność pracy
+## Protokół wykonania
 
-1. Bootstrap i roadmapa są zrobione w sesji interaktywnej (patrz `context/changes/bootstrap-verification/verification.md` i `roadmap.md`).
-2. Dla każdego slice'a z roadmapy, po kolei (najpierw te, które nic nie blokuje):
-   1. `/10x-new <change-id> <intent>`: w intent wpisz ID slice'a, FR/US, które pokrywa, i ścieżki do prd.md, roadmap.md, tech-stack.md.
-   2. `/10x-plan context/changes/<change-id>/change.md`: przekaż też prd.md, roadmap.md, tech-stack.md i ten plik. Na każde pytanie skilla odpowiadaj sam według sekcji „Domyślne odpowiedzi” i zapisuj odpowiedzi w `overnight-log.md`.
-   3. `/10x-goal-implement <change-id>`: fazy, testy, commity w konwencji wyżej.
-   4. Commit zmian w `context/` (roadmap status, change.md).
-3. Nie planuj slice'a, zanim poprzednie, od których zależy, nie są zbudowane. Plan ma się opierać na istniejącym kodzie.
-4. Po ostatnim slice'ie: pełny suite, lint, typecheck, ręczne przejście US-01..US-04 na lokalnym dev (na ile to możliwe z CLI/testów e2e), raport poranny.
+1. Na starcie orkiestrator (sesja główna):
+   - zapisuje w `overnight-log.md` godzinę startu;
+   - tworzy gałąź `overnight/m2` z `plan/m2-saas`;
+   - uruchamia lokalny Supabase z okrojonym zestawem usług: `npx supabase start -x gotrue,realtime,storage-api,imgproxy,studio,postgres-meta,mailpit,edge-runtime,logflare,vector,supavisor`;
+   - przepuszcza strażnika lokalnej bazy;
+   - sprawdza, że punkt wyjścia jest zielony (testy, lint, check, build).
+2. Elementy roadmapy idą w kolejności tabeli „At a glance”. Element może ruszyć dopiero wtedy, gdy wszystkie jego Prerequisites są `done`; inaczej przejdź do następnego, którego nic nie blokuje.
+3. Każdy element deleguj do **jednego subagenta, po kolei, nigdy równolegle**. Subagent wykonuje dla jednego Change ID:
+   - `/10x-new <change-id>` z intencją: ID z roadmapy, PRD refs, ścieżki do `prd-v2.md`, `roadmap.md` i tego pliku;
+   - `/10x-plan`, chyba że `context/changes/<change-id>/plan.md` już istnieje i jest zatwierdzony (np. F-02 zaplanowany z użytkownikiem);
+   - `/10x-implement` albo `/10x-goal-implement`;
+   - `/10x-archive`.
+   Do planu zawsze przekazuj `prd-v2.md`, `roadmap.md`, `shape-notes.md` (oba bloki Forward), `m2-product-notes.md` z zastrzeżeniem z punktu 5 źródeł prawdy oraz ten plik.
+4. Po każdym elemencie orkiestrator sam sprawdza definicję „done” (punkty 1–4). Następnie:
+   - pushuje gałąź;
+   - commituje zmiany w `context/`;
+   - zatrzymuje podgląd (`npx astro preview stop`) i dev server.
+5. Migracje M-2 sprawdzaj dwiema drogami:
+   - `npx supabase db reset`: od zera;
+   - `npx supabase migration up` na bazie z danymi sprzed migracji (np. wypełnionej `npm run demo` na poprzednim commicie). Wydarzenie 1 i jego dane muszą przetrwać i dalej działać pod starymi linkami.
+6. Zasoby:
+   - żadnych testów w prawdziwej przeglądarce (bez Playwright i pobierania przeglądarek);
+   - żadnych równoległych subagentów;
+   - każdy uruchomiony serwer zamknij przed końcem kroku.
 
-## Protokół wykonania (ustalony 2026-10-27)
+## Czas
 
-- Sesja główna (orkiestrator) deleguje każdy element roadmapy (F-01, S-01…S-09) do jednego subagenta, **po kolei, nigdy równolegle** (polecenie użytkownika: „uważaj na wykorzystanie zasobów na maszynie”). Subagent: `/10x-new` → `/10x-plan` → `/10x-implement` → `/10x-archive` dla jednego Change ID, z odpowiedziami według tego pliku.
-- Po każdym elemencie orkiestrator sprawdza: `npm test`, `npm run lint`, `npx astro check`, `npm run build`, historię commitów i status w roadmapie.
-- Lokalny Supabase działa tylko z bazą, REST i gatewayem. Jeśli trzeba go zrestartować: `npx supabase start -x gotrue,realtime,storage-api,imgproxy,studio,postgres-meta,mailpit,edge-runtime,logflare,vector,supavisor`. Nie włączaj pozostałych usług.
-- Zasoby: żadnych testów w prawdziwej przeglądarce w nocy (bez Playwright i pobierania przeglądarek); każdy uruchomiony dev server zamknij przed końcem kroku; nie ruszaj kontenerów Dockera spoza tego projektu.
-
-## Decyzje architektoniczne wspólne dla slice'ów
-
-- Cały dostęp do bazy idzie przez serwer Astro (strony SSR i trasy API) kluczem service role ze zmiennej środowiskowej po stronie serwera; RLS włączone na każdej tabeli, bez polityk dla `anon`/`authenticated`, więc przeglądarka nie czyta bazy bezpośrednio.
-- Logowanie e-mail ze startera jest usuwane; tożsamość to klucz w ścieżce URL (np. `/o/<klucz>`, `/tv/<klucz>`, `/g/<klucz>`), sprawdzany na każdej stronie i trasie API zgodnie z macierzą Access Control.
-- Odświeżanie na żywo: odpytywanie lekkiego endpointu wersji stanu co 2–3 s. Supabase Realtime nie jest używany.
-- Obraz planu sal jest przechowywany w bazie, bez Supabase Storage.
-- Testy: Vitest (jednostkowe + integracyjne przeciw lokalnej bazie).
+- Nie zaczynaj nowego elementu później niż 7 h po godzinie startu z `overnight-log.md`. Ostatnia godzina idzie na domknięcie i raport.
+- Element, który po 2 próbach naprawy nie jest zielony, traktuj według sekcji „Blokery”.
+- Prawie wszystko zależy od F-02. Jeśli F-02 nie przejdzie, noc kończy się raportem, a gałąź zostaje na ostatnim zielonym commicie.
 
 ## Domyślne odpowiedzi na typowe pytania skilli
 
-- Złożoność planu: zgódź się z oceną skilla.
-- Wybór podejścia: najprostsze, które spełnia FR/NFR i pasuje do startera; w razie remisu mniej zależności.
-- Podział na fazy: zaakceptuj, jeśli każda faza ma automatyczny check; inaczej popraw sam.
-- Testy: logika domenowa (losowanie, sąsiedzi, grupy, przypięcia, nieobecni, ranking z remisami 1-2-2-4, limity AI) testami jednostkowymi; flow US-01..US-04 testami e2e w przeglądarce, jeśli starter ma Playwright; inaczej testy integracyjne tras API.
-- Odświeżanie na żywo (NFR-003 ≤ 5 s): najprostsze niezawodne rozwiązanie (odpytywanie co 2–3 s jest OK; Supabase Realtime tylko jeśli nie komplikuje).
-- Odczyt bez sieci u organizatora (NFR-004): ostatni stan rozkładu i ranking w pamięci przeglądarki organizatora, pokazywany przy braku sieci.
-- Klucze linków: losowe ≥ 128 bitów, osobne dla organizatora, TV i każdego gościa; walidacja na każdej trasie API zgodnie z macierzą w Access Control.
-- Teksty UI: po polsku.
-
-## Dane startowe
-
-- Baza pytań: przygotuj po polsku ok. 30 pytań na kategorię (kontrowersyjne / generyczne / refleksyjne) zgodnie z granicami treści z `shape-notes.md` (odważne, bez polityki partyjnej, religii, zdrowia i osobistych przytyków). Zapisz je jako seed bazy i jako czytelną kopię `context/foundation/question-seed.md` do przeglądu przez użytkownika (Open Question 4).
-- Dane demo do lokalnych testów: 40 fikcyjnych gości, 3 sale, 7 stolików (mieszane typy), 2 grupy po 2 i 1 grupa po 4, 1 przypięcie, 1 nieobecny.
+- **Złożoność i fazy:** zgódź się z oceną skilla. Każda faza ma automatyczny check.
+- **Podejście:** najprostsze, które spełnia FR/NFR i powtarza istniejące wzorce z CLAUDE.md (np. `organizerApi` → nowy strażnik, `createLocalStore`, wspólne odpytywanie telefonu gościa). Bez nowych zależności.
+- **Sprzeczność źródeł:** wygrywa PRD v2, potem roadmapa. Szczególnie zakres klienta: zamówienia zostają u klienta, ceny tylko do odczytu, a reset prób jest dla klienta, pełny reset dla lokalu.
+- **Migracje:**
+  - nowe tabele z RLS i `revoke all … from anon, authenticated`;
+  - nowe funkcje z `set search_path = ''` i `revoke execute … from public, anon, authenticated`;
+  - zmiana sygnatury funkcji = jawne `drop function` starej (inaczej PostgREST staje się niejednoznaczny);
+  - dane zawsze zachowane, wydarzenie 1 w restauracji „domyślnej”;
+  - nigdy `TRUNCATE … RESTART IDENTITY`;
+  - `src/db/database.types.ts` uzupełniony.
+- **Konta i sesje:**
+  - hasła scrypt z `node:crypto`;
+  - token sesji losowy, w bazie tylko jego hash;
+  - ciasteczko HttpOnly + SameSite=Lax (+ Secure na https);
+  - sprawdzenie `Origin` przy każdej mutacji panelu;
+  - jeden centralny strażnik członkostwa dla tras z numerem wydarzenia lub restauracji;
+  - cudze, nieznane i usunięte zasoby dostają tę samą odmowę;
+  - limit prób logowania w bazie;
+  - zaproszenia i resety to jednorazowe linki z terminem ważności, przechowywane jako hash.
+- **Dostęp krzyżowy:** każdy slice z nowymi trasami dopisuje do smoke przypadki „restauracja A → dane B” i „klucz wydarzenia A → API wydarzenia B”. Oba mają dać identyczną odmowę.
+- **Teksty:** każdy tekst UI, błąd, komunikat API, potwierdzenie i etykieta aria istnieje po polsku i po angielsku (`defineMessages`). Polski jest domyślny.
+- **Nazwa produktu:** nazwa robocza „Stolik” w jednej stałej i18n (Otwarte pytanie 1). Gość jej nie widzi.
+- **Moduły (S-17):**
+  - nowe wydarzenia mają tematy AI i grę w zgadywanie wyłączone;
+  - wydarzenie 1 zachowuje wszystko włączone (bez regresji v1);
+  - który moduł jest płatny, ustawia administrator platformy (Otwarte pytanie 5).
+- **Dane demo:** `npm run demo` po każdym elemencie dalej działa i pokazuje to, co element dodał. Plan sali i menu restauracji demo są przykładowe, dopóki użytkownik nie dostarczy prawdziwych (Otwarte pytanie 2).
+- **Testy:**
+  - logika domenowa: testy jednostkowe;
+  - funkcje DB i izolacja wydarzeń: testy integracyjne na lokalnej bazie (`describe.skipIf(!hasLocalDb)`);
+  - statusy HTTP, nagłówki i dostęp: smoke;
+  - testy usuwają tylko wiersze, które same utworzyły.
 
 ## Blokery
 
 Gdy coś wymaga użytkownika albo nie przechodzi po 2 próbach naprawy:
-1. Dopisz wpis do `context/foundation/overnight-log.md` (sekcja „Blokery”): co, dlaczego, czego potrzeba od użytkownika, co zostało pominięte.
-2. Zostaw kod w stanie zielonym (cofnij tylko własne niezacommitowane zmiany tego kroku albo oznacz test jako `todo` z odnośnikiem do blokera).
-3. Przejdź do następnego slice'a, który od blokera nie zależy.
+1. Dopisz wpis do `overnight-log.md` (sekcja „Blokery”): co, dlaczego, czego potrzeba od użytkownika, co pominięto.
+2. Zostaw gałąź zieloną. Cofnij własne niezacommitowane zmiany kroku (`git restore`) albo zacommitowane (`git revert`). Ewentualnie oznacz test jako `todo` z odnośnikiem do blokera.
+3. Ustaw status elementu w roadmapie na taki, jaki faktycznie ma (np. zostaje `in-progress`). Przejdź do następnego elementu, którego bloker nie dotyczy.
 
 ## Raport poranny
 
 `context/foundation/overnight-report.md`, po polsku, krótko:
-- co zrobione (slice → FR/US → commity);
+- co zrobione: element → FR/US → commity, oraz ostatni zielony commit gałęzi `overnight/m2`;
 - co zablokowane i czego potrzeba od użytkownika;
-- jak uruchomić lokalnie (komendy);
-- ręczna checklista do sprawdzenia rano (wiersze Manual z planów);
-- lista dodanych zależności;
-- co zostało do Open Questions 1–6 z PRD.
+- jak uruchomić lokalnie (komendy, w tym nowe: pierwszy administrator platformy, demo, smoke);
+- ręczna checklista do sprawdzenia rano (wiersze Manual z planów) i przepływ 1–7 z PRD v2, na ile da się go przejść;
+- przypomnienie o wdrożeniu: nowe migracje trafiają do nowego projektu platformy przed kodem (`db push` przed `deploy:aws`, decyzja i wykonanie użytkownika), nigdy do starego projektu kolacji;
+- stan Otwartych pytań 1–8 z PRD v2.

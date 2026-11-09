@@ -5,7 +5,7 @@ This file provides guidance to AI Agent when working with code in this repositor
 ## Project rules
 
 - Commit subject format: `[<model>] <message>` (e.g. `[Opus 5.5] feat(<change-id>): <phase title> (p<N>)`). Never add a `Co-Authored-By` trailer.
-- Source of truth: `context/foundation/` (`prd.md`, `roadmap.md`, `tech-stack.md`, `shape-notes.md`). Changes live in `context/changes/<change-id>/`.
+- Source of truth: `context/foundation/` (`prd-v2.md` — current product, M-2 restaurant platform; `prd.md` — v1, details of the preserved FR-001..FR-020; `roadmap.md`, `tech-stack.md`, `shape-notes.md`; `m2-product-notes.md` holds design notes and loses to `prd-v2.md`). Changes live in `context/changes/<change-id>/`.
 - Unattended (overnight) runs follow `context/foundation/overnight-brief.md` and log decisions, added dependencies and blockers in `context/foundation/overnight-log.md`.
 - UI language: Polish AND English (i18n). Every user-facing text (pages, errors, API messages, confirms, aria labels) exists in both, through the `{ pl, en }` dictionaries described under "Languages"; never hard-code a UI string in one language only. Polish is the default; the restaurant page starts in English.
 
