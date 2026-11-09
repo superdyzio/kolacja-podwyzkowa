@@ -3,20 +3,31 @@
 // (a tie and the absent guest's guess among them, 10 missing, 12 with a place prediction) and a food order (lines for guests, for tables, one
 // unassigned, one delivered). Every run creates a NEW restaurant „Restauracja demo” with a new event „Kolacja
 // podwyżkowa (demo)” in the LOCAL database (like `npm run event:create`; refused for any other SUPABASE_URL), so other
-// events are never touched. Every write after that goes through the HTTP API of a running server, so it passes the
+// events are never touched, and its owner's staff account (staff-accounts: an invitation link redeemed over HTTP with
+// a fixed local demo password, printed at the end with the panel login). Every write after that goes through the HTTP API of a running server, so it passes the
 // same validation as the UI. Defaults stay as they are: guest access OFF, guess intake OPEN, no correct amount, only
 // the starter questions.
 // Usage: npm run build && npm run preview, then npm run demo   (BASE_URL, default http://localhost:4321)
 // Zero dependencies.
 
 import { Buffer } from "node:buffer";
-import { URL } from "node:url";
+import { URL, URLSearchParams } from "node:url";
 import { crc32, deflateSync } from "node:zlib";
-import { createEvent, createRestaurant, PlatformError, readDbEnv } from "./lib/platform.mjs";
+import {
+  addMembership,
+  createEvent,
+  createRestaurant,
+  ensureStaffAccount,
+  issueStaffLink,
+  PlatformError,
+  readDbEnv,
+} from "./lib/platform.mjs";
 
 const BASE_URL = process.env.BASE_URL ?? "http://localhost:4321";
 const RESTAURANT_NAME = "Restauracja demo";
 const EVENT_NAME = "Kolacja podwyżkowa (demo)";
+// The demo owner's password (local demo data only; the account's e-mail carries the restaurant id).
+const OWNER_PASSWORD = "demo-wlasciciel-1";
 
 // --- Demo data -------------------------------------------------------------------------------------------------
 
@@ -150,12 +161,15 @@ function fail(message) {
 
 let dataWritten = false;
 
-async function request(path, { method = "GET", json, bytes, contentType } = {}) {
+async function request(path, { method = "GET", json, form, bytes, contentType } = {}) {
   const headers = { Origin: BASE_URL };
   let body;
   if (json !== undefined) {
     headers["Content-Type"] = "application/json";
     body = JSON.stringify(json);
+  } else if (form !== undefined) {
+    headers["Content-Type"] = "application/x-www-form-urlencoded";
+    body = new URLSearchParams(form).toString();
   } else if (bytes !== undefined) {
     headers["Content-Type"] = contentType;
     body = bytes;
@@ -173,7 +187,7 @@ async function request(path, { method = "GET", json, bytes, contentType } = {}) 
   } catch {
     // not JSON
   }
-  return { status: response.status, text, data };
+  return { status: response.status, location: response.headers.get("location") ?? "", text, data };
 }
 
 // One API step that must answer with `expected`; anything else stops the script and says what is left behind.
@@ -270,6 +284,7 @@ const fraction = (value, total) => Math.round((value / total) * 10_000) / 10_000
 // --- 1. A new restaurant and event in the local database; the running server must know its key ------------------
 
 let event;
+let owner;
 try {
   const env = readDbEnv({ requireLocal: true });
   const restaurant = await createRestaurant(env, RESTAURANT_NAME);
@@ -277,6 +292,14 @@ try {
   console.log(
     `Baza ${env.host}: restauracja „${restaurant.name}” (id ${String(restaurant.id)}), wydarzenie „${event.name}” (id ${String(event.id)}).`,
   );
+  // The restaurant's owner (staff-accounts): an account without a password and an invitation link, redeemed below.
+  const account = await ensureStaffAccount(env, {
+    email: `wlasciciel-${String(restaurant.id)}@demo.stolik`,
+    displayName: "Właściciel demo",
+  });
+  await addMembership(env, restaurant.id, account.id, "owner");
+  const invite = await issueStaffLink(env, account.id, "invite", BASE_URL);
+  owner = { email: account.email, token: invite.token };
 } catch (error) {
   fail(error instanceof PlatformError ? error.message : String(error));
 }
@@ -290,6 +313,15 @@ if (existingGuests.status === 404) {
   );
 }
 await step("baza startowa pytań", `${api}/questions/starter`, { method: "POST" });
+
+// The owner sets the password from the invitation link, like a person in the browser (the answer logs them in).
+const ownerRedeem = await request("/api/auth/password-link", {
+  method: "POST",
+  form: { token: owner.token, password: OWNER_PASSWORD, repeat: OWNER_PASSWORD },
+});
+if (ownerRedeem.status !== 303 || !/\/panel$/.test(new URL(ownerRedeem.location, BASE_URL).pathname)) {
+  fail(`Nie udało się ustawić hasła właściciela demo (HTTP ${ownerRedeem.status} → ${ownerRedeem.location || "-"}).`);
+}
 
 // --- 2. Venue: plan image, rooms, tables with pins ----------------------------------------------------------------
 
@@ -432,4 +464,5 @@ Organizator: ${organizerUrl}
 TV:          ${new URL(`/tv/${event.tvKey}`, BASE_URL).href}
 Restauracja: ${new URL(`/r/${event.restaurantKey}`, BASE_URL).href}
 Linki gości: włącz dostęp na ${organizerUrl}/linki
+Panel lokalu: ${new URL("/logowanie", BASE_URL).href} — e-mail ${owner.email}, hasło ${OWNER_PASSWORD} (rola: właściciel)
 Linki są sekretne: nie wklejaj ich publicznie.`);

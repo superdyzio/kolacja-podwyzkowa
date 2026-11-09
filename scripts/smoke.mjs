@@ -1,15 +1,24 @@
 // HTTP smoke test of the link-key access matrix against a running server (dev or production preview).
 // Needs the server's LOCAL Supabase in .env (SUPABASE_URL on 127.0.0.1/localhost, like the server): it creates its own
 // two restaurants with one event each straight in the database (multi-tenant-events: nothing in the app creates events
-// yet), runs every section on event A and proves at the end that A's links never reach event B. Other events in the
-// database are never touched, so it runs again and again on the same database.
+// yet), runs every section on event A and proves at the end that A's links never reach event B. Staff accounts of its
+// own (e-mails tagged with the run, so a throttle of an earlier run never applies) check login, sessions and the panel
+// guard. Other events and accounts in the database are never touched, so it runs again and again on the same database.
 // Zero dependencies on purpose. Usage: BASE_URL=http://localhost:4321 npm run smoke
 
 import { Buffer } from "node:buffer";
 import { randomBytes } from "node:crypto";
-import { URL } from "node:url";
+import { URL, URLSearchParams } from "node:url";
 import { TextDecoder, TextEncoder } from "node:util";
-import { createEvent, createRestaurant, PlatformError, readDbEnv } from "./lib/platform.mjs";
+import {
+  addMembership,
+  createEvent,
+  createRestaurant,
+  ensureStaffAccount,
+  issueStaffLink,
+  PlatformError,
+  readDbEnv,
+} from "./lib/platform.mjs";
 
 const BASE_URL = process.env.BASE_URL ?? "http://localhost:4321";
 const NO_ACCESS_TEXT = "Ta strona jest dostępna tylko przez link od organizatora.";
@@ -25,13 +34,21 @@ function check(name, ok, detail = "") {
   if (!ok) failed++;
 }
 
-// `json` sends a JSON body; `rawBody` sends the string as is (with a JSON content type); `extraHeaders` are added.
-async function request(path, { method = "GET", json, rawBody, extraHeaders = {} } = {}) {
-  const headers = { Origin: BASE_URL, ...extraHeaders };
+// `json` sends a JSON body; `rawBody` sends the string as is (with a JSON content type); `form` sends the fields
+// form-encoded (like an HTML form); `cookie` is the Cookie header; `noOrigin` leaves the Origin header out;
+// `extraHeaders` are added.
+async function request(
+  path,
+  { method = "GET", json, rawBody, form, cookie, noOrigin = false, extraHeaders = {} } = {},
+) {
+  const headers = { ...(noOrigin ? {} : { Origin: BASE_URL }), ...(cookie ? { Cookie: cookie } : {}), ...extraHeaders };
   let body;
   if (json !== undefined || rawBody !== undefined) {
     headers["Content-Type"] = "application/json";
     body = rawBody ?? JSON.stringify(json);
+  } else if (form !== undefined) {
+    headers["Content-Type"] = "application/x-www-form-urlencoded";
+    body = new URLSearchParams(form).toString();
   }
   const response = await fetch(BASE_URL + path, { method, redirect: "manual", headers, body });
   const text = await response.text();
@@ -47,6 +64,8 @@ async function request(path, { method = "GET", json, rawBody, extraHeaders = {} 
     cacheControl: response.headers.get("cache-control") ?? "",
     referrerPolicy: response.headers.get("referrer-policy") ?? "",
     setCookie: response.headers.get("set-cookie") ?? "",
+    frameOptions: response.headers.get("x-frame-options") ?? "",
+    retryAfter: response.headers.get("retry-after") ?? "",
     body: text,
     data,
   };
@@ -100,14 +119,16 @@ const oldCreate = await request("/api/event", { method: "POST" });
 check("the old event creation endpoint is gone", oldCreate.status === 404, String(oldCreate.status));
 
 // 3. Two restaurants with one event each, created in the LOCAL database (refused anywhere else). Every section below
-// runs on A; section 23d checks B.
+// runs on A; section 23d checks B, section 25 gives both restaurants staff accounts.
 let platformEnv;
+let restaurantA;
+let restaurantB;
 let eventA;
 let eventB;
 try {
   platformEnv = readDbEnv({ requireLocal: true });
-  const restaurantA = await createRestaurant(platformEnv, `Restauracja smoke A ${RUN_TAG}`);
-  const restaurantB = await createRestaurant(platformEnv, `Restauracja smoke B ${RUN_TAG}`);
+  restaurantA = await createRestaurant(platformEnv, `Restauracja smoke A ${RUN_TAG}`);
+  restaurantB = await createRestaurant(platformEnv, `Restauracja smoke B ${RUN_TAG}`);
   eventA = await createEvent(platformEnv, restaurantA.id, EVENT_NAME);
   eventB = await createEvent(platformEnv, restaurantB.id, OTHER_EVENT_NAME);
 } catch (error) {
@@ -4102,6 +4123,443 @@ check(
   "isolation: resetting everything in A leaves event B exactly as it was",
   bAfterReset.every((body, index) => body === bBefore[index]),
   B_READS.filter((_, index) => bAfterReset[index] !== bBefore[index]).join(", "),
+);
+
+// 25. Staff accounts (staff-accounts, F-03): one-time links set the password, e-mail + password log in for 30 days,
+// logout (here or everywhere) and a password change end sessions, failed logins are throttled per e-mail, every
+// mutation needs the page's own Origin, and the panel guard opens only the person's own restaurants and events (one 404
+// for everything else). Accounts: owner of A, waiter of A, owner of B, a platform admin without restaurants and an
+// account only for the throttle, all with e-mails of this run.
+const STAFF_PASSWORD = "smoke-haslo-1";
+const NEW_STAFF_PASSWORD = "smoke-nowe-haslo-2";
+const staffEmail = (who) => `${who}-${RUN_TAG}@smoke.stolik`;
+const SESSION_RE = /(?:^|[\s,])kp-session=([A-Za-z0-9_-]{43});/;
+const sessionOf = (res) => SESSION_RE.exec(res.setCookie)?.[1] ?? null;
+const asStaff = (token) => `kp-session=${token}`;
+const pathOf = (res) => (res.location ? new URL(res.location, BASE_URL) : null);
+const redirectsTo = (res, target) => res.status === 303 && `${pathOf(res)?.pathname}${pathOf(res)?.search}` === target;
+const authHeaders = (res) =>
+  res.referrerPolicy === "same-origin" && res.frameOptions === "DENY" && res.cacheControl.includes("no-store");
+const redeem = (token, password = STAFF_PASSWORD, repeat = password, options = {}) =>
+  request("/api/auth/password-link", { method: "POST", form: { token, password, repeat }, ...options });
+const logIn = (email, password, options = {}) =>
+  request("/api/auth/login", { method: "POST", form: { email, password }, ...options });
+const me = (token) => request("/api/panel/me", { cookie: asStaff(token) });
+
+const staff = {};
+try {
+  for (const [who, role, restaurant] of [
+    ["ownerA", "owner", restaurantA],
+    ["waiterA", "waiter", restaurantA],
+    ["ownerB", "owner", restaurantB],
+    ["admin", null, null],
+    ["throttled", null, null],
+  ]) {
+    const account = await ensureStaffAccount(platformEnv, {
+      email: staffEmail(who.toLowerCase()),
+      displayName: `Smoke ${who}`,
+      isPlatformAdmin: who === "admin",
+    });
+    if (restaurant) {
+      await addMembership(platformEnv, restaurant.id, account.id, role);
+    }
+    const invite = await issueStaffLink(platformEnv, account.id, "invite", BASE_URL);
+    staff[who] = { email: account.email, id: account.id, invite: invite.token };
+  }
+} catch (error) {
+  check(
+    "staff accounts are created in the local database",
+    false,
+    error instanceof PlatformError ? error.message : String(error),
+  );
+  finish();
+}
+
+// Pages and redirects without a session.
+const loginPage = await request("/logowanie");
+check(
+  "staff: the login page has the form and the auth headers (same-origin referrer, no framing, no-store)",
+  loginPage.status === 200 && loginPage.body.includes('action="/api/auth/login"') && authHeaders(loginPage),
+  `${loginPage.status} ${loginPage.referrerPolicy} ${loginPage.frameOptions}`,
+);
+const organizerHeaders = await request(`/o/${organizerKey}`);
+check(
+  "staff: the key routes keep Referrer-Policy: no-referrer",
+  organizerHeaders.status === 200 && organizerHeaders.referrerPolicy === "no-referrer",
+  organizerHeaders.referrerPolicy,
+);
+const panelNoSession = await request("/panel");
+const panelDeepNoSession = await request("/panel/x");
+const panelKeyNoSession = await request(`/panel/${organizerKey}`);
+check(
+  "staff: /panel, /panel/x and an organizer key under /panel without a session → 303 to /logowanie, no-store",
+  [panelNoSession, panelDeepNoSession, panelKeyNoSession].every(
+    (res) => redirectsTo(res, "/logowanie") && res.cacheControl.includes("no-store"),
+  ),
+  [panelNoSession, panelDeepNoSession, panelKeyNoSession].map((res) => `${res.status} ${res.location}`).join(", "),
+);
+const meNoCookie = await request("/api/panel/me");
+const meGarbage = await request("/api/panel/me", { cookie: asStaff(randomBytes(32).toString("base64url")) });
+const meMalformed = await request("/api/panel/me", { cookie: "kp-session=abc" });
+const panelApiUnknown = await request("/api/panel/nie-ma");
+check(
+  "staff: the panel API without a valid session → identical 401 bodies (no cookie, unknown, malformed, unknown route)",
+  [meNoCookie, meGarbage, meMalformed, panelApiUnknown].every(
+    (res) => res.status === 401 && res.body === meNoCookie.body && res.cacheControl.includes("no-store"),
+  ) && meNoCookie.data?.error !== undefined,
+  [meNoCookie, meGarbage, meMalformed, panelApiUnknown].map((res) => res.status).join(" "),
+);
+check(
+  "staff: a session cookie that opens nothing is cleared (Max-Age=0)",
+  /kp-session=;[^,]*Max-Age=0/.test(meGarbage.setCookie) && meNoCookie.setCookie === "",
+  meGarbage.setCookie,
+);
+
+// One-time links: an unknown or malformed link and (later) a used one get the identical invalid-link page.
+const linkUnknown = await request(`/haslo/${randomBytes(32).toString("base64url")}`);
+const linkMalformed = await request("/haslo/abc");
+check(
+  "staff: an unknown and a malformed password link → identical 404 invalid-link page",
+  linkUnknown.status === 404 &&
+    linkMalformed.status === 404 &&
+    linkUnknown.body === linkMalformed.body &&
+    linkUnknown.body.includes("Link nieważny") &&
+    authHeaders(linkUnknown),
+  `${linkUnknown.status} ${linkMalformed.status}`,
+);
+const inviteA = `/haslo/${staff.ownerA.invite}`;
+const invitePage = await request(inviteA);
+check(
+  "staff: a valid invitation shows the account's e-mail with the auth headers",
+  invitePage.status === 200 &&
+    invitePage.body.includes(staff.ownerA.email) &&
+    invitePage.body.includes('action="/api/auth/password-link"') &&
+    authHeaders(invitePage),
+  `${invitePage.status} ${invitePage.referrerPolicy}`,
+);
+const tooShort = await redeem(staff.ownerA.invite, "krotkie");
+const mismatch = await redeem(staff.ownerA.invite, STAFF_PASSWORD, `${STAFF_PASSWORD}x`);
+const stillValid = await request(inviteA);
+check(
+  "staff: a too short or mismatched password → back to the link with a code, the link still works",
+  redirectsTo(tooShort, `${inviteA}?blad=krotkie`) &&
+    redirectsTo(mismatch, `${inviteA}?blad=rozne`) &&
+    tooShort.setCookie === "" &&
+    stillValid.status === 200,
+  `${tooShort.location} ${mismatch.location} ${stillValid.status}`.replaceAll(staff.ownerA.invite, "<token>"),
+);
+const redeemedA = await redeem(staff.ownerA.invite);
+const sessionA1 = sessionOf(redeemedA);
+check(
+  "staff: setting the password → 303 /panel with a 30-day HttpOnly SameSite=Lax cookie (no Secure on http)",
+  redirectsTo(redeemedA, "/panel") &&
+    sessionA1 !== null &&
+    /HttpOnly/i.test(redeemedA.setCookie) &&
+    /SameSite=Lax/i.test(redeemedA.setCookie) &&
+    /Path=\/(;|$)/.test(redeemedA.setCookie) &&
+    /Max-Age=2592000/.test(redeemedA.setCookie) &&
+    (behindTls || !/Secure/i.test(redeemedA.setCookie)),
+  redeemedA.setCookie.replace(SESSION_RE, "kp-session=<token>;"),
+);
+const linkUsed = await request(inviteA);
+const redeemAgain = await redeem(staff.ownerA.invite);
+check(
+  "staff: a used link → the identical invalid-link page, and it sets no password again",
+  linkUsed.status === 404 && linkUsed.body === linkUnknown.body && redirectsTo(redeemAgain, inviteA),
+  `${linkUsed.status} ${redeemAgain.status} ${redeemAgain.location}`.replaceAll(staff.ownerA.invite, "<token>"),
+);
+const redeemedWaiter = await redeem(staff.waiterA.invite, STAFF_PASSWORD, STAFF_PASSWORD, { extraHeaders: viaProxy });
+const sessionWaiter = sessionOf(redeemedWaiter);
+check(
+  "staff: behind a TLS proxy the session cookie is Secure",
+  redirectsTo(redeemedWaiter, "/panel") && sessionWaiter !== null && /Secure/i.test(redeemedWaiter.setCookie),
+  redeemedWaiter.setCookie.replace(SESSION_RE, "kp-session=<token>;"),
+);
+const sessionB = sessionOf(await redeem(staff.ownerB.invite));
+const sessionAdmin = sessionOf(await redeem(staff.admin.invite));
+const sessionThrottled = sessionOf(await redeem(staff.throttled.invite));
+check(
+  "staff: every invited account sets its password",
+  [sessionB, sessionAdmin, sessionThrottled].every((token) => token !== null),
+);
+
+// The panel with a session.
+const panelA = await request("/panel", { cookie: asStaff(sessionA1) });
+check(
+  "staff: /panel shows the person, restaurant A and the role „Właściciel” with the auth headers",
+  panelA.status === 200 &&
+    panelA.body.includes(staff.ownerA.email) &&
+    panelA.body.includes(`Restauracja smoke A ${RUN_TAG}`) &&
+    panelA.body.includes("Właściciel") &&
+    !panelA.body.includes(`Restauracja smoke B ${RUN_TAG}`) &&
+    authHeaders(panelA),
+  `${panelA.status} ${panelA.referrerPolicy}`,
+);
+const loginWithSession = await request("/logowanie", { cookie: asStaff(sessionA1) });
+check(
+  "staff: /logowanie with a session → 303 /panel",
+  redirectsTo(loginWithSession, "/panel"),
+  loginWithSession.location,
+);
+const meA = await me(sessionA1);
+check(
+  "staff: /api/panel/me answers the person and their restaurants with roles (no tokens, no ids of sessions)",
+  meA.status === 200 &&
+    meA.data?.email === staff.ownerA.email &&
+    meA.data.isPlatformAdmin === false &&
+    meA.data.restaurants?.length === 1 &&
+    meA.data.restaurants[0].id === restaurantA.id &&
+    meA.data.restaurants[0].role === "owner" &&
+    !meA.body.includes(sessionA1),
+  meA.body,
+);
+
+// Login: one answer for a wrong password and an unknown e-mail; typos below the limit do not lock anyone out.
+const wrongPassword = await logIn(staff.ownerA.email, "zle-haslo-123");
+const unknownEmail = await logIn(staffEmail("nikt"), "zle-haslo-123");
+check(
+  "staff: a wrong password and an unknown e-mail → the identical 303 /logowanie?blad=dane without a cookie",
+  redirectsTo(wrongPassword, "/logowanie?blad=dane") &&
+    redirectsTo(unknownEmail, "/logowanie?blad=dane") &&
+    wrongPassword.body === unknownEmail.body &&
+    wrongPassword.setCookie === "" &&
+    unknownEmail.setCookie === "",
+  `${wrongPassword.location} ${unknownEmail.location}`,
+);
+const loggedInA = await logIn(` ${staff.ownerA.email.toUpperCase()} `, STAFF_PASSWORD);
+const sessionA2 = sessionOf(loggedInA);
+check(
+  "staff: the right password (e-mail in any case, spaces around) → 303 /panel with a new session",
+  redirectsTo(loggedInA, "/panel") && sessionA2 !== null && sessionA2 !== sessionA1,
+  loggedInA.location,
+);
+for (let typo = 0; typo < 3; typo++) {
+  await logIn(staff.ownerB.email, `literowka-${String(typo)}-xyz`);
+}
+const afterTypos = await logIn(staff.ownerB.email, STAFF_PASSWORD);
+check(
+  "staff: three typos, then the right password → logged in",
+  redirectsTo(afterTypos, "/panel") && sessionOf(afterTypos) !== null,
+  afterTypos.location,
+);
+for (let failure = 0; failure < 10; failure++) {
+  await logIn(staff.throttled.email, `zle-haslo-${String(failure)}`);
+  await logIn(staffEmail("nieznany"), `zle-haslo-${String(failure)}`);
+}
+const throttledRight = await logIn(staff.throttled.email, STAFF_PASSWORD);
+const throttledUnknown = await logIn(staffEmail("nieznany"), STAFF_PASSWORD);
+check(
+  "staff: after 10 failures even the right password → 303 blad=limit with Retry-After, identical for an unknown e-mail",
+  redirectsTo(throttledRight, "/logowanie?blad=limit") &&
+    redirectsTo(throttledUnknown, "/logowanie?blad=limit") &&
+    throttledRight.setCookie === "" &&
+    Number(throttledRight.retryAfter) > 0 &&
+    Number(throttledRight.retryAfter) <= 900 &&
+    Number(throttledUnknown.retryAfter) > 0 &&
+    throttledRight.body === throttledUnknown.body,
+  `${throttledRight.location} ${throttledRight.retryAfter} ${throttledUnknown.location} ${throttledUnknown.retryAfter}`,
+);
+check(
+  "staff: the throttle stops new logins only, a session of that account still works",
+  (await me(sessionThrottled)).status === 200,
+);
+
+// Origin: every auth and panel mutation without the page's own Origin → 403, and nothing happens.
+const FOREIGN = { Origin: "https://evil.example" };
+const originAttempts = [
+  ["login, no Origin, form", () => logIn(staff.ownerA.email, STAFF_PASSWORD, { noOrigin: true })],
+  ["login, foreign Origin, form", () => logIn(staff.ownerA.email, STAFF_PASSWORD, { extraHeaders: FOREIGN })],
+  [
+    "login, foreign Origin, JSON",
+    () =>
+      request("/api/auth/login", {
+        method: "POST",
+        json: { email: staff.ownerA.email, password: STAFF_PASSWORD },
+        extraHeaders: FOREIGN,
+      }),
+  ],
+  [
+    "logout, no Origin",
+    () => request("/api/auth/logout", { method: "POST", cookie: asStaff(sessionA1), noOrigin: true }),
+  ],
+  [
+    "logout, foreign Origin",
+    () => request("/api/auth/logout", { method: "POST", form: {}, cookie: asStaff(sessionA1), extraHeaders: FOREIGN }),
+  ],
+  [
+    "password change, no Origin, form",
+    () =>
+      request("/api/panel/password", {
+        method: "POST",
+        form: { current: STAFF_PASSWORD, password: NEW_STAFF_PASSWORD, repeat: NEW_STAFF_PASSWORD },
+        cookie: asStaff(sessionA1),
+        noOrigin: true,
+      }),
+  ],
+  [
+    "password change, foreign Origin, JSON",
+    () =>
+      request("/api/panel/password", {
+        method: "POST",
+        json: { current: STAFF_PASSWORD, password: NEW_STAFF_PASSWORD, repeat: NEW_STAFF_PASSWORD },
+        cookie: asStaff(sessionA1),
+        extraHeaders: FOREIGN,
+      }),
+  ],
+];
+const originResults = [];
+for (const [name, attempt] of originAttempts) {
+  const res = await attempt();
+  originResults.push(`${name}: ${String(res.status)}${res.setCookie ? " +cookie" : ""}`);
+  if (res.status !== 403 || res.setCookie !== "") {
+    check(`staff: Origin refused (${name})`, false, `${res.status} ${res.body.slice(0, 120)}`);
+  }
+}
+check(
+  "staff: login, logout and the password change without the page's Origin → 403 without a cookie",
+  originResults.every((line) => line.endsWith(": 403")),
+  originResults.join("; "),
+);
+const stillLoggedIn = await me(sessionA1);
+const oldPasswordStill = await logIn(staff.ownerA.email, STAFF_PASSWORD);
+check(
+  "staff: after the refused attempts the session still works and the password is unchanged",
+  stillLoggedIn.status === 200 && redirectsTo(oldPasswordStill, "/panel"),
+  `${stillLoggedIn.status} ${oldPasswordStill.location}`,
+);
+const sessionA3 = sessionOf(oldPasswordStill);
+
+// Password change: a wrong current password is refused; a change ends every OTHER session.
+const changePassword = (token, current, password, repeat = password) =>
+  request("/api/panel/password", { method: "POST", form: { current, password, repeat }, cookie: asStaff(token) });
+const wrongCurrent = await changePassword(sessionA1, "nie-to-haslo-1", NEW_STAFF_PASSWORD);
+check(
+  "staff: a password change with a wrong current password → 303 /panel?blad=obecne#haslo",
+  wrongCurrent.status === 303 && wrongCurrent.location === "/panel?blad=obecne#haslo",
+  wrongCurrent.location,
+);
+const changed = await changePassword(sessionA1, STAFF_PASSWORD, NEW_STAFF_PASSWORD);
+const meA1AfterChange = await me(sessionA1);
+const meA2AfterChange = await me(sessionA2);
+const meA3AfterChange = await me(sessionA3);
+const oldPassword = await logIn(staff.ownerA.email, STAFF_PASSWORD);
+const newPassword = await logIn(staff.ownerA.email, NEW_STAFF_PASSWORD);
+check(
+  "staff: a password change keeps this session, ends the others, and only the new password logs in",
+  redirectsTo(changed, "/panel?haslo=zmienione") &&
+    meA1AfterChange.status === 200 &&
+    meA2AfterChange.status === 401 &&
+    meA3AfterChange.status === 401 &&
+    redirectsTo(oldPassword, "/logowanie?blad=dane") &&
+    redirectsTo(newPassword, "/panel"),
+  [changed.location, meA1AfterChange.status, meA2AfterChange.status, meA3AfterChange.status, oldPassword.location].join(
+    " ",
+  ),
+);
+const sessionA4 = sessionOf(newPassword);
+
+// Logout here, then everywhere.
+const loggedOut = await request("/api/auth/logout", { method: "POST", form: {}, cookie: asStaff(sessionA1) });
+const meAfterLogout = await me(sessionA1);
+check(
+  "staff: logout → 303 /logowanie?wylogowano=1 with the cookie cleared, the old cookie gets 401",
+  redirectsTo(loggedOut, "/logowanie?wylogowano=1") &&
+    /kp-session=;[^,]*Max-Age=0/.test(loggedOut.setCookie) &&
+    meAfterLogout.status === 401 &&
+    (await me(sessionA4)).status === 200,
+  `${loggedOut.location} ${meAfterLogout.status}`,
+);
+const sessionA5 = sessionOf(await logIn(staff.ownerA.email, NEW_STAFF_PASSWORD));
+const everywhere = await request("/api/auth/logout", {
+  method: "POST",
+  form: { wszedzie: "1" },
+  cookie: asStaff(sessionA4),
+});
+const meA4AfterAll = await me(sessionA4);
+const meA5AfterAll = await me(sessionA5);
+check(
+  "staff: logout everywhere ends every session of the person",
+  redirectsTo(everywhere, "/logowanie?wylogowano=1") && meA4AfterAll.status === 401 && meA5AfterAll.status === 401,
+  `${everywhere.location} ${meA4AfterAll.status} ${meA5AfterAll.status}`,
+);
+
+// The guard: own restaurant and event only; everything else is one 404, like a wrong link key.
+const sessionOwner = sessionOf(await logIn(staff.ownerA.email, NEW_STAFF_PASSWORD));
+const panelGet = (token, path) => request(`/api/panel${path}`, { cookie: asStaff(token) });
+const ownRestaurant = await panelGet(sessionOwner, `/restaurants/${String(restaurantA.id)}`);
+const ownEvent = await panelGet(sessionOwner, `/events/${String(eventA.id)}`);
+check(
+  "staff: the owner of A reads restaurant A and event A",
+  ownRestaurant.status === 200 &&
+    ownRestaurant.data?.restaurant?.id === restaurantA.id &&
+    ownRestaurant.data.role === "owner" &&
+    ownEvent.status === 200 &&
+    ownEvent.data?.event?.id === eventA.id &&
+    !ownEvent.body.includes(organizerKey) &&
+    !ownEvent.body.includes(tvKey),
+  `${ownRestaurant.status} ${ownEvent.status} ${ownEvent.body.slice(0, 160)}`,
+);
+const guardDenied = [];
+for (const path of [
+  `/restaurants/${String(restaurantB.id)}`,
+  `/events/${String(eventB.id)}`,
+  "/restaurants/2000000000",
+  "/events/2000000000",
+  "/restaurants/99999999999",
+  "/restaurants/abc",
+  "/events/abc",
+  "/restaurants/-1",
+]) {
+  const res = await panelGet(sessionOwner, path);
+  if (!noAccessJson(res)) {
+    guardDenied.push(`${path} ${String(res.status)} ${res.body.slice(0, 60)}`);
+  }
+}
+check(
+  "staff: another restaurant's restaurant or event, unknown, huge and malformed ids → the identical 404",
+  guardDenied.length === 0,
+  guardDenied.join("; "),
+);
+const waiterRestaurant = await panelGet(sessionWaiter, `/restaurants/${String(restaurantA.id)}`);
+const waiterEvent = await panelGet(sessionWaiter, `/events/${String(eventA.id)}`);
+check(
+  "staff: the waiter of A reads restaurant A (role waiter) but not its event (the identical 404)",
+  waiterRestaurant.status === 200 && waiterRestaurant.data?.role === "waiter" && noAccessJson(waiterEvent),
+  `${waiterRestaurant.status} ${waiterEvent.status}`,
+);
+const adminMe = await me(sessionAdmin);
+const adminRestaurant = await panelGet(sessionAdmin, `/restaurants/${String(restaurantA.id)}`);
+const adminEvent = await panelGet(sessionAdmin, `/events/${String(eventA.id)}`);
+check(
+  "staff: the platform admin is flagged but opens no restaurant without a membership (the identical 404)",
+  adminMe.status === 200 &&
+    adminMe.data?.isPlatformAdmin === true &&
+    adminMe.data.restaurants?.length === 0 &&
+    noAccessJson(adminRestaurant) &&
+    noAccessJson(adminEvent),
+  `${adminMe.body} ${adminRestaurant.status} ${adminEvent.status}`,
+);
+const ownerBReadsA = await panelGet(sessionB, `/restaurants/${String(restaurantA.id)}`);
+check("staff: the owner of B does not open restaurant A (the identical 404)", noAccessJson(ownerBReadsA));
+
+// Link keys are untouched by a staff session.
+const organizerWithSession = await request(`/o/${organizerKey}`, { cookie: asStaff(sessionOwner) });
+const garbageWithSession = await request("/o/garbage", { cookie: asStaff(sessionOwner) });
+const tvWithSession = await request(`/tv/${tvKey}`, { cookie: asStaff(sessionOwner) });
+check(
+  "staff: a session cookie changes nothing on the key routes (organizer and TV open, a garbage key is the no-access page)",
+  organizerWithSession.status === 200 &&
+    organizerWithSession.referrerPolicy === "no-referrer" &&
+    tvWithSession.status === 200 &&
+    garbageWithSession.status === 404 &&
+    garbageWithSession.body.includes(NO_ACCESS_TEXT),
+  `${organizerWithSession.status} ${tvWithSession.status} ${garbageWithSession.status}`,
+);
+const keyAsSession = await request("/api/panel/me", { cookie: asStaff(organizerKey) });
+check(
+  "staff: an organizer key as a session cookie opens nothing",
+  keyAsSession.status === 401,
+  String(keyAsSession.status),
 );
 
 finish();

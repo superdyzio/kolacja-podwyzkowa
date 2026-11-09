@@ -355,11 +355,11 @@ Additive (five new tables, four functions); no existing row or function changes,
 
 #### Automated
 
-- [x] 2.1 Tests pass: `AI_PROVIDER=mock npm test`
-- [x] 2.2 Lint passes: `npm run lint`
-- [x] 2.3 Type check passes: `npx astro check`
-- [x] 2.4 Build succeeds: `npm run build`
-- [x] 2.5 `npm run platform:admin -- admin@example.test` on the local DB prints a `/haslo/<token>` link; a second run prints a new link (the first one stops working)
+- [x] 2.1 Tests pass: `AI_PROVIDER=mock npm test` — 4587602
+- [x] 2.2 Lint passes: `npm run lint` — 4587602
+- [x] 2.3 Type check passes: `npx astro check` — 4587602
+- [x] 2.4 Build succeeds: `npm run build` — 4587602
+- [x] 2.5 `npm run platform:admin -- admin@example.test` on the local DB prints a `/haslo/<token>` link; a second run prints a new link (the first one stops working) — 4587602
 
 #### Manual
 
@@ -369,11 +369,11 @@ Additive (five new tables, four functions); no existing row or function changes,
 
 #### Automated
 
-- [ ] 3.1 From scratch: `npx supabase db reset`, then `AI_PROVIDER=mock npm test` passes
-- [ ] 3.2 Build succeeds: `npm run build`
-- [ ] 3.3 Smoke passes twice in a row against `AI_PROVIDER=mock npm run preview`: `npm run smoke`
-- [ ] 3.4 Demo prints the panel login and the event links: `npm run demo`
-- [ ] 3.5 Lint passes: `npm run lint`
+- [x] 3.1 From scratch: `npx supabase db reset`, then `AI_PROVIDER=mock npm test` passes
+- [x] 3.2 Build succeeds: `npm run build`
+- [x] 3.3 Smoke passes twice in a row against `AI_PROVIDER=mock npm run preview`: `npm run smoke`
+- [x] 3.4 Demo prints the panel login and the event links: `npm run demo`
+- [x] 3.5 Lint passes: `npm run lint`
 
 #### Manual
 
