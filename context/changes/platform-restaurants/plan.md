@@ -348,21 +348,21 @@ Additive (one nullable column, three functions); existing rows are active (`disa
 
 #### Automated
 
-- [x] 1.1 Migration applies on the populated local DB with every existing table's row count unchanged: `npx supabase migration up`
-- [x] 1.2 Tests pass: `AI_PROVIDER=mock npm test`
-- [x] 1.3 Lint passes: `npm run lint`
-- [x] 1.4 Type check passes: `npx astro check`
-- [x] 1.5 Build succeeds: `npm run build`
+- [x] 1.1 Migration applies on the populated local DB with every existing table's row count unchanged: `npx supabase migration up` — 7696d7f
+- [x] 1.2 Tests pass: `AI_PROVIDER=mock npm test` — 7696d7f
+- [x] 1.3 Lint passes: `npm run lint` — 7696d7f
+- [x] 1.4 Type check passes: `npx astro check` — 7696d7f
+- [x] 1.5 Build succeeds: `npm run build` — 7696d7f
 
 ### Phase 2: Guard, routes and pages
 
 #### Automated
 
-- [ ] 2.1 Tests pass: `AI_PROVIDER=mock npm test`
-- [ ] 2.2 Lint passes: `npm run lint`
-- [ ] 2.3 Type check passes: `npx astro check`
-- [ ] 2.4 Build succeeds: `npm run build`
-- [ ] 2.5 On `AI_PROVIDER=mock npm run preview`, an admin session gets 200 from `GET /api/panel/platform/restaurants` and an owner session the identical 404
+- [x] 2.1 Tests pass: `AI_PROVIDER=mock npm test`
+- [x] 2.2 Lint passes: `npm run lint`
+- [x] 2.3 Type check passes: `npx astro check`
+- [x] 2.4 Build succeeds: `npm run build`
+- [x] 2.5 On `AI_PROVIDER=mock npm run preview`, an admin session gets 200 from `GET /api/panel/platform/restaurants` and an owner session the identical 404
 
 #### Manual
 

@@ -1,0 +1,68 @@
+---
+import Layout from "@/layouts/Layout.astro";
+import NoAccess from "@/components/NoAccess.astro";
+import { authMessages } from "@/lib/auth/messages";
+import { findPanelRestaurant } from "@/lib/panel-api";
+import { getRestaurantOverview, restaurantPanelMessages } from "@/lib/restaurants";
+
+// The restaurant panel (platform-restaurants, S-10): what an owner sees after accepting the invitation — the
+// restaurant, their role, how many events it has and (owners and managers) the team. Events (S-11) and team
+// management (S-12) come next. Through the central lookup: a foreign, unknown, malformed or disabled restaurant gets
+// the no-access page (404), the same for every reason.
+const locale = Astro.locals.locale;
+const t = restaurantPanelMessages(locale);
+const roles = authMessages(locale).roleLabels;
+const panel = await findPanelRestaurant(Astro.locals, Astro.params.id);
+const overview = panel ? await getRestaurantOverview(panel.db, panel.restaurant.id) : null;
+const showTeam = panel?.role === "owner" || panel?.role === "manager";
+if (!panel) {
+  Astro.response.status = 404;
+}
+---
+
+{panel && overview ? (
+  <Layout title={t.pageTitle(panel.restaurant.name)}>
+    <main class="mx-auto flex max-w-3xl flex-col gap-6 p-4 sm:p-8">
+      <header class="flex flex-col gap-2">
+        <a href="/panel" class="self-start py-2 text-sm text-muted-foreground underline-offset-4 hover:underline">
+          {t.backToPanel}
+        </a>
+        <h1 class="text-3xl font-bold">{panel.restaurant.name}</h1>
+        <p>
+          {t.yourRole}: <span class="rounded-full border px-2 py-0.5 text-sm">{roles[panel.role]}</span>
+        </p>
+      </header>
+
+      <section aria-labelledby="events-heading" class="flex flex-col gap-2 rounded-xl border p-4 sm:p-6">
+        <h2 id="events-heading" class="text-xl font-semibold">
+          {t.eventsHeading}
+        </h2>
+        <p>{t.eventCount(overview.eventCount)}</p>
+        <p class="text-sm text-muted-foreground">{t.eventsComingSoon}</p>
+      </section>
+
+      {showTeam && (
+        <section aria-labelledby="team-heading" class="flex flex-col gap-3 rounded-xl border p-4 sm:p-6">
+          <h2 id="team-heading" class="text-xl font-semibold">
+            {t.teamHeading}
+          </h2>
+          <ul class="flex flex-col gap-2">
+            {overview.team.map((member) => (
+              <li class="flex flex-wrap items-center justify-between gap-2">
+                <span>
+                  {member.displayName ? `${member.displayName} · ` : ""}
+                  {member.email}
+                  {!member.hasPassword && <span class="text-sm text-muted-foreground"> ({t.accountPending})</span>}
+                </span>
+                <span class="rounded-full border px-2 py-0.5 text-sm">{roles[member.role]}</span>
+              </li>
+            ))}
+          </ul>
+          <p class="text-sm text-muted-foreground">{t.teamComingSoon}</p>
+        </section>
+      )}
+    </main>
+  </Layout>
+) : (
+  <NoAccess />
+)}

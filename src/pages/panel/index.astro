@@ -9,10 +9,11 @@ import { PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH } from "@/lib/auth/limits";
 import { getDb } from "@/lib/db";
 import { PRODUCT_NAME } from "@/lib/i18n/product";
 
-// The staff panel (staff-accounts, F-03): for now only the proof of the session — who is logged in, the platform-admin
-// marker, the person's restaurants with roles, password change and logout (plain forms, answers are 303 back here).
-// The restaurant and platform panels come with S-10/S-11. The middleware already sent anyone without a session to the
-// login page; the re-check below only guards against a misconfigured middleware.
+// The staff panel hub (staff-accounts, F-03; platform-restaurants, S-10): who is logged in, the platform-admin marker
+// with the way into the platform panel, the person's restaurants with roles — each active one linked to its restaurant
+// panel, a disabled one marked and explained — password change and logout (plain forms, answers are 303 back here).
+// The middleware already sent anyone without a session to the login page; the re-check below only guards against a
+// misconfigured middleware.
 const t = authMessages(Astro.locals.locale);
 const staff = Astro.locals.staff;
 const db = getDb();
@@ -41,6 +42,21 @@ if (!staff) {
         )}
       </header>
 
+      {staff.isPlatformAdmin && (
+        <section aria-labelledby="platform-heading" class="flex flex-col gap-3 rounded-xl border p-4 sm:p-6">
+          <h2 id="platform-heading" class="text-xl font-semibold">
+            {t.platformCardHeading}
+          </h2>
+          <p class="text-sm text-muted-foreground">{t.platformCardText}</p>
+          <a
+            href="/panel/platforma"
+            class="self-start rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground"
+          >
+            {t.openPlatformPanel}
+          </a>
+        </section>
+      )}
+
       {changed && (
         <p role="status" aria-label={t.noticeRegion} class="rounded-md border bg-muted p-3 text-sm">
           {t.passwordChanged}
@@ -54,16 +70,35 @@ if (!staff) {
         {memberships.length === 0 ? (
           <p class="text-muted-foreground">{t.noRestaurants}</p>
         ) : (
-          <ul class="flex flex-col gap-2">
+          <ul class="flex flex-col gap-3">
             {memberships.map((m) => (
-              <li class="flex flex-wrap items-center justify-between gap-2">
-                <span class="font-medium">{m.restaurantName}</span>
-                <span class="rounded-full border px-2 py-0.5 text-sm">{t.roleLabels[m.role]}</span>
+              <li class="flex flex-col gap-1" data-restaurant-id={m.restaurantId}>
+                <div class="flex flex-wrap items-center justify-between gap-2">
+                  <span class="font-medium">{m.restaurantName}</span>
+                  <span class="flex flex-wrap gap-2">
+                    {m.disabled && (
+                      <span class="rounded-full border border-destructive/50 px-2 py-0.5 text-sm text-destructive">
+                        {t.restaurantDisabled}
+                      </span>
+                    )}
+                    <span class="rounded-full border px-2 py-0.5 text-sm">{t.roleLabels[m.role]}</span>
+                  </span>
+                </div>
+                {m.disabled ? (
+                  <p class="text-sm text-muted-foreground">{t.restaurantDisabledNote}</p>
+                ) : (
+                  <a
+                    href={`/panel/restauracje/${String(m.restaurantId)}`}
+                    class="self-start rounded-md border px-3 py-1.5 text-sm font-medium"
+                    aria-label={t.openRestaurantPanelFor(m.restaurantName)}
+                  >
+                    {t.openRestaurantPanel}
+                  </a>
+                )}
               </li>
             ))}
           </ul>
         )}
-        <p class="text-sm text-muted-foreground">{t.panelComingSoon}</p>
       </section>
 
       <section id="haslo" aria-labelledby="password-heading" class="flex flex-col gap-4 rounded-xl border p-4 sm:p-6">

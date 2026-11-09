@@ -1,0 +1,37 @@
+---
+import Layout from "@/layouts/Layout.astro";
+import NoAccess from "@/components/NoAccess.astro";
+import { PlatformRestaurantsManager } from "@/components/platform/PlatformRestaurantsManager";
+import { getDb } from "@/lib/db";
+import { listPlatformRestaurants, platformMessages } from "@/lib/platform";
+
+// The platform administrator's panel (platform-restaurants, S-10): create restaurants with their owners, hand over
+// one-time links, see counters, switch restaurants off and on. Platform admins only — any other session gets the
+// no-access page (404), like an unknown address; without a session the middleware already sent the person to the
+// login page. Counters only: a restaurant's events and guests are not shown here (S-13).
+const locale = Astro.locals.locale;
+const t = platformMessages(locale);
+const staff = Astro.locals.staff;
+const db = staff?.isPlatformAdmin ? getDb() : null;
+const restaurants = db ? await listPlatformRestaurants(db) : null;
+if (!restaurants) {
+  Astro.response.status = 404;
+}
+---
+
+{restaurants ? (
+  <Layout title={t.pageTitle}>
+    <main class="mx-auto flex max-w-3xl flex-col gap-6 p-4 sm:p-8">
+      <header class="flex flex-col gap-2">
+        <a href="/panel" class="self-start py-2 text-sm text-muted-foreground underline-offset-4 hover:underline">
+          {t.backToPanel}
+        </a>
+        <h1 class="text-3xl font-bold">{t.heading}</h1>
+        <p class="text-sm text-muted-foreground">{t.intro}</p>
+      </header>
+      <PlatformRestaurantsManager client:load initial={restaurants} origin={Astro.url.origin} locale={locale} />
+    </main>
+  </Layout>
+) : (
+  <NoAccess />
+)}

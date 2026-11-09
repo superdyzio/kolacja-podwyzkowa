@@ -18,6 +18,11 @@ export const GET: APIRoute = async ({ locals }) => {
     email: api.staff.email,
     displayName: api.staff.displayName,
     isPlatformAdmin: api.staff.isPlatformAdmin,
-    restaurants: memberships.map((m) => ({ id: m.restaurantId, name: m.restaurantName, role: m.role })),
+    restaurants: memberships.map((m) => ({
+      id: m.restaurantId,
+      name: m.restaurantName,
+      role: m.role,
+      disabled: m.disabled,
+    })),
   });
 };
