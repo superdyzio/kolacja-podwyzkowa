@@ -8,6 +8,7 @@ export const shellMessages = defineMessages(
     appName: "Kolacja podwyżkowa",
     noDatabase: "Baza danych nie jest skonfigurowana.",
     linkOnly: "Dostęp tylko przez link od organizatora.",
+    staffLogin: "Logowanie dla personelu",
     // 500.astro.
     errorTitle: "Błąd",
     errorHeading: "Coś poszło nie tak",
@@ -54,6 +55,7 @@ export const shellMessages = defineMessages(
     appName: "Raise dinner",
     noDatabase: "The database is not configured.",
     linkOnly: "Access only through a link from the organizer.",
+    staffLogin: "Staff login",
     errorTitle: "Error",
     errorHeading: "Something went wrong",
     errorText: "Try reloading the page in a moment.",

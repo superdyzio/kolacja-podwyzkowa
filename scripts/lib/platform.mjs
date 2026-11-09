@@ -6,6 +6,7 @@
 // Errors throw PlatformError with a Polish message; the scripts print it and exit. The service-role key is a secret:
 // it is sent only to SUPABASE_URL and never printed.
 
+import { createHash, randomBytes } from "node:crypto";
 import { URL } from "node:url";
 
 const LOCAL_HOSTS = new Set(["127.0.0.1", "localhost"]);
@@ -33,7 +34,7 @@ export function readDbEnv({ requireLocal = false } = {}) {
       `Ten skrypt zakłada dane testowe, więc działa tylko na lokalnej bazie (127.0.0.1 / localhost), a SUPABASE_URL wskazuje ${parsed.host}.`,
     );
   }
-  return { url: url.replace(/\/+$/, ""), serviceRoleKey, host: parsed.host };
+  return { url: url.replace(/\/+$/, ""), serviceRoleKey, host: parsed.host, local: LOCAL_HOSTS.has(parsed.hostname) };
 }
 
 async function rest(env, path, { method = "GET", body, prefer } = {}) {
@@ -153,4 +154,104 @@ export function printEventLinks(baseUrl, event) {
   console.log(`  Organizator: ${links.organizer}`);
   console.log(`  TV:          ${links.tv}`);
   console.log(`  Restauracja: ${links.restaurant}`);
+}
+
+// --- Staff accounts (staff-accounts, F-03) ------------------------------------------------------------------------
+// The same rules as src/lib/auth (tokens.ts, email.ts, limits.ts), repeated here so the scripts stay plain Node;
+// tests/scripts/platform-tokens.test.ts pins them equal.
+
+const INVITE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+const RESET_TTL_MS = 24 * 60 * 60 * 1000;
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const STAFF_ROLES = new Set(["owner", "manager", "waiter"]);
+
+// 32 random bytes in base64url (43 characters), as the app's session and link tokens.
+export function generateSecretToken() {
+  return randomBytes(32).toString("base64url");
+}
+
+// SHA-256 as 64 lowercase hex characters: what the database stores instead of a token.
+export function hashSecretToken(token) {
+  return createHash("sha256").update(token, "utf8").digest("hex");
+}
+
+// Trimmed lowercase e-mail, or null when it does not look like one (≤ 254 characters).
+export function normalizeStaffEmail(raw) {
+  const email = String(raw).trim().toLowerCase();
+  return email.length <= 254 && EMAIL_PATTERN.test(email) ? email : null;
+}
+
+// The account of an e-mail, created (without a password) when missing. `isPlatformAdmin: true` also sets the flag on
+// an existing account. Returns { id, email, hasPassword, created }.
+export async function ensureStaffAccount(env, { email, displayName = null, isPlatformAdmin = false }) {
+  const normalized = normalizeStaffEmail(email);
+  if (!normalized) {
+    throw new PlatformError(`To nie wygląda na adres e-mail: ${String(email)}`);
+  }
+  const found = await rest(
+    env,
+    `staff_account?select=id,email,password_hash,is_platform_admin&email=eq.${encodeURIComponent(normalized)}`,
+  );
+  if (!found.ok || !Array.isArray(found.data)) {
+    throw new PlatformError(`Nie udało się odczytać konta (${describeFailure(found)}).`);
+  }
+  const [existing] = found.data;
+  if (existing) {
+    if (isPlatformAdmin && !existing.is_platform_admin) {
+      const updated = await rest(env, `staff_account?id=eq.${String(existing.id)}`, {
+        method: "PATCH",
+        body: { is_platform_admin: true },
+      });
+      if (!updated.ok) {
+        throw new PlatformError(`Nie udało się nadać uprawnień administratora (${describeFailure(updated)}).`);
+      }
+    }
+    return { id: existing.id, email: existing.email, hasPassword: existing.password_hash !== null, created: false };
+  }
+  const name = displayName === null ? null : String(displayName).trim() || null;
+  const created = await rest(env, "staff_account?select=id,email", {
+    method: "POST",
+    body: { email: normalized, display_name: name, is_platform_admin: isPlatformAdmin },
+    prefer: "return=representation",
+  });
+  if (!created.ok || !Array.isArray(created.data) || !created.data[0]) {
+    throw new PlatformError(`Nie udało się założyć konta (${describeFailure(created)}).`);
+  }
+  return { id: created.data[0].id, email: created.data[0].email, hasPassword: false, created: true };
+}
+
+// The account's role in a restaurant (owner | manager | waiter); an existing membership gets the new role.
+export async function addMembership(env, restaurantId, accountId, role) {
+  if (!STAFF_ROLES.has(role)) {
+    throw new PlatformError(`Nieznana rola: ${String(role)}`);
+  }
+  const result = await rest(env, "restaurant_member?on_conflict=restaurant_id,account_id", {
+    method: "POST",
+    body: { restaurant_id: restaurantId, account_id: accountId, role },
+    prefer: "resolution=merge-duplicates,return=minimal",
+  });
+  if (!result.ok) {
+    throw new PlatformError(`Nie udało się dodać osoby do restauracji (${describeFailure(result)}).`);
+  }
+}
+
+// A one-time link for the account (`invite` or `reset`; its older unused links stop working). Returns the link, its
+// expiry and the token (scripts that redeem it over HTTP need it).
+export async function issueStaffLink(env, accountId, kind, baseUrl) {
+  const token = generateSecretToken();
+  const expiresAt = new Date(Date.now() + (kind === "invite" ? INVITE_TTL_MS : RESET_TTL_MS)).toISOString();
+  const result = await rest(env, "rpc/issue_staff_token", {
+    method: "POST",
+    body: {
+      p_account_id: accountId,
+      p_kind: kind,
+      p_token_hash: hashSecretToken(token),
+      p_expires_at: expiresAt,
+      p_created_by: null,
+    },
+  });
+  if (!result.ok) {
+    throw new PlatformError(`Nie udało się wydać linku (${describeFailure(result)}).`);
+  }
+  return { url: new URL(`/haslo/${token}`, baseUrl).href, expiresAt, token };
 }

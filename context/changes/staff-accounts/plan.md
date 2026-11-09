@@ -345,21 +345,21 @@ Additive (five new tables, four functions); no existing row or function changes,
 
 #### Automated
 
-- [x] 1.1 Migration applies on the current populated local DB with every existing table's row count unchanged: `npx supabase migration up`
-- [x] 1.2 Tests pass: `AI_PROVIDER=mock npm test`
-- [x] 1.3 Lint passes: `npm run lint`
-- [x] 1.4 Type check passes: `npx astro check`
-- [x] 1.5 Build succeeds: `npm run build`
+- [x] 1.1 Migration applies on the current populated local DB with every existing table's row count unchanged: `npx supabase migration up` — b2e305a
+- [x] 1.2 Tests pass: `AI_PROVIDER=mock npm test` — b2e305a
+- [x] 1.3 Lint passes: `npm run lint` — b2e305a
+- [x] 1.4 Type check passes: `npx astro check` — b2e305a
+- [x] 1.5 Build succeeds: `npm run build` — b2e305a
 
 ### Phase 2: Guard, routes, pages and the admin CLI
 
 #### Automated
 
-- [ ] 2.1 Tests pass: `AI_PROVIDER=mock npm test`
-- [ ] 2.2 Lint passes: `npm run lint`
-- [ ] 2.3 Type check passes: `npx astro check`
-- [ ] 2.4 Build succeeds: `npm run build`
-- [ ] 2.5 `npm run platform:admin -- admin@example.test` on the local DB prints a `/haslo/<token>` link; a second run prints a new link (the first one stops working)
+- [x] 2.1 Tests pass: `AI_PROVIDER=mock npm test`
+- [x] 2.2 Lint passes: `npm run lint`
+- [x] 2.3 Type check passes: `npx astro check`
+- [x] 2.4 Build succeeds: `npm run build`
+- [x] 2.5 `npm run platform:admin -- admin@example.test` on the local DB prints a `/haslo/<token>` link; a second run prints a new link (the first one stops working)
 
 #### Manual
 

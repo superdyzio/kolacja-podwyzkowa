@@ -27,3 +27,9 @@ export async function readFormBody(
 export function formField(form: URLSearchParams, name: string): string {
   return form.get(name) ?? "";
 }
+
+// The answer of a form post: 303 to a page of ours (never an address taken from the request), optionally setting the
+// session cookie.
+export function seeOther(location: string, extraHeaders: Record<string, string> = {}): Response {
+  return new Response(null, { status: 303, headers: { Location: location, ...extraHeaders } });
+}

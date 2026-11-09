@@ -26,6 +26,7 @@ export const authMessages = defineMessages(
     newPasswordLabel: "Nowe hasło",
     repeatPasswordLabel: "Powtórz nowe hasło",
     passwordHint: `Co najmniej ${String(PASSWORD_MIN_LENGTH)} znaków. Po zapisaniu od razu się zalogujesz.`,
+    newPasswordHint: `Co najmniej ${String(PASSWORD_MIN_LENGTH)} znaków.`,
     setPasswordButton: "Ustaw hasło i zaloguj się",
     invalidLinkTitle: "Link nieważny",
     invalidLinkText:
@@ -82,6 +83,7 @@ export const authMessages = defineMessages(
     newPasswordLabel: "New password",
     repeatPasswordLabel: "Repeat the new password",
     passwordHint: `At least ${String(PASSWORD_MIN_LENGTH)} characters. You will be logged in right after saving.`,
+    newPasswordHint: `At least ${String(PASSWORD_MIN_LENGTH)} characters.`,
     setPasswordButton: "Set password and log in",
     invalidLinkTitle: "Invalid link",
     invalidLinkText:

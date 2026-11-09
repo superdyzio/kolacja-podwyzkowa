@@ -1,0 +1,91 @@
+---
+import Layout from "@/layouts/Layout.astro";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { getTokenInfo } from "@/lib/auth/service";
+import { authErrorText, authMessages } from "@/lib/auth/messages";
+import { PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH } from "@/lib/auth/limits";
+import { LOGIN_PATH } from "@/lib/auth/paths";
+import { getDb } from "@/lib/db";
+import { PRODUCT_NAME } from "@/lib/i18n/product";
+
+// Setting a password from a one-time link (invitation or reset; staff-accounts, F-03). Opening the page uses nothing
+// up: only the form post (/api/auth/password-link) does. An unknown, used, expired or malformed link gets one 404 page
+// with the same words. The account's e-mail is shown (it is the login) and offered to password managers.
+const t = authMessages(Astro.locals.locale);
+const token = Astro.params.token ?? "";
+const db = getDb();
+const info = db ? await getTokenInfo(db, token) : null;
+const error = authErrorText(Astro.url.searchParams.get("blad"), Astro.locals.locale);
+if (!info) {
+  Astro.response.status = 404;
+}
+---
+
+<Layout title={info ? t.setPasswordTitle : t.invalidLinkTitle}>
+  <main class="mx-auto flex min-h-screen max-w-md flex-col justify-center gap-6 p-6">
+    <p class="text-sm text-muted-foreground">{PRODUCT_NAME}</p>
+    {info ? (
+      <>
+        <header class="flex flex-col gap-1">
+          <h1 class="text-3xl font-bold">{info.kind === "invite" ? t.inviteHeading : t.resetHeading}</h1>
+          <p class="text-muted-foreground">{t.accountFor(info.email)}</p>
+        </header>
+        {error && (
+          <p
+            role="alert"
+            aria-label={t.errorRegion}
+            class="rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm"
+          >
+            {error}
+          </p>
+        )}
+        <form method="post" action="/api/auth/password-link" class="flex flex-col gap-4">
+          <input type="hidden" name="token" value={token} />
+          <input type="email" name="username" value={info.email} autocomplete="username" hidden readonly />
+          <div class="flex flex-col gap-2">
+            <label for="password" class="font-medium">
+              {t.newPasswordLabel}
+            </label>
+            <Input
+              id="password"
+              name="password"
+              type="password"
+              autoComplete="new-password"
+              minLength={PASSWORD_MIN_LENGTH}
+              maxLength={PASSWORD_MAX_LENGTH}
+              aria-describedby="password-hint"
+              required
+            />
+            <p id="password-hint" class="text-sm text-muted-foreground">
+              {t.passwordHint}
+            </p>
+          </div>
+          <div class="flex flex-col gap-2">
+            <label for="repeat" class="font-medium">
+              {t.repeatPasswordLabel}
+            </label>
+            <Input
+              id="repeat"
+              name="repeat"
+              type="password"
+              autoComplete="new-password"
+              minLength={PASSWORD_MIN_LENGTH}
+              maxLength={PASSWORD_MAX_LENGTH}
+              required
+            />
+          </div>
+          <Button type="submit">{t.setPasswordButton}</Button>
+        </form>
+      </>
+    ) : (
+      <>
+        <h1 class="text-3xl font-bold">{t.invalidLinkTitle}</h1>
+        <p class="text-muted-foreground">{t.invalidLinkText}</p>
+        <a href={LOGIN_PATH} class="font-medium underline underline-offset-4">
+          {t.goToLogin}
+        </a>
+      </>
+    )}
+  </main>
+</Layout>

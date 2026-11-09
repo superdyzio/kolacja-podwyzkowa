@@ -32,7 +32,8 @@ export default defineConfig({
   },
   // Node standalone server: `npm run preview` locally, AWS Lambda (Lambda Web Adapter in front) in production.
   adapter: node({ mode: "standalone" }),
-  // The app keeps no sessions; the adapter's default filesystem session store would point at a build-time path.
+  // No Astro sessions: staff logins (staff-accounts) live in Postgres (`staff_session`, cookie kp-session), and the
+  // adapter's default filesystem session store would point at a build-time path.
   session: false,
   // No image optimisation (the venue plan is served as uploaded), so no native `sharp` in the server bundle.
   image: { service: passthroughImageService() },
