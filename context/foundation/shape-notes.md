@@ -8,8 +8,8 @@ timeline_budget:
   hard_deadline: null
   after_hours_only: false
 checkpoint:
-  current_phase: 4.5
-  phases_completed: [1, 2, 3]
+  current_phase: 5
+  phases_completed: [1, 2, 3, 4]
   gray_areas_resolved:
     - topic: context type
       decision: "brownfield (171 commitów, package-lock.json, src/, .github/); v1 shape-notes zarchiwizowane w context/foundation/archive/shape-notes-2026-11-09-1534.md"
@@ -153,6 +153,84 @@ Przepływ, który ma zadziałać na demo z restauracją (delta względem v1):
 ## Timeline acknowledgment
 
 Acknowledged on 2026-11-09: 2-week delivery of the full M-2 backlog (all must-have) requires sustained dedication; user accepted.
+
+## User Stories
+
+US-01..US-04 z PRD v1 obowiązują dalej w obrębie jednego wydarzenia, z klientem w roli organizatora.
+
+### US-05: Lokal wchodzi na platformę
+
+- **Given** administrator platformy i restauracja, która chce korzystać z narzędzia
+- **When** administrator zakłada restaurację i przekazuje właścicielowi link zaproszenia
+- **Then** właściciel ustawia hasło, loguje się i zaprasza menedżera, a menedżer zaprasza kelnera (albo dodaje kelnera „na imprezę”)
+
+Wcześniej (v1): nie było restauracji ani kont; wydarzenie zakładał każdy, kto pierwszy wszedł na stronę główną.
+
+#### Acceptance Criteria
+- Link zaproszenia działa tylko raz i wygasa.
+- Właściciel widzi w dzienniku każde wejście administratora platformy w dane lokalu.
+- Zapomniane hasło da się odzyskać linkiem resetu od właściciela lub menedżera (albo od administratora platformy dla właściciela), bez ręcznych zmian w bazie.
+
+### US-06: Wydarzenie z szablonu dla klienta
+
+- **Given** menedżer z zapisanym szablonem sali i katalogiem menu
+- **When** tworzy wydarzenie (nazwa, data, liczba gości) z szablonu, ustala dostępne menu i moduły i kopiuje link klienta
+- **Then** klient otwiera wydarzenie z gotową salą, dostępnym menu i dostępnymi modułami
+
+Wcześniej (v1): jedno wydarzenie, salę organizator rysował sam.
+
+#### Acceptance Criteria
+- Od „Nowe wydarzenie” do skopiowanego linku klienta mijają mniej niż 3 minuty.
+- Wymiana linku (klient, TV, tablet) wymaga potwierdzenia, które mówi, kogo odetnie.
+- Zmiana szablonu nie zmienia istniejących wydarzeń; „zaktualizuj z szablonu” jest osobną akcją.
+
+### US-07: Klient przygotowuje imprezę
+
+- **Given** klient z linkiem organizatora
+- **When** importuje gości z dietami, tworzy grupy, rozsadza, wybiera zamówienia z menu lokalu i włącza dostępne gry i zabawy
+- **Then** lokal widzi to wszystko w podglądzie, a ceny pochodzą z cennika lokalu
+
+Wcześniej (v1): organizator sam wpisywał dania i ceny, nie było diet ani modułów.
+
+#### Acceptance Criteria
+- Klient widzi ceny, ale ich nie zmienia.
+- Gdy lokal włączy „lokal prowadzi”, klient tylko podgląda, a edytuje personel.
+- Klient może zresetować próby (rozsadzenia i ich historię, strzały, quiz) bez gości, sali i zamówień; pełny reset ma tylko lokal.
+- Płatne moduły są widoczne jako niedostępne, dopóki administrator platformy ich nie odblokuje.
+
+### US-08: Dzień imprezy
+
+- **Given** wydarzenie z opublikowanym rozsadzeniem i zamówieniami
+- **When** goście przychodzą i impreza trwa
+- **Then** TV przy wejściu pokazuje lokal (z rotacją sal, gdy imiona byłyby za małe), gość wyszukuje kogoś na mapie, kelner oznacza wydane i dopisuje dokładki, a kuchnia na tablecie `/r/` widzi kursy, diety i serwowanie tylko do odczytu
+
+Wcześniej (v1): jeden TV z całym planem, wydane oznaczał organizator lub gość, tablet nie miał diet ani kursów.
+
+#### Acceptance Criteria
+- Publikacja rozkładu dociera na TV i do 150 telefonów w ≤ 5 s.
+- Impreza trwająca po północy nadal jest na liście „dziś” kelnera.
+- Link tabletu ani TV nie pozwala niczego zmienić.
+
+### US-09: Po imprezie i następna
+
+- **Given** zakończona impreza
+- **When** menedżer archiwizuje ją i tworzy następne wydarzenie z tego samego szablonu
+- **Then** nowe wydarzenie ma salę z szablonu i żadnych gości ani zamówień poprzedniego
+
+#### Acceptance Criteria
+- Dane gości znikają N dni po imprezie (domyślnie 30, ustawia właściciel).
+- Menedżer może przed usunięciem wyeksportować dane wydarzenia.
+- Właściciel może trwale usunąć wydarzenie wcześniej.
+
+### US-10: Izolacja restauracji i wydarzeń
+
+- **Given** dwie restauracje, każda z wydarzeniami, personelem i linkami
+- **When** personel albo link jednej z nich próbuje otworzyć dane drugiej, także przez podmianę numeru wydarzenia w adresie
+- **Then** dostaje tę samą odmowę bez żadnych danych
+
+#### Acceptance Criteria
+- Odmowa dla cudzego, nieznanego i usuniętego wydarzenia jest identyczna.
+- Wyjątkiem jest tylko administrator platformy, a jego wejście trafia do dziennika.
 
 ## Functional Requirements
 
