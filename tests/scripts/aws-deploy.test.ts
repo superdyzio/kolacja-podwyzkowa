@@ -302,10 +302,14 @@ describe("the steps printed after a deploy", () => {
   });
 
   it("never print SQL for the hosted database, the smoke or the home page's old event creation", () => {
+    const sql = /\b(delete|truncate|drop|update)\s+(from\s+)?(table\s+)?public\./i;
+    // The guard itself catches the statements the old text printed.
+    expect("delete from public.event;").toMatch(sql);
+    expect("delete from public.restaurant where id = 1;").toMatch(sql);
     for (const aiProvider of ["mock", "anthropic"]) {
       const text = nextSteps({ base, region: "eu-central-1", aiProvider });
       // The hosted database holds every restaurant of the platform: no statement may touch it.
-      expect(text).not.toMatch(/\b(delete|truncate|drop|update)\s+(from\s+)?(table\s+)?public\./i);
+      expect(text).not.toMatch(sql);
       expect(text).not.toMatch(/SQL Editor/i);
       expect(text).not.toContain("npm run smoke");
       expect(text).not.toContain("Utwórz wydarzenie");
