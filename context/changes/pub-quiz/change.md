@@ -1,7 +1,7 @@
 ---
 change_id: pub-quiz
 title: Pub quiz run by the client on the TV with answers on guests' phones (S-28)
-status: implementing
+status: implemented
 created: 2026-11-10
 updated: 2026-11-10
 archived_at: null
