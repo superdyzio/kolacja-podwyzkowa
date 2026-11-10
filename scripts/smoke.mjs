@@ -10572,8 +10572,8 @@ check(
 // 43. Pub quiz (pub-quiz, S-28; FR-049, NFR-023). A new event of A (panel) has the paid quiz offered, off and locked:
 // its organizer API (link and dispatcher) → 409 module-off, the guest's answer route the identical 404 of a wrong key,
 // the client's switch → 409 module-locked, the TV token keeps its 3 parts. The admin unlocks it inside a support visit
-// (the owner's log names it), the client switches it on (the TV token gains a 4th part, 0 while no quiz runs) and
-// prepares three questions (invalid ones → 400). A run: start (the intro on the TV and the phones), a question (two
+// (the owner's log names it), the client switches it on and prepares three questions (invalid ones → 400). A run:
+// start (the intro on the TV and the phones; the TV token gains its 4th part while the quiz runs), a question (two
 // guests answer, one changes; the TV counts answers without names, the correct option or per-option counts, its HTML
 // carries no correct option; each phone sees only its own answer; the asked question is locked), close (a late answer
 // 409 quiz-closed; the TV reveals the correct option and the counts), event B's guest naming A's open question → the
@@ -10671,7 +10671,7 @@ const pageEn43 = await request(`/o/${e43Key}/quiz`, { cookie: "kp-lang=en" });
 const shellOn43 = await request(`/o/${e43Key}`);
 const cardOn43 = await staffCall(sessionOwner, eventPage(e43Id));
 check(
-  "pub quiz: the admin unlocks it inside a support visit (the owner's log names it), the client switches it on; the page runs the quiz (PL / EN), the shell and the panel's event card link it; the TV token gains a 4th part (0 while no quiz runs), no quiz on the TV or the phone yet",
+  "pub quiz: the admin unlocks it inside a support visit (the owner's log names it), the client switches it on; the page runs the quiz (PL / EN), the shell and the panel's event card link it; no quiz on the TV (its token keeps 3 parts while no quiz runs) or the phone yet",
   enter43.status === 201 &&
     unlocked43.status === 200 &&
     unlocked43.data?.modules?.find((m) => m.key === "pubQuiz")?.unlocked === true &&
@@ -10681,8 +10681,7 @@ check(
     activeOf(on43).pubQuiz === true &&
     tvOn43.status === 200 &&
     tvOn43.data?.quiz === null &&
-    partsOf43(tvOn43) === 4 &&
-    tvOn43.data.version.endsWith(".0") &&
+    partsOf43(tvOn43) === 3 &&
     stateOn43.status === 200 &&
     stateOn43.data?.quiz === null &&
     stateOn43.data.modules?.pubQuiz === true &&

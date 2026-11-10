@@ -351,9 +351,9 @@ HTTP coverage, the demo round, CLAUDE.md.
 
 #### Automated
 
-- [x] 3.1 Smoke passes against the production preview: `npm run smoke` (with `AI_PROVIDER=mock npm run preview`)
-- [x] 3.2 Demo fills the local app: `npm run demo`
-- [x] 3.3 Full suite, lint, type check, build: `AI_PROVIDER=mock npm test`, `npm run lint`, `npx astro check`, `npm run build`
+- [x] 3.1 Smoke passes against the production preview: `npm run smoke` (with `AI_PROVIDER=mock npm run preview`) — bb4cada
+- [x] 3.2 Demo fills the local app: `npm run demo` — bb4cada
+- [x] 3.3 Full suite, lint, type check, build: `AI_PROVIDER=mock npm test`, `npm run lint`, `npx astro check`, `npm run build` — bb4cada
 
 #### Manual
 

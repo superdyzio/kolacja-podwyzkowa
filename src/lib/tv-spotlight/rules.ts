@@ -36,8 +36,8 @@ export function normalizeSpotlightText(raw: string): string | null {
 
 // The TV polling token: the seating token ("<snapshot id>.<plan version>", seatingVersion()) plus the spotlight's
 // row id (0 = nothing shown). The seating token itself is untouched, because the guests' token is built from it.
-// pub-quiz (S-28): while the quiz module is on, a 4th part: the quiz's own token ("<revision>-<answers>", 0 = no
-// quiz runs); left out (undefined) while it is off, so the TVs of other events keep their 3-part token.
+// pub-quiz (S-28): while a quiz runs with the module on, a 4th part: the quiz's own token ("<revision>-<answers>",
+// the revision never reused); left out (undefined) otherwise, so every other TV keeps its 3-part token.
 export function tvScreenVersion(seatingVersion: string, spotlightId: number | null, quiz?: string | null): string {
   const base = `${seatingVersion}.${spotlightId ?? 0}`;
   return quiz === undefined ? base : `${base}.${quiz ?? 0}`;

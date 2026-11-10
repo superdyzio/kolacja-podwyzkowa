@@ -133,8 +133,8 @@ export async function hideTvSpotlight(db: DbClient, eventId: number): Promise<vo
 // Everything the TV shows (the TV page and its poll use this one function, so their versions match).
 // event-modules (S-17): with „Pokaż na TV” off (`spotlightOn` false) the TV shows no spotlight and the token's last part
 // is 0, so the TV drops it on its next poll; the row stays and comes back when the module is on again.
-// pub-quiz (S-28): with the quiz module on (`quizOn`) the running quiz rides along (its own token part); off, the TV
-// shows none and the token has no quiz part.
+// pub-quiz (S-28): with the quiz module on (`quizOn`) a running quiz rides along with its own token part; without a
+// run, or with the module off, the TV shows none and the token keeps its 3 parts.
 export async function getTvScreen(
   db: DbClient,
   eventId: number,
@@ -148,7 +148,7 @@ export async function getTvScreen(
   ]);
   return {
     ...seating,
-    version: tvScreenVersion(seating.version, current?.id ?? null, quizOn ? (quiz?.version ?? null) : undefined),
+    version: tvScreenVersion(seating.version, current?.id ?? null, quiz?.version),
     spotlight: current?.spotlight ?? null,
     quiz: quiz?.quiz ?? null,
   };
@@ -167,5 +167,5 @@ export async function getTvScreenVersion(
     spotlightOn ? newestId(db, eventId) : Promise.resolve(null),
     quizOn ? getTvQuizVersion(db, eventId) : Promise.resolve(null),
   ]);
-  return tvScreenVersion(seatingVersion, spotlightId, quizOn ? quizVersion : undefined);
+  return tvScreenVersion(seatingVersion, spotlightId, quizVersion ?? undefined);
 }

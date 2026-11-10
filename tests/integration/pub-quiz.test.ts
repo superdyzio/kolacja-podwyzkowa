@@ -81,7 +81,7 @@ describe.skipIf(!hasLocalDb)("pub quiz (integration)", () => {
     await releaseTestEvent(db, b);
   });
 
-  it("starts empty: no run, no phone quiz, no TV quiz, the TV token without a quiz part when the module is off", async () => {
+  it("starts empty: no run, no phone quiz, no TV quiz, the TV token without a quiz part while no quiz runs", async () => {
     const board = await getQuizBoard(db, a.id);
     expect(board).toMatchObject({ run: null, questions: [], standings: [], closed: 0, guestCount: 4 });
     expect(await getGuestQuiz(db, a.id, guest.Ania.id)).toBeNull();
@@ -89,7 +89,8 @@ describe.skipIf(!hasLocalDb)("pub quiz (integration)", () => {
     expect(await getTvQuizVersion(db, a.id)).toBeNull();
     const off = await getTvScreenVersion(db, a.id, true, false);
     const on = await getTvScreenVersion(db, a.id, true, true);
-    expect(on).toBe(`${off}.0`);
+    expect(on).toBe(off);
+    expect(on.split(".")).toHaveLength(3);
     expect((await getTvScreen(db, a.id, true, false)).quiz).toBeNull();
     const quizOff = await getGuestState(db, a.id, guest.Ania, { ...ALL_GUEST_MODULES, pubQuiz: false });
     expect(quizOff.quiz).toBeNull();
