@@ -1,7 +1,7 @@
 ---
 change_id: admin-support-log
 title: Platform admin's read-only support access with an access log for the owner
-status: implementing
+status: implemented
 created: 2026-11-10
 updated: 2026-11-10
 archived_at: null

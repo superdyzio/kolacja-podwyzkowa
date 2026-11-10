@@ -390,8 +390,8 @@ Additive (two tables, three functions, triggers); no existing row or function ch
 
 #### Automated
 
-- [x] 4.1 Lint and format pass on the docs
-- [x] 4.2 Type check still passes
+- [x] 4.1 Lint and format pass on the docs — 6a00765
+- [x] 4.2 Type check still passes — 6a00765
 
 #### Manual
 
