@@ -378,9 +378,9 @@ Additive (two tables, three functions, triggers); no existing row or function ch
 
 #### Automated
 
-- [x] 3.1 Smoke passes twice in a row on the same database
-- [x] 3.2 Demo runs on the same database
-- [x] 3.3 Deliberate break makes smoke section 29 fail
+- [x] 3.1 Smoke passes twice in a row on the same database — acfd38f
+- [x] 3.2 Demo runs on the same database — acfd38f
+- [x] 3.3 Deliberate break makes smoke section 29 fail — acfd38f
 
 #### Manual
 
@@ -390,8 +390,8 @@ Additive (two tables, three functions, triggers); no existing row or function ch
 
 #### Automated
 
-- [ ] 4.1 Lint and format pass on the docs
-- [ ] 4.2 Type check still passes
+- [x] 4.1 Lint and format pass on the docs
+- [x] 4.2 Type check still passes
 
 #### Manual
 
