@@ -20,7 +20,7 @@ npm run env:local   # zapisuje SUPABASE_URL i SUPABASE_SERVICE_ROLE_KEY do .env
 npm run dev
 ```
 
-Załóż restaurację i wydarzenie: `npm run event:create -- --restaurant "Pod Lipą" --name "Kolacja firmowa"` (z bazą startową pytań). Skrypt wypisze link organizatora, adres TV i link restauracji — link organizatora od razu dodaj do zakładek. Kolejne wydarzenie tej samej restauracji: `--restaurant-id <id>`. Zwykle wydarzenia zakłada jednak właściciel albo menedżer w panelu lokalu (patrz „Wydarzenia lokalu”); strona `/` tylko mówi, że dostęp jest przez link. Jeśli zgubisz link, `npm run links` wypisze linki wszystkich wydarzeń.
+Załóż restaurację i wydarzenie: `npm run event:create -- --restaurant "Pod Lipą" --name "Kolacja firmowa"` (z bazą startową pytań). Skrypt wypisze link organizatora, adres TV i link restauracji — link organizatora od razu dodaj do zakładek. Kolejne wydarzenie tej samej restauracji: `--restaurant-id <id>`. Zwykle wydarzenia zakłada jednak właściciel albo menedżer w panelu lokalu (patrz „Wydarzenia lokalu”); strona `/` to strona produktu z „Zaloguj się” (panel) i szkicami regulaminu (`/regulamin`) i polityki prywatności (`/polityka-prywatnosci`) do przeglądu prawnika — linki do wydarzeń otwiera się bezpośrednio. Jeśli zgubisz link, `npm run links` wypisze linki wszystkich wydarzeń.
 
 ## Dostęp
 

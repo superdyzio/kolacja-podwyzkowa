@@ -382,11 +382,11 @@ None (no migration, no new API route).
 
 #### Automated
 
-- [x] 2.1 Full test suite passes: `AI_PROVIDER=mock npm test`
-- [x] 2.2 Lint and type check pass: `npm run lint`, `npx astro check`
-- [x] 2.3 Build passes: `npm run build`
-- [x] 2.4 Smoke passes against the production preview: `AI_PROVIDER=mock npm run preview` + `npm run smoke`
-- [x] 2.5 Demo passes: `npm run demo`
+- [x] 2.1 Full test suite passes: `AI_PROVIDER=mock npm test` — 013a2ac
+- [x] 2.2 Lint and type check pass: `npm run lint`, `npx astro check` — 013a2ac
+- [x] 2.3 Build passes: `npm run build` — 013a2ac
+- [x] 2.4 Smoke passes against the production preview: `AI_PROVIDER=mock npm run preview` + `npm run smoke` — 013a2ac
+- [x] 2.5 Demo passes: `npm run demo` — 013a2ac
 
 #### Manual
 
@@ -397,7 +397,7 @@ None (no migration, no new API route).
 
 #### Automated
 
-- [ ] 3.1 Prettier check of the docs passes: `npx prettier --check CLAUDE.md README.md docs/scenariusz-pokazu.md`
+- [x] 3.1 Prettier check of the docs passes: `npx prettier --check CLAUDE.md README.md docs/scenariusz-pokazu.md`
 
 #### Manual
 
