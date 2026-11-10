@@ -67,7 +67,7 @@ Restauracja, która gościła kolację 2026-11-08, chce tego narzędzia do włas
 | S-21b | event-waiter-access     | menedżer dodaje kelnera „na imprezę” (imię + jednorazowy link lub kod do końca okna, bez hasła), który pracuje tylko na sali tego wydarzenia | S-21             | FR-023, FR-029, US-08                                                                         | done     |
 | S-22  | guest-map-search        | gość, klient, personel i tablet wyszukują gościa po imieniu, a mapa podświetla jego miejsce                                                  | S-21             | FR-048, US-08                                                                                 | done     |
 | S-23  | guest-import-diets      | klient importuje gości z CSV lub wklejki z dietami, a kuchnia i kelnerzy widzą diety przy miejscu i w zliczeniach                            | S-14, S-21       | FR-035, FR-036, US-07, NFR-021                                                                | done        |
-| S-24  | room-prints             | klient i lokal drukują tablicę „znajdź swój stolik”, karty stołów, winietki w formacie i listę dla obsługi z dietami                         | S-18, S-23       | FR-038                                                                                        | in-progress |
+| S-24  | room-prints             | klient i lokal drukują tablicę „znajdź swój stolik”, karty stołów, winietki w formacie i listę dla obsługi z dietami                         | S-18, S-23       | FR-038                                                                                        | done        |
 | S-25  | guest-rsvp-menu         | gość potwierdza obecność i wybiera danie do terminu, klient wpisuje za gościa, a klient i lokal widzą zliczenia                              | S-16             | FR-039, US-07                                                                                 | done        |
 | S-26  | privacy-retention       | dane gości znikają N dni po imprezie, menedżer eksportuje dane wydarzenia, a gość czyta informację o prywatności                             | S-11             | FR-040, US-09, NFR-019                                                                        | done        |
 | S-27  | staff-offline-readout   | tablet obsługi i kelner bez sieci widzą ostatni stan zamówień i rozsadzenia, także po odświeżeniu                                            | S-21             | FR-047, US-08, NFR-017                                                                        | done        |
@@ -333,7 +333,7 @@ Fundamenty poniżej zakładają, że to istnieje, i NIE budują tego od nowa.
 - **Blockers:** —
 - **Unknowns:** —
 - **Risk:** Druk w przeglądarce różni się między przeglądarkami. Trzymamy wzorzec karteczek z QR z v1 (strona A4 bez nagłówków przeglądarki).
-- **Status:** in-progress
+- **Status:** done
 
 ### S-25: Potwierdzenie obecności i wybór dania
 
@@ -496,3 +496,4 @@ Fundamenty poniżej zakładają, że to istnieje, i NIE budują tego od nowa.
 - **S-26: Właściciel ustawia, po ilu dniach od imprezy dane gości są usuwane (domyślnie 30), a dane faktycznie znikają po tym terminie. Menedżer eksportuje dane wydarzenia przed usunięciem. Gość czyta informację o prywatności z linku na swoim telefonie.** — Archived 2026-11-10 → `context/archive/2026-11-10-privacy-retention/`. Bez harmonogramu (usuwanie przy odczycie, leniwe sprzątanie przy stronach panelu, `npm run retention`); informacja o prywatności to szkic do przeglądu prawnika (Otwarte pytanie 6). Lesson: —.
 - **S-27: Bez sieci tablet obsługi i kelner widzą ostatni stan zamówień i rozsadzenia swojego wydarzenia, także po odświeżeniu strony (tylko odczyt).** — Archived 2026-11-10 → `context/archive/2026-11-10-staff-offline-readout/`. Kopia na urządzeniu (localStorage) bez cen, z dietami, z twardym terminem = koniec okna sali; strony odczytu `/r/<klucz>/odczyt`, `/panel/obsluga/<id>/odczyt`, `/kelner/sala/<id>/odczyt`; worker tylko na https/localhost. Lesson: —.
 - **S-28: Klient przygotowuje pub quiz (np. o jubilacie) i prowadzi go na TV, a goście odpowiadają na telefonach.** — Archived 2026-11-10 → `context/archive/2026-11-10-pub-quiz/`. Lesson: —.
+- **S-24: Klient i lokal drukują tablicę „znajdź swój stolik”, karty stołów, winietki (z wyborem formatu i rozmiaru) i listę dla obsługi przy każdym stole (z dietami). Wydruki mają markę lokalu i wydarzenia.** — Archived 2026-11-10 → `context/archive/2026-11-10-room-prints/`. Lesson: —.
