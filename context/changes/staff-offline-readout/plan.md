@@ -314,9 +314,9 @@ None (no schema change). Existing organizer workers keep working: the file name 
 
 #### Automated
 
-- [x] 3.1 Smoke passes against the production preview
-- [x] 3.2 Demo passes
-- [x] 3.3 Full suite, lint, check, build pass
+- [x] 3.1 Smoke passes against the production preview — d0f8237
+- [x] 3.2 Demo passes — d0f8237
+- [x] 3.3 Full suite, lint, check, build pass — d0f8237
 
 #### Manual
 

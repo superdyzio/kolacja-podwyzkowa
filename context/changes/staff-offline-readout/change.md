@@ -1,7 +1,7 @@
 ---
 change_id: staff-offline-readout
 title: Offline readout for the kitchen tablet and both floors (S-27)
-status: implementing
+status: implemented
 created: 2026-11-10
 updated: 2026-11-10
 archived_at: null
