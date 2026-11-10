@@ -2,11 +2,21 @@
 import Layout from "@/layouts/Layout.astro";
 import NoAccess from "@/components/NoAccess.astro";
 import { EventCard } from "@/components/events/EventCard";
+import ClientWorkCards from "@/components/lead/ClientWorkCards.astro";
 import SupportBanner from "@/components/support/SupportBanner.astro";
 import SupportEventSummary from "@/components/support/SupportEventSummary.astro";
+import { CLIENT_SECTIONS, KEY_SECTIONS } from "@/lib/client-routes/sections";
 import { EVENT_STAFF_ROLES, eventPanelMessages, getEventCard } from "@/lib/events";
+import { formatGuestLinksSummary, getGuestAccessEnabled } from "@/lib/guest-links";
+import { formatGuessSummary, getGuessBoard } from "@/lib/guesses";
+import { formatGuestSummary, summarizeGuestList } from "@/lib/guests";
+import { leadMessages } from "@/lib/lead/messages";
+import { formatOrderSummary, getOrderItems, orderTotals } from "@/lib/orders";
 import { findPanelEvent } from "@/lib/panel-api";
+import { formatQuestionSummary, getQuestionList } from "@/lib/questions";
+import { formatSeatingSummary, getSeatingBoard, summarizeSeating } from "@/lib/seating";
 import { supportEventSummary } from "@/lib/support";
+import { formatVenueSummary, summarizeVenue } from "@/lib/venue";
 
 // The event card (restaurant-events, S-11; US-06, US-09, FR-025): owners and managers of the event's restaurant see
 // what it is, copy, open and replace its client, TV and staff tablet links, edit it, archive or restore it; owners also
@@ -14,16 +24,52 @@ import { supportEventSummary } from "@/lib/support";
 // disabled restaurant and an unknown or malformed id all get the same no-access page (404). The platform administrator
 // in support mode (admin-support-log, S-13; logged for the owner with the event's name) gets the banner and a
 // read-only summary WITHOUT the links (keys never reach support mode).
+// client-restaurant-split (S-14; FR-026): the card has the switch „Lokal prowadzi” and the page shows „Praca klienta”
+// — one card per section of the client's work with the client shell's summaries, linking to the panel's previews
+// (support mode: without the guests' links, which carry keys). ONE guard call (each one is a log row in support mode).
 const locale = Astro.locals.locale;
 const t = eventPanelMessages(locale);
+const lead = leadMessages(locale);
 const panel = await findPanelEvent(Astro.locals, Astro.params.id, EVENT_STAFF_ROLES);
-const card = panel ? await getEventCard(panel.db, panel.event.restaurantId, panel.event.id, new Date()) : null;
+const loaded = panel
+  ? await Promise.all([
+      getEventCard(panel.db, panel.event.restaurantId, panel.event.id, new Date()),
+      getSeatingBoard(panel.db, panel.event.id),
+      getGuestAccessEnabled(panel.db, panel.event.id),
+      getGuessBoard(panel.db, panel.event.id),
+      getQuestionList(panel.db, panel.event.id),
+      getOrderItems(panel.db, panel.event.id),
+    ])
+  : null;
+const card = loaded?.[0] ?? null;
 if (!panel || !card) {
   Astro.response.status = 404;
 }
+const work = loaded
+  ? (() => {
+      const [, board, guestAccessEnabled, guessBoard, questionList, orderItems] = loaded;
+      return {
+        sections: panel?.support
+          ? CLIENT_SECTIONS.filter((section) => !KEY_SECTIONS.includes(section))
+          : CLIENT_SECTIONS,
+        summaries: {
+          goscie: formatGuestSummary(summarizeGuestList(board.guestList), locale),
+          sale: formatVenueSummary(summarizeVenue(board.venue), locale),
+          rozsadzenie: formatSeatingSummary(summarizeSeating(board), board.published, board.upToDate, locale),
+          linki: formatGuestLinksSummary(
+            { enabled: guestAccessEnabled, guestCount: board.guestList.guests.length },
+            locale,
+          ),
+          strzaly: formatGuessSummary(guessBoard, locale),
+          pytania: formatQuestionSummary(questionList.questions, locale),
+          zamowienia: formatOrderSummary(orderTotals(orderItems), locale),
+        },
+      };
+    })()
+  : null;
 ---
 
-{panel && card ? (
+{panel && card && work ? (
   <Layout title={t.pageTitle(card.name)}>
     <main class="mx-auto flex max-w-3xl flex-col gap-6 p-4 sm:p-8">
       <a
@@ -36,10 +82,14 @@ if (!panel || !card) {
         <>
           <SupportBanner support={panel.support} locale={locale} />
           <SupportEventSummary event={supportEventSummary(card)} locale={locale} />
+          <p class="text-sm" data-venue-leads={String(card.venueLeads)}>
+            <span class="font-medium">{lead.switchHeading}:</span> {card.venueLeads ? lead.stateOn : lead.stateOff}
+          </p>
         </>
       ) : (
         <EventCard client:load initial={card} role={panel.role} origin={Astro.url.origin} locale={locale} />
       )}
+      <ClientWorkCards eventId={card.id} sections={work.sections} summaries={work.summaries} locale={locale} />
     </main>
   </Layout>
 ) : (

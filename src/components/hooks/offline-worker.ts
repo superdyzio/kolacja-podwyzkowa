@@ -5,6 +5,13 @@
 
 export const ORGANIZER_WORKER_URL = "/organizer-sw.js";
 
+// Only the client's own link keeps an offline memory and a worker (client-restaurant-split, S-14): the same islands in
+// the restaurant panel (/api/panel/events/<id>/klient) never register a worker or write the memory, which would replace
+// the client's saved state in this browser.
+export function isOrganizerApiBase(apiBase: string): boolean {
+  return /^\/api\/o\/[^/]+$/.test(apiBase);
+}
+
 // "/api/o/<key>" → "/o/<key>".
 export function organizerScope(apiBase: string): string {
   return apiBase.replace(/^\/api(?=\/)/, "");

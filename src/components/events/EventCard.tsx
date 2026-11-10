@@ -16,6 +16,7 @@ import {
   validateEventInput,
 } from "@/lib/events/rules";
 import type { Locale } from "@/lib/i18n";
+import { leadMessages } from "@/lib/lead/messages";
 import { cn } from "@/lib/utils";
 import type { EventCardDto } from "@/types";
 
@@ -148,6 +149,7 @@ export function EventCard({ initial, role, origin, locale }: Props) {
   const t = eventPanelMessages(locale);
   const id = useId();
   const { card, gone, pending, status, patch, rotate, remove } = useEventCard(initial, locale);
+  const lead = leadMessages(locale);
   const statusOf = (scope: EventCardStatus["scope"]) => (status?.scope === scope ? status : null);
 
   if (gone) {
@@ -169,6 +171,14 @@ export function EventCard({ initial, role, origin, locale }: Props) {
     const question = archiving ? t.confirmArchive(card.name) : t.confirmRestore(card.name);
     if (window.confirm(question)) {
       void patch("archive", { archived: archiving }, archiving ? t.archived : t.restored);
+    }
+  }
+
+  // „Lokal prowadzi” (client-restaurant-split, S-14): the confirm says who loses editing.
+  function toggleLead() {
+    const turningOn = !card.venueLeads;
+    if (window.confirm(turningOn ? lead.confirmOn : lead.confirmOff)) {
+      void patch("lead", { venueLeads: turningOn }, turningOn ? lead.stateOn : lead.stateOff);
     }
   }
 
@@ -202,6 +212,31 @@ export function EventCard({ initial, role, origin, locale }: Props) {
           <dd>{card.guestCount}</dd>
         </dl>
       </header>
+
+      <section
+        aria-labelledby={`${id}-lead`}
+        className="flex flex-col gap-3 rounded-xl border p-4 sm:p-6"
+        data-venue-leads={String(card.venueLeads)}
+      >
+        <h2 id={`${id}-lead`} className="text-xl font-semibold">
+          {lead.switchHeading}
+        </h2>
+        <p className="text-sm">
+          <span className="font-medium">{card.venueLeads ? lead.stateOn : lead.stateOff}</span>
+          {" — "}
+          <span className="text-muted-foreground">{card.venueLeads ? lead.venueLeads : lead.clientLeads}</span>
+        </p>
+        <Button
+          type="button"
+          variant={card.venueLeads ? "outline" : "default"}
+          className="h-10 self-start"
+          disabled={pending !== null}
+          onClick={toggleLead}
+        >
+          {pending === "lead" ? lead.switching : card.venueLeads ? lead.turnOff : lead.turnOn}
+        </Button>
+        <StatusLine status={statusOf("lead")} />
+      </section>
 
       <section aria-labelledby={`${id}-links`} className="flex flex-col gap-4 rounded-xl border p-4 sm:p-6">
         <div className="flex flex-col gap-1">

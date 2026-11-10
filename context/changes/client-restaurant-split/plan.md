@@ -369,17 +369,17 @@ Additive column, default false: all existing events stay client-led; the old cod
 
 #### Automated
 
-- [x] 1.1 Migration applies on the filled local DB
-- [x] 1.2 Unit and integration tests pass
-- [x] 1.3 Lint and types
-- [x] 1.4 Build
+- [x] 1.1 Migration applies on the filled local DB — d59a17a
+- [x] 1.2 Unit and integration tests pass — d59a17a
+- [x] 1.3 Lint and types — d59a17a
+- [x] 1.4 Build — d59a17a
 
 ### Phase 2: Panel preview pages, the switch UI and read-only frames
 
 #### Automated
 
-- [ ] 2.1 Tests, lint, types, build
-- [ ] 2.2 Existing smoke still green
+- [x] 2.1 Tests, lint, types, build
+- [x] 2.2 Existing smoke still green
 
 #### Manual
 

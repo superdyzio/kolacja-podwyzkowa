@@ -1,5 +1,7 @@
 ---
 import NoAccess from "@/components/NoAccess.astro";
+import LeadBanner from "@/components/lead/LeadBanner.astro";
+import ReadOnlyFrame from "@/components/lead/ReadOnlyFrame.astro";
 import { GuessManager } from "@/components/guesses/GuessManager";
 import Layout from "@/layouts/Layout.astro";
 import { accessFor, organizerPath } from "@/lib/access";
@@ -22,6 +24,8 @@ const view =
   access && db
     ? {
         name: access.event.name,
+        // client-restaurant-split: while the venue leads, the page is view-only.
+        venueLeads: access.event.venueLeads,
         panelPath: organizerPath(access.event.organizerKey),
         apiBase: `/api${organizerPath(access.event.organizerKey)}`,
         guestsPath: `${organizerPath(access.event.organizerKey)}/goscie`,
@@ -43,13 +47,16 @@ const view =
         <h1 class="text-3xl font-bold">{t.heading}</h1>
         <p class="text-sm text-muted-foreground">{t.intro}</p>
       </header>
-      <GuessManager
-        client:load
-        apiBase={view.apiBase}
-        guestsPath={view.guestsPath}
-        initial={view.board}
-        locale={locale}
-      />
+      {view.venueLeads && <LeadBanner kind="client" locale={locale} />}
+      <ReadOnlyFrame readOnly={view.venueLeads} locale={locale}>
+        <GuessManager
+          client:load
+          apiBase={view.apiBase}
+          guestsPath={view.guestsPath}
+          initial={view.board}
+          locale={locale}
+        />
+      </ReadOnlyFrame>
     </main>
   </Layout>
 ) : (

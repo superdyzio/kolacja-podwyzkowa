@@ -1,5 +1,7 @@
 ---
 import NoAccess from "@/components/NoAccess.astro";
+import LeadBanner from "@/components/lead/LeadBanner.astro";
+import ReadOnlyFrame from "@/components/lead/ReadOnlyFrame.astro";
 import { OfflineSync } from "@/components/offline/OfflineSync";
 import { QuestionManager } from "@/components/questions/QuestionManager";
 import Layout from "@/layouts/Layout.astro";
@@ -37,6 +39,8 @@ const view =
   access && loaded
     ? {
         name: access.event.name,
+        // client-restaurant-split: while the venue leads, the page is view-only.
+        venueLeads: access.event.venueLeads,
         panelPath: organizerPath(access.event.organizerKey),
         apiBase: `/api${organizerPath(access.event.organizerKey)}`,
         list: loaded[0],
@@ -59,15 +63,18 @@ const view =
         <h1 class="text-3xl font-bold">{t.heading}</h1>
         <p class="text-sm text-muted-foreground">{t.intro}</p>
       </header>
+      {view.venueLeads && <LeadBanner kind="client" locale={locale} />}
       <OfflineSync client:load apiBase={view.apiBase} locale={locale} />
-      <QuestionManager
-        client:load
-        apiBase={view.apiBase}
-        initial={view.list}
-        aiInitial={view.aiBoard}
-        tvInitial={view.tv}
-        locale={locale}
-      />
+      <ReadOnlyFrame readOnly={view.venueLeads} locale={locale}>
+        <QuestionManager
+          client:load
+          apiBase={view.apiBase}
+          initial={view.list}
+          aiInitial={view.aiBoard}
+          tvInitial={view.tv}
+          locale={locale}
+        />
+      </ReadOnlyFrame>
     </main>
   </Layout>
 ) : (

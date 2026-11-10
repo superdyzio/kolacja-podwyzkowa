@@ -1,5 +1,7 @@
 ---
 import NoAccess from "@/components/NoAccess.astro";
+import LeadBanner from "@/components/lead/LeadBanner.astro";
+import ReadOnlyFrame from "@/components/lead/ReadOnlyFrame.astro";
 import { OfflineSync } from "@/components/offline/OfflineSync";
 import { ResetPanel } from "@/components/reset/ResetPanel";
 import Layout from "@/layouts/Layout.astro";
@@ -41,6 +43,8 @@ const [board, guestAccessEnabled, guessBoard, questionList, aiUsage, orderItems]
 const view = access
   ? {
       name: access.event.name,
+      // client-restaurant-split: while the venue leads, the client's link is view-only.
+      venueLeads: access.event.venueLeads,
       apiBase: `/api${organizerPath(access.event.organizerKey)}`,
       organizerUrl: new URL(organizerPath(access.event.organizerKey), Astro.url).href,
       tvUrl: new URL(tvPath(access.event.tvKey), Astro.url).href,
@@ -77,6 +81,7 @@ const view = access
         <p class="text-sm text-muted-foreground">{t.kicker}</p>
         <h1 class="text-3xl font-bold">{view.name}</h1>
       </header>
+      {view.venueLeads && <LeadBanner kind="client" locale={locale} />}
       <OfflineSync client:load apiBase={view.apiBase} locale={locale} />
 
       <section aria-labelledby="links-heading" class="flex flex-col gap-4 rounded-xl border p-4 sm:p-6">
@@ -256,7 +261,9 @@ const view = access
           {t.resetHeading}
         </h2>
         <p class="text-sm text-muted-foreground">{t.resetText}</p>
-        <ResetPanel client:load apiBase={view.apiBase} locale={locale} />
+        <ReadOnlyFrame readOnly={view.venueLeads} locale={locale}>
+          <ResetPanel client:load apiBase={view.apiBase} locale={locale} />
+        </ReadOnlyFrame>
       </section>
     </main>
   </Layout>

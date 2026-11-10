@@ -5,7 +5,7 @@ import type { Locale } from "@/lib/i18n";
 import type { EventCardAnswerDto, EventCardDto } from "@/types";
 
 // Which part of the card an answer belongs to: its status line is shown there.
-export type EventCardScope = EventLinkKind | "details" | "archive" | "delete";
+export type EventCardScope = EventLinkKind | "details" | "archive" | "delete" | "lead";
 
 export interface EventCardStatus {
   scope: EventCardScope;
@@ -59,7 +59,11 @@ export function useEventCard(initial: EventCardDto, locale: Locale) {
     }
   }
 
-  function patch(scope: EventCardScope, body: Partial<EventDetailsPatch> & { archived?: boolean }, success: string) {
+  function patch(
+    scope: EventCardScope,
+    body: Partial<EventDetailsPatch> & { archived?: boolean; venueLeads?: boolean },
+    success: string,
+  ) {
     return send(
       scope,
       base,

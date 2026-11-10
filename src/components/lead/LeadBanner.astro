@@ -1,0 +1,54 @@
+---
+import type { Locale } from "@/lib/i18n";
+import { leadMessages } from "@/lib/lead/messages";
+
+// Who leads the event (client-restaurant-split, S-14), above the client's work:
+// - "client": on the organizer link while the venue leads (view-only);
+// - "staff-preview": in the panel while the client leads (view-only, how to take over);
+// - "staff-leads": in the panel while the venue leads (editing for the client);
+// - "support": the platform admin's support mode.
+interface Props {
+  kind: "client" | "staff-preview" | "staff-leads" | "support";
+  // The panel's event card (staff kinds): where the switch is.
+  eventPath?: string;
+  locale: Locale;
+}
+
+const { kind, eventPath, locale } = Astro.props;
+const t = leadMessages(locale);
+const heading =
+  kind === "client"
+    ? t.clientBannerHeading
+    : kind === "staff-leads"
+      ? t.staffLeadsHeading
+      : kind === "staff-preview"
+        ? t.staffBannerHeading
+        : t.readOnlyLabel;
+const text =
+  kind === "client"
+    ? t.clientBannerText
+    : kind === "staff-leads"
+      ? t.staffLeadsText
+      : kind === "staff-preview"
+        ? t.staffBannerText
+        : t.supportBannerText;
+---
+
+<section
+  aria-labelledby="lead-banner-heading"
+  class:list={[
+    "flex flex-col gap-1 rounded-xl border-2 p-4",
+    kind === "staff-leads" ? "border-primary/60 bg-primary/5" : "border-amber-500/70 bg-amber-500/10",
+  ]}
+  data-lead-banner={kind}
+>
+  <h2 id="lead-banner-heading" class="text-lg font-semibold">
+    {heading}
+  </h2>
+  <p class="text-sm">{text}</p>
+  {eventPath && (
+    <a href={eventPath} class="self-start py-1 text-sm underline-offset-4 hover:underline">
+      {t.backToEvent}
+    </a>
+  )}
+</section>

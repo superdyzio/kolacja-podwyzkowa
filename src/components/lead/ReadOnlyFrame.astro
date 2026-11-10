@@ -1,0 +1,24 @@
+---
+import type { Locale } from "@/lib/i18n";
+import { leadMessages } from "@/lib/lead/messages";
+
+// The read-only mode of the client's islands (client-restaurant-split, S-14): one wrapper for all of them instead of a
+// prop per island. With `readOnly` the content is `inert` — no pointer, focus or keyboard reaches any form, button or
+// drawing inside — and dimmed slightly; the banner above says why. The wrapper is a flex column with the pages' gap
+// either way (islands render `display: contents`), so the layout does not change between the two modes.
+interface Props {
+  readOnly: boolean;
+  locale: Locale;
+}
+
+const { readOnly, locale } = Astro.props;
+---
+
+<div
+  class:list={["flex min-w-0 flex-col gap-6", readOnly && "opacity-90"]}
+  inert={readOnly}
+  aria-label={readOnly ? leadMessages(locale).readOnlyLabel : undefined}
+  data-read-only={readOnly ? "" : undefined}
+>
+  <slot />
+</div>
