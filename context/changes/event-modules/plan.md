@@ -268,7 +268,7 @@ Additive; the code reads the new columns in the access resolver, so the migratio
 
 #### Automated
 
-- [x] 2.1 Lint, types and build
+- [x] 2.1 Lint, types and build — 2646eb0
 
 #### Manual
 
@@ -278,4 +278,4 @@ Additive; the code reads the new columns in the access resolver, so the migratio
 
 #### Automated
 
-- [ ] 3.1 Build, smoke and demo pass
+- [x] 3.1 Build, smoke and demo pass

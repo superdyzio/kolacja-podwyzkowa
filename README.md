@@ -117,6 +117,17 @@ Właściciel i menedżer prowadzą katalog dań i napojów lokalu z ceną i kurs
 
 Na produkcji migracja `20261110220000_menu_catalog.sql` musi trafić do bazy **przed** kodem (zamówienia czytają nowe kolumny); jest addytywna, istniejące wydarzenia dostają „Bez menu”.
 
+### Moduły wydarzenia
+
+Gry i zabawy są modułami wydarzenia: pytania do rozmowy, tematy AI, gra w zgadywanie rachunku, losowanie miejsc, „Pokaż na TV” i pub quiz (wkrótce).
+
+1. Lokal (właściciel, menedżer) zaznacza na karcie wydarzenia w „Moduły wydarzenia”, które moduły udostępnia (np. bez rzutnika — bez „Pokaż na TV”), niezależnie od „Lokal prowadzi”.
+2. Klient włącza i wyłącza udostępnione moduły w karcie „Moduły” na stronie wydarzenia (gdy prowadzi lokal — robi to personel na karcie wydarzenia). Nowe wydarzenia mają tematy AI i grę w zgadywanie wyłączone; wydarzenia sprzed tej zmiany (także kolacja z 8 listopada) mają wszystko jak dotąd.
+3. Moduły płatne (tematy AI, pub quiz) są widoczne jako niedostępne, dopóki administrator platformy ich nie odblokuje: wchodzi do restauracji jako wsparcie, otwiera kartę wydarzenia i klika „Odblokuj”; wpis trafia do dziennika wejść administratora u właściciela.
+4. Wyłączony moduł znika u klienta, na telefonach gości i na TV przy ich następnym odświeżeniu (kilka sekund), a jego trasy odmawiają. Dane modułu zostają i wracają po ponownym włączeniu.
+
+Na produkcji migracja `20261110230000_event_modules.sql` musi trafić do bazy **przed** kodem (każde otwarcie linku czyta nowe kolumny); jest addytywna.
+
 ## Języki
 
 Cała aplikacja działa po polsku i po angielsku. Przełącznik **PL / EN** jest w prawym górnym rogu każdej strony (poza TV i karteczkami do druku); wybór zapamiętuje ciasteczko na rok. Domyślnie wszystko jest po polsku, a link restauracji po angielsku — restauracja ma własne ciasteczko, więc wybór organizatora nie zmienia jej tabletu i odwrotnie. Język da się też ustawić linkiem: dopisz `?lang=en` albo `?lang=pl` (np. dla TV: `/tv/<klucz>?lang=en`). Nie tłumaczą się treści z bazy: imiona, nazwy sal, stolików i dań, uwagi oraz pytania (także baza startowa). Tematy AI powstają w języku osoby, która je losuje.

@@ -85,11 +85,20 @@ export async function createRestaurant(env, name) {
   return { id: row.id, name: row.name };
 }
 
-// A new event of the restaurant; its organizer, TV and restaurant keys come from the database.
-export async function createEvent(env, restaurantId, name) {
+// Every module on and the paid ones unlocked (event-modules, S-17): the smoke's events A/B and the demo's main event
+// exercise every v1 feature. Without it a new event gets the database defaults (AI topics and guessing off).
+export const ALL_MODULES = ["questions", "aiTopics", "guessing", "seatingDraw", "tvSpotlight", "pubQuiz"];
+export const PAID_MODULES = ["aiTopics", "pubQuiz"];
+
+// A new event of the restaurant; its organizer, TV and restaurant keys come from the database. `allModules` switches
+// every module on (see ALL_MODULES).
+export async function createEvent(env, restaurantId, name, { allModules = false } = {}) {
+  const modules = allModules
+    ? { modules_available: ALL_MODULES, modules_enabled: ALL_MODULES, modules_unlocked: PAID_MODULES }
+    : {};
   const result = await rest(env, "event?select=id,name,organizer_key,tv_key,restaurant_key", {
     method: "POST",
-    body: { restaurant_id: restaurantId, name: name.trim() },
+    body: { restaurant_id: restaurantId, name: name.trim(), ...modules },
     prefer: "return=representation",
   });
   if (!result.ok && result.data?.code === FOREIGN_KEY_VIOLATION) {

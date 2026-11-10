@@ -337,7 +337,7 @@ try {
   env = readDbEnv({ requireLocal: true });
   const restaurant = await createRestaurant(env, RESTAURANT_NAME);
   restaurantId = restaurant.id;
-  event = await createEvent(env, restaurant.id, EVENT_NAME);
+  event = await createEvent(env, restaurant.id, EVENT_NAME, { allModules: true });
   console.log(
     `Baza ${env.host}: restauracja „${restaurant.name}” (id ${String(restaurant.id)}), wydarzenie „${event.name}” (id ${String(event.id)}).`,
   );
@@ -714,7 +714,25 @@ for (const [name, path] of [
     fail(`Tryb wsparcia nie otworzył: ${name} (HTTP ${String(page.status)}).`);
   }
 }
+// event-modules (S-17): inside the same visit the admin unlocks the paid AI topics for the venue-led Christmas party
+// (logged for the owner), and the owner — the venue leads there — switches AI topics and the guessing game on through
+// the dispatcher. „Urodziny Ani (demo)” keeps the new-event defaults (AI topics and the game off).
+const unlocked = await step(
+  "odblokowanie tematów AI (administrator)",
+  `/api/panel/platform/events/${String(venueLedEventId)}/modules/aiTopics`,
+  { method: "PUT", json: { unlocked: true }, cookie: adminCookie },
+);
+if (unlocked.modules.find((module) => module.key === "aiTopics")?.unlocked !== true) {
+  fail("Administrator nie odblokował tematów AI dla „Wigilii firmowej (demo)”.");
+}
 const supportEnded = await step("koniec trybu wsparcia", supportApi, { method: "DELETE", cookie: adminCookie });
+for (const module of ["aiTopics", "guessing"]) {
+  await step(`moduł ${module}: ${VENUE_LED_EVENT}`, `/api/panel/events/${String(venueLedEventId)}/klient/modules`, {
+    method: "PUT",
+    json: { module, enabled: true },
+    cookie: ownerCookie,
+  });
+}
 if (supportEnded.ended !== true) {
   fail("Tryb wsparcia administratora demo nie był aktywny przy wyjściu.");
 }
@@ -724,7 +742,7 @@ const supportLog = await step(
   { cookie: ownerCookie },
 );
 const supportKinds = supportLog.entries.map((entry) => entry.kind).join(",");
-if (supportKinds !== "exit,access,access,enter" || supportLog.entries[3].reason !== SUPPORT_REASON) {
+if (supportKinds !== "exit,unlock,access,access,enter" || supportLog.entries[4].reason !== SUPPORT_REASON) {
   fail(`Dziennik wejść administratora demo ma nieoczekiwane wpisy: ${supportKinds || "brak"}.`);
 }
 
@@ -746,7 +764,8 @@ Dane demo gotowe („${RESTAURANT_NAME}” · „${EVENT_NAME}”, id ${String(e
 - bez zmian: przyjmowanie strzałów otwarte, prawidłowa kwota niewpisana, dostęp gości wyłączony, pytania startowe
 - wydarzenia lokalu: nadchodzące ${String(eventLists.upcoming.length)}, minione ${String(eventLists.past.length)}, archiwum ${String(eventLists.archived.length)}
 - zespół lokalu: ${String(team.team.members.length)} osoby (właściciel, menedżer, kelner)
-- dziennik wejść administratora: wejście jako wsparcie z powodem, 2 otwarte strony, wyjście (widzi go właściciel na stronie restauracji)
+- dziennik wejść administratora: wejście jako wsparcie z powodem, 2 otwarte strony, odblokowanie tematów AI, wyjście (widzi go właściciel na stronie restauracji)
+- moduły: „${EVENT_NAME}” ma wszystkie gry włączone; „${VENUE_LED_EVENT}” — tematy AI odblokowane przez administratora i włączone z grą przez lokal; „Urodziny Ani (demo)” — domyślne (tematy AI i gra wyłączone)
 - menu lokalu: ${String(catalog.items.length)} pozycji w 5 kursach; menu „${EVENT_NAME}” okrojone do ${String(eventMenu.items.filter((item) => item.available).length)} pozycji, zamówienie z niego (ceny i kursy z menu, kuchnia na tablecie po kursach)
 - „${VENUE_LED_EVENT}”: lokal prowadzi, ${String(VENUE_LED_GUESTS.length)} gości dodanych w panelu
 - szablon sali „${TEMPLATE_NAME}” (${String(savedTemplate.template.roomCount)} sale, ${String(savedTemplate.template.tableCount)} stolików) i wydarzenie z niego „${TEMPLATE_EVENT}”

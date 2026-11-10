@@ -134,8 +134,8 @@ try {
   platformEnv = readDbEnv({ requireLocal: true });
   restaurantA = await createRestaurant(platformEnv, `Restauracja smoke A ${RUN_TAG}`);
   restaurantB = await createRestaurant(platformEnv, `Restauracja smoke B ${RUN_TAG}`);
-  eventA = await createEvent(platformEnv, restaurantA.id, EVENT_NAME);
-  eventB = await createEvent(platformEnv, restaurantB.id, OTHER_EVENT_NAME);
+  eventA = await createEvent(platformEnv, restaurantA.id, EVENT_NAME, { allModules: true });
+  eventB = await createEvent(platformEnv, restaurantB.id, OTHER_EVENT_NAME, { allModules: true });
 } catch (error) {
   check(
     "smoke events are created in the local database",
@@ -7503,5 +7503,337 @@ check(
     deleted32.status === 200,
   `${off32.status} ${freeAgain32.status} ${removed32.status} ${deleted32.status}`,
 );
+
+// 33. Event modules (event-modules, S-17; FR-031, US-07, NFR-023). A new event of A (panel) has AI topics and the
+// guessing game off and the paid AI topics locked. Each module switched off by the client → its organizer routes 409
+// `module-off` (link and the staff dispatcher alike), its guest routes the identical 404 of a wrong key, the guest
+// token and the TV token change, its data survives → on again → the data is back. The venue (owner, manager) offers
+// or withdraws a module (never lead-gated), the client switches only offered ones (lead rule: staff through the
+// dispatcher while „Lokal prowadzi”), a paid module waits for the platform administrator's unlock, which works only
+// inside a support visit and lands in the owner's log. A waiter, owner B and unknown or malformed ids → the identical
+// 404; no session → 401; a foreign Origin → 403. Events A/B (created with every module) keep every v1 module on.
+const modulesApi = (id) => `${eventApi(id)}/modules`;
+const unlockApi = (id, module) => `/api/panel/platform/events/${String(id)}/modules/${module}`;
+const activeOf = (res) =>
+  Object.fromEntries((Array.isArray(res.data?.modules) ? res.data.modules : []).map((m) => [m.key, m.active]));
+const isModuleOff = (res, module) =>
+  res.status === 409 && res.data?.code === "module-off" && res.data?.module === module;
+
+const modulesA = await request(`/api/o/${eventA.organizerKey}/modules`);
+check(
+  "modules: events A/B (every module) keep questions, AI topics, the game, the draw and the TV screen on",
+  modulesA.status === 200 &&
+    ["questions", "aiTopics", "guessing", "seatingDraw", "tvSpotlight"].every(
+      (key) => activeOf(modulesA)[key] === true,
+    ),
+  `${modulesA.status} ${JSON.stringify(activeOf(modulesA))}`,
+);
+
+const e33 = await staffCall(sessionOwner, eventsApiOf(restaurantA.id), {
+  method: "POST",
+  json: { name: `Moduły smoke ${RUN_TAG}`, date: futureDate },
+});
+const e33Id = e33.data?.event?.id ?? 0;
+const e33Key = keyOfPath(e33.data?.event?.links?.organizer);
+const e33Tv = keyOfPath(e33.data?.event?.links?.tv);
+const e33Api = `/api/o/${e33Key}`;
+const defaults33 = await request(`${e33Api}/modules`);
+const guessesOff33 = await request(`${e33Api}/guesses`);
+const aiOff33 = await request(`${e33Api}/ai-topics`, { method: "POST", json: { category: null } });
+const aiEntry33 = defaults33.data?.modules?.find((m) => m.key === "aiTopics");
+check(
+  "modules: a new event has questions, the draw and the TV screen on, AI topics and the game off (AI paid and locked); the game's and AI's organizer routes → 409 module-off",
+  e33.status === 201 &&
+    defaults33.status === 200 &&
+    JSON.stringify(activeOf(defaults33)) ===
+      JSON.stringify({
+        questions: true,
+        aiTopics: false,
+        guessing: false,
+        seatingDraw: true,
+        tvSpotlight: true,
+        pubQuiz: false,
+      }) &&
+    aiEntry33?.paid === true &&
+    aiEntry33.unlocked === false &&
+    isModuleOff(guessesOff33, "guessing") &&
+    isModuleOff(aiOff33, "aiTopics"),
+  `${e33.status} ${defaults33.status} ${JSON.stringify(activeOf(defaults33))} ${guessesOff33.status} ${aiOff33.status}`,
+);
+
+// A guest with access, for the phone side.
+await request(`${e33Api}/guests`, { method: "POST", json: { text: "Ala Moduł\nOla Moduł" } });
+await request(`${e33Api}/guest-links`, { method: "PATCH", json: { enabled: true } });
+const links33 = await request(`${e33Api}/guest-links`);
+const g33 = links33.data?.guests?.[0]?.key ?? "";
+const gApi33 = `/api/g/${g33}`;
+const badGuess33 = await request(`/api/g/${"A".repeat(24)}/guess`, { method: "PUT", json: { amount: "100" } });
+const guessOffGuest33 = await request(`${gApi33}/guess`, { method: "PUT", json: { amount: "100" } });
+const stateOff33 = await request(`${gApi33}/state`);
+check(
+  "modules: with the game off the guest's guess route gives the identical denial of a wrong key and the phone state says the game is off",
+  g33.length === 24 &&
+    noAccessJson(badGuess33) &&
+    guessOffGuest33.status === 404 &&
+    guessOffGuest33.body === badGuess33.body &&
+    stateOff33.status === 200 &&
+    stateOff33.data?.modules?.guessing === false &&
+    stateOff33.data?.modules?.questions === true,
+  `${g33.length} ${guessOffGuest33.status} ${guessOffGuest33.body} ${JSON.stringify(stateOff33.data?.modules)}`,
+);
+
+const enable = (module, enabled, api = e33Api) =>
+  request(`${api}/modules`, { method: "PUT", json: { module, enabled } });
+const gameOn33 = await enable("guessing", true);
+const saved33 = await request(`${gApi33}/guess`, { method: "PUT", json: { amount: "1500" } });
+const stateOn33 = await request(`${gApi33}/state`);
+const board33 = await request(`${e33Api}/guesses`);
+const gameOff33 = await enable("guessing", false);
+const boardOff33 = await request(`${e33Api}/guesses`);
+const panelOff33 = await staffCall(sessionOwner, `${eventApi(e33Id)}/klient/guesses`);
+const stateOff33b = await request(`${gApi33}/state?since=${encodeURIComponent(stateOn33.data?.version ?? "")}`);
+const shellOff33 = await request(`/o/${e33Key}`);
+const pageOff33 = await request(`/o/${e33Key}/strzaly`);
+const guestPage33 = await request(`/g/${g33}`);
+const gameBack33 = await enable("guessing", true);
+const boardBack33 = await request(`${e33Api}/guesses`);
+check(
+  "modules: the game on → a guess is saved; off → the board 409 (link and dispatcher), the phone's next poll drops it (new token), the shell card is gone, the page says it is off; on again → the same guess is back",
+  gameOn33.status === 200 &&
+    saved33.status === 200 &&
+    stateOn33.data?.modules?.guessing === true &&
+    board33.status === 200 &&
+    board33.data?.guests?.filter((g) => g.amountGrosze === 150000).length === 1 &&
+    gameOff33.status === 200 &&
+    isModuleOff(boardOff33, "guessing") &&
+    isModuleOff(panelOff33, "guessing") &&
+    stateOff33b.status === 200 &&
+    stateOff33b.data?.modules?.guessing === false &&
+    stateOff33b.data.version !== stateOn33.data?.version &&
+    shellOff33.status === 200 &&
+    shellOff33.body.includes("data-event-modules") &&
+    !shellOff33.body.includes(`/o/${e33Key}/strzaly`) &&
+    pageOff33.body.includes('data-module-off="guessing"') &&
+    guestPage33.body.includes('data-guest-module="guessing"') &&
+    gameBack33.status === 200 &&
+    boardBack33.status === 200 &&
+    boardBack33.data?.guests?.filter((g) => g.amountGrosze === 150000).length === 1,
+  `${gameOn33.status} ${saved33.status} ${board33.status} ${boardOff33.status} ${panelOff33.status} ${stateOff33b.status} ${pageOff33.status} ${boardBack33.status}`,
+);
+
+await request(`${e33Api}/questions`, {
+  method: "POST",
+  json: { category: "generyczne", text: "Pytanie modułu smoke?" },
+});
+const questions33 = await request(`${e33Api}/questions`);
+const qOff33 = await enable("questions", false);
+const qOrganizer33 = await request(`${e33Api}/questions`);
+const qGuest33 = await request(`${gApi33}/questions/draw`, { method: "POST", json: { category: null } });
+const qState33 = await request(`${gApi33}/state`);
+const qOn33 = await enable("questions", true);
+const qBack33 = await request(`${e33Api}/questions`);
+const qGuestBack33 = await request(`${gApi33}/questions/draw`, { method: "POST", json: { category: null } });
+check(
+  "modules: questions off → the base 409, the guest's draw the identical 404, the phone hides the section; on → the same base and the draw work",
+  questions33.status === 200 &&
+    qOff33.status === 200 &&
+    isModuleOff(qOrganizer33, "questions") &&
+    qGuest33.status === 404 &&
+    qGuest33.body === badGuess33.body &&
+    qState33.data?.modules?.questions === false &&
+    qOn33.status === 200 &&
+    qBack33.status === 200 &&
+    qBack33.data?.questions?.length === questions33.data?.questions?.length &&
+    qGuestBack33.status === 200,
+  `${questions33.status} ${qOrganizer33.status} ${qGuest33.status} ${qBack33.status} ${qGuestBack33.status}`,
+);
+
+const shown33 = await request(`${e33Api}/tv-spotlight`, {
+  method: "PUT",
+  json: { kind: "question", text: "Moduł na TV smoke?" },
+});
+const tvOn33 = await request(`/api/tv/${e33Tv}/seating`);
+const tvOff33 = await enable("tvSpotlight", false);
+const spotOff33 = await request(`${e33Api}/tv-spotlight`);
+const tvPollOff33 = await request(`/api/tv/${e33Tv}/seating?since=${encodeURIComponent(tvOn33.data?.version ?? "")}`);
+const tvBack33 = await enable("tvSpotlight", true);
+const tvPollBack33 = await request(`/api/tv/${e33Tv}/seating`);
+check(
+  "modules: „Pokaż na TV” off → its routes 409 and the TV's next poll drops the spotlight (new token); on → the same spotlight is back",
+  shown33.status === 200 &&
+    tvOn33.data?.spotlight?.text === "Moduł na TV smoke?" &&
+    tvOff33.status === 200 &&
+    isModuleOff(spotOff33, "tvSpotlight") &&
+    tvPollOff33.status === 200 &&
+    tvPollOff33.data?.spotlight === null &&
+    tvPollOff33.data.version !== tvOn33.data?.version &&
+    tvBack33.status === 200 &&
+    tvPollBack33.data?.spotlight?.text === "Moduł na TV smoke?",
+  `${shown33.status} ${spotOff33.status} ${tvPollOff33.status} ${JSON.stringify(tvPollOff33.data?.spotlight)} ${JSON.stringify(tvPollBack33.data?.spotlight)}`,
+);
+
+const drawOff33 = await enable("seatingDraw", false);
+const draftOff33 = await request(`${e33Api}/seating/draft`, { method: "POST", json: { seats: [] } });
+const historyOff33 = await request(`${e33Api}/seating/history`);
+const drawPage33 = await request(`/o/${e33Key}/rozsadzenie`);
+const drawOn33 = await enable("seatingDraw", true);
+check(
+  "modules: the seating draw off → its draft route 409 and no draw button; the history stays readable; on again",
+  drawOff33.status === 200 &&
+    isModuleOff(draftOff33, "seatingDraw") &&
+    historyOff33.status === 200 &&
+    drawPage33.status === 200 &&
+    !drawPage33.body.includes("data-draw-button") &&
+    drawOn33.status === 200,
+  `${draftOff33.status} ${historyOff33.status} ${drawPage33.status}`,
+);
+
+const withdraw33 = await staffCall(sessionOwner, modulesApi(e33Id), {
+  method: "PUT",
+  json: { module: "questions", available: false },
+});
+const clientView33 = await request(`${e33Api}/modules`);
+const clientTry33 = await enable("questions", true);
+const offer33 = await staffCall(sessionManager, modulesApi(e33Id), {
+  method: "PUT",
+  json: { module: "questions", available: true },
+});
+const lockedTry33 = await enable("aiTopics", true);
+check(
+  "modules: the owner withdraws questions (the client sees it unavailable and cannot switch it on: 409 module-unavailable), the manager offers it again (the client's switch kept); a locked paid module → 409 module-locked",
+  withdraw33.status === 200 &&
+    activeOf(withdraw33).questions === false &&
+    clientView33.data?.modules?.find((m) => m.key === "questions")?.available === false &&
+    clientTry33.status === 409 &&
+    clientTry33.data?.code === "module-unavailable" &&
+    offer33.status === 200 &&
+    activeOf(offer33).questions === true &&
+    lockedTry33.status === 409 &&
+    lockedTry33.data?.code === "module-locked",
+  `${withdraw33.status} ${clientTry33.status} ${offer33.status} ${lockedTry33.status}`,
+);
+
+const leadOn33 = await staffCall(sessionOwner, eventApi(e33Id), { method: "PATCH", json: { venueLeads: true } });
+const clientLed33 = await enable("guessing", false);
+const staffLed33 = await staffCall(sessionOwner, `${eventApi(e33Id)}/klient/modules`, {
+  method: "PUT",
+  json: { module: "guessing", enabled: false },
+});
+const staffOffer33 = await staffCall(sessionOwner, modulesApi(e33Id), {
+  method: "PUT",
+  json: { module: "pubQuiz", available: false },
+});
+const leadOff33 = await staffCall(sessionOwner, eventApi(e33Id), { method: "PATCH", json: { venueLeads: false } });
+const staffNotLed33 = await staffCall(sessionOwner, `${eventApi(e33Id)}/klient/modules`, {
+  method: "PUT",
+  json: { module: "guessing", enabled: true },
+});
+const clientAgain33 = await enable("guessing", true);
+check(
+  "modules: while the venue leads the client's switch → 409 venue-leads and the staff switch through the dispatcher; the venue's offer works whoever leads; the client leads again → the staff's switch 409 client-leads",
+  leadOn33.status === 200 &&
+    clientLed33.status === 409 &&
+    clientLed33.data?.code === "venue-leads" &&
+    staffLed33.status === 200 &&
+    activeOf(staffLed33).guessing === false &&
+    staffOffer33.status === 200 &&
+    leadOff33.status === 200 &&
+    staffNotLed33.status === 409 &&
+    staffNotLed33.data?.code === "client-leads" &&
+    clientAgain33.status === 200,
+  `${leadOn33.status} ${clientLed33.status} ${staffLed33.status} ${staffOffer33.status} ${leadOff33.status} ${staffNotLed33.status} ${clientAgain33.status}`,
+);
+
+const outsiders33 = [];
+for (const [who, token] of [
+  ["waiter", sessionWaiter],
+  ["owner B", sessionB],
+]) {
+  for (const [method, json] of [["GET"], ["PUT", { module: "questions", available: false }]]) {
+    const res = await staffCall(token, modulesApi(e33Id), json ? { method, json } : { method });
+    if (!noAccessJson(res)) outsiders33.push(`${who} ${method}: ${String(res.status)}`);
+  }
+  const unlock = await staffCall(token, unlockApi(e33Id, "aiTopics"), { method: "PUT", json: { unlocked: true } });
+  if (!noAccessJson(unlock)) outsiders33.push(`${who} unlock: ${String(unlock.status)}`);
+}
+// (Owner A is also an owner of B since section 28, so B's side is checked with owner B's session above.)
+for (const path of [modulesApi(999999999), modulesApi("abc")]) {
+  const res = await staffCall(sessionOwner, path);
+  if (!noAccessJson(res)) outsiders33.push(`owner ${path}: ${String(res.status)}`);
+}
+const ownerUnlock33 = await staffCall(sessionOwner, unlockApi(e33Id, "aiTopics"), {
+  method: "PUT",
+  json: { unlocked: true },
+});
+const noSession33 = await request(modulesApi(e33Id));
+const foreign33 = await staffCall(sessionOwner, modulesApi(e33Id), {
+  method: "PUT",
+  json: { module: "questions", available: true },
+  extraHeaders: { Origin: "https://evil.example" },
+});
+check(
+  "modules: a waiter, owner B, unknown and malformed event ids and a non-admin unlock → the identical 404; no session → 401; a foreign Origin → 403",
+  outsiders33.length === 0 && noAccessJson(ownerUnlock33) && noSession33.status === 401 && foreign33.status === 403,
+  `${outsiders33.join("; ")} ${ownerUnlock33.status} ${noSession33.status} ${foreign33.status}`,
+);
+
+const adminOutside33 = await staffCall(sessionAdmin, unlockApi(e33Id, "aiTopics"), {
+  method: "PUT",
+  json: { unlocked: true },
+});
+const enter33 = await enterSupport(sessionAdmin, restaurantA.id);
+const adminRead33 = await staffCall(sessionAdmin, modulesApi(e33Id));
+const adminVenue33 = await staffCall(sessionAdmin, modulesApi(e33Id), {
+  method: "PUT",
+  json: { module: "questions", available: false },
+});
+const adminForeign33 = await staffCall(sessionAdmin, unlockApi(e33Id, "aiTopics"), {
+  method: "PUT",
+  json: { unlocked: true },
+  extraHeaders: { Origin: "https://evil.example" },
+});
+const adminFree33 = await staffCall(sessionAdmin, unlockApi(e33Id, "guessing"), {
+  method: "PUT",
+  json: { unlocked: true },
+});
+const adminUnknown33 = [
+  await staffCall(sessionAdmin, unlockApi(999999999, "aiTopics"), { method: "PUT", json: { unlocked: true } }),
+  await staffCall(sessionAdmin, unlockApi("abc", "aiTopics"), { method: "PUT", json: { unlocked: true } }),
+  await staffCall(sessionAdmin, unlockApi(e33Id, "bogus"), { method: "PUT", json: { unlocked: true } }),
+  await staffCall(sessionAdmin, unlockApi(eventB.id, "aiTopics"), { method: "PUT", json: { unlocked: true } }),
+];
+const adminPage33 = await staffCall(sessionAdmin, eventPage(e33Id));
+const unlocked33 = await staffCall(sessionAdmin, unlockApi(e33Id, "aiTopics"), {
+  method: "PUT",
+  json: { unlocked: true },
+});
+const exit33 = await endSupportOf(sessionAdmin, restaurantA.id);
+const log33 = await readLogA();
+const unlockEntry33 = logOf(log33).find((entry) => entry.kind === "unlock" && entry.event?.id === e33Id);
+const aiOn33 = await enable("aiTopics", true);
+const aiGuest33 = await request(`${gApi33}/state`);
+check(
+  "modules: the admin unlocks a paid module only inside a support visit (outside → 404; venue writes 404; free module 400; unknown ids, another restaurant's event and modules 404; foreign Origin 403), the owner's log names it, then the client switches AI topics on",
+  noAccessJson(adminOutside33) &&
+    enter33.status === 201 &&
+    adminRead33.status === 200 &&
+    noAccessJson(adminVenue33) &&
+    adminForeign33.status === 403 &&
+    adminFree33.status === 400 &&
+    adminUnknown33.every(noAccessJson) &&
+    adminPage33.status === 200 &&
+    adminPage33.body.includes("data-event-modules-section") &&
+    unlocked33.status === 200 &&
+    unlocked33.data?.modules?.find((m) => m.key === "aiTopics")?.unlocked === true &&
+    exit33.status === 200 &&
+    unlockEntry33?.module === "aiTopics" &&
+    aiOn33.status === 200 &&
+    activeOf(aiOn33).aiTopics === true &&
+    aiGuest33.data?.modules?.aiTopics === true,
+  `${adminOutside33.status} ${enter33.status} ${adminRead33.status} ${adminVenue33.status} ${adminForeign33.status} ${adminFree33.status} ${adminUnknown33.map((r) => r.status).join(",")} ${adminPage33.status} ${unlocked33.status} ${exit33.status} ${JSON.stringify(unlockEntry33)} ${aiOn33.status}`,
+);
+
+const deleted33 = await staffCall(sessionOwner, eventApi(e33Id), { method: "DELETE" });
+check("modules: the smoke's event is deleted", deleted33.status === 200, String(deleted33.status));
 
 finish();
