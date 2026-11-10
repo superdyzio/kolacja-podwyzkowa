@@ -460,7 +460,7 @@ events: the first panel page view (or `npm run retention`) purges up to 25 expir
 
 #### Automated
 
-- [x] 2.1 `AI_PROVIDER=mock npm test`, `npm run lint`, `npx astro check`, `npm run build` pass
+- [x] 2.1 `AI_PROVIDER=mock npm test`, `npm run lint`, `npx astro check`, `npm run build` pass — ae5a3ff
 
 #### Manual
 
@@ -472,10 +472,10 @@ events: the first panel page view (or `npm run retention`) purges up to 25 expir
 
 #### Automated
 
-- [ ] 3.1 `npm run smoke` passes against `AI_PROVIDER=mock npm run preview`
-- [ ] 3.2 `npm run demo` passes and prints the term, the purged event and the export link
-- [ ] 3.3 `npx supabase db reset` + `AI_PROVIDER=mock npm test` pass from zero
-- [ ] 3.4 `npm run lint`, `npx astro check`, `npm run build` pass
+- [x] 3.1 `npm run smoke` passes against `AI_PROVIDER=mock npm run preview`
+- [x] 3.2 `npm run demo` passes and prints the term, the purged event and the export link
+- [x] 3.3 `npx supabase db reset` + `AI_PROVIDER=mock npm test` pass from zero
+- [x] 3.4 `npm run lint`, `npx astro check`, `npm run build` pass
 
 #### Manual
 

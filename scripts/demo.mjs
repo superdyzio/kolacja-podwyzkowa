@@ -694,6 +694,7 @@ const MORE_EVENTS = [
 const VENUE_LED_EVENT = MORE_EVENTS[0].name;
 const VENUE_LED_GUESTS = ["Dyrektor Nowak", "Pani Kowalska", "Pan Wiśniewski", "Ola z księgowości"];
 let venueLedEventId = null;
+const moreEventIds = new Map();
 for (const { name, date, expectedGuests, archived } of MORE_EVENTS) {
   const created = await step(
     `wydarzenie ${name}`,
@@ -701,6 +702,7 @@ for (const { name, date, expectedGuests, archived } of MORE_EVENTS) {
     { method: "POST", json: { name, date, expectedGuests }, cookie: ownerCookie },
     201,
   );
+  moreEventIds.set(name, created.event.id);
   if (name === VENUE_LED_EVENT) {
     venueLedEventId = created.event.id;
     const switched = await step(`lokal prowadzi: ${name}`, `/api/panel/events/${String(venueLedEventId)}`, {
@@ -1017,6 +1019,47 @@ if (
   fail("Marka demo nie została zapisana.");
 }
 
+// --- 9c. Guest data retention and the export (privacy-retention, S-26): the owner keeps the default term of 30 days;
+// „Komunia Zosi (demo)” (60 days ago) lost its guests' data when it was archived (the panel's guard purges an event
+// past its term before serving it) — its export says so; the manager downloads the main event's export --------------
+
+const RETENTION_DAYS = 30;
+const PURGED_EVENT = MORE_EVENTS[2].name;
+const purgedEventId = moreEventIds.get(PURGED_EVENT);
+const retention = await step(
+  `retencja danych gości: ${String(RETENTION_DAYS)} dni`,
+  `/api/panel/restaurants/${String(restaurantId)}/retention`,
+  {
+    method: "PATCH",
+    json: { guestRetentionDays: RETENTION_DAYS },
+    cookie: ownerCookie,
+  },
+);
+if (retention.guestRetentionDays !== RETENTION_DAYS) {
+  fail(`Retencja danych gości lokalu demo nie jest ${String(RETENTION_DAYS)} dni.`);
+}
+const purgedExport = await step(`eksport: ${PURGED_EVENT}`, `/api/panel/events/${String(purgedEventId)}/export`, {
+  cookie: ownerCookie,
+});
+if (typeof purgedExport?.event?.guestData?.purgedAt !== "string" || purgedExport.guests.length !== 0) {
+  fail(`Dane gości „${PURGED_EVENT}” (60 dni temu) nie zostały usunięte po terminie.`);
+}
+const exportPath = `/api/panel/events/${String(event.id)}/export`;
+{
+  const response = await fetch(new URL(exportPath, BASE_URL), { headers: { Cookie: TEAM[0].cookie } });
+  const exported = await response.json().catch(() => null);
+  if (
+    response.status !== 200 ||
+    !(response.headers.get("content-disposition") ?? "").startsWith("attachment;") ||
+    exported?.guests?.length !== board.guestList.guests.length ||
+    exported.event.guestData.purgedAt !== null
+  ) {
+    fail(`Menedżer demo nie pobrał eksportu „${EVENT_NAME}” (HTTP ${String(response.status)}).`);
+  }
+}
+const privacyGuest = RSVP_BY_GUESTS[0];
+const privacyUrl = new URL(`/g/${guestKeyOf(privacyGuest)}/prywatnosc`, BASE_URL).href;
+
 // --- 10. Summary ------------------------------------------------------------------------------------------------
 
 const seatTotal = venue.tables.reduce((sum, table) => sum + table.seatCount, 0);
@@ -1054,6 +1097,7 @@ Dane demo gotowe („${RESTAURANT_NAME}” · „${EVENT_NAME}”, id ${String(e
 - „${VENUE_LED_EVENT}”: lokal prowadzi, ${String(VENUE_LED_GUESTS.length)} gości dodanych w panelu
 - marka: lokal w kolorze ${BRAND_COLOR} z logo, klient „${CLIENT_BRAND}” z logo (telefony gości, TV, tablet, karteczki, panel)
 - szablon sali „${TEMPLATE_NAME}” (${String(savedTemplate.template.roomCount)} sale, ${String(savedTemplate.template.tableCount)} stolików) i wydarzenie z niego „${TEMPLATE_EVENT}”
+- retencja danych gości: ${String(retention.guestRetentionDays)} dni po wydarzeniu; „${PURGED_EVENT}” — dane gości usunięte (po terminie), eksport bez gości
 
 Organizator: ${organizerUrl}
 TV:          ${new URL(`/tv/${event.tvKey}`, BASE_URL).href}
@@ -1073,5 +1117,8 @@ Praca klienta:   ${new URL(`/panel/wydarzenia/${String(event.id)}`, BASE_URL).hr
                  ${new URL(`/panel/wydarzenia/${String(venueLedEventId)}`, BASE_URL).href} (lokal prowadzi: edycja w panelu)
 Szablon sali:    ${new URL(`/panel/szablony/${String(templateId)}`, BASE_URL).href} („Zaktualizuj z szablonu” na karcie wydarzenia)
                  ${new URL(`/panel/wydarzenia/${String(fromTemplate.event.id)}`, BASE_URL).href} (wydarzenie z szablonu)
+Eksport danych:  ${new URL(exportPath, BASE_URL).href} (JSON; ?format=guests-csv, ?format=orders-csv — właściciel lub menedżer, po zalogowaniu)
+                 ${new URL(`/panel/wydarzenia/${String(purgedEventId)}`, BASE_URL).href} („${PURGED_EVENT}”: „Dane gości usunięte”)
+Prywatność gościa: ${privacyUrl} (${privacyGuest}; szkic do przeglądu prawnika — działa, gdy dostęp gości jest włączony)
 Panel platformy: ${new URL("/logowanie", BASE_URL).href} — e-mail ${ADMIN_EMAIL}, hasło ${ADMIN_PASSWORD}
 Linki są sekretne: nie wklejaj ich publicznie.`);

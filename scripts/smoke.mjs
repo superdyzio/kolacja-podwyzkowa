@@ -22,9 +22,11 @@ import {
   listEvents,
   listRestaurants,
   PlatformError,
+  purgeExpiredGuestData,
   readDbEnv,
   readEventKeys,
   removeMembership,
+  setEventDate,
 } from "./lib/platform.mjs";
 
 const BASE_URL = process.env.BASE_URL ?? "http://localhost:4321";
@@ -9888,5 +9890,448 @@ check(
 
 const deleted40 = await staffCall(sessionOwner, eventApi(e40Id), { method: "DELETE" });
 check("rsvp: the section's event is deleted", deleted40.status === 200, String(deleted40.status));
+
+// 41. Guest data retention, the export and the privacy notice (privacy-retention, S-26; FR-040, US-09, NFR-019). The
+// owner of A reads and sets the term (30 → 7 days), the manager reads it, everyone else gets the identical 404; bad
+// bodies 400, no session 401, a foreign Origin 403. Event P of A (today, panel) is filled through its client link
+// (guests with diets, a group, a room and a table, a published seating, a guess, an order line with a note for a
+// guest, a person on the TV, guest links on); the manager exports it (JSON and both CSVs as attachments, no-store, no
+// key of P or of a guest); owner B, A's waiter, the admin (also in support mode, without a log row), P's client key and
+// no session → 404 / 401. A template of A (100 days back) and event Q of A (today) stay untouched; P's date moves 8
+// days back (past A's 7): its guest key opens nothing from the first request, the client's link, the TV and the tablet
+// show no guest any more, the bill stays, the pages show the purged note, the export has no guests; the CLI's purge
+// leaves the template, Q and event B as they were. The guest's privacy page: a draft in PL and EN naming the restaurant,
+// never the platform; an unknown key → the identical 404. The section's events and template are deleted.
+const retentionApiOf = (restaurantId) => `/api/panel/restaurants/${String(restaurantId)}/retention`;
+const exportApi41 = (id, format) => `${eventApi(id)}/export${format ? `?format=${format}` : ""}`;
+const download41 = async (token, path) => {
+  const response = await fetch(BASE_URL + path, {
+    redirect: "manual",
+    headers: token ? { Cookie: asStaff(token) } : {},
+  });
+  const bytes = new Uint8Array(await response.arrayBuffer());
+  return {
+    status: response.status,
+    type: response.headers.get("content-type") ?? "",
+    disposition: response.headers.get("content-disposition") ?? "",
+    cacheControl: response.headers.get("cache-control") ?? "",
+    bom: bytes[0] === 0xef && bytes[1] === 0xbb && bytes[2] === 0xbf,
+    body: new TextDecoder("utf-8", { ignoreBOM: true }).decode(bytes),
+  };
+};
+
+const ownerTerm41 = await staffCall(sessionOwner, retentionApiOf(restaurantA.id));
+const setTerm41 = await staffCall(sessionOwner, retentionApiOf(restaurantA.id), {
+  method: "PATCH",
+  json: { guestRetentionDays: 7 },
+});
+const managerTerm41 = await staffCall(sessionManager, retentionApiOf(restaurantA.id));
+const managerSet41 = await staffCall(sessionManager, retentionApiOf(restaurantA.id), {
+  method: "PATCH",
+  json: { guestRetentionDays: 9 },
+});
+const termDenied41 = [];
+for (const [name, token, path] of [
+  ["A's waiter", sessionWaiter, retentionApiOf(restaurantA.id)],
+  ["owner B on A", sessionB, retentionApiOf(restaurantA.id)],
+  ["the admin outside support", sessionAdmin, retentionApiOf(restaurantA.id)],
+  ["an unknown id", sessionOwner, retentionApiOf(UNKNOWN_ID)],
+  ["a malformed id", sessionOwner, "/api/panel/restaurants/abc/retention"],
+]) {
+  const res = await staffCall(token, path);
+  if (!noAccessJson(res)) termDenied41.push(`${name}: ${String(res.status)}`);
+}
+const badTerms41 = [];
+for (const json of [
+  { guestRetentionDays: 0 },
+  { guestRetentionDays: 366 },
+  { guestRetentionDays: 7.5 },
+  { guestRetentionDays: "30" },
+  { guestRetentionDays: 7, extra: 1 },
+  {},
+]) {
+  const res = await staffCall(sessionOwner, retentionApiOf(restaurantA.id), { method: "PATCH", json });
+  if (res.status !== 400) badTerms41.push(`${JSON.stringify(json)}: ${String(res.status)}`);
+}
+const noSessionTerm41 = await request(retentionApiOf(restaurantA.id));
+const foreignTerm41 = await staffCall(sessionOwner, retentionApiOf(restaurantA.id), {
+  method: "PATCH",
+  json: { guestRetentionDays: 9 },
+  extraHeaders: FOREIGN,
+});
+const termAfter41 = await staffCall(sessionOwner, retentionApiOf(restaurantA.id));
+check(
+  "retention: the owner reads 30 days and sets 7, the manager reads it and cannot write (404); A's waiter, owner B, the admin outside support, unknown and malformed ids → the identical 404; 0, 366, 7.5, a string, an extra field and an empty body → 400; no session 401; a foreign Origin 403; still 7",
+  ownerTerm41.status === 200 &&
+    JSON.stringify(ownerTerm41.data) ===
+      JSON.stringify({ restaurantId: restaurantA.id, guestRetentionDays: 30, minDays: 1, maxDays: 365 }) &&
+    setTerm41.status === 200 &&
+    setTerm41.data?.guestRetentionDays === 7 &&
+    managerTerm41.status === 200 &&
+    managerTerm41.data?.guestRetentionDays === 7 &&
+    noAccessJson(managerSet41) &&
+    termDenied41.length === 0 &&
+    badTerms41.length === 0 &&
+    noSessionTerm41.status === 401 &&
+    foreignTerm41.status === 403 &&
+    termAfter41.data?.guestRetentionDays === 7,
+  `${ownerTerm41.status} ${ownerTerm41.body.slice(0, 120)} ${setTerm41.status} ${managerTerm41.status} ${managerSet41.status} ${termDenied41.join("; ")} ${badTerms41.join("; ")} ${noSessionTerm41.status} ${foreignTerm41.status}`,
+);
+
+const ownerPage41 = await staffCall(sessionOwner, restaurantPageOf(restaurantA.id));
+const managerPage41 = await staffCall(sessionManager, restaurantPageOf(restaurantA.id));
+const waiterPage41 = await staffCall(sessionWaiter, restaurantPageOf(restaurantA.id));
+const ownerPageEn41 = await staffCall(sessionOwner, restaurantPageOf(restaurantA.id), {
+  cookie: `${asStaff(sessionOwner)}; kp-lang=en`,
+});
+check(
+  "retention: the restaurant page — the owner's form (PL, EN), the manager's read-only line, nothing for a waiter",
+  ownerPage41.status === 200 &&
+    ownerPage41.body.includes("data-retention-section") &&
+    ownerPage41.body.includes('data-retention-form="7"') &&
+    ownerPage41.body.includes("Prywatność danych gości") &&
+    ownerPageEn41.status === 200 &&
+    (ownerPageEn41.body.includes("Guests' data privacy") || ownerPageEn41.body.includes("Guests&#39; data privacy")) &&
+    managerPage41.status === 200 &&
+    managerPage41.body.includes('data-retention-read-only="7"') &&
+    !managerPage41.body.includes("data-retention-form") &&
+    waiterPage41.status === 200 &&
+    !waiterPage41.body.includes("data-retention-section"),
+  `${ownerPage41.status} ${ownerPageEn41.status} ${managerPage41.status} ${waiterPage41.status}`,
+);
+
+const ANIA41 = `Ania Retencja ${RUN_TAG}`;
+const BOREK41 = `Borek Retencja ${RUN_TAG}`;
+const CELA41 = `Cela Retencja ${RUN_TAG}`;
+const NOTE41 = `bez orzechów ${RUN_TAG}`;
+const LINE_NOTE41 = `bez cebuli ${RUN_TAG}`;
+const p41 = await staffCall(sessionOwner, eventsApiOf(restaurantA.id), {
+  method: "POST",
+  json: { name: `Retencja P ${RUN_TAG}`, date: today },
+});
+const p41Id = p41.data?.event?.id ?? 0;
+const p41Organizer = keyOfPath(p41.data?.event?.links?.organizer);
+const p41Tv = keyOfPath(p41.data?.event?.links?.tv);
+const p41Restaurant = keyOfPath(p41.data?.event?.links?.restaurant);
+const p41Api = `/api/o/${p41Organizer}`;
+const guests41 = await request(`${p41Api}/guests`, {
+  method: "POST",
+  json: { text: [ANIA41, BOREK41, CELA41].join("\n") },
+});
+const [ania41, borek41, cela41] = [ANIA41, BOREK41, CELA41].map((name) => guestNamed(guests41, name)?.id ?? 0);
+const diet41 = await request(`${p41Api}/guests/${String(ania41)}`, {
+  method: "PATCH",
+  json: { diets: ["vegan", "nut-allergy"], dietNote: NOTE41 },
+});
+const group41 = await request(`${p41Api}/groups`, { method: "POST", json: { guestIds: [ania41, borek41] } });
+const room41 = await request(`${p41Api}/rooms`, { method: "POST", json: { name: `Sala ${RUN_TAG}` } });
+const table41 = await request(`${p41Api}/tables`, {
+  method: "POST",
+  json: {
+    roomId: room41.data?.rooms?.[0]?.id ?? 0,
+    name: `Stół ${RUN_TAG}`,
+    seatCount: 4,
+    shape: "round",
+    x: 0.5,
+    y: 0.5,
+  },
+});
+const table41Id = table41.data?.tables?.[0]?.id ?? 0;
+for (const [guestId, seat] of [
+  [ania41, 1],
+  [borek41, 2],
+  [cela41, 3],
+]) {
+  await request(`${p41Api}/seating/guests/${String(guestId)}`, { method: "PUT", json: { tableId: table41Id, seat } });
+}
+const publish41 = await request(`${p41Api}/seating/publish`, { method: "POST" });
+const game41 = await request(`${p41Api}/modules`, { method: "PUT", json: { module: "guessing", enabled: true } });
+const guess41 = await request(`${p41Api}/guesses/${String(borek41)}`, { method: "PUT", json: { amount: "1234,50" } });
+const order41 = await request(`${p41Api}/orders`, {
+  method: "POST",
+  json: { name: "Pierogi", note: LINE_NOTE41, quantity: 2, assignment: { guestId: ania41 } },
+});
+const line41 = order41.data?.items?.find((item) => item.name === "Pierogi");
+const spot41 = await request(`${p41Api}/tv-spotlight/person`, { method: "POST" });
+const links41 = await request(`${p41Api}/guest-links`, { method: "PATCH", json: { enabled: true } });
+const guestKeys41 = (links41.data?.guests ?? []).map((guest) => guest.key);
+const aniaKey41 = linkOf(links41, ania41)?.key ?? "";
+check(
+  "retention: event P of A is filled through its client link — guests with a diet, a group, a published seating, a guess, an order line with a note for a guest, a person on the TV, guest links on",
+  p41.status === 201 &&
+    guests41.status === 201 &&
+    diet41.status === 200 &&
+    group41.status === 201 &&
+    table41.status === 201 &&
+    publish41.status === 201 &&
+    game41.status === 200 &&
+    guess41.status === 200 &&
+    order41.status === 201 &&
+    typeof line41?.unitPriceGrosze === "number" &&
+    line41.unitPriceGrosze > 0 &&
+    spot41.status === 200 &&
+    spot41.data?.spotlight?.kind === "person" &&
+    links41.status === 200 &&
+    guestKeys41.length === 3 &&
+    aniaKey41.length === 24,
+  `${p41.status} ${guests41.status} ${diet41.status} ${group41.status} ${table41.status} ${publish41.status} ${game41.status} ${guess41.status} ${order41.status} ${order41.body.slice(0, 120)} ${spot41.status} ${links41.status}`,
+);
+
+const secrets41 = [p41Organizer, p41Tv, p41Restaurant, ...guestKeys41].filter((key) => key !== "");
+const json41 = await download41(sessionManager, exportApi41(p41Id));
+const guestsCsv41 = await download41(sessionManager, exportApi41(p41Id, "guests-csv"));
+const ordersCsv41 = await download41(sessionManager, exportApi41(p41Id, "orders-csv"));
+const badFormat41 = await staffCall(sessionManager, exportApi41(p41Id, "xlsx"));
+let exported41 = null;
+try {
+  exported41 = JSON.parse(json41.body);
+} catch {
+  // checked below
+}
+const aniaExport41 = exported41?.guests?.find((guest) => guest.name === ANIA41);
+check(
+  "export: the manager downloads P as JSON (attachment, no-store) with the diets, the group, the seat, the guess, the order line with its price and note and the bill — no id, no key of P and no guest key; both CSVs (BOM, PL headers, the bill's total); an unknown format → 400",
+  json41.status === 200 &&
+    json41.type.startsWith("application/json") &&
+    json41.disposition === `attachment; filename="wydarzenie-${String(p41Id)}-${today}.json"` &&
+    json41.cacheControl.includes("no-store") &&
+    aniaExport41?.dietNote === NOTE41 &&
+    JSON.stringify(aniaExport41?.diets) === JSON.stringify(["vegan", "nut-allergy"]) &&
+    aniaExport41?.group === 1 &&
+    aniaExport41?.seat?.seat === 1 &&
+    exported41?.guests?.find((guest) => guest.name === BOREK41)?.guess?.amountGrosze === 123_450 &&
+    exported41?.orders?.lines?.[0]?.note === LINE_NOTE41 &&
+    exported41?.orders?.lines?.[0]?.place?.guest === ANIA41 &&
+    exported41?.orders?.billGrosze === line41.unitPriceGrosze * 2 &&
+    exported41?.event?.guestData?.retentionDays === 7 &&
+    exported41?.event?.guestData?.deleteAfter === shiftDate(today, 7) &&
+    !/"(id|\w+Id|\w*[Kk]ey|\w*[Tt]oken|\w*[Hh]ash)"\s*:/.test(json41.body) &&
+    !secrets41.some(
+      (key) => json41.body.includes(key) || guestsCsv41.body.includes(key) || ordersCsv41.body.includes(key),
+    ) &&
+    guestsCsv41.status === 200 &&
+    guestsCsv41.type.startsWith("text/csv") &&
+    guestsCsv41.disposition.endsWith('-goscie.csv"') &&
+    guestsCsv41.bom &&
+    guestsCsv41.body.includes("Gość;Obecność;Grupa;Diety i alergie") &&
+    guestsCsv41.body.includes(NOTE41) &&
+    ordersCsv41.status === 200 &&
+    ordersCsv41.disposition.endsWith('-zamowienia.csv"') &&
+    ordersCsv41.bom &&
+    ordersCsv41.body.includes("Rachunek razem") &&
+    badFormat41.status === 400,
+  `${json41.status} ${json41.type} ${json41.disposition} ${json41.body.slice(0, 160)} ${guestsCsv41.status} ${ordersCsv41.status} ${badFormat41.status}`,
+);
+
+const exportDenied41 = [];
+for (const [name, token, path] of [
+  ["owner B", sessionB, exportApi41(p41Id)],
+  ["A's waiter", sessionWaiter, exportApi41(p41Id)],
+  ["the admin outside support", sessionAdmin, exportApi41(p41Id)],
+  ["an unknown id", sessionManager, exportApi41(UNKNOWN_ID)],
+  ["a malformed id", sessionManager, "/api/panel/events/abc/export"],
+]) {
+  const res = await staffCall(token, path);
+  if (!noAccessJson(res)) exportDenied41.push(`${name}: ${String(res.status)}`);
+}
+const enter41 = await enterSupport(sessionAdmin, restaurantA.id);
+const logBefore41 = (await readLogA()).data?.entries?.[0];
+const supportExport41 = await staffCall(sessionAdmin, exportApi41(p41Id));
+const supportCsv41 = await staffCall(sessionAdmin, exportApi41(p41Id, "guests-csv"));
+const logAfter41 = (await readLogA()).data?.entries?.[0];
+const supportCard41 = await staffCall(sessionAdmin, eventPage(p41Id));
+const supportTerm41 = await staffCall(sessionAdmin, retentionApiOf(restaurantA.id));
+const supportSetTerm41 = await staffCall(sessionAdmin, retentionApiOf(restaurantA.id), {
+  method: "PATCH",
+  json: { guestRetentionDays: 9 },
+});
+const exit41 = await endSupportOf(sessionAdmin, restaurantA.id);
+const clientExport41 = await request(`${p41Api}/export`);
+const noSessionExport41 = await request(exportApi41(p41Id));
+check(
+  "export: owner B, A's waiter, the admin outside support, unknown and malformed ids → the identical 404; in support mode the export is the identical 404 with no log row (the term reads, logged; its write 404; the card has no export links); P's client key has no export (404); no session 401",
+  exportDenied41.length === 0 &&
+    enter41.status === 201 &&
+    logBefore41?.kind === "enter" &&
+    noAccessJson(supportExport41) &&
+    noAccessJson(supportCsv41) &&
+    logAfter41?.id === logBefore41?.id &&
+    supportCard41.status === 200 &&
+    supportCard41.body.includes("data-event-privacy") &&
+    !supportCard41.body.includes("data-event-export") &&
+    supportTerm41.status === 200 &&
+    noAccessJson(supportSetTerm41) &&
+    exit41.status === 200 &&
+    clientExport41.status === 404 &&
+    noSessionExport41.status === 401,
+  `${exportDenied41.join("; ")} ${enter41.status} ${logBefore41?.kind} ${supportExport41.status} ${supportCsv41.status} ${String(logAfter41?.id)} ${supportCard41.status} ${supportTerm41.status} ${supportSetTerm41.status} ${exit41.status} ${clientExport41.status} ${noSessionExport41.status}`,
+);
+
+// Untouched by P's purge: a template of A dated 100 days back, event Q of A (today) with a guest, event B.
+const tpl41 = await staffCall(sessionOwner, templatesApiOf(restaurantA.id), {
+  method: "POST",
+  json: { name: `Szablon retencji ${RUN_TAG}`, sourceEventId: p41Id },
+});
+const tpl41Id = tpl41.data?.template?.id ?? 0;
+let seam41 = "";
+try {
+  await setEventDate(platformEnv, tpl41Id, shiftDate(today, -100));
+} catch (error) {
+  seam41 = error instanceof Error ? error.message : String(error);
+}
+const q41 = await staffCall(sessionOwner, eventsApiOf(restaurantA.id), {
+  method: "POST",
+  json: { name: `Retencja Q ${RUN_TAG}`, date: today },
+});
+const q41Id = q41.data?.event?.id ?? 0;
+const q41Api = `/api/o/${keyOfPath(q41.data?.event?.links?.organizer)}`;
+const DOROTA41 = `Dorota Retencja ${RUN_TAG}`;
+const qGuests41 = await request(`${q41Api}/guests`, { method: "POST", json: { text: DOROTA41 } });
+const qLinks41 = await request(`${q41Api}/guest-links`, { method: "PATCH", json: { enabled: true } });
+const dorotaKey41 = qLinks41.data?.guests?.[0]?.key ?? "";
+const bGuestsBefore41 = (await request(`/api/o/${eventB.organizerKey}/guests`)).data?.guests?.length ?? -1;
+
+const moved41 = await staffCall(sessionOwner, eventApi(p41Id), {
+  method: "PATCH",
+  json: { date: shiftDate(today, -8) },
+});
+const guestState41 = await request(`/api/g/${aniaKey41}/state`);
+const guestPage41 = await request(`/g/${aniaKey41}`);
+const pGuests41 = await request(`${p41Api}/guests`);
+const pPublished41 = await request(`${p41Api}/seating/published`);
+const pSpot41 = await request(`${p41Api}/tv-spotlight`);
+const pOrders41 = await request(`${p41Api}/orders`);
+const pLinks41 = await request(`${p41Api}/guest-links`);
+const pTv41 = await request(`/api/tv/${p41Tv}/seating`);
+const pTablet41 = await request(`/api/r/${p41Restaurant}/orders`);
+const pLine41 = pOrders41.data?.items?.find((item) => item.name === "Pierogi");
+const names41 = [ANIA41, BOREK41, CELA41];
+check(
+  "retention: P moved 8 days back (past A's 7) — the first request of its guest key is the identical 404; the client's link then shows no guests, no published seating, no TV person, no guest links, the order line without its note or guest but with its price; the TV and the tablet show no name",
+  moved41.status === 200 &&
+    noAccessJson(guestState41) &&
+    guestPage41.status === 404 &&
+    guestPage41.body.includes(NO_ACCESS_TEXT) &&
+    pGuests41.status === 200 &&
+    pGuests41.data?.guests?.length === 0 &&
+    pGuests41.data?.groups?.length === 0 &&
+    pPublished41.status === 200 &&
+    pPublished41.data?.published === null &&
+    pSpot41.status === 200 &&
+    pSpot41.data?.spotlight === null &&
+    pLinks41.data?.enabled === false &&
+    pOrders41.status === 200 &&
+    pLine41?.note === null &&
+    pLine41?.guestId === null &&
+    pLine41?.unitPriceGrosze === line41?.unitPriceGrosze &&
+    pLine41?.quantity === 2 &&
+    pTv41.status === 200 &&
+    pTablet41.status === 200 &&
+    !names41.some(
+      (name) => pTv41.body.includes(name) || pTablet41.body.includes(name) || pOrders41.body.includes(name),
+    ),
+  `${moved41.status} ${guestState41.status} ${guestPage41.status} ${pGuests41.status} ${pGuests41.body.slice(0, 120)} ${pPublished41.body.slice(0, 80)} ${pSpot41.body.slice(0, 80)} ${pOrders41.status} ${pTv41.status} ${pTablet41.status}`,
+);
+
+const shell41 = await request(`/o/${p41Organizer}`);
+const card41 = await staffCall(sessionOwner, eventPage(p41Id));
+const purgedExport41 = await download41(sessionManager, exportApi41(p41Id));
+let purgedData41 = null;
+try {
+  purgedData41 = JSON.parse(purgedExport41.body);
+} catch {
+  // checked below
+}
+const qShell41 = await request(q41Api.replace("/api/o/", "/o/"));
+check(
+  "retention: the client's shell and the event card say the guests' data is deleted; the export has no guests and the deletion date, the bill stays; Q's shell names the day its data goes",
+  shell41.status === 200 &&
+    shell41.body.includes("data-guest-data-purged") &&
+    shell41.body.includes("Dane gości usunięte") &&
+    card41.status === 200 &&
+    card41.body.includes("data-guest-data-purged") &&
+    card41.body.includes("data-event-export") &&
+    purgedExport41.status === 200 &&
+    Array.isArray(purgedData41?.guests) &&
+    purgedData41.guests.length === 0 &&
+    typeof purgedData41?.event?.guestData?.purgedAt === "string" &&
+    purgedData41?.orders?.billGrosze === exported41?.orders?.billGrosze &&
+    !names41.some((name) => purgedExport41.body.includes(name)) &&
+    qShell41.status === 200 &&
+    qShell41.body.includes(`data-guest-retention="${shiftDate(today, 7)}"`),
+  `${shell41.status} ${card41.status} ${purgedExport41.status} ${purgedExport41.body.slice(0, 200)} ${qShell41.status}`,
+);
+
+let cli41 = [];
+let cliError41 = "";
+try {
+  cli41 = await purgeExpiredGuestData(platformEnv, { restaurantId: restaurantA.id });
+} catch (error) {
+  cliError41 = error instanceof Error ? error.message : String(error);
+}
+const tplAfter41 = await staffCall(sessionOwner, templateApi(tpl41Id));
+const qAfter41 = await request(`${q41Api}/guests`);
+const bGuestsAfter41 = (await request(`/api/o/${eventB.organizerKey}/guests`)).data?.guests?.length ?? -2;
+check(
+  "retention: the CLI's purge of restaurant A never touches the template (100 days back), event Q (today) or P again; event B keeps its guests",
+  tpl41.status === 201 &&
+    seam41 === "" &&
+    cliError41 === "" &&
+    !cli41.some((event) => [tpl41Id, q41Id, p41Id].includes(event.id)) &&
+    tplAfter41.status === 200 &&
+    tplAfter41.data?.template?.roomCount === 1 &&
+    tplAfter41.data?.template?.tableCount === 1 &&
+    q41.status === 201 &&
+    qGuests41.status === 201 &&
+    qAfter41.data?.guests?.length === 1 &&
+    bGuestsBefore41 > 0 &&
+    bGuestsAfter41 === bGuestsBefore41,
+  `${tpl41.status} ${seam41} ${cliError41} ${JSON.stringify(cli41.map((event) => event.id))} ${tplAfter41.status} ${tplAfter41.body.slice(0, 160)} ${String(qAfter41.data?.guests?.length)} ${bGuestsBefore41} ${bGuestsAfter41}`,
+);
+
+const brand41 = await staffCall(sessionOwner, `/api/panel/restaurants/${String(restaurantA.id)}/branding`);
+const restaurantName41 = brand41.data?.name ?? "";
+const privacy41 = await request(`/g/${dorotaKey41}/prywatnosc`);
+const privacyEn41 = await request(`/g/${dorotaKey41}/prywatnosc`, { cookie: "kp-lang=en" });
+const qGuestPage41 = await request(`/g/${dorotaKey41}`);
+const privacyUnknown41 = await request(`/g/${"Z".repeat(24)}/prywatnosc`);
+const privacyTv41 = await request(`/g/${keyOfPath(q41.data?.event?.links?.tv)}/prywatnosc`);
+check(
+  "privacy notice: the guest's page links to it; a draft for legal review (PL, EN) naming the restaurant and the 7-day term, never the platform; an unknown key and another role's key → the identical 404",
+  privacy41.status === 200 &&
+    privacy41.body.includes("data-privacy-draft") &&
+    privacy41.body.includes("Wersja robocza — do przeglądu prawnika") &&
+    restaurantName41 !== "" &&
+    privacy41.body.includes(restaurantName41) &&
+    privacy41.body.includes("7 dni po wydarzeniu") &&
+    privacy41.body.includes(`/g/${dorotaKey41}`) &&
+    !privacy41.body.includes("Stolik") &&
+    privacyEn41.status === 200 &&
+    privacyEn41.body.includes("Draft — for legal review") &&
+    !privacyEn41.body.includes("Stolik") &&
+    qGuestPage41.status === 200 &&
+    qGuestPage41.body.includes("data-privacy-link") &&
+    qGuestPage41.body.includes(`/g/${dorotaKey41}/prywatnosc`) &&
+    privacyUnknown41.status === 404 &&
+    privacyUnknown41.body.includes(NO_ACCESS_TEXT) &&
+    privacyTv41.status === 404 &&
+    privacyTv41.body === privacyUnknown41.body,
+  `${privacy41.status} ${privacyEn41.status} ${qGuestPage41.status} ${privacyUnknown41.status} ${privacyTv41.status} ${restaurantName41}`,
+);
+
+const cleanup41 = [];
+for (const path of [eventApi(p41Id), eventApi(q41Id), templateApi(tpl41Id)]) {
+  const res = await staffCall(sessionOwner, path, { method: "DELETE" });
+  if (res.status !== 200) cleanup41.push(`${path}: ${String(res.status)}`);
+}
+const restoreTerm41 = await staffCall(sessionOwner, retentionApiOf(restaurantA.id), {
+  method: "PATCH",
+  json: { guestRetentionDays: 30 },
+});
+check(
+  "retention: the section's events and template are deleted, A's term is back to 30 days",
+  cleanup41.length === 0 && restoreTerm41.status === 200,
+  `${cleanup41.join("; ")} ${restoreTerm41.status}`,
+);
 
 finish();
