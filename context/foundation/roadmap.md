@@ -68,7 +68,7 @@ Restauracja, która gościła kolację 2026-11-08, chce tego narzędzia do włas
 | S-22  | guest-map-search        | gość, klient, personel i tablet wyszukują gościa po imieniu, a mapa podświetla jego miejsce                                                  | S-21             | FR-048, US-08                                                                                 | done     |
 | S-23  | guest-import-diets      | klient importuje gości z CSV lub wklejki z dietami, a kuchnia i kelnerzy widzą diety przy miejscu i w zliczeniach                            | S-14, S-21       | FR-035, FR-036, US-07, NFR-021                                                                | done        |
 | S-24  | room-prints             | klient i lokal drukują tablicę „znajdź swój stolik”, karty stołów, winietki w formacie i listę dla obsługi z dietami                         | S-18, S-23       | FR-038                                                                                        | proposed |
-| S-25  | guest-rsvp-menu         | gość potwierdza obecność i wybiera danie do terminu, klient wpisuje za gościa, a klient i lokal widzą zliczenia                              | S-16             | FR-039, US-07                                                                                 | in-progress |
+| S-25  | guest-rsvp-menu         | gość potwierdza obecność i wybiera danie do terminu, klient wpisuje za gościa, a klient i lokal widzą zliczenia                              | S-16             | FR-039, US-07                                                                                 | done        |
 | S-26  | privacy-retention       | dane gości znikają N dni po imprezie, menedżer eksportuje dane wydarzenia, a gość czyta informację o prywatności                             | S-11             | FR-040, US-09, NFR-019                                                                        | proposed |
 | S-27  | staff-offline-readout   | tablet obsługi i kelner bez sieci widzą ostatni stan zamówień i rozsadzenia, także po odświeżeniu                                            | S-21             | FR-047, US-08, NFR-017                                                                        | proposed |
 | S-28  | pub-quiz                | klient przygotowuje pub quiz i prowadzi go na TV, a goście odpowiadają na telefonach                                                         | S-17             | FR-049                                                                                        | proposed |
@@ -345,7 +345,7 @@ Fundamenty poniżej zakładają, że to istnieje, i NIE budują tego od nowa.
 - **Blockers:** —
 - **Unknowns:** —
 - **Risk:** Termin wyboru i nieobecność z RSVP muszą się zgadzać z oznaczaniem nieobecnych w v1, które pomija ich w losowaniu.
-- **Status:** in-progress
+- **Status:** done
 
 ### S-26: Prywatność i retencja danych gości
 
@@ -492,3 +492,4 @@ Fundamenty poniżej zakładają, że to istnieje, i NIE budują tego od nowa.
 - **S-21b: Menedżer (albo właściciel) dodaje kelnera „na imprezę”: imię i jednorazowy link lub krótki kod, ważne do końca okna imprezy (południe dnia następnego), bez hasła i bez konta. Kelner otwiera link albo wpisuje kod i pracuje tylko na sali tego jednego wydarzenia (to samo co kelner z kontem na `/panel/obsluga/<id>`), nigdy w panelu lokalu. Cofnięcie dostępu działa od razu.** — Archived 2026-11-10 → `context/archive/2026-11-10-event-waiter-access/`. Lesson: —.
 - **S-22: Każdy, kto widzi pełną mapę sali na urządzeniu z klawiaturą (gość na telefonie, klient, personel, tablet obsługi), wyszukuje gościa po imieniu, a mapa podświetla jego miejsce. TV tego nie ma.** — Archived 2026-11-10 → `context/archive/2026-11-10-guest-map-search/`. Lesson: —.
 - **S-23: Klient (albo lokal w trybie „lokal prowadzi”) importuje gości z pliku CSV lub wklejki z arkusza (nazwa, dieta, uwagi) i ogląda podgląd przed zapisem. Grupy tworzy po imporcie na liście. Oznacza dietę lub alergię gościa, a kuchnia na tablecie i kelnerzy widzą ją przy miejscu gościa i w zliczeniach. Dane gości nigdy nie trafiają do AI.** — Archived 2026-11-10 → `context/archive/2026-11-10-guest-import-diets/`. Lesson: —.
+- **S-25: Gość przed imprezą potwierdza obecność i wybiera danie z opcji ustawionych dla wydarzenia, do terminu. Klient wpisuje wybór za gościa. Klient i lokal widzą zliczenia.** — Archived 2026-11-10 → `context/archive/2026-11-10-guest-rsvp-menu/`. Lesson: —.
