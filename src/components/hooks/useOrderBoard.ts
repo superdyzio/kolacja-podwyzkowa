@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Locale } from "@/lib/i18n";
+import { isAppDenial } from "@/lib/offline/staff";
 import type { OrderBoardDto } from "@/types";
 import { networkFailure, readJson, toFailure, type ApiFailure } from "./api-failure";
 
@@ -9,9 +10,14 @@ import { networkFailure, readJson, toFailure, type ApiFailure } from "./api-fail
 // guest-delivered: guests mark pieces from their phones, so the board is also re-read every 5 s while the page is
 // visible and nothing is being saved (a setTimeout chain, one request at a time, 4 s limit, as in useGuessBoard); a
 // read that started before a save may carry the older board and is ignored. Open edit forms keep their drafts.
+// staff-offline-readout (S-27): `syncedAt` = when the board shown was last confirmed by the server (the page load, every
+// applied read or answer), `offline` after 3 failed reads in a row, `denied` = the app's own denial of a read
+// (isAppDenial) — what the floors' offline copy is saved and dropped by.
 
 const POLL_MS = 5_000;
 const TIMEOUT_MS = 4_000;
+// staff-offline-readout (S-27): the floors' offline signal — this many failed reads in a row (network, timeout, 5xx).
+const OFFLINE_AFTER = 3;
 
 export interface OrderRequest {
   method: "POST" | "PATCH" | "PUT" | "DELETE";
@@ -50,6 +56,9 @@ export function useOrderBoard(apiBase: string, initial: OrderBoardDto, locale: L
   const [board, setBoard] = useState<OrderBoardDto>(initial);
   const [pending, setPending] = useState(false);
   const [failure, setFailure] = useState<ApiFailure | null>(null);
+  const [syncedAt, setSyncedAt] = useState(() => Date.now());
+  const [failedReads, setFailedReads] = useState(0);
+  const [denied, setDenied] = useState(false);
   const queue = useRef<Promise<unknown>>(Promise.resolve());
   const waiting = useRef(0);
   // Bumped by every change: a read that started before it is ignored.
@@ -84,11 +93,23 @@ export function useOrderBoard(apiBase: string, initial: OrderBoardDto, locale: L
       try {
         const response = await fetch(`${apiBase}/orders`, { signal: current.signal, cache: "no-store" });
         const data = await readJson(response);
-        if (response.ok && isBoard(data) && startedAt === generation.current && waiting.current === 0) {
-          setBoard(data);
+        if (response.ok && isBoard(data)) {
+          setFailedReads(0);
+          setDenied(false);
+          if (startedAt === generation.current && waiting.current === 0) {
+            setBoard(data);
+            setSyncedAt(Date.now());
+          }
+        } else if (isAppDenial(response)) {
+          setFailedReads(0);
+          setDenied(true);
+        } else {
+          setFailedReads((count) => count + 1);
         }
       } catch {
-        // A slow or failed read: the next one tries again (the offline notice has its own connectivity check).
+        // A slow or failed read (or the abort at unmount): the next one tries again (the client's pages have their own
+        // connectivity check).
+        setFailedReads((count) => count + 1);
       } finally {
         window.clearTimeout(timeout);
         controller = null;
@@ -132,6 +153,7 @@ export function useOrderBoard(apiBase: string, initial: OrderBoardDto, locale: L
         if (response.ok) {
           if (isBoard(data)) {
             setBoard(data);
+            setSyncedAt(Date.now());
           }
           return true;
         }
@@ -174,5 +196,14 @@ export function useOrderBoard(apiBase: string, initial: OrderBoardDto, locale: L
     setFailure(null);
   }, []);
 
-  return { board, pending, failure, send, dismissFailure };
+  return {
+    board,
+    pending,
+    failure,
+    send,
+    dismissFailure,
+    syncedAt,
+    denied,
+    offline: failedReads >= OFFLINE_AFTER,
+  };
 }

@@ -1,0 +1,42 @@
+---
+import Layout from "@/layouts/Layout.astro";
+import NoAccess from "@/components/NoAccess.astro";
+import { StaffReadoutPage } from "@/components/offline/StaffReadoutPage";
+import { floorReadoutScope, staffOfflineMessages } from "@/lib/offline";
+import { findFloorEvent } from "@/lib/panel-api";
+
+// The staff floor's offline readout (staff-offline-readout, S-27; FR-047, NFR-017): the last state of the orders, the
+// published seating and the diets saved on this device by `/panel/obsluga/<id>` for THIS account — the tablet's board,
+// without prices — read by the island from the browser's memory. Its HTML carries no names, dishes or diets: it is the
+// copy the readout worker keeps and serves when the floor cannot load. The same ONE guard call as the floor itself, so
+// it opens exactly when the floor does (no session → 303 /logowanie from the middleware; anything else → the no-access
+// page with 404).
+const locale = Astro.locals.locale;
+const t = staffOfflineMessages(locale);
+const panel = await findFloorEvent(Astro.locals, Astro.params.id);
+if (!panel) {
+  Astro.response.status = 404;
+}
+const scope = panel ? floorReadoutScope(panel.event.id, panel.staff.accountId, panel.date) : null;
+---
+
+{panel && scope ? (
+  <Layout title={t.pageTitle(panel.event.name)}>
+    <main class="mx-auto flex max-w-6xl flex-col gap-6 p-4 sm:p-8" data-staff-readout="floor">
+      <header class="flex flex-col gap-2">
+        <a
+          href={scope.livePath}
+          class="self-start py-2 text-sm text-muted-foreground underline-offset-4 hover:underline"
+        >
+          {t.backToLive.floor}
+        </a>
+        <h1 class="text-3xl font-bold">{t.heading}</h1>
+        <p class="text-lg font-medium">{panel.event.name}</p>
+        <p class="text-sm text-muted-foreground">{t.intro}</p>
+      </header>
+      <StaffReadoutPage client:load scope={scope} locale={locale} />
+    </main>
+  </Layout>
+) : (
+  <NoAccess />
+)}

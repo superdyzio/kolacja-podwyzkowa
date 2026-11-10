@@ -1,0 +1,41 @@
+---
+import NoAccess from "@/components/NoAccess.astro";
+import { StaffReadoutPage } from "@/components/offline/StaffReadoutPage";
+import Layout from "@/layouts/Layout.astro";
+import { accessFor } from "@/lib/access";
+import { staffOfflineMessages, tabletReadoutScope } from "@/lib/offline";
+
+// The kitchen tablet's offline readout (staff-offline-readout, S-27; FR-047, NFR-017): the last state of the orders,
+// the published seating and the diets saved on this device by `/r/<key>`, read by the island from the browser's
+// memory. Its HTML carries no names, dishes or diets and reads nothing from the DB beyond the key check: it is the copy
+// the readout worker keeps and serves when the tablet's page cannot load. The middleware has already checked the key
+// (a replaced or unknown one gets the identical 404); this is the role-specific check.
+const locale = Astro.locals.locale;
+const t = staffOfflineMessages(locale);
+const access = accessFor(Astro.locals, "restaurant");
+if (!access) {
+  Astro.response.status = 404;
+}
+const scope = access ? tabletReadoutScope(Astro.params.key ?? "", access.event.date) : null;
+---
+
+{access && scope ? (
+  <Layout title={t.pageTitle(access.event.name)}>
+    <main class="mx-auto flex max-w-4xl flex-col gap-6 p-4 sm:p-8 lg:max-w-7xl" data-staff-readout="tablet">
+      <header class="flex flex-col gap-2">
+        <a
+          href={scope.livePath}
+          class="self-start py-2 text-sm text-muted-foreground underline-offset-4 hover:underline"
+        >
+          {t.backToLive.tablet}
+        </a>
+        <h1 class="text-3xl font-bold">{t.heading}</h1>
+        <p class="text-lg font-medium">{access.event.name}</p>
+        <p class="text-sm text-muted-foreground">{t.intro}</p>
+      </header>
+      <StaffReadoutPage client:load scope={scope} locale={locale} />
+    </main>
+  </Layout>
+) : (
+  <NoAccess />
+)}

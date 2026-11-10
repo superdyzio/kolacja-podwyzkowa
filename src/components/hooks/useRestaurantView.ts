@@ -1,10 +1,13 @@
 import { useEffect, useRef, useState } from "react";
+import { isAppDenial } from "@/lib/offline/staff";
 import type { RestaurantViewDto } from "@/types";
 
 // Live restaurant view (restaurant-orders): asks `GET <apiBase>/orders?since=<version>` every 15 s while the page is
 // visible (and at once when it becomes visible again) — 204 keeps what is shown, 200 replaces it. A failed or slow
 // request (8 s limit) keeps the last state; after 3 failures in a row the page says it is reconnecting. 404 = the link
 // was replaced: the page says so. One request at a time (a setTimeout chain, never setInterval).
+// staff-offline-readout (S-27): `syncedAt` = when the view shown was last confirmed by the server (the page load, every
+// 200 and 204), `denied` = the app's own denial (isAppDenial) — what the tablet's offline copy is saved and dropped by.
 
 const POLL_MS = 15_000;
 const TIMEOUT_MS = 8_000;
@@ -33,6 +36,8 @@ export function useRestaurantView(apiBase: string, initial: RestaurantViewDto) {
   const [view, setView] = useState(initial);
   const [failures, setFailures] = useState(0);
   const [gone, setGone] = useState(false);
+  const [denied, setDenied] = useState(false);
+  const [syncedAt, setSyncedAt] = useState(() => Date.now());
   const version = useRef(initial.version);
 
   useEffect(() => {
@@ -56,8 +61,11 @@ export function useRestaurantView(apiBase: string, initial: RestaurantViewDto) {
         });
         if (response.status === 204) {
           setFailures(0);
+          setDenied(false);
+          setSyncedAt(Date.now());
         } else if (response.status === 404) {
           setGone(true);
+          setDenied(isAppDenial(response));
           setFailures(0);
         } else if (response.ok) {
           const data: unknown = await response.json();
@@ -67,7 +75,9 @@ export function useRestaurantView(apiBase: string, initial: RestaurantViewDto) {
           version.current = data.version;
           setView(data);
           setGone(false);
+          setDenied(false);
           setFailures(0);
+          setSyncedAt(Date.now());
         } else {
           setFailures((count) => count + 1);
         }
@@ -100,5 +110,5 @@ export function useRestaurantView(apiBase: string, initial: RestaurantViewDto) {
     };
   }, [apiBase]);
 
-  return { view, gone, offline: failures >= OFFLINE_AFTER };
+  return { view, gone, denied, syncedAt, offline: failures >= OFFLINE_AFTER };
 }

@@ -4,6 +4,7 @@ import NoAccess from "@/components/NoAccess.astro";
 import { OrderManager } from "@/components/orders/OrderManager";
 import { formatEventDate } from "@/lib/events/dates";
 import { floorApiBase, floorMessages } from "@/lib/floor";
+import { floorReadoutScope, staffOfflineMessages } from "@/lib/offline";
 import { getOrderBoard } from "@/lib/orders";
 import { findFloorEvent } from "@/lib/panel-api";
 
@@ -21,9 +22,11 @@ if (!panel) {
 }
 const eventId = panel?.event.id ?? 0;
 const board = panel ? await getOrderBoard(panel.db, eventId) : null;
+// staff-offline-readout (S-27): this device keeps a price-free copy for /panel/obsluga/<id>/odczyt (this account).
+const readout = panel ? floorReadoutScope(eventId, panel.staff.accountId, panel.date) : null;
 ---
 
-{panel && board ? (
+{panel && board && readout ? (
   <Layout title={t.title(panel.event.name)}>
     <main class="mx-auto flex max-w-6xl flex-col gap-6 p-4 sm:p-8" data-floor-page={eventId}>
       <header class="flex flex-col gap-2">
@@ -39,8 +42,22 @@ const board = panel ? await getOrderBoard(panel.db, eventId) : null;
           {` · ${formatEventDate(panel.date, locale)}`}
         </p>
         <p class="text-sm text-muted-foreground">{t.intro}</p>
+        <a
+          href={readout.readoutPath}
+          class="self-start py-2 text-sm text-muted-foreground underline-offset-4 hover:underline"
+          data-staff-readout-link
+        >
+          {staffOfflineMessages(locale).readoutLink}
+        </a>
       </header>
-      <OrderManager client:load apiBase={floorApiBase(eventId)} initial={board} floor={true} locale={locale} />
+      <OrderManager
+        client:load
+        apiBase={floorApiBase(eventId)}
+        initial={board}
+        floor={true}
+        locale={locale}
+        readout={readout}
+      />
     </main>
   </Layout>
 ) : (

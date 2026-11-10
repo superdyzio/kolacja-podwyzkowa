@@ -16,7 +16,11 @@ const waiter = Astro.locals.waiter;
 ---
 
 <Layout title={t.entryTitle}>
-  <main class="mx-auto flex min-h-screen max-w-md flex-col justify-center gap-6 p-6" data-waiter-entry>
+  <main
+    class="mx-auto flex min-h-screen max-w-md flex-col justify-center gap-6 p-6"
+    data-waiter-entry
+    data-clear-staff-readout={waiter ? undefined : "waiter"}
+  >
     <header class="flex flex-col gap-1">
       <h1 class="text-3xl font-bold">{t.entryHeading}</h1>
       <p class="text-muted-foreground">{t.entryIntro}</p>
@@ -82,6 +86,11 @@ const waiter = Astro.locals.waiter;
 </Layout>
 
 <script>
+  import { clearStaffReadoutsOnPage } from "@/components/hooks/staff-offline-clear";
+
+  // staff-offline-readout (S-27): without a waiter session (marked on the page) no waiter-floor copy or worker stays.
+  clearStaffReadoutsOnPage();
+
   // Logout ends the per-event access for good (the link and the code are used up): ask first.
   for (const form of document.querySelectorAll<HTMLFormElement>("form[data-confirm]")) {
     form.addEventListener("submit", (event) => {

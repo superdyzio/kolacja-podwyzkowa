@@ -1,8 +1,9 @@
-import { Fragment, useMemo, useState } from "react";
+import { Fragment, useCallback, useMemo, useState } from "react";
 import { DietBadges } from "@/components/diets/DietBadges";
 import { DietSection } from "@/components/diets/DietSection";
 import { useOrderBoard } from "@/components/hooks/useOrderBoard";
 import { useServingSelection } from "@/components/hooks/useServingSelection";
+import { useStaffReadout } from "@/components/hooks/useStaffReadout";
 import { Button } from "@/components/ui/button";
 import { dietSeatLookup } from "@/lib/diets/board";
 import { formatAmount } from "@/lib/guesses/amount";
@@ -11,6 +12,9 @@ import { billTotalGrosze } from "@/lib/orders/drinks";
 import { drinkMessages, orderMessages, servingMessages } from "@/lib/orders/messages";
 import { dishKey, dishSuggestions, lineTotal } from "@/lib/orders/rules";
 import { courseLabel } from "@/lib/menu/rules";
+import { formatSavedAt } from "@/lib/offline/readout";
+import { staffReadoutFromBoard, type PlanAspect, type StaffReadoutScope } from "@/lib/offline/staff";
+import { staffOfflineMessages } from "@/lib/offline/staff-messages";
 import { describeLines, formatServedSummary } from "@/lib/orders/summary";
 import { cn } from "@/lib/utils";
 import type { OrderBoardDto, OrderItemDto } from "@/types";
@@ -29,6 +33,9 @@ interface Props {
   // waiter-day-and-refills (S-21): the floor (/panel/obsluga/<id>) — lines are marked and added, never edited or
   // deleted; drinks are added only.
   floor?: boolean;
+  // staff-offline-readout (S-27): both floors keep the tablet's price-free copy of the board on this device (for this
+  // event and this account or waiter, until the end of the floor window). Never the client's link or the previews.
+  readout?: StaffReadoutScope;
 }
 
 function sum(items: readonly OrderItemDto[]): number {
@@ -46,11 +53,36 @@ function lineKey(item: OrderItemDto): string {
 // lights up where a dish, one piece of it or a line goes. bill-drinks: „Napoje do rachunku” at the bottom (the
 // organizer's own list) and the bill total (dishes + drinks) at the top. guest-import-diets (S-23): „Diety i alergie”
 // under the totals and each seat's diet next to its name (the client, the staff's preview and both floors).
-export function OrderManager({ apiBase, initial, locale, floor = false }: Props) {
+// staff-offline-readout (S-27): on the floors every board the server confirms is saved (price-free) for the offline
+// readout page (`<floor>/odczyt`, also served by the readout worker when the floor cannot load); while the server
+// cannot be reached, a note says when it was saved and links there. The app's denial forgets the copy.
+export function OrderManager({ apiBase, initial, locale, floor = false, readout }: Props) {
   const t = orderMessages(locale);
   const s = servingMessages(locale);
   const d = drinkMessages(locale);
-  const { board, pending, failure, send: sendRequest, dismissFailure } = useOrderBoard(apiBase, initial, locale);
+  const so = staffOfflineMessages(locale);
+  const {
+    board,
+    pending,
+    failure,
+    send: sendRequest,
+    dismissFailure,
+    syncedAt,
+    offline,
+    denied,
+  } = useOrderBoard(apiBase, initial, locale);
+  const [aspect, setAspect] = useState<NonNullable<PlanAspect> | null>(null);
+  const onAspect = useCallback((planVersion: number, ratio: number) => {
+    setAspect((previous) =>
+      previous?.planVersion === planVersion && previous.aspect === ratio ? previous : { planVersion, aspect: ratio },
+    );
+  }, []);
+  const copy = useMemo(
+    () =>
+      readout ? staffReadoutFromBoard(board, aspect?.planVersion === board.seating.planVersion ? aspect : null) : null,
+    [readout, board, aspect],
+  );
+  const saved = useStaffReadout(readout ?? null, copy, syncedAt, denied);
   // Where a failed save is reported: next to the drinks panel for its own requests, at the top for everything else.
   const [failureAtDrinks, setFailureAtDrinks] = useState(false);
   const send = (request: OrderRequest) => {
@@ -156,6 +188,29 @@ export function OrderManager({ apiBase, initial, locale, floor = false }: Props)
   return (
     <div className="grid gap-6 lg:grid-cols-2 lg:items-start">
       <div className="flex flex-col gap-6 lg:col-start-1 lg:row-start-1">
+        {readout && (offline || denied) && (
+          <p
+            role="status"
+            data-staff-readout-note={denied ? "gone" : "offline"}
+            className="rounded-lg border border-amber-500/50 bg-amber-500/10 p-3 text-sm"
+          >
+            {denied ? (
+              so.liveGone
+            ) : (
+              <>
+                {so.liveOffline}
+                {saved && (
+                  <span className="block">
+                    {so.liveSaved(formatSavedAt(saved.savedAt, new Date(), locale))}{" "}
+                    <a href={readout.readoutPath} className="underline underline-offset-4">
+                      {so.readoutLink}
+                    </a>
+                  </span>
+                )}
+              </>
+            )}
+          </p>
+        )}
         <section aria-labelledby="order-total-heading" className="flex flex-col gap-1 rounded-xl border p-4 sm:p-6">
           <h2 id="order-total-heading" className="text-muted-foreground text-sm">
             {d.billTotal}
@@ -205,6 +260,7 @@ export function OrderManager({ apiBase, initial, locale, floor = false }: Props)
         onClear={serving.clear}
         diets={diets}
         locale={locale}
+        onAspect={readout ? onAspect : undefined}
         className={cn(
           "bg-background lg:sticky lg:top-4 lg:col-start-2 lg:row-span-2 lg:row-start-1",
           serving.resolved &&

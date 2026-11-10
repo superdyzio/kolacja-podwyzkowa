@@ -6,6 +6,7 @@ import Layout from "@/layouts/Layout.astro";
 import { accessFor, restaurantPath } from "@/lib/access";
 import { getEventBranding } from "@/lib/branding";
 import { getDb } from "@/lib/db";
+import { staffOfflineMessages, tabletReadoutScope } from "@/lib/offline";
 import { getRestaurantView } from "@/lib/orders";
 import { restaurantMessages } from "@/lib/orders/messages";
 
@@ -27,6 +28,8 @@ const view =
         initial: await getRestaurantView(db, access.event.id),
         // event-branding (S-18): the restaurant's and the client's brand above the view (page load only).
         branding: await getEventBranding(db, access.event.id),
+        // staff-offline-readout (S-27): this tablet keeps a copy for /r/<key>/odczyt until the floor window ends.
+        readout: tabletReadoutScope(Astro.params.key ?? "", access.event.date),
       }
     : null;
 ---
@@ -35,7 +38,21 @@ const view =
   <Layout title={restaurantMessages(locale).pageTitle(view.name)}>
     <main class="mx-auto flex max-w-4xl flex-col gap-6 p-4 sm:p-8 lg:max-w-7xl">
       <BrandHeader branding={view.branding} base={`${view.apiBase}/branding`} locale={locale} />
-      <RestaurantView client:load apiBase={view.apiBase} initial={view.initial} eventName={view.name} locale={locale} />
+      <RestaurantView
+        client:load
+        apiBase={view.apiBase}
+        initial={view.initial}
+        eventName={view.name}
+        locale={locale}
+        readout={view.readout}
+      />
+      <a
+        href={view.readout.readoutPath}
+        class="self-start py-2 text-sm text-muted-foreground underline-offset-4 hover:underline"
+        data-staff-readout-link
+      >
+        {staffOfflineMessages(locale).readoutLink}
+      </a>
     </main>
   </Layout>
 ) : (

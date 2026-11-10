@@ -15,7 +15,7 @@ const loggedOut = Astro.url.searchParams.get("wylogowano") === "1";
 ---
 
 <Layout title={t.loginTitle}>
-  <main class="mx-auto flex min-h-screen max-w-md flex-col justify-center gap-6 p-6">
+  <main class="mx-auto flex min-h-screen max-w-md flex-col justify-center gap-6 p-6" data-clear-staff-readout="floor">
     <header class="flex flex-col gap-1">
       <p class="text-sm text-muted-foreground">{PRODUCT_NAME}</p>
       <h1 class="text-3xl font-bold">{t.loginHeading}</h1>
@@ -53,3 +53,10 @@ const loggedOut = Astro.url.searchParams.get("wylogowano") === "1";
     <p class="text-sm text-muted-foreground">{t.forgotHint}</p>
   </main>
 </Layout>
+
+<script>
+  // staff-offline-readout (S-27): no staff session here, so no floor copy and no floor readout worker either.
+  import { clearStaffReadoutsOnPage } from "@/components/hooks/staff-offline-clear";
+
+  clearStaffReadoutsOnPage();
+</script>

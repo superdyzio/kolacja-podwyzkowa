@@ -7,6 +7,7 @@ import { eventWaiterMessages } from "@/lib/event-waiters/messages";
 import { WAITER_LOGOUT_API, waiterFloorApiBase } from "@/lib/event-waiters/paths";
 import { formatEventDate } from "@/lib/events/dates";
 import { floorMessages } from "@/lib/floor/messages";
+import { staffOfflineMessages, waiterReadoutScope } from "@/lib/offline";
 import { getOrderBoard } from "@/lib/orders";
 import { formatSupportTime } from "@/lib/support/format";
 import { findWaiterFloorEvent } from "@/lib/waiter-api";
@@ -26,9 +27,11 @@ if (!floor) {
 }
 const eventId = floor?.event.id ?? 0;
 const board = floor ? await getOrderBoard(floor.db, eventId) : null;
+// staff-offline-readout (S-27): this device keeps a price-free copy for /kelner/sala/<id>/odczyt (this waiter).
+const readout = floor ? waiterReadoutScope(eventId, floor.waiter.waiterId, floor.date, floor.waiter.expiresAt) : null;
 ---
 
-{floor && board ? (
+{floor && board && readout ? (
   <Layout title={t.floorTitle(floor.event.name)}>
     <main class="mx-auto flex max-w-6xl flex-col gap-6 p-4 sm:p-8" data-waiter-floor={eventId}>
       <header class="flex flex-col gap-2">
@@ -48,8 +51,22 @@ const board = floor ? await getOrderBoard(floor.db, eventId) : null;
           {t.floorWaiter(floor.waiter.name)} · {t.floorUntil(formatSupportTime(floor.waiter.expiresAt, locale))}
         </p>
         <p class="text-sm text-muted-foreground">{tf.intro}</p>
+        <a
+          href={readout.readoutPath}
+          class="self-start py-2 text-sm text-muted-foreground underline-offset-4 hover:underline"
+          data-staff-readout-link
+        >
+          {staffOfflineMessages(locale).readoutLink}
+        </a>
       </header>
-      <OrderManager client:load apiBase={waiterFloorApiBase(eventId)} initial={board} floor={true} locale={locale} />
+      <OrderManager
+        client:load
+        apiBase={waiterFloorApiBase(eventId)}
+        initial={board}
+        floor={true}
+        locale={locale}
+        readout={readout}
+      />
     </main>
   </Layout>
 ) : (

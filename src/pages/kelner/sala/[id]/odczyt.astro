@@ -1,0 +1,44 @@
+---
+import Layout from "@/layouts/Layout.astro";
+import NoAccess from "@/components/NoAccess.astro";
+import { StaffReadoutPage } from "@/components/offline/StaffReadoutPage";
+import { staffOfflineMessages, waiterReadoutScope } from "@/lib/offline";
+import { findWaiterFloorEvent } from "@/lib/waiter-api";
+
+// The per-event waiter's offline readout (staff-offline-readout, S-27; FR-047, NFR-017): the last state of the orders,
+// the published seating and the diets saved on this device by `/kelner/sala/<id>` for THIS waiter — the tablet's
+// board, without prices — read by the island from the browser's memory, until the earlier of the floor window's end and
+// the waiter's own expiry. Its HTML carries no names, dishes or diets: it is the copy the readout worker keeps and
+// serves when the floor cannot load. The same guard as the waiter's floor (no waiter session → 303 /kelner from the
+// middleware; another event, outside the window → the no-access page with 404).
+const locale = Astro.locals.locale;
+const t = staffOfflineMessages(locale);
+const floor = await findWaiterFloorEvent(Astro.locals, Astro.params.id);
+if (!floor) {
+  Astro.response.status = 404;
+}
+const scope = floor
+  ? waiterReadoutScope(floor.event.id, floor.waiter.waiterId, floor.date, floor.waiter.expiresAt)
+  : null;
+---
+
+{floor && scope ? (
+  <Layout title={t.pageTitle(floor.event.name)}>
+    <main class="mx-auto flex max-w-6xl flex-col gap-6 p-4 sm:p-8" data-staff-readout="waiter">
+      <header class="flex flex-col gap-2">
+        <a
+          href={scope.livePath}
+          class="self-start py-2 text-sm text-muted-foreground underline-offset-4 hover:underline"
+        >
+          {t.backToLive.waiter}
+        </a>
+        <h1 class="text-3xl font-bold">{t.heading}</h1>
+        <p class="text-lg font-medium">{floor.event.name}</p>
+        <p class="text-sm text-muted-foreground">{t.intro}</p>
+      </header>
+      <StaffReadoutPage client:load scope={scope} locale={locale} />
+    </main>
+  </Layout>
+) : (
+  <NoAccess />
+)}

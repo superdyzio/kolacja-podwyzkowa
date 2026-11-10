@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { DietBadges } from "@/components/diets/DietBadges";
 import { useMapSearch } from "@/components/hooks/useMapSearch";
 import { MapSearch } from "@/components/map-search/MapSearch";
@@ -25,6 +25,10 @@ interface Props {
   diets?: DietBoardDto;
   locale: Locale;
   className?: string;
+  // staff-offline-readout (S-27): the aspect ratio saved with an offline copy, used until (or unless) the plan image
+  // loads; the measured one is reported to the page, which saves it with the copy.
+  fallbackAspect?: number;
+  onAspect?: (planVersion: number, aspect: number) => void;
 }
 
 // Without a plan image (or until it has loaded) the drawing stands on a 16:9 stage (as on the TV).
@@ -35,10 +39,27 @@ const BLANK_ASPECT = 16 / 9;
 // numbers); the caption says it in words. While something is picked, only the tables it touches stay bright.
 // guest-map-search (S-22): a guest searched by name lights up violet on the same plan (the published seating it
 // draws; the note says so), next to whatever dish is picked; their table stays bright.
-export function ServingPlan({ apiBase, seating, servingTables, selection, onClear, diets, locale, className }: Props) {
+export function ServingPlan({
+  apiBase,
+  seating,
+  servingTables,
+  selection,
+  onClear,
+  diets,
+  locale,
+  className,
+  fallbackAspect,
+  onAspect,
+}: Props) {
   const t = servingMessages(locale);
   const [loaded, setLoaded] = useState<{ version: number; aspect: number } | null>(null);
-  const aspect = loaded !== null && loaded.version === seating.planVersion ? loaded.aspect : BLANK_ASPECT;
+  const aspect =
+    loaded !== null && loaded.version === seating.planVersion ? loaded.aspect : (fallbackAspect ?? BLANK_ASPECT);
+  useEffect(() => {
+    if (loaded !== null) {
+      onAspect?.(loaded.version, loaded.aspect);
+    }
+  }, [loaded, onAspect]);
   const servingMarks = selection?.marks;
   const search = useMapSearch(seating.tables);
   // Search marks last: at a chair with both, the found guest's colour wins (the serving label stays).

@@ -286,10 +286,10 @@ None (no schema change). Existing organizer workers keep working: the file name 
 
 #### Automated
 
-- [x] 1.1 Unit tests of the core and the floor window end pass
-- [x] 1.2 Worker tests pass (old and new)
-- [x] 1.3 Type check passes
-- [x] 1.4 Lint passes
+- [x] 1.1 Unit tests of the core and the floor window end pass — 78c3127
+- [x] 1.2 Worker tests pass (old and new) — 78c3127
+- [x] 1.3 Type check passes — 78c3127
+- [x] 1.4 Lint passes — 78c3127
 
 #### Manual
 
@@ -299,10 +299,10 @@ None (no schema change). Existing organizer workers keep working: the file name 
 
 #### Automated
 
-- [ ] 2.1 All tests pass
-- [ ] 2.2 Type check passes
-- [ ] 2.3 Lint passes
-- [ ] 2.4 Build passes
+- [x] 2.1 All tests pass
+- [x] 2.2 Type check passes
+- [x] 2.3 Lint passes
+- [x] 2.4 Build passes
 
 #### Manual
 
