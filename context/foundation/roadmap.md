@@ -55,7 +55,7 @@ Restauracja, która gościła kolację 2026-11-08, chce tego narzędzia do włas
 | S-10 | platform-restaurants    | administrator platformy zakłada restaurację z zaproszeniem właściciela, widzi listę, wyłącza i włącza restaurację         | F-03             | FR-021, US-05                                                                                 | done     |
 | S-11 | restaurant-events       | lokal zakłada wydarzenie, przegląda nadchodzące, minione i archiwum, kopiuje i wymienia linki, archiwizuje i usuwa        | S-10             | FR-024, FR-025, US-06, US-09, US-10                                                           | done     |
 | S-12 | restaurant-team         | właściciel i menedżer zapraszają zespół, zmieniają role, usuwają osoby i dają jednorazowy link resetu hasła               | S-10             | FR-023, US-05                                                                                 | done        |
-| S-13 | admin-support-log       | administrator platformy wchodzi w dane lokalu w trybie wsparcia, a właściciel widzi każde wejście w dzienniku             | S-11             | FR-021, US-05, US-10, NFR-012                                                                 | proposed |
+| S-13 | admin-support-log       | administrator platformy wchodzi w dane lokalu w trybie wsparcia, a właściciel widzi każde wejście w dzienniku             | S-11             | FR-021, US-05, US-10, NFR-012                                                                 | planning |
 | S-14 | client-restaurant-split | lokal przełącza „lokal prowadzi”; klient prowadzi zamówienia i robi reset prób; pełny reset i koszty AI tylko w panelu    | S-11             | FR-026, FR-027, FR-028, US-07                                                                 | proposed |
 | S-15 | venue-templates         | menedżer zapisuje salę jako szablon, tworzy z niego wydarzenia i aktualizuje wydarzenie z szablonu                        | S-11             | FR-030, US-06, US-09                                                                          | proposed |
 | S-16 | menu-catalog-courses    | menedżer prowadzi katalog menu z kursami i menu wydarzenia; klient zamawia z niego bez zmiany cen; kuchnia widzi kursy    | S-14             | FR-037, FR-027, US-07                                                                         | proposed |
@@ -181,7 +181,7 @@ Fundamenty poniżej zakładają, że to istnieje, i NIE budują tego od nowa.
 - **Unknowns:**
   - Treść umowy powierzenia i informacji o dzienniku dla lokalu (Otwarte pytanie 6). — Owner: user + prawnik. Block: no.
 - **Risk:** Jedyny wyjątek od izolacji danych. Musi być niemożliwy bez wpisu w dzienniku.
-- **Status:** proposed
+- **Status:** planning
 
 ### S-14: Rozdział klient / lokal i „lokal prowadzi”
 
