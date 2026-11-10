@@ -32,6 +32,8 @@ import { formatVenueSummary, summarizeVenue } from "@/lib/venue";
 import { EventMenuEditor } from "@/components/menu/EventMenuEditor";
 import { courseLabel, getEventMenu, groupByCourse, menuMessages } from "@/lib/menu";
 import { formatAmount } from "@/lib/guesses/amount";
+import { EventWaitersManager } from "@/components/event-waiters/EventWaitersManager";
+import { eventWaiterMessages, getEventWaiters } from "@/lib/event-waiters";
 
 // The event card (restaurant-events, S-11; US-06, US-09, FR-025): owners and managers of the event's restaurant see
 // what it is, copy, open and replace its client, TV and staff tablet links, edit it, archive or restore it; owners also
@@ -44,7 +46,8 @@ import { formatAmount } from "@/lib/guesses/amount";
 // (support mode: without the guests' links, which carry keys), then „Koszty AI” (usage, provider, spend) and, for
 // members, the full „Reset danych” (FR-028; the client keeps „Reset prób”). ONE guard call (each one is a log row in
 // support mode). venue-templates (S-15): members also get „Szablon sali” (save the room as a template, update the
-// room from a template after a preview naming who loses a seat).
+// room from a template after a preview naming who loses a seat). event-waiter-access (S-21b): members get „Kelnerzy na
+// imprezę” (add a waiter for this event with a one-time link and code, revoke); support mode shows no such section.
 const locale = Astro.locals.locale;
 const t = eventPanelMessages(locale);
 const lead = leadMessages(locale);
@@ -52,6 +55,7 @@ const clientWork = clientWorkMessages(locale);
 const tmod = modulesMessages(locale);
 const tmenu = menuMessages(locale);
 const tbrand = brandingMessages(locale);
+const twaiters = eventWaiterMessages(locale);
 const panel = await findPanelEvent(Astro.locals, Astro.params.id, EVENT_STAFF_ROLES);
 const loaded = panel
   ? await Promise.all([
@@ -70,6 +74,10 @@ const loaded = panel
       getEventModules(panel.db, panel.event.id),
       // event-branding (S-18): „Marka wydarzenia” (members only; support mode shows no brand editor).
       panel.support ? Promise.resolve(null) : getEventBranding(panel.db, panel.event.id),
+      // event-waiter-access (S-21b): „Kelnerzy na imprezę” (members only; never credentials, those are shown once).
+      panel.support
+        ? Promise.resolve(null)
+        : getEventWaiters(panel.db, panel.event.restaurantId, panel.event.id, new Date()),
     ])
   : null;
 const card = loaded?.[0] ?? null;
@@ -90,9 +98,11 @@ const work = loaded
         menu,
         modules,
         branding,
+        waiters,
       ] = loaded;
       return {
         branding,
+        waiters,
         templates,
         menu,
         modules,
@@ -136,6 +146,25 @@ const work = loaded
         </>
       ) : (
         <EventCard client:load initial={card} role={panel.role} origin={Astro.url.origin} locale={locale} />
+      )}
+      {!panel.support && work.waiters && (
+        <section
+          aria-labelledby="event-waiters-heading"
+          class="flex flex-col gap-3 rounded-xl border p-4 sm:p-6"
+          data-event-waiters
+        >
+          <h2 id="event-waiters-heading" class="text-xl font-semibold">
+            {twaiters.heading}
+          </h2>
+          <p class="text-sm text-muted-foreground">{twaiters.intro}</p>
+          <EventWaitersManager
+            client:load
+            eventId={card.id}
+            initial={work.waiters}
+            origin={Astro.url.origin}
+            locale={locale}
+          />
+        </section>
       )}
       <ClientWorkCards eventId={card.id} sections={work.sections} summaries={work.summaries} locale={locale} />
       {!panel.support && (

@@ -1300,6 +1300,49 @@ export interface Database {
           },
         ];
       };
+      // event-waiter-access (S-21b): per-event waiters — a one-time link and code (SHA-256 only) for one event's floor.
+      event_waiter: {
+        Row: {
+          id: number;
+          event_id: number;
+          restaurant_id: number;
+          display_name: string;
+          created_by: number | null;
+          created_at: string;
+          expires_at: string;
+          link_hash: string | null;
+          code_hash: string | null;
+          session_hash: string | null;
+          redeemed_at: string | null;
+        };
+        Insert: {
+          id?: never;
+          event_id: number;
+          restaurant_id: number;
+          display_name: string;
+          created_by?: number | null;
+          created_at?: string;
+          expires_at: string;
+          link_hash?: string | null;
+          code_hash?: string | null;
+          session_hash?: string | null;
+          redeemed_at?: string | null;
+        };
+        Update: {
+          id?: never;
+          event_id?: number;
+          restaurant_id?: number;
+          display_name?: string;
+          created_by?: number | null;
+          created_at?: string;
+          expires_at?: string;
+          link_hash?: string | null;
+          code_hash?: string | null;
+          session_hash?: string | null;
+          redeemed_at?: string | null;
+        };
+        Relationships: [];
+      };
     };
     Views: { [_ in never]: never };
     Functions: {
@@ -1556,6 +1599,19 @@ export interface Database {
       end_support_access: {
         Args: { p_session_id: number; p_restaurant_id: number };
         Returns: boolean;
+      };
+      // event-waiter-access (S-21b): adds a per-event waiter under the event row lock → its id and expiry.
+      add_event_waiter: {
+        Args: {
+          p_event_id: number;
+          p_restaurant_id: number;
+          p_display_name: string;
+          p_created_by: number | null;
+          p_link_hash: string;
+          p_code_hash: string;
+          p_max: number;
+        };
+        Returns: { waiter_id: number; expires_at: string }[];
       };
     };
     Enums: { [_ in never]: never };

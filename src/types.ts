@@ -1109,3 +1109,39 @@ export interface RestaurantBrandingDto {
   textColor: "#000000" | "#ffffff" | null;
   logo: LogoDto | null;
 }
+
+// --- Per-event waiters (event-waiter-access, S-21b) -----------------------------------------------------------------
+
+// unused: link and code not used yet; redeemed: on the floor (or logged out); expired: past noon after the event.
+export type EventWaiterStatus = "unused" | "redeemed" | "expired";
+
+// One per-event waiter as the event card lists it — never a hash, a token or the code.
+export interface EventWaiterDto {
+  id: number;
+  name: string;
+  status: EventWaiterStatus;
+  createdAt: string;
+  expiresAt: string;
+}
+
+export interface EventWaitersDto {
+  eventId: number;
+  // Not archived and the floor window not over yet (today or upcoming).
+  canAdd: boolean;
+  waiters: EventWaiterDto[];
+}
+
+// The credentials of a new per-event waiter, shown ONCE to the person who added it: the link path (the page adds its
+// origin) and the code to type on /kelner. The database keeps only their hashes.
+export interface EventWaiterIssuedDto {
+  id: number;
+  name: string;
+  path: string;
+  code: string;
+  expiresAt: string;
+}
+
+export interface EventWaiterAnswerDto {
+  waiters: EventWaitersDto;
+  issued: EventWaiterIssuedDto;
+}

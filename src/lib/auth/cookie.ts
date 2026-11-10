@@ -22,9 +22,9 @@ export function clearedSessionCookie({ secure }: { secure: boolean }): string {
   return `${SESSION_COOKIE}=; ${attributes(0, secure)}`;
 }
 
-// The session token from a Cookie request header, or null when absent or not a well-formed token (a garbage cookie
-// never reaches the database).
-export function readSessionToken(cookieHeader: string | null): string | null {
+// A secret token (43 characters of base64url) from the cookie `name` of a Cookie request header, or null when absent
+// or malformed (a garbage cookie never reaches the database). Also the per-event waiter's cookie (event-waiter-access).
+export function readCookieToken(cookieHeader: string | null, name: string): string | null {
   if (!cookieHeader) {
     return null;
   }
@@ -33,10 +33,15 @@ export function readSessionToken(cookieHeader: string | null): string | null {
     if (index === -1) {
       continue;
     }
-    if (part.slice(0, index).trim() === SESSION_COOKIE) {
+    if (part.slice(0, index).trim() === name) {
       const value = part.slice(index + 1).trim();
       return TOKEN_PATTERN.test(value) ? value : null;
     }
   }
   return null;
+}
+
+// The staff session token from a Cookie request header, or null when absent or not a well-formed token.
+export function readSessionToken(cookieHeader: string | null): string | null {
+  return readCookieToken(cookieHeader, SESSION_COOKIE);
 }
