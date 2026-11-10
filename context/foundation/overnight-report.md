@@ -122,3 +122,89 @@ npx astro preview stop
 6. Regulamin, polityka prywatności, umowa powierzenia — otwarte (dziennik wejść admina już istnieje i jest widoczny dla właściciela).
 7. Natywny `.xlsx` — otwarte (import gości S-23 jeszcze nie powstał).
 8. Koszt AI na platformie — otwarte; koszty AI wydarzenia widzi teraz lokal w panelu (S-14).
+
+---
+
+# Przebieg 2 — dzień i noc 2026-11-10/11
+
+Ta sama gałąź `overnight/m2` (wypchnięta po każdym elemencie). `main` nietknięty, bez PR, bez `db push`, bez deployu, zero płatnych wywołań AI, żadnej nowej zależności. Stary projekt kolacji (`eaubtfkoehpekdckhnxf`) nietknięty. Kamienia milowego M-2 nie zamykałem (`/10x-roadmap` zostawiony Tobie).
+
+**Ostatni zielony commit:** `a4aa6e7` (HEAD `overnight/m2`, wypchnięty; ostatni commit z kodem: `3b9c4e6`). Po każdym elemencie sam sprawdziłem testy, lint, astro check, build, smoke i demo na `AI_PROVIDER=mock`. **Wszystkie 10 elementów przebiegu 2 jest zrobionych; cała roadmapa M-2 ma status `done`.**
+
+## Co zrobione (przebieg 2)
+
+| Element | FR / US | Commity (fazy → archiwum) | Migracja |
+| --- | --- | --- | --- |
+| S-21b event-waiter-access (kelner „na imprezę”) | FR-023, FR-029, US-08 | 306a01e, e1a3ee9, fcf4988 → 90fb9b8 | `20261111020000_event_waiters.sql` |
+| S-22 guest-map-search | FR-048, US-08 | 829534d, c86ecd3 → b6d6f4b | brak |
+| S-23 guest-import-diets | FR-035, FR-036, US-07, NFR-021 | 972f17c, 645331b, c07fea3 → 21f5241 | `20261111030000_guest_diets.sql` |
+| S-25 guest-rsvp-menu | FR-039, US-07 | 0b0e645, 8cd7f66, 9373537 → 356f2d2 | `20261111040000_guest_rsvp.sql` |
+| S-26 privacy-retention | FR-040, US-09, NFR-019, NFR-021 | ea90138, ae5a3ff, 89851be → b6ceb0d | `20261111050000_privacy_retention.sql` |
+| S-27 staff-offline-readout | FR-047, US-08, NFR-017 | 78c3127, 1c1304e, d0f8237 → fa3f216 | brak |
+| S-28 pub-quiz | FR-049, NFR-014, NFR-021, NFR-023 | 27504c6, 4fbea9e, bb4cada, 2825d29 → d93f69f | `20261111060000_pub_quiz.sql` |
+| S-24 room-prints | FR-038 | acbd401, 84c54a2, d4458af, 8098d82 → 211caba | brak |
+| S-29 demo-restaurant | FR-042 | 98315a0, 0909b61, c2d079a, 9648a37 → d95667e | brak |
+| S-30 landing-legal | FR-041 | 15183f8, 013a2ac, 1a51d9b, 3b9c4e6 → 005a9f1 | brak |
+
+Stan po S-28: 142 pliki testów / 1487 testów zielonych, 6 pominiętych; smoke 858 PASS / 0 FAIL; demo OK. Stan po S-24: 144 / 1510, 6 pominiętych; smoke 871 PASS / 0 FAIL; demo OK. Stan po S-29: 145 / 1542, 6 pominiętych; smoke 871 PASS / 0 FAIL; demo OK (także ponowne uruchomienie). **Stan końcowy (po S-30): 146 plików / 1577 testów zielonych, 6 pominiętych; lint 0, astro check 0 błędów, build OK; smoke 875 PASS / 0 FAIL; demo OK.** Start przebiegu 2: 126 / 1267, smoke 776.
+
+## Co warto wiedzieć (przebieg 2; pełna lista w `overnight-log.md` → `## Decyzje`, linie `2026-11-10 — S-…`)
+
+- **Kelner „na imprezę” (S-21b):** właściciel albo menedżer wpisuje imię na karcie wydarzenia i dostaje RAZ link `/kelner/<token>` i krótki kod (np. `135-X8AU-HQZF`). Bez konta i hasła. Pierwsze użycie linku albo kodu zużywa oba i otwiera salę tylko tego wydarzenia do południa po imprezie (ciasteczko `kp-waiter`, osobne od panelu). Nie ma „nowego linku”: po wylogowaniu lub zgubionym telefonie usuń kelnera i dodaj go jeszcze raz. Kod ma limit 10 prób na 15 min na kelnera (link nie ma limitu). Admin platformy nigdy nie widzi linków ani kodów. Ryzyka: wyciek wiersza z bazy pozwala złamać kod offline (ważny najwyżej ~36 h); ktoś może wyczerpać próby kodu kelnera (link działa dalej).
+- **Szukanie gościa na mapie (S-22):** pole „szukaj” na telefonie gościa, tablecie `/r/`, stronie zamówień klienta, podglądzie w panelu i obu salach kelnera. Znaleziony gość świeci na fioletowo (własne krzesło gościa zostaje czerwone). Szuka tylko w opublikowanym rozsadzeniu, czyli w tym, co strona już pokazuje. Na TV i w `/rozsadzenie` nie ma pola.
+- **Import gości i diety (S-23):** CSV lub wklejka z podglądem (UTF-8, a jeśli się nie da — Windows-1250 z polskiego Excela). 8 stałych tagów diet i alergii plus notatka do 120 znaków. **Diety to dane o zdrowiu:** widzą je tylko klient, lokal (tablet, sala, podglądy) i kelnerzy. Nigdy gość (nawet własnej), TV, AI ani logi. **Tryb wsparcia admina też widzi diety** (zapisane w logu; do decyzji razem z Otwartym pytaniem 6). Bez `.xlsx` (Otwarte pytanie 7).
+- **Potwierdzenia i wybór dania (S-25):** klient ustawia termin i dania do wyboru (z dostępnego menu, max 12). Gość na telefonie: „Przyjdę / Nie przyjdę” i jedno danie. Po terminie odpowiedź jest tylko do odczytu, ale klient może poprawiać zawsze. „Nie przyjdę” = nieobecny na liście gości (jedno źródło prawdy). **Nie zrobione:** liczby na tablecie kuchni, „przenieś wybory do zamówień”, osobna część resetu.
+- **Retencja i eksport (S-26):** właściciel ustawia, ile dni po imprezie trzymać dane gości (domyślnie 30, 1–365). Potem znikają goście, diety, rozsadzenia, odpowiedzi, notatki zamówień i kelnerzy „na imprezę”. Zostają wydarzenie, sala, menu i rachunek bez nazwisk. **Nie ma harmonogramu:** usuwanie dzieje się przy otwarciu przeterminowanego wydarzenia, przy wejściach na strony panelu (najwyżej raz na 10 min) i przez `npm run retention`. Zaplanowanie tej komendy to Twoja decyzja infrastrukturalna. Eksport JSON i dwa CSV na karcie wydarzenia (właściciel, menedżer; admin nie). Informacja o prywatności dla gościa `/g/<klucz>/prywatnosc` to **szkic „do przeglądu prawnika”**. **Uwaga przy pierwszym wdrożeniu:** każde wydarzenie starsze niż 30 dni straci dane gości przy pierwszym odczycie. Stary projekt kolacji nigdy nie dostaje tych migracji.
+- **Odczyt bez sieci dla obsługi (S-27):** tablet kuchni, sala kelnera i sala kelnera „na imprezę” pamiętają na urządzeniu ostatni stan (rozsadzenie, przygotowanie, diety; bez cen i kluczy) i pokazują go bez sieci także po odświeżeniu (`…/odczyt`). Kopia wygasa w południe dnia po imprezie i znika po odmowie dostępu, po wylogowaniu i na `/kelner` bez sesji. Ryzyka: **tablet zapisuje w każdy dzień, w którym ktoś go otworzy** (otwarty kilka dni przed imprezą trzyma imiona i diety do jej końca; ograniczenie do dnia imprezy to mała zmiana, niezrobiona); urządzenie, które zostaje offline po „Wyloguj wszędzie”, trzyma kopię do wygaśnięcia; zwykły http w sieci lokalnej nie ma service workera (tylko otwarta strona trzyma stan).
+- **Pub quiz (S-28):** płatny moduł (odblokowuje admin w wizycie wsparcia, potem włącza klient). Pytania 2–4 odpowiedzi, jedna poprawna, do 50, bez AI. Klient prowadzi: zapowiedź → pytanie → zamknięcie z poprawną odpowiedzią i liczbami → wyniki. Gość odpowiada na telefonie i może zmienić odpowiedź, dopóki pytanie jest otwarte. **Wyjątek od „ranking tylko u prowadzącego”:** na etapie „Wyniki” TV pokazuje miejsca 1–3 z imionami i punktami (do 10 imion). W trakcie pytania TV pokazuje tylko liczbę odpowiedzi. „Reset prób” ma część „Pub quiz”. Uwaga: TV wydarzenia demo otwiera się na wynikach quizu, które zasłaniają rozsadzenie; „Zakończ quiz” na `/o/<klucz>/quiz` je zdejmuje.
+- **Wydruki dla sali (S-24):** klient (`/o/<klucz>/wydruki`) oraz właściciel i menedżer w panelu (karta wydarzenia, „Wydruki dla sali”) drukują cztery rzeczy: tablicę „Znajdź swój stolik” (A4 albo plakat A3), karty stołów, winietki (namiot albo płaskie, trzy rozmiary, arkusz A4 z liniami cięcia i zgięcia) i listę dla obsługi z dietami przy stołach. Listę z dietami otwierają też kelnerzy na sali (konto i „kelner na imprezę”). Dane pochodzą z ostatniego opublikowanego rozsadzenia; o nieopublikowanych zmianach ostrzega notka widoczna tylko na ekranie. Każdy wydruk ma markę lokalu i klienta, nie ma kluczy ani cen, a diety są tylko na liście dla obsługi. Bez migracji. Ryzyko: podział na strony jest szacowany po liczbie znaków (34 wiersze w kolumnie tablicy, 36 jednostek na stronę listy). Bardzo długie imiona albo uwagi mogą wyjść poza arkusz; wiersz wtedy rośnie, nic nie jest ucinane. Nie sprawdziłem tego na prawdziwej drukarce.
+- **Restauracja demo (S-29):** `npm run demo` nie zakłada już za każdym razem nowej restauracji. Odświeża jedną stałą „Restaurację demo” ze stałymi lokalnymi loginami: `admin@`, `wlasciciel@`, `menedzer@` i `kelner@demo.stolik`. Przy każdym uruchomieniu usuwa wydarzenia tej restauracji i zakłada pięć od nowa z szablonu „Cały lokal (szablon demo)” (3 sale, 14 stolików, 98 miejsc). Główne to „Impreza firmowa Acme (demo)”: dziś, 80 fikcyjnych gości, w tym 50 z CSV z dietami. Linki wydarzeń zmieniają się więc przy każdym uruchomieniu, a wydarzenia założone podczas prób znikają. Szablon i menu lokalu zostają między uruchomieniami; `--plan`, `--venue`, `--menu` i `--reset` budują je od nowa. Tak wejdzie prawdziwy plan i menu (Otwarte pytanie 2): pliki `scripts/demo-data/sala.json` i `menu.csv` albo edycja w aplikacji. Scenariusz pokazu po polsku, kroki 1–7, jest w `docs/scenariusz-pokazu.md`. Na hostowanej platformie skrypt nie działa celowo, bo stałe hasła demo nie mogą tam istnieć; scenariusz opisuje ręczne przygotowanie. Uwaga: przy sprawdzaniu świeżej bazy wykonałem `npx supabase db reset` na **lokalnej** bazie, więc lokalne dane z wcześniejszych prób zniknęły.
+- **Strona produktu i szkice prawne (S-30):** `/` to teraz strona produktu (nazwa robocza „Stolik” ze stałej `PRODUCT_NAME`) z przyciskiem „Zaloguj się” → `/logowanie`; nie czyta bazy. Dwa szkice: `/regulamin` i `/polityka-prywatnosci`, PL i EN. Każdy ma baner „Wersja robocza — do przeglądu prawnika”, a każdy nieznany fakt jest oznaczonym polem `[…]` (operator, adres, NIP/KRS, e-mail kontaktowy — żadnych wymyślonych danych). Opisują to, co aplikacja naprawdę robi: ciasteczka `kp-session`, `kp-waiter`, `kp-lang`, `kp-lang-r`, kopie w pamięci przeglądarki, termin danych gości, dziennik wejść admina, brak AI na danych gości. Obie strony idą z `noindex` i `no-store`. Linki do szkiców są tylko na `/`, `/logowanie`, `/haslo/<token>`, `/panel` i `/kelner`. Nigdy na stronach gościa, TV, tabletu, wydruków i klienta (white-label). **Umowa powierzenia (DPA) z lokalem nie jest napisana.**
+
+## Zablokowane / potrzebne od Ciebie (przebieg 2)
+
+Twardych blokad w przebiegu 2 nie było (`## Blokery` w logu: brak). Żaden element nie został cofnięty.
+
+Z części 1 nadal otwarte (bez zmian): menu wymuszane dla nowych wydarzeń (S-16); rotacja TV zmienia wygląd wydarzenia 1 (S-20); stała lista płatnych modułów (S-17, Otwarte pytanie 5); luka w odzyskiwaniu hasła menedżera/kelnera w kilku lokalach (S-12); opóźnienia przy kilku imprezach naraz i liczba zapytań wobec darmowego limitu Lambdy (S-19).
+
+Nowe do decyzji:
+- ryzyka kelnera „na imprezę” (S-21b, wyżej) — akceptujesz?
+- tryb wsparcia admina widzi diety (S-23) — zostaje, czy ukryć?
+- harmonogram `npm run retention` i świadomość czyszczenia przy pierwszym wdrożeniu (S-26);
+- tablet zapisuje odczyt w każdy dzień (S-27) — ograniczyć do dnia imprezy?
+- co z liczbami RSVP na tablecie, „przenieś wybory do zamówień” i resetem RSVP (S-25, poza zakresem);
+- szkice prawne do przeglądu prawnika (S-26, S-30). Punkty dla prawnika (pełna lista w logu, linia `2026-11-10 — S-30 otwarte punkty dla prawnika`):
+  - tożsamość operatora i kontakt;
+  - forma umowy z lokalem i moment akceptacji regulaminu;
+  - umowa powierzenia (DPA), której jeszcze nie ma;
+  - podstawy prawne, w tym diety i alergie jako dane o zdrowiu (art. 9 RODO);
+  - role administratora i podmiotu przetwarzającego dla personelu i kelnerów „na imprezę”;
+  - kto jest administratorem danych gości, które wpisuje klient;
+  - retencja kont personelu, logów technicznych i kopii zapasowych;
+  - podwykonawcy, regiony i transfer poza EOG;
+  - czy ciasteczka wymagają informacji albo zgody;
+  - kopia offline u organizatora, która nie wygasa na urządzeniu;
+  - odpowiedzialność, reklamacje, prawo właściwe i data wejścia w życie.
+- Nazwa produktu, domena i indeksowanie strony (Otwarte pytania 1 i 4) oraz ceny (Otwarte pytanie 5).
+
+## Ręczna checklista (przebieg 2; wiersze Manual z planów)
+
+- S-21b: 1.4 karta wydarzenia „Kelnerzy na imprezę” dodaje kelnera i pokazuje link i kod raz (PL/EN); 2.3 na telefonie: link → „Wejdź na salę”, oznacz sztukę, dopisz dokładkę; potem kod w innej przeglądarce; 3.3 link i kod z demo otwierają salę raz, usunięcie kelnera wylogowuje telefon.
+- S-22: 1.5 na `/r/<klucz>` i `/o/<klucz>/zamowienia` wpisanie imienia świeci krzesło na fioletowo (inaczej niż czerwone danie); Escape czyści tylko szukanie; Tab/Enter bez myszy; 2.5 telefon gościa: wybór trafienia otwiera plan i przewija do stolika; własne krzesło czerwone, trafienie fioletowe; czytnik ekranu ogłasza wyniki.
+- S-23: 1.5 prawdziwy eksport z polskiego Excela (`;`, Windows-1250 lub UTF-8 z BOM) i wklejka z Arkuszy Google; 2.5 import na `/o/<klucz>/goscie` (plik, wklejka, podgląd z problemami, zapis, edytor diety; PL/EN); 2.6 diety czytelne na tablecie, w zamówieniach, na obu salach i w edytorze rozsadzenia; 3.4 linki demo pokazują diety przy miejscach.
+- S-25: 2.3 telefon: Przyjdę → danie → zapisane; po „Zamknij teraz” sekcja na dole tylko do odczytu; 2.4 strona klienta i podgląd w panelu (termin, dania, liczby, poprawki per gość; ramka tylko do odczytu, gdy lokal prowadzi); 3.4 demo `/o/<klucz>/potwierdzenia` i karta w panelu.
+- S-26: 1.5 lista usuwanych tabel funkcji czyszczenia wobec `src/db/database.types.ts` (nic z nazwiskiem albo zdrowiem nie zostaje); 2.2 strona restauracji (właściciel: formularz, menedżer: odczyt) i „Dane gości i eksport” w PL/EN; 2.3 CSV gości otwiera się w arkuszu z polskimi znakami; 2.4 strona prywatności gościa na telefonie (PL/EN), wyraźnie szkic; 3.5 „Komunia Zosi (demo)” pokazuje „Dane gości usunięte”; 3.6 `npm run retention -- --dry-run` jest zrozumiały.
+- S-27: 1.5 projekcja bez id, cen, kluczy i oznaczeń (`staffReadoutFromBoard`); 2.5 tablet, sala, sala kelnera „na imprezę”: strona na żywo, potem `…/odczyt` z „Stan z …”; 2.6 DevTools „Offline” + odświeżenie każdej strony na żywo pokazuje kopię (lokalny podgląd); 2.7 wylogowanie, potem `/logowanie`: slot sali i worker `/panel/obsluga/*` znikają; 3.4 prawdziwy tablet/telefon po https bez Wi-Fi pokazuje ostatni stan, po południu następnego dnia nic; 3.5 zwykły http w LAN: tylko otwarta strona trzyma stan.
+- S-28: 1.x funkcje migracji i uprawnienia (`\df public.quiz*`, brak execute dla anon/authenticated); 2.5 strona klienta PL/EN: przygotowanie, cały quiz, ranking; 2.6 telefon: odpowiedź, zmiana, dobrze/źle, miejsce, nic cudzego; 2.7 TV: zapowiedź, pytanie, odsłona z liczbami, wyniki; czytelne na 16:9; 3.4 quiz z demo na prawdziwym TV i telefonie; 3.5 punkt CLAUDE.md o quizie.
+- S-24: 1.5 nowe typy wydruków w `src/types.ts` bez id, kluczy i cen; 2.5 podgląd wydruku w Chrome dla czterech wydruków (A4 bez nagłówka z adresem, linie cięcia i zgięcia, pasek marki, tablica jako A3); 2.6 złożone winietki i karty stołów czytelne po obu stronach; 3.5 linki „Wydruki” z demo otwierają się i drukują.
+- S-29: 1.4 i 2.7–2.8 z planu (dane demo, rotacja sal na TV, wyliczona, ale niesprawdzona na ekranie); 3.5 przejście kroków 1–7 ze scenariusza; 3.6 prawdziwy plan i menu (Otwarte pytanie 2). Data pokazu (Otwarte pytanie 3) decyduje, kiedy uruchomić demo, bo impreza jest „dziś”.
+- S-30: 1.5 i 1.6 czy szkice dobrze się czyta (baner, pola `[…]`, spis treści); 2.6 `/` na telefonie i laptopie w PL i EN; 2.7 linki w stopkach stron personelu; 3.2 trzy linki z wydruku demo i zgodność CLAUDE.md ze stronami.
+
+**Przepływ 1–7 z PRD v2:** teraz w całości, także z kelnerem „na imprezę” (S-21b).
+
+## Wdrożenie — przypomnienie (przebieg 2)
+
+- Jak w części 1: wszystkie migracje tylko do **NOWEGO** projektu platformy, w kolejności nazw, `db push` przed `deploy:aws`; nigdy do `eaubtfkoehpekdckhnxf`.
+- Migracje przebiegu 2 w kolejności: `20261111020000_event_waiters`, `20261111030000_guest_diets`, `20261111040000_guest_rsvp`, `20261111050000_privacy_retention`, `20261111060000_pub_quiz`. S-24, S-29 i S-30 nie mają migracji.
+- Pub quiz: kod zaraz po migracji (stary kod nie przyjmuje nowych liczników resetu, więc podgląd resetu do czasu deployu nie działa).
+- Retencja: przed pierwszym wdrożeniem wyeksportuj, co ma zostać — wydarzenia starsze niż termin tracą dane gości przy pierwszym odczycie.
