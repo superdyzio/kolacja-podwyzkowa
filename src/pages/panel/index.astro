@@ -1,6 +1,7 @@
 ---
 import Layout from "@/layouts/Layout.astro";
 import NoAccess from "@/components/NoAccess.astro";
+import LegalLinks from "@/components/legal/LegalLinks.astro";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { getMemberships } from "@/lib/auth/service";
@@ -13,7 +14,7 @@ import { PRODUCT_NAME } from "@/lib/i18n/product";
 // with the way into the platform panel, the person's restaurants with roles — each active one linked to its restaurant
 // panel, a disabled one marked and explained — password change and logout (plain forms, answers are 303 back here).
 // The middleware already sent anyone without a session to the login page; the re-check below only guards against a
-// misconfigured middleware.
+// misconfigured middleware. The footer links the DRAFT terms and privacy policy (landing-legal, S-30).
 const t = authMessages(Astro.locals.locale);
 const staff = Astro.locals.staff;
 const db = getDb();
@@ -180,6 +181,8 @@ if (!staff) {
           </form>
         </div>
       </section>
+
+      <LegalLinks class="border-t pt-4" />
     </main>
   </Layout>
 ) : (

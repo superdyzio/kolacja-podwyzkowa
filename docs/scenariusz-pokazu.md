@@ -25,7 +25,7 @@ Pokaz przepływu 1–7 z PRD v2 („Przepływ zmiany”) na żywo, wyłącznie w
 
 ## Konta demo
 
-Logowanie: `/logowanie` (adres z wydruku `npm run demo`). Hasła są stałe i tylko lokalne.
+Logowanie: `/logowanie` (adres z wydruku `npm run demo`). Hasła są stałe i tylko lokalne. Pokaz na laptopie może zacząć się od strony produktu `/` („Strona produktu” w wydruku): co robi platforma, dla kogo, przepływ 1–7, prywatność i „Zaloguj się”; w stopce regulamin i polityka prywatności — szkice oznaczone „do przeglądu prawnika”, z polami do uzupełnienia w nawiasach kwadratowych.
 
 | Rola                    | E-mail                   | Hasło               | Do czego                                                |
 | ----------------------- | ------------------------ | ------------------- | ------------------------------------------------------- |

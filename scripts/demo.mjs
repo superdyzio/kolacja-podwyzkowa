@@ -1197,6 +1197,20 @@ const pinnedTvUrl = href(`/tv/${tvKey}?sala=${encodeURIComponent(pinnedRoom)}`);
   }
 }
 
+// landing-legal (S-30): the product page (the start of the demo on the laptop: „Zaloguj się”) and the two DRAFT legal
+// documents it links answer.
+const LEGAL_PAGES = [
+  ["/", "data-landing"],
+  ["/regulamin", "data-legal-draft"],
+  ["/polityka-prywatnosci", "data-legal-draft"],
+];
+for (const [path, marker] of LEGAL_PAGES) {
+  const page = await request(path);
+  if (page.status !== 200 || !page.text.includes(marker)) {
+    fail(`Strona ${path} nie odpowiada jak trzeba (HTTP ${String(page.status)}).`);
+  }
+}
+
 // --- Summary --------------------------------------------------------------------------------------------------
 
 const seatTotal = venue.tables.reduce((sum, table) => sum + table.seatCount, 0);
@@ -1218,6 +1232,8 @@ Restauracja demo gotowa: „${restaurantName}” (id ${String(restaurantId)}, ${
 - potwierdzenia: ${rsvpSummary}
 - moduły: „${MAIN_EVENT}” wszystkie (tematy AI i pub quiz odblokowane przez administratora we wsparciu); „${VENUE_LED_EVENT}” tematy AI i gra włączone przez lokal; „${PAST_EVENT}” domyślne
 - retencja: ${String(retention.guestRetentionDays)} dni; „${PURGED_EVENT}” w archiwum, dane gości usunięte
+
+Strona produktu: ${href("/")} („Zaloguj się”; regulamin ${href("/regulamin")} i polityka prywatności ${href("/polityka-prywatnosci")} — szkice do przeglądu prawnika)
 
 Konta (logowanie: ${href("/logowanie")}):
   administrator platformy: ${accountLine(ADMIN, "panel platformy")}

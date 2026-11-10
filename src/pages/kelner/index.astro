@@ -1,5 +1,6 @@
 ---
 import Layout from "@/layouts/Layout.astro";
+import LegalLinks from "@/components/legal/LegalLinks.astro";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { eventWaiterMessages, waiterErrorText } from "@/lib/event-waiters/messages";
@@ -8,7 +9,8 @@ import { WAITER_ENTER_API, WAITER_LOGOUT_API, waiterFloorPath } from "@/lib/even
 // The per-event waiter's entry page (event-waiter-access, S-21b): a plain form posting the typed code to
 // /api/kelner/wejscie, which answers 303 (the floor, or back here with ?blad=<code>). No redirect when this device
 // already has a waiter session: it shows „Wróć na salę” and „Wyloguj” above the form (its event may be over — a new
-// code must still be typeable). Public; the code never goes into a URL.
+// code must still be typeable). Public; the code never goes into a URL. The footer links the DRAFT terms and privacy
+// policy (landing-legal, S-30; a staff door, so the product's documents may show).
 const t = eventWaiterMessages(Astro.locals.locale);
 const error = waiterErrorText(Astro.url.searchParams.get("blad"), Astro.locals.locale);
 const loggedOut = Astro.url.searchParams.get("wylogowano") === "1";
@@ -82,6 +84,7 @@ const waiter = Astro.locals.waiter;
       </div>
       <Button type="submit">{t.enterButton}</Button>
     </form>
+    <LegalLinks class="border-t pt-4" />
   </main>
 </Layout>
 

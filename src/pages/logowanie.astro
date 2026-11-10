@@ -1,14 +1,17 @@
 ---
 import Layout from "@/layouts/Layout.astro";
+import LegalLinks from "@/components/legal/LegalLinks.astro";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { authErrorText, authMessages } from "@/lib/auth/messages";
 import { EMAIL_MAX_LENGTH } from "@/lib/auth/email";
 import { PRODUCT_NAME } from "@/lib/i18n/product";
+import { HOME_PATH } from "@/lib/legal/paths";
 
 // Staff login (staff-accounts, F-03): a plain form posting to /api/auth/login, which answers 303 (the panel, or back
 // here with ?blad=<code>). The middleware sends a logged-in person on to the panel. The typed e-mail never goes into
-// a URL, so after an error it is typed again (the browser's autofill helps).
+// a URL, so after an error it is typed again (the browser's autofill helps). The product's name links the product page,
+// the footer the DRAFT terms and privacy policy (landing-legal, S-30).
 const t = authMessages(Astro.locals.locale);
 const error = authErrorText(Astro.url.searchParams.get("blad"), Astro.locals.locale);
 const loggedOut = Astro.url.searchParams.get("wylogowano") === "1";
@@ -17,7 +20,9 @@ const loggedOut = Astro.url.searchParams.get("wylogowano") === "1";
 <Layout title={t.loginTitle}>
   <main class="mx-auto flex min-h-screen max-w-md flex-col justify-center gap-6 p-6" data-clear-staff-readout="floor">
     <header class="flex flex-col gap-1">
-      <p class="text-sm text-muted-foreground">{PRODUCT_NAME}</p>
+      <a href={HOME_PATH} class="self-start text-sm text-muted-foreground underline-offset-4 hover:underline">
+        {PRODUCT_NAME}
+      </a>
       <h1 class="text-3xl font-bold">{t.loginHeading}</h1>
       <p class="text-muted-foreground">{t.loginIntro}</p>
     </header>
@@ -51,6 +56,7 @@ const loggedOut = Astro.url.searchParams.get("wylogowano") === "1";
       <Button type="submit">{t.loginButton}</Button>
     </form>
     <p class="text-sm text-muted-foreground">{t.forgotHint}</p>
+    <LegalLinks class="border-t pt-4" />
   </main>
 </Layout>
 

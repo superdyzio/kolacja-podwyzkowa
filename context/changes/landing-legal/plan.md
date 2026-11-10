@@ -368,10 +368,10 @@ None (no migration, no new API route).
 
 #### Automated
 
-- [x] 1.1 Unit tests pass: `AI_PROVIDER=mock npx vitest run src/lib/legal`
-- [x] 1.2 Lint passes: `npm run lint`
-- [x] 1.3 Type check passes: `npx astro check`
-- [x] 1.4 Build passes: `npm run build`
+- [x] 1.1 Unit tests pass: `AI_PROVIDER=mock npx vitest run src/lib/legal` — 15183f8
+- [x] 1.2 Lint passes: `npm run lint` — 15183f8
+- [x] 1.3 Type check passes: `npx astro check` — 15183f8
+- [x] 1.4 Build passes: `npm run build` — 15183f8
 
 #### Manual
 
@@ -382,11 +382,11 @@ None (no migration, no new API route).
 
 #### Automated
 
-- [ ] 2.1 Full test suite passes: `AI_PROVIDER=mock npm test`
-- [ ] 2.2 Lint and type check pass: `npm run lint`, `npx astro check`
-- [ ] 2.3 Build passes: `npm run build`
-- [ ] 2.4 Smoke passes against the production preview: `AI_PROVIDER=mock npm run preview` + `npm run smoke`
-- [ ] 2.5 Demo passes: `npm run demo`
+- [x] 2.1 Full test suite passes: `AI_PROVIDER=mock npm test`
+- [x] 2.2 Lint and type check pass: `npm run lint`, `npx astro check`
+- [x] 2.3 Build passes: `npm run build`
+- [x] 2.4 Smoke passes against the production preview: `AI_PROVIDER=mock npm run preview` + `npm run smoke`
+- [x] 2.5 Demo passes: `npm run demo`
 
 #### Manual
 

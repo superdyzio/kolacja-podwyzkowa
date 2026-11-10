@@ -1,5 +1,6 @@
 ---
 import Layout from "@/layouts/Layout.astro";
+import LegalLinks from "@/components/legal/LegalLinks.astro";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { getTokenInfo } from "@/lib/auth/service";
@@ -11,7 +12,8 @@ import { PRODUCT_NAME } from "@/lib/i18n/product";
 
 // Setting a password from a one-time link (invitation or reset; staff-accounts, F-03). Opening the page uses nothing
 // up: only the form post (/api/auth/password-link) does. An unknown, used, expired or malformed link gets one 404 page
-// with the same words. The account's e-mail is shown (it is the login) and offered to password managers.
+// with the same words. The account's e-mail is shown (it is the login) and offered to password managers. The footer
+// links the DRAFT terms and privacy policy on both (landing-legal, S-30).
 const t = authMessages(Astro.locals.locale);
 const token = Astro.params.token ?? "";
 const db = getDb();
@@ -87,5 +89,6 @@ if (!info) {
         </a>
       </>
     )}
+    <LegalLinks class="border-t pt-4" />
   </main>
 </Layout>

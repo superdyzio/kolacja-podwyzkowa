@@ -115,12 +115,15 @@ function finish() {
   process.exit(failed ? 1 : 0);
 }
 
-// 1. The home page creates nothing: it only says access is by link (no form, no event data).
+// 1. The home page is the product page (landing-legal, S-30): it creates nothing and shows no event — staff log in
+// through /logowanie, a link holder opens the link directly (section 45 checks the page in detail).
 const home = await request("/");
 check("home renders", home.status === 200, String(home.status));
 check(
-  "home says access is by link only and offers no event creation",
-  home.body.includes("Dostęp tylko przez link od organizatora") &&
+  "home is the product page with the staff login, says event links open directly and offers no event creation",
+  home.body.includes("data-landing") &&
+    home.body.includes('href="/logowanie"') &&
+    home.body.includes("Masz link od organizatora albo lokalu?") &&
     !home.body.includes("Utwórz wydarzenie") &&
     !home.body.includes("/api/event"),
 );
@@ -11373,5 +11376,124 @@ check(
 
 const deleted44 = await staffCall(sessionOwner, eventApi(e44Id), { method: "DELETE" });
 check("room prints: the section's event is deleted", deleted44.status === 200, String(deleted44.status));
+
+// 45. landing-legal (S-30; FR-041): the public product page and the DRAFT terms and privacy policy — PL and EN, the
+// draft marker and placeholders, the headers, the way to the login, the links on every staff door and NEVER on a
+// guest, TV, tablet, print or client page (white-label). Static pages: nothing is created here.
+const EMAIL45 = /[\w.+-]+@[\w-]+\.[\w.-]+/;
+const home45 = await request("/");
+const homeEn45 = await request("/", { cookie: "kp-lang=en" });
+const terms45 = await request("/regulamin");
+const termsEn45 = await request("/regulamin", { cookie: "kp-lang=en" });
+const policy45 = await request("/polityka-prywatnosci");
+const policyEn45 = await request("/polityka-prywatnosci", { cookie: "kp-lang=en" });
+const switch45 = await request("/regulamin?lang=en");
+const LANDING_SECTIONS45 = ["hero", "audience", "features", "steps", "privacy", "access"];
+const legalLinks45 = (res) =>
+  res.body.includes("data-legal-links") &&
+  res.body.includes('href="/regulamin"') &&
+  res.body.includes('href="/polityka-prywatnosci"');
+const homeChecks45 = [
+  ["status", home45.status === 200 && homeEn45.status === 200],
+  ["no-store", home45.cacheControl.includes("no-store")],
+  ["lang", home45.body.includes('<html lang="pl"') && homeEn45.body.includes('<html lang="en"')],
+  ["product name", home45.body.includes("Stolik") && homeEn45.body.includes("Stolik")],
+  ["login links", ["header", "hero", "access"].every((place) => home45.body.includes(`data-landing-login="${place}"`))],
+  ["login target", home45.body.includes('href="/logowanie"')],
+  ["login PL/EN", home45.body.includes("Zaloguj się") && homeEn45.body.includes("Log in")],
+  ["sections", LANDING_SECTIONS45.every((id) => home45.body.includes(`data-landing-section="${id}"`))],
+  ["legal links", legalLinks45(home45) && legalLinks45(homeEn45)],
+  ["drafts named", home45.body.includes("wersja robocza") && homeEn45.body.includes("draft")],
+  ["no form", !home45.body.includes("<form")],
+  ["no e-mail", !EMAIL45.test(home45.body) && !EMAIL45.test(homeEn45.body)],
+];
+check(
+  "landing: / is the product page in PL and EN — product name, the login in the header, the hero and the access section, every section, the links to both drafts, no form, no e-mail address, not cached",
+  homeChecks45.every(([, ok]) => ok),
+  homeChecks45
+    .filter(([, ok]) => !ok)
+    .map(([name]) => name)
+    .join(", "),
+);
+
+const draftChecks45 = (kind, pl, en, plField, enField) => [
+  [`${kind} status`, pl.status === 200 && en.status === 200],
+  [
+    `${kind} document`,
+    pl.body.includes(`data-legal-document="${kind}"`) && en.body.includes(`data-legal-document="${kind}"`),
+  ],
+  [`${kind} lang`, pl.body.includes('<html lang="pl"') && en.body.includes('<html lang="en"')],
+  [
+    `${kind} draft banner`,
+    pl.body.includes("data-legal-draft") &&
+      pl.body.includes("Wersja robocza — do przeglądu prawnika") &&
+      en.body.includes("data-legal-draft") &&
+      en.body.includes("Draft — for legal review"),
+  ],
+  [`${kind} toc`, pl.body.includes("data-legal-toc") && pl.body.includes("data-legal-section=")],
+  [
+    `${kind} placeholders`,
+    pl.body.includes("data-legal-placeholder") && pl.body.includes(plField) && en.body.includes(enField),
+  ],
+  [`${kind} robots`, [pl, en].every((res) => res.robots.includes("noindex"))],
+  [`${kind} no-store`, [pl, en].every((res) => res.cacheControl.includes("no-store"))],
+  [`${kind} product name`, pl.body.includes("Stolik")],
+  [`${kind} no e-mail`, !EMAIL45.test(pl.body) && !EMAIL45.test(en.body)],
+  [`${kind} home link`, pl.body.includes('href="/"')],
+];
+const legalChecks45 = [
+  ...draftChecks45("terms", terms45, termsEn45, "[nazwa operatora]", "[operator name]"),
+  ...draftChecks45("privacy", policy45, policyEn45, "[e-mail kontaktowy]", "[contact e-mail]"),
+  ["cross links", terms45.body.includes('href="/polityka-prywatnosci"') && policy45.body.includes('href="/regulamin"')],
+  [
+    "cookies named",
+    ["kp-session", "kp-waiter", "kp-lang", "kp-lang-r"].every(
+      (name) => policy45.body.includes(name) && policyEn45.body.includes(name),
+    ),
+  ],
+  [
+    "switch",
+    switch45.status === 303 && switch45.location.endsWith("/regulamin") && switch45.setCookie.includes("kp-lang=en"),
+  ],
+];
+check(
+  "legal drafts: /regulamin and /polityka-prywatnosci in PL and EN carry the draft banner („Wersja robocza — do przeglądu prawnika” / „Draft — for legal review”), the table of contents and marked placeholders, no e-mail address, noindex and no-store; the policy names every cookie; ?lang=en switches and returns",
+  legalChecks45.every(([, ok]) => ok),
+  legalChecks45
+    .filter(([, ok]) => !ok)
+    .map(([name]) => name)
+    .join(", "),
+);
+
+const login45 = await request("/logowanie");
+const linkPage45 = await request(`/haslo/${randomBytes(32).toString("base64url")}`);
+const kelner45 = await request("/kelner");
+const panel45 = await staffCall(sessionOwner, "/panel");
+check(
+  "legal links: the staff doors (/logowanie with the product page link, an invalid /haslo/<token>, /kelner, the owner's /panel) link both drafts",
+  login45.status === 200 &&
+    legalLinks45(login45) &&
+    login45.body.includes('href="/"') &&
+    linkPage45.status === 404 &&
+    legalLinks45(linkPage45) &&
+    kelner45.status === 200 &&
+    legalLinks45(kelner45) &&
+    panel45.status === 200 &&
+    legalLinks45(panel45),
+  `${login45.status} ${linkPage45.status} ${kelner45.status} ${panel45.status}`,
+);
+
+const whiteLabel45 = [guestPage34, tvPage34, tabletPage34, cards34, shell34, privacy41, privacyEn41];
+check(
+  "legal links: the guest's page and privacy notice, the TV, the tablet, the QR cards and the client shell never link the platform's documents (white-label)",
+  whiteLabel45.every(
+    (res) =>
+      res.status === 200 &&
+      !res.body.includes("data-legal-links") &&
+      !res.body.includes("/regulamin") &&
+      !res.body.includes("/polityka-prywatnosci"),
+  ),
+  whiteLabel45.map((res) => String(res.status)).join(" "),
+);
 
 finish();
