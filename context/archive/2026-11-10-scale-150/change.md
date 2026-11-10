@@ -1,10 +1,10 @@
 ---
 change_id: scale-150
 title: Scale events to 150 guests, 30-seat tables and 60 tables
-status: implemented
+status: archived
 created: 2026-11-10
 updated: 2026-11-10
-archived_at: null
+archived_at: 2026-11-10T05:11:41Z
 ---
 
 ## Notes
