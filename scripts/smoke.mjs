@@ -9423,7 +9423,10 @@ check(
     fieldsOf38(drawingTable38?.seats?.[0]) === "name seat" &&
     tabletApi38.status === 200 &&
     // guest-import-diets (S-23) added `diets` (the kitchen's diet board) to the tablet's view; section 39 checks it.
-    fieldsOf38(tabletApi38.data) === "diets placement prep seating totals version" &&
+    // The PR #4 review's RSVP extras added `rsvp` (the confirmed dishes' counts; null here — no dish options); section
+    // 40 checks it.
+    fieldsOf38(tabletApi38.data) === "diets placement prep rsvp seating totals version" &&
+    tabletApi38.data?.rsvp === null &&
     fieldsOf38(tabletApi38.data?.seating) === "chairPitch planVersion publishedAt rooms tables version" &&
     fieldsOf38(tabletApi38.data?.seating?.tables?.[0]?.seats?.[0]) === "name seat",
   `${state38.status} [${fieldsOf38(state38.data)}] [${fieldsOf38(state38.data?.seat)}] [${fieldsOf38(drawingTable38)}] ${tabletApi38.status} [${fieldsOf38(tabletApi38.data)}] [${fieldsOf38(tabletApi38.data?.seating)}]`,
@@ -10008,6 +10011,33 @@ check(
   `${guestPage40.status} ${guestPageEn40.status} ${tvPoll40.status}`,
 );
 
+// The kitchen tablet (the PR #4 review's RSVP extras): the confirmed dishes' counts only — no names, ids or prices —,
+// inside the tablet's polling token; null before the event had dish options (section 38).
+const e40Restaurant = keyOfPath(e40.data?.event?.links?.restaurant);
+const tablet40 = await request(`/api/r/${e40Restaurant}/orders`);
+const tabletSame40 = await request(`/api/r/${e40Restaurant}/orders?since=${tablet40.data?.version ?? ""}`);
+const tabletPage40 = await request(`/r/${e40Restaurant}`);
+const tabletPagePl40 = await request(`/r/${e40Restaurant}`, { cookie: "kp-lang-r=pl" });
+check(
+  "rsvp: the kitchen tablet shows the confirmed dishes' counts (coming 1, Schabowy ×1 as a main) with no guest name, id or price, the poll answers 204 for the same token; the page's „Confirmed dishes” (English by default, Polish with its cookie)",
+  tablet40.status === 200 &&
+    JSON.stringify(tablet40.data?.rsvp) ===
+      JSON.stringify({ coming: 1, noDish: 0, dishes: [{ course: "main", name: "Schabowy", count: 1 }] }) &&
+    !tablet40.body.includes(ANIA40) &&
+    !tablet40.body.includes(BARTEK40) &&
+    !tablet40.body.includes(CELINA40) &&
+    !/"price|"priceGrosze"|"id"|"guestId"/.test(tablet40.body) &&
+    tabletSame40.status === 204 &&
+    tabletPage40.status === 200 &&
+    tabletPage40.body.includes("data-rsvp-kitchen") &&
+    tabletPage40.body.includes("Confirmed dishes") &&
+    tabletPage40.body.includes('data-rsvp-kitchen-dish="Schabowy"') &&
+    !tabletPage40.body.includes(ANIA40) &&
+    tabletPagePl40.status === 200 &&
+    tabletPagePl40.body.includes("Potwierdzone dania"),
+  `${tablet40.status} ${JSON.stringify(tablet40.data?.rsvp ?? null)} ${tabletSame40.status} ${tabletPage40.status} ${tabletPagePl40.status}`,
+);
+
 const close40 = await settings40({ close: true });
 const closedAnswer40 = await answer40(CELINA40, { attending: true, dish: null });
 const closedState40 = await request(`${guestApi40(CELINA40)}/state`);
@@ -10028,6 +10058,23 @@ check(
     countsOf40(proxyClosed40) === "2/1/0" &&
     proxyClosed40.data?.guests?.find((guest) => guest.displayName === CELINA40)?.byOrganizer === true,
   `${close40.status} ${closedAnswer40.status} ${closedState40.status} ${closedPage40.status} ${proxyClosed40.status} ${countsOf40(proxyClosed40)}`,
+);
+
+const tabletAfter40 = await request(`/api/r/${e40Restaurant}/orders?since=${tablet40.data?.version ?? ""}`);
+check(
+  "rsvp: the client's answer for a guest reaches the kitchen tablet's next poll (200 with a new token; Pierogi ×1, Schabowy ×1, in course order)",
+  tabletAfter40.status === 200 &&
+    tabletAfter40.data?.version !== tablet40.data?.version &&
+    JSON.stringify(tabletAfter40.data?.rsvp) ===
+      JSON.stringify({
+        coming: 2,
+        noDish: 0,
+        dishes: [
+          { course: "main", name: "Pierogi", count: 1 },
+          { course: "main", name: "Schabowy", count: 1 },
+        ],
+      }),
+  `${tabletAfter40.status} ${JSON.stringify(tabletAfter40.data?.rsvp ?? null)}`,
 );
 
 const leadOn40 = await staffCall(sessionOwner, eventApi(e40Id), { method: "PATCH", json: { venueLeads: true } });

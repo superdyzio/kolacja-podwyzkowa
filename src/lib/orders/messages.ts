@@ -26,6 +26,11 @@ export const restaurantMessages = defineMessages(
     unassignedHeading: "Bez przypisanego miejsca",
     delivered: "wydane",
     partlyServed: (done: number, quantity: number) => `wydane ${done} z ${quantity}`,
+    // The RSVP summary (the PR #4 review's decision): counts only, no names.
+    rsvpHeading: "Potwierdzone dania",
+    rsvpIntro: "Z potwierdzeń gości: ile osób, które przyjdą, wybrało każde danie.",
+    rsvpCounts: (coming: number, noDish: number) => `Przyjdzie: ${coming} · bez wybranego dania: ${noDish}`,
+    rsvpNoDishes: "Nikt jeszcze nie wybrał dania.",
   },
   {
     pageTitle: (event: string) => `${event} — order for the restaurant`,
@@ -50,6 +55,10 @@ export const restaurantMessages = defineMessages(
     unassignedHeading: "No place assigned",
     delivered: "served",
     partlyServed: (done: number, quantity: number) => `served ${done} of ${quantity}`,
+    rsvpHeading: "Confirmed dishes",
+    rsvpIntro: "From the guests' RSVPs: how many of those coming chose each dish.",
+    rsvpCounts: (coming: number, noDish: number) => `Coming: ${coming} · no dish chosen: ${noDish}`,
+    rsvpNoDishes: "Nobody has chosen a dish yet.",
   },
 );
 

@@ -966,6 +966,15 @@ export interface OrderBoardDto {
   diets: DietBoardDto;
 }
 
+// The kitchen's RSVP summary on the tablet (guest-rsvp-menu extras, the PR #4 review's decision): per dish the number of
+// COMING guests who chose it (course, the menu's name, count; dishes the menu no longer offers still count), the
+// coming guests and those of them without a dish — no guest names, ids, prices or per-guest answers.
+export interface RestaurantRsvpDto {
+  coming: number;
+  noDish: number;
+  dishes: { course: MenuCourse; name: string; count: number }[];
+}
+
 // GET /api/r/<key>/orders: the restaurant's view. seating = what the TV draws (names at chairs, no ids); no prices,
 // ids, keys or absences. version: opaque polling token (?since= equal → 204).
 export interface RestaurantViewDto {
@@ -976,12 +985,16 @@ export interface RestaurantViewDto {
   totals: { quantity: number; toServe: number };
   // guest-import-diets (S-23): diets at the published seats and the counts (no ids); covered by `version`.
   diets: DietBoardDto;
+  // The confirmed dishes (RestaurantRsvpDto) while the event has RSVP dish options, else null; covered by `version`.
+  // Never in the staff's offline copy (StaffReadoutDto).
+  rsvp: RestaurantRsvpDto | null;
 }
 
 // staff-offline-readout (S-27): what the kitchen tablet and both floors keep on the device for a readout without
-// network — the tablet's view without its polling token (no prices, ids, keys or who marked a piece), plus the plan
-// photo's aspect ratio measured online (the photo itself is an API answer no worker stores), for that plan version.
-export interface StaffReadoutDto extends Omit<RestaurantViewDto, "version"> {
+// network — the tablet's view without its polling token (no prices, ids, keys or who marked a piece) and without the
+// RSVP summary (a pre-event figure; copies exist only on the event's day), plus the plan photo's aspect ratio measured
+// online (the photo itself is an API answer no worker stores), for that plan version.
+export interface StaffReadoutDto extends Omit<RestaurantViewDto, "version" | "rsvp"> {
   planAspect: { planVersion: number; aspect: number } | null;
 }
 

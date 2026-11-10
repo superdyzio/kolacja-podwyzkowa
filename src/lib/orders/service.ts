@@ -26,6 +26,8 @@ import { organizerPrepList } from "./prep";
 import { toRestaurantView } from "./restaurant";
 import { MAX_ORDER_ITEMS, orderTotals } from "./rules";
 import { getAvailableMenu } from "@/lib/menu/service";
+import { kitchenRsvpOf } from "@/lib/rsvp/rules";
+import { readKitchenRsvp } from "@/lib/rsvp/service";
 import { isMenuCourse, orderMenu } from "@/lib/menu/rules";
 import { eventPriceOf } from "./prices";
 
@@ -150,20 +152,23 @@ export async function getOrderBoard(db: DbClient, eventId: number): Promise<Orde
   return toOrderBoard(items, guestList, venue, snapshot, drinks, available);
 }
 
-// What the restaurant sees (one read of everything, then a fingerprint; see restaurant.ts).
+// What the restaurant sees (one read of everything, then a fingerprint; see restaurant.ts). The RSVP summary's two
+// reads run alongside and are counted over the same guest list.
 export async function getRestaurantView(db: DbClient, eventId: number): Promise<RestaurantViewDto> {
-  const [items, guestList, venue, snapshot, planVersion] = await Promise.all([
+  const [items, guestList, venue, snapshot, planVersion, rsvpRows] = await Promise.all([
     getOrderItems(db, eventId),
     getGuestList(db, eventId),
     getVenue(db, eventId),
     getLatestSnapshot(db, eventId),
     getPlanVersion(db, eventId),
+    readKitchenRsvp(db, eventId),
   ]);
   return toRestaurantView(
     items,
     placementSource(guestList, venue, snapshot),
     planVersion,
     dietBoard(snapshot, guestList.guests),
+    kitchenRsvpOf(guestList.guests, rsvpRows),
   );
 }
 

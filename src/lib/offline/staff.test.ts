@@ -155,6 +155,7 @@ const view: RestaurantViewDto = {
   },
   totals: { quantity: 3, toServe: 1 },
   diets,
+  rsvp: { coming: 2, noDish: 0, dishes: [{ course: "main", name: "Pierogi", count: 2 }] },
 };
 
 const ASPECT = { planVersion: 17, aspect: 4 / 3 };
@@ -177,6 +178,8 @@ describe("the copy", () => {
   it("is the same for the tablet's view and the floor's board of the same lines", () => {
     expect(staffReadoutFromBoard(board, ASPECT)).toEqual(staffReadoutFromView(view, ASPECT));
     expect(staffReadoutFromView(view, null)).not.toHaveProperty("version");
+    // The RSVP summary is a pre-event figure: never in the device copy.
+    expect(staffReadoutFromView(view, null)).not.toHaveProperty("rsvp");
   });
 
   it("keeps the diets, the delivered pieces and the published names", () => {

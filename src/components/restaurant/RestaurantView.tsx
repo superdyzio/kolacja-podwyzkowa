@@ -9,6 +9,7 @@ import { restaurantMessages } from "@/lib/orders/messages";
 import { describeToServe } from "@/lib/orders/summary";
 import type { RestaurantViewDto } from "@/types";
 import { RestaurantBoard } from "./RestaurantBoard";
+import { RsvpDishSummary } from "./RsvpDishSummary";
 
 interface Props {
   // Restaurant API base, e.g. "/api/r/<key>".
@@ -20,8 +21,9 @@ interface Props {
   readout?: StaffReadoutScope;
 }
 
-// The restaurant's read-only page (restaurant-orders): the header (what is still to serve, refreshed by polling) over
-// the tablet's board (RestaurantBoard: the plan, diets, prep list and serving per table — no prices).
+// The restaurant's read-only page (restaurant-orders): the header (what is still to serve, refreshed by polling), the
+// RSVP dish counts while the event has dish options („Potwierdzone dania”, counts only; live page only), then the
+// tablet's board (RestaurantBoard: the plan, diets, prep list and serving per table — no prices).
 // staff-offline-readout (S-27): every state the server confirms is saved on this device for the offline readout page
 // (`/r/<key>/odczyt`, also served by the readout worker when this page cannot load); while the server cannot be
 // reached, the note says when it was saved and links there. The app's denial forgets the copy.
@@ -75,6 +77,7 @@ export function RestaurantView({ apiBase, initial, eventName, locale, readout }:
           </p>
         )}
       </header>
+      {view.rsvp && <RsvpDishSummary rsvp={view.rsvp} locale={locale} />}
       <RestaurantBoard view={view} apiBase={apiBase} locale={locale} onAspect={onAspect} />
     </div>
   );

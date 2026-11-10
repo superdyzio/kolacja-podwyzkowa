@@ -31,6 +31,7 @@ const view: RestaurantViewDto = {
   },
   totals: { quantity: 2, toServe: 1 },
   diets: { tables: [], unplaced: [], counts: [], guests: 0 },
+  rsvp: null,
 };
 const data = staffReadoutFromView(view, null);
 

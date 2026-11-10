@@ -8,6 +8,7 @@ import {
   byOrganizerOf,
   defaultDeadlineInput,
   formatRsvpSummary,
+  kitchenRsvpOf,
   MAX_RSVP_OPTIONS,
   parseOptionNames,
   rsvpBoard,
@@ -195,6 +196,27 @@ describe("the client's board", () => {
     expect(formatRsvpSummary(board, "pl")).toBe(
       "do pt., 11.12.2026, 18:00 · przyjdzie 4 · nie przyjdzie 2 · bez odpowiedzi 1 · Schab ×2 · Tatar ×1",
     );
+  });
+
+  it("gives the kitchen tablet only the counts (no names or ids), in course order, and nothing without options", () => {
+    const people = guests.map((guest) => ({ id: guest.id, displayName: guest.displayName, isAbsent: guest.absent }));
+    const answers = new Map(guests.flatMap((guest) => (guest.answer ? [[guest.id, guest.answer] as const] : [])));
+    expect(kitchenRsvpOf(people, { hasOptions: false, answers })).toBeNull();
+    const kitchen = kitchenRsvpOf(people, { hasOptions: true, answers });
+    expect(kitchen).toEqual({
+      coming: 4,
+      noDish: 1,
+      dishes: [
+        { course: "starter", name: "Tatar", count: 1 },
+        { course: "main", name: "Schab", count: 2 },
+      ],
+    });
+    const json = JSON.stringify(kitchen);
+    for (const guest of guests) {
+      expect(json).not.toContain(guest.displayName);
+    }
+    expect(json).not.toMatch(/"id"|offered|price/i);
+    expect(kitchenRsvpOf([], { hasOptions: true, answers: new Map() })).toEqual({ coming: 0, noDish: 0, dishes: [] });
   });
 
   it("is closed once the deadline has passed and off without one", () => {

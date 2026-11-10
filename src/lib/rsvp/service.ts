@@ -3,7 +3,7 @@ import { getAvailableMenu } from "@/lib/menu/service";
 import { findMenuItem, isMenuCourse } from "@/lib/menu/rules";
 import type { DbClient } from "@/lib/supabase-client";
 import type { GuestRsvpDto, MenuCourse, RsvpBoardDto, RsvpOptionDto } from "@/types";
-import { rsvpBoard, toGuestRsvp, type RsvpGuestSource } from "./rules";
+import { rsvpBoard, toGuestRsvp, type KitchenRsvpRows, type RsvpGuestSource } from "./rules";
 
 // The guests' RSVP of one event (guest-rsvp-menu, S-25; FR-039, US-07). Every function takes the client and the
 // event id (NFR-012); a guest of another event is an unknown guest. Supabase errors always throw; expected outcomes
@@ -139,6 +139,31 @@ export async function getRsvpBoard(db: DbClient, eventId: number, now: Date): Pr
     },
     now,
   );
+}
+
+// What the kitchen tablet's RSVP summary needs besides the guest list (RestaurantViewDto.rsvp): whether the event has
+// dish options, and every answer with its dish — two reads, run alongside the tablet's other reads; kitchenRsvpOf
+// (rules.ts) puts them together with the guests.
+export async function readKitchenRsvp(db: DbClient, eventId: number): Promise<KitchenRsvpRows> {
+  const [options, answers] = await Promise.all([
+    db.from("event_rsvp_option").select("menu_item_id", { count: "exact", head: true }).eq("event_id", eventId),
+    db.from("guest_rsvp").select("guest_id, answered_by, answered_at, menu_item(name, course)").eq("event_id", eventId),
+  ]);
+  if (options.error) {
+    fail("odczytać dań do wyboru", options.error.message);
+  }
+  if (answers.error) {
+    fail("odczytać odpowiedzi gości", answers.error.message);
+  }
+  return {
+    hasOptions: (options.count ?? 0) > 0,
+    answers: new Map(
+      answers.data.map((row) => [
+        row.guest_id,
+        { answeredBy: row.answered_by, answeredAt: row.answered_at, dish: dishOf(row.menu_item) },
+      ]),
+    ),
+  };
 }
 
 export interface RsvpSettings {

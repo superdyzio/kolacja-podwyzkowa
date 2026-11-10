@@ -16,7 +16,7 @@ import type { RestaurantItemDto, RestaurantViewDto } from "@/types";
 
 interface Props {
   // The tablet's view, or a staff offline copy of it (staff-offline-readout, S-27).
-  view: Omit<RestaurantViewDto, "version">;
+  view: Omit<RestaurantViewDto, "version" | "rsvp">;
   // API base of the page's link (the plan image only gives the aspect ratio).
   apiBase: string;
   locale: Locale;

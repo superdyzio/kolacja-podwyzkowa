@@ -2,7 +2,15 @@ import { formatDateTime } from "@/lib/events/dates";
 import { displayNameKey, normalizeDisplayName } from "@/lib/guests/names";
 import type { Locale } from "@/lib/i18n/locale";
 import { compareMenuItems, isMenuCourse } from "@/lib/menu/rules";
-import type { GuestRsvpDto, MenuCourse, RsvpBoardDto, RsvpCountsDto, RsvpGuestDto, RsvpOptionDto } from "@/types";
+import type {
+  GuestRsvpDto,
+  MenuCourse,
+  RestaurantRsvpDto,
+  RsvpBoardDto,
+  RsvpCountsDto,
+  RsvpGuestDto,
+  RsvpOptionDto,
+} from "@/types";
 import { rsvpMessages } from "./messages";
 
 // The guests' RSVP (guest-rsvp-menu, S-25; FR-039, US-07), pure.
@@ -161,6 +169,40 @@ export function rsvpCounts(sources: readonly RsvpGuestSource[], offered: readonl
     noAnswer,
     noDish,
     dishes: [...dishes.values()].sort((a, b) => b.count - a.count || compareMenuItems(a, b)),
+  };
+}
+
+// The kitchen tablet's summary (RestaurantViewDto.rsvp): only while the event has RSVP dish options (else null); the
+// same counts as the client's board — the coming guests, those without a dish and per dish the coming guests who chose
+// it (also a dish the menu no longer offers) — in the kitchen's order (course, then name). No names, ids or prices.
+export interface KitchenRsvpRows {
+  hasOptions: boolean;
+  // The answer rows by guest id (a guest without one never answered).
+  answers: ReadonlyMap<number, NonNullable<RsvpGuestSource["answer"]>>;
+}
+
+export function kitchenRsvpOf(
+  guests: readonly { id: number; displayName: string; isAbsent: boolean }[],
+  rows: KitchenRsvpRows,
+): RestaurantRsvpDto | null {
+  if (!rows.hasOptions) {
+    return null;
+  }
+  const counts = rsvpCounts(
+    guests.map((guest) => ({
+      id: guest.id,
+      displayName: guest.displayName,
+      absent: guest.isAbsent,
+      answer: rows.answers.get(guest.id) ?? null,
+    })),
+    [],
+  );
+  return {
+    coming: counts.coming,
+    noDish: counts.noDish,
+    dishes: counts.dishes
+      .map((dish) => ({ course: dish.course, name: dish.name, count: dish.count }))
+      .sort(compareMenuItems),
   };
 }
 

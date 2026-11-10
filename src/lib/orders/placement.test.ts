@@ -193,6 +193,17 @@ describe("toRestaurantView", () => {
     expect(toRestaurantView(items, source, 124).version).not.toBe(view.version);
   });
 
+  it("carries the RSVP summary (null by default) inside the token", () => {
+    const view = toRestaurantView(items, source, 123);
+    expect(view.rsvp).toBeNull();
+    const rsvp = { coming: 2, noDish: 1, dishes: [{ course: "main" as const, name: "Schab", count: 1 }] };
+    const withRsvp = toRestaurantView(items, source, 123, undefined, rsvp);
+    expect(withRsvp.rsvp).toEqual(rsvp);
+    expect(withRsvp.version).not.toBe(view.version);
+    const moreSchab = { ...rsvp, dishes: [{ ...rsvp.dishes[0], count: 2 }], noDish: 0 };
+    expect(toRestaurantView(items, source, 123, undefined, moreSchab).version).not.toBe(withRsvp.version);
+  });
+
   it("counts single delivered pieces and changes the token with each (guest-delivered)", () => {
     const two = items.find((item) => item.quantity > 1);
     expect(two).toBeDefined();
