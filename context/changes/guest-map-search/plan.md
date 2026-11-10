@@ -301,10 +301,10 @@ None (no migration, no API change).
 
 #### Automated
 
-- [x] 2.1 Tests with the local DB pass
-- [x] 2.2 Lint, type check and build pass
-- [x] 2.3 Smoke passes incl. section 38
-- [x] 2.4 Demo still fills the local app
+- [x] 2.1 Tests with the local DB pass — c86ecd3
+- [x] 2.2 Lint, type check and build pass — c86ecd3
+- [x] 2.3 Smoke passes incl. section 38 — c86ecd3
+- [x] 2.4 Demo still fills the local app — c86ecd3
 
 #### Manual
 

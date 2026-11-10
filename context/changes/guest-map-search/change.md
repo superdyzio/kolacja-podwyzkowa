@@ -1,7 +1,7 @@
 ---
 change_id: guest-map-search
 title: Guest search on the venue map (S-22) — find a guest by name, the map lights their seat
-status: implementing
+status: implemented
 created: 2026-11-10
 updated: 2026-11-10
 archived_at: null
