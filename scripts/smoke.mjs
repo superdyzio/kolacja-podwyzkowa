@@ -9207,7 +9207,8 @@ check(
     fieldsOf38(drawingTable38) === "name room rotation seatCount seats shape x y" &&
     fieldsOf38(drawingTable38?.seats?.[0]) === "name seat" &&
     tabletApi38.status === 200 &&
-    fieldsOf38(tabletApi38.data) === "placement prep seating totals version" &&
+    // guest-import-diets (S-23) added `diets` (the kitchen's diet board) to the tablet's view; section 39 checks it.
+    fieldsOf38(tabletApi38.data) === "diets placement prep seating totals version" &&
     fieldsOf38(tabletApi38.data?.seating) === "chairPitch planVersion publishedAt rooms tables version" &&
     fieldsOf38(tabletApi38.data?.seating?.tables?.[0]?.seats?.[0]) === "name seat",
   `${state38.status} [${fieldsOf38(state38.data)}] [${fieldsOf38(state38.data?.seat)}] [${fieldsOf38(drawingTable38)}] ${tabletApi38.status} [${fieldsOf38(tabletApi38.data)}] [${fieldsOf38(tabletApi38.data?.seating)}]`,
@@ -9215,5 +9216,390 @@ check(
 
 const deleted38 = await staffCall(sessionOwner, eventApi(e38Id), { method: "DELETE" });
 check("map search: the section's event is deleted", deleted38.status === 200, String(deleted38.status));
+
+// 39. Guest import and diets (guest-import-diets, S-23; FR-035, FR-036, NFR-021). A today event of A (panel). The
+// client imports guests from a CSV (BOM, `;`, header, quoted fields, diets in Polish) and a tab paste: the preview
+// answers rows and problems by line and saves nothing; the save is all or nothing (problems → 400, the limit → 400).
+// Diets are edited per guest (unknown tag / long note → 400). After a publish the diets sit at the seats on the
+// client's board, the staff's preview, the tablet (whose token covers a diet-only change; no ids or keys), the floor
+// and the per-event waiter's floor — and never in the guest's state (own or a tablemate's), the TV poll or their pages.
+// The lead rule applies to the import; event B's key and A's waiter / manager on B → the identical 404. Event deleted.
+const DIET_TAGS39 = [
+  "vegetarian",
+  "vegan",
+  "gluten-free",
+  "lactose-free",
+  "nut-allergy",
+  "seafood-allergy",
+  "halal",
+  "no-pork",
+];
+const NOTE39 = `Alergia na seler ${RUN_TAG}`;
+// Pages carry island props HTML-escaped (`&quot;`), so they are read with plain quotes.
+const dietLeak39 = (raw) => {
+  const body = raw.replaceAll("&quot;", '"');
+  return (
+    /"diets"|"dietNote"|"diet_note"|data-diet/.test(body) ||
+    DIET_TAGS39.some((tag) => body.includes(`"${tag}"`)) ||
+    body.includes(NOTE39)
+  );
+};
+const e39 = await staffCall(sessionOwner, eventsApiOf(restaurantA.id), {
+  method: "POST",
+  json: { name: `Import smoke ${RUN_TAG}`, date: today },
+});
+const e39Id = e39.data?.event?.id ?? 0;
+const e39Organizer = keyOfPath(e39.data?.event?.links?.organizer);
+const e39Api = `/api/o/${e39Organizer}`;
+const e39Tv = keyOfPath(e39.data?.event?.links?.tv);
+const e39Restaurant = keyOfPath(e39.data?.event?.links?.restaurant);
+const e39Klient = `${eventApi(e39Id)}/klient`;
+const ZOFIA39 = `Zofia Import ${RUN_TAG}`;
+const JAN39 = `Kowalski; Jan ${RUN_TAG}`;
+const MAREK39 = `Marek Import ${RUN_TAG}`;
+const PIOTR39 = `Piotr Import ${RUN_TAG}`;
+const CSV39 =
+  "﻿Imię;Dieta;Uwagi\r\n" +
+  `"${ZOFIA39}";"wegetariańska, bez glutenu";"${NOTE39}"\r\n` +
+  `"${JAN39}";alergia na orzechy;"bez cebuli, ""ostro"""\r\n` +
+  `${MAREK39};;\r\n` +
+  `${PIOTR39};halal i bez wieprzowiny;bez alkoholu\r\n`;
+const importOf39 = (text, preview = false, api = e39Api, token = null) =>
+  token === null
+    ? request(`${api}/guests/import`, { method: "POST", json: preview ? { text, preview: true } : { text } })
+    : staffCall(token, `${api}/guests/import`, { method: "POST", json: preview ? { text, preview: true } : { text } });
+const guestCount39 = async () => (await request(`${e39Api}/guests`)).data?.guests?.length ?? -1;
+
+const preview39 = await importOf39(CSV39, true);
+const previewRows39 = preview39.data?.rows ?? [];
+const afterPreview39 = await guestCount39();
+check(
+  "diets: a CSV preview (BOM, `;`, header, quoted fields with `;` and doubled quotes, diets in Polish) → 200 with four rows by line and their diets, ready; nothing saved",
+  e39.status === 201 &&
+    preview39.status === 200 &&
+    preview39.data?.ready === true &&
+    preview39.data?.separator === "semicolon" &&
+    preview39.data?.header === true &&
+    (preview39.data?.problems?.length ?? -1) === 0 &&
+    previewRows39.map((row) => row.line).join(",") === "2,3,4,5" &&
+    previewRows39[0]?.name === ZOFIA39 &&
+    JSON.stringify(previewRows39[0]?.diets) === JSON.stringify(["vegetarian", "gluten-free"]) &&
+    previewRows39[0]?.note === NOTE39 &&
+    previewRows39[1]?.name === JAN39 &&
+    previewRows39[1]?.note === 'bez cebuli, "ostro"' &&
+    JSON.stringify(previewRows39[3]?.diets) === JSON.stringify(["halal", "no-pork"]) &&
+    afterPreview39 === 0,
+  `${e39.status} ${preview39.status} ${preview39.body.slice(0, 200)} | ${afterPreview39}`,
+);
+
+const BAD39 = `Imię;Dieta;Uwagi\nAnia Zła ${RUN_TAG};keto;\nAnia Zła ${RUN_TAG};;\n;wegańska;\n${"x".repeat(41)};;\n`;
+const badPreview39 = await importOf39(BAD39, true);
+const badSave39 = await importOf39(BAD39);
+const problems39 = badPreview39.data?.problems ?? [];
+check(
+  "diets: a preview with an unknown diet, a repeated name, a diet without a name and a name too long → ready false, a problem per line; the save → 400 with the same problems; nothing saved",
+  badPreview39.status === 200 &&
+    badPreview39.data?.ready === false &&
+    problems39.length === 4 &&
+    ["Linia 2", "Linia 3", "Linia 4", "Linia 5"].every((line, index) => problems39[index]?.startsWith(line)) &&
+    problems39[0]?.includes("„keto”") &&
+    badSave39.status === 400 &&
+    JSON.stringify(badSave39.data?.problems) === JSON.stringify(problems39) &&
+    (await guestCount39()) === 0,
+  `${badPreview39.status} ${problems39.join(" | ")} | ${badSave39.status}`,
+);
+
+const save39 = await importOf39(CSV39);
+const zofia39 = guestNamed(save39, ZOFIA39);
+const jan39 = guestNamed(save39, JAN39);
+const marek39 = guestNamed(save39, MAREK39);
+const piotr39 = guestNamed(save39, PIOTR39);
+check(
+  "diets: the save → 201 with four added and the list carrying each guest's diets and note",
+  save39.status === 201 &&
+    save39.data?.added === 4 &&
+    (save39.data?.guests?.length ?? 0) === 4 &&
+    JSON.stringify(zofia39?.diets) === JSON.stringify(["vegetarian", "gluten-free"]) &&
+    zofia39?.dietNote === NOTE39 &&
+    JSON.stringify(jan39?.diets) === JSON.stringify(["nut-allergy"]) &&
+    JSON.stringify(marek39?.diets) === "[]" &&
+    marek39?.dietNote === null &&
+    piotr39?.dietNote === "bez alkoholu",
+  `${save39.status} ${save39.body.slice(0, 200)}`,
+);
+
+const EWA39 = `Ewa Tab ${RUN_TAG}`;
+const ADAM39 = `Adam Tab ${RUN_TAG}`;
+const tabOnList39 = await importOf39(`${EWA39}\twegańska\t\n${ZOFIA39}\t\t`, true);
+const tabPreview39 = await importOf39(`${EWA39}\twegańska\t\n${ADAM39}\t\tbez cebuli`, true);
+const tabSave39 = await importOf39(`${EWA39}\twegańska\t\n${ADAM39}\t\tbez cebuli`);
+const tooMany39 = await importOf39(
+  Array.from({ length: 145 }, (_, index) => `Nadmiar ${String(index + 1)} ${RUN_TAG}`).join("\n"),
+);
+check(
+  "diets: a tab paste — a name already on the list is a problem (nothing saved); without it 201; 151 guests → 400 and nothing saved",
+  tabOnList39.status === 200 &&
+    tabOnList39.data?.ready === false &&
+    tabOnList39.data?.separator === "tab" &&
+    (tabOnList39.data?.problems?.[0] ?? "").startsWith("Linia 2") &&
+    tabPreview39.data?.ready === true &&
+    tabSave39.status === 201 &&
+    tabSave39.data?.added === 2 &&
+    JSON.stringify(guestNamed(tabSave39, EWA39)?.diets) === JSON.stringify(["vegan"]) &&
+    guestNamed(tabSave39, ADAM39)?.dietNote === "bez cebuli" &&
+    tooMany39.status === 400 &&
+    (await guestCount39()) === 6,
+  `${tabOnList39.status} ${tabOnList39.body.slice(0, 160)} | ${tabSave39.status} ${tooMany39.status} ${tooMany39.body.slice(0, 120)}`,
+);
+
+const marekId39 = marek39?.id ?? 0;
+const unknownTag39 = await request(`${e39Api}/guests/${String(marekId39)}`, {
+  method: "PATCH",
+  json: { diets: ["keto"] },
+});
+const longNote39 = await request(`${e39Api}/guests/${String(marekId39)}`, {
+  method: "PATCH",
+  json: { dietNote: "x".repeat(121) },
+});
+const setDiet39 = await request(`${e39Api}/guests/${String(marekId39)}`, {
+  method: "PATCH",
+  json: { diets: ["lactose-free"], dietNote: "  bez   mleka " },
+});
+check(
+  "diets: a diet edit — an unknown tag → 400, a 121-character note → 400, a known tag and a note (normalized) → 200",
+  unknownTag39.status === 400 &&
+    longNote39.status === 400 &&
+    setDiet39.status === 200 &&
+    JSON.stringify(guestNamed(setDiet39, MAREK39)?.diets) === JSON.stringify(["lactose-free"]) &&
+    guestNamed(setDiet39, MAREK39)?.dietNote === "bez mleka",
+  `${unknownTag39.status} ${longNote39.status} ${setDiet39.status}`,
+);
+
+const room39 = await request(`${e39Api}/rooms`, { method: "POST", json: { name: "Sala importu" } });
+const roomId39 = room39.data?.rooms?.find((room) => room.name === "Sala importu")?.id ?? 0;
+const table39 = await request(`${e39Api}/tables`, {
+  method: "POST",
+  json: { roomId: roomId39, name: "Stół importu", seatCount: 6, shape: "round", x: 0.5, y: 0.5 },
+});
+const tableId39 = table39.data?.tables?.find((table) => table.name === "Stół importu")?.id ?? 0;
+const order39 = [ZOFIA39, MAREK39, JAN39, PIOTR39, EWA39, ADAM39];
+const all39 = (await request(`${e39Api}/guests`)).data?.guests ?? [];
+const idOf39 = (name) => all39.find((guest) => guest.displayName === name)?.id ?? 0;
+const draft39 = await request(`${e39Api}/seating/draft`, {
+  method: "POST",
+  json: { seats: order39.map((name, index) => ({ guestId: idOf39(name), tableId: tableId39, seat: index + 1 })) },
+});
+const publish39 = await request(`${e39Api}/seating/publish`, { method: "POST" });
+const links39 = await request(`${e39Api}/guest-links`, { method: "PATCH", json: { enabled: true } });
+const keyOf39 = (name) => links39.data?.guests?.find((guest) => guest.displayName === name)?.key ?? "";
+check(
+  "diets: the six guests seated at one table and published, guest links on",
+  tableId39 > 0 && draft39.status === 200 && publish39.status === 201 && keyOf39(ZOFIA39).length === 24,
+  `${room39.status} ${table39.status} ${draft39.status} ${publish39.status} ${links39.status}`,
+);
+
+const board39 = await request(`${e39Api}/orders`);
+const diets39 = board39.data?.diets;
+const seats39 = diets39?.tables?.[0]?.seats ?? [];
+const counts39 = Object.fromEntries((diets39?.counts ?? []).map((entry) => [entry.tag, entry.count]));
+check(
+  "diets: the client's order board has „Diety i alergie” — every seat with a diet or a note, the counts of present guests",
+  board39.status === 200 &&
+    diets39?.guests === 6 &&
+    diets39?.tables?.length === 1 &&
+    diets39.tables[0].name === "Stół importu" &&
+    seats39.length === 6 &&
+    seats39[0]?.seat === 1 &&
+    seats39[0]?.guestName === ZOFIA39 &&
+    seats39[0]?.note === NOTE39 &&
+    JSON.stringify(seats39[0]?.diets) === JSON.stringify(["vegetarian", "gluten-free"]) &&
+    fieldsOf38(seats39[0]) === "diets guestName note seat" &&
+    JSON.stringify(counts39) ===
+      JSON.stringify({
+        vegetarian: 1,
+        vegan: 1,
+        "gluten-free": 1,
+        "lactose-free": 1,
+        "nut-allergy": 1,
+        halal: 1,
+        "no-pork": 1,
+      }) &&
+    (diets39?.unplaced?.length ?? -1) === 0,
+  `${board39.status} ${JSON.stringify(diets39 ?? null).slice(0, 240)}`,
+);
+
+const tablet39 = await request(`/api/r/${e39Restaurant}/orders`);
+const tabletDiets39 = JSON.stringify(tablet39.data?.diets ?? null);
+const secrets39 = [e39Organizer, e39Tv, e39Restaurant, ...order39.map(keyOf39)].filter((key) => key !== "");
+const adamDiet39 = await request(`${e39Api}/guests/${String(idOf39(ADAM39))}`, {
+  method: "PATCH",
+  json: { diets: ["seafood-allergy"] },
+});
+const tabletAfter39 = await request(`/api/r/${e39Restaurant}/orders?since=${tablet39.data?.version ?? ""}`);
+const tabletSame39 = await request(`/api/r/${e39Restaurant}/orders?since=${tabletAfter39.data?.version ?? ""}`);
+check(
+  "diets: the tablet carries the same diets (no ids, no keys); a diet-only change is a new version (200, then 204)",
+  tablet39.status === 200 &&
+    tabletDiets39 === JSON.stringify(diets39) &&
+    !/"id"|"guestId"/.test(tabletDiets39) &&
+    !secrets39.some((key) => tablet39.body.includes(key)) &&
+    adamDiet39.status === 200 &&
+    tabletAfter39.status === 200 &&
+    tabletAfter39.data?.version !== tablet39.data?.version &&
+    (tabletAfter39.data?.diets?.counts ?? []).some((entry) => entry.tag === "seafood-allergy") &&
+    tabletSame39.status === 204,
+  `${tablet39.status} ${adamDiet39.status} ${tabletAfter39.status} ${tabletSame39.status}`,
+);
+
+const preview39Staff = await staffCall(sessionOwner, `${e39Klient}/orders`);
+const floor39 = await staffCall(sessionWaiter, `${floorApiOf(e39Id)}/orders`);
+const waiter39 = await addWaiter(sessionOwner, e39Id, `Kelner diet ${RUN_TAG}`);
+const waiterCookie39 = waiterCookieOf(await enterFloor({ link: linkTokenOf(waiter39.data?.issued ?? null) }));
+const waiterFloor39 = await waiterCall(waiterCookie39, `${waiterFloorApiOf(e39Id)}/orders`);
+const zofiaAt39 = (res) =>
+  (res.data?.diets?.tables?.[0]?.seats ?? []).find((seat) => seat.guestName === ZOFIA39)?.note === NOTE39;
+check(
+  "diets: the staff's preview, the floor (A's waiter) and the per-event waiter's floor carry the diets at the seats",
+  preview39Staff.status === 200 &&
+    zofiaAt39(preview39Staff) &&
+    floor39.status === 200 &&
+    zofiaAt39(floor39) &&
+    waiterCookie39 !== "" &&
+    waiterFloor39.status === 200 &&
+    zofiaAt39(waiterFloor39),
+  `${preview39Staff.status} ${floor39.status} ${waiter39.status} ${waiterFloor39.status}`,
+);
+
+const stateZofia39 = await request(`/api/g/${keyOf39(ZOFIA39)}/state`);
+const stateMarek39 = await request(`/api/g/${keyOf39(MAREK39)}/state`);
+const tvPoll39 = await request(`/api/tv/${e39Tv}/seating`);
+const guestPage39 = await request(`/g/${keyOf39(ZOFIA39)}`);
+const tvPage39 = await request(`/tv/${e39Tv}`);
+check(
+  "diets: never to guests or the TV — the dieted guest's state, a tablemate's (tablemates, drawing), the TV poll and both pages name the guests but carry no diet tag, field or note (the same detector finds them on the client's board)",
+  dietLeak39(board39.body) &&
+    stateZofia39.status === 200 &&
+    stateZofia39.body.includes(MAREK39) &&
+    !dietLeak39(stateZofia39.body) &&
+    stateMarek39.status === 200 &&
+    stateMarek39.body.includes(ZOFIA39) &&
+    !dietLeak39(stateMarek39.body) &&
+    tvPoll39.status === 200 &&
+    tvPoll39.body.includes(ZOFIA39) &&
+    !dietLeak39(tvPoll39.body) &&
+    guestPage39.status === 200 &&
+    !dietLeak39(guestPage39.body) &&
+    tvPage39.status === 200 &&
+    !dietLeak39(tvPage39.body),
+  `${stateZofia39.status} ${stateMarek39.status} ${tvPoll39.status} ${guestPage39.status} ${tvPage39.status}`,
+);
+
+const leadOn39 = await staffCall(sessionOwner, eventApi(e39Id), { method: "PATCH", json: { venueLeads: true } });
+const clientOn39 = await importOf39(`Lead Klient ${RUN_TAG}`);
+const clientPreviewOn39 = await importOf39(`Lead Klient ${RUN_TAG}`, true);
+const staffPreviewOn39 = await importOf39(`Lead Lokal ${RUN_TAG};wegańska`, true, e39Klient, sessionManager);
+const staffOn39 = await importOf39(`Lead Lokal ${RUN_TAG};wegańska`, false, e39Klient, sessionManager);
+const staffDietOn39 = await staffCall(sessionManager, `${e39Klient}/guests/${String(marekId39)}`, {
+  method: "PATCH",
+  json: { diets: ["vegan"] },
+});
+const leadOff39 = await staffCall(sessionOwner, eventApi(e39Id), { method: "PATCH", json: { venueLeads: false } });
+const staffOff39 = await importOf39(`Lead Późno ${RUN_TAG}`, false, e39Klient, sessionManager);
+check(
+  "diets: while the venue leads the client's import (and preview) → 409 venue-leads, the staff import and edit diets through the dispatcher (201 / 200); when the client leads again the staff import → 409 client-leads",
+  leadOn39.status === 200 &&
+    clientOn39.status === 409 &&
+    leadCode(clientOn39) === "venue-leads" &&
+    clientPreviewOn39.status === 409 &&
+    staffPreviewOn39.status === 200 &&
+    staffPreviewOn39.data?.ready === true &&
+    staffOn39.status === 201 &&
+    JSON.stringify(guestNamed(staffOn39, `Lead Lokal ${RUN_TAG}`)?.diets) === JSON.stringify(["vegan"]) &&
+    staffDietOn39.status === 200 &&
+    leadOff39.status === 200 &&
+    staffOff39.status === 409 &&
+    leadCode(staffOff39) === "client-leads" &&
+    (await guestCount39()) === 7,
+  `${leadOn39.status} ${clientOn39.status} ${clientPreviewOn39.status} ${staffPreviewOn39.status} ${staffOn39.status} ${staffDietOn39.status} ${leadOff39.status} ${staffOff39.status}`,
+);
+
+const zofiaId39 = idOf39(ZOFIA39);
+const bOnA39 = await request(`/api/o/${eventB.organizerKey}/guests/${String(zofiaId39)}`, {
+  method: "PATCH",
+  json: { diets: ["vegan"] },
+});
+const bOnUnknown39 = await request(`/api/o/${eventB.organizerKey}/guests/${String(UNKNOWN_ID)}`, {
+  method: "PATCH",
+  json: { diets: ["vegan"] },
+});
+const aOnB39 = await request(`${e39Api}/guests/${String(b1)}`, { method: "PATCH", json: { diets: ["vegan"] } });
+const aOnUnknown39 = await request(`${e39Api}/guests/${String(UNKNOWN_ID)}`, {
+  method: "PATCH",
+  json: { diets: ["vegan"] },
+});
+const denied39 = [];
+for (const [name, token, path] of [
+  ["A's manager through B's dispatcher", sessionManager, `${eventApi(eventB.id)}/klient/guests/import`],
+  ["A's waiter through B's dispatcher", sessionWaiter, `${eventApi(eventB.id)}/klient/guests/import`],
+  ["A's waiter through A's dispatcher", sessionWaiter, `${e39Klient}/guests/import`],
+  ["the floor", sessionWaiter, `${floorApiOf(e39Id)}/guests/import`],
+]) {
+  const res = await staffCall(token, path, { method: "POST", json: { text: `Obcy ${RUN_TAG}`, preview: true } });
+  if (!noAccessJson(res)) denied39.push(`${name}: ${String(res.status)}`);
+}
+const perEventImport39 = await waiterCall(waiterCookie39, `${waiterFloorApiOf(e39Id)}/guests/import`, {
+  method: "POST",
+  json: { text: `Obcy ${RUN_TAG}`, preview: true },
+});
+if (!noAccessJson(perEventImport39)) denied39.push(`the per-event waiter: ${String(perEventImport39.status)}`);
+const zofiaAfter39 = guestNamed(await request(`${e39Api}/guests`), ZOFIA39);
+check(
+  "diets: event B's key on A's guest and A's key on B's guest answer exactly like an unknown id; A's manager / waiter on B's dispatcher, a waiter on A's dispatcher and both floors → the identical 404; nothing changed",
+  bOnA39.status === 404 &&
+    bOnA39.body === bOnUnknown39.body &&
+    aOnB39.status === 404 &&
+    aOnB39.body === aOnUnknown39.body &&
+    denied39.length === 0 &&
+    JSON.stringify(zofiaAfter39?.diets) === JSON.stringify(["vegetarian", "gluten-free"]),
+  `${bOnA39.status} ${aOnB39.status} ${denied39.join("; ")}`,
+);
+
+const guestsPage39 = await request(`/o/${e39Organizer}/goscie`);
+const guestsPageEn39 = await request(`/o/${e39Organizer}/goscie`, { cookie: "kp-lang=en" });
+const ordersPage39 = await request(`/o/${e39Organizer}/zamowienia`);
+const seatingPage39 = await request(`/o/${e39Organizer}/rozsadzenie`);
+const tabletPage39 = await request(`/r/${e39Restaurant}`);
+const tabletPagePl39 = await request(`/r/${e39Restaurant}`, { cookie: "kp-lang-r=pl" });
+const floorPage39 = await staffCall(sessionWaiter, floorPageOf(e39Id));
+const waiterPage39 = await waiterCall(waiterCookie39, waiterFloorPageOf(e39Id));
+check(
+  "diets: the pages — the guest list with the import and the badges (PL, EN), the client's orders, the seating editor, the tablet (EN, PL), the floor and the per-event waiter's floor with „Diety i alergie”",
+  guestsPage39.status === 200 &&
+    guestsPage39.body.includes("data-guest-import") &&
+    guestsPage39.body.includes("Import gości z dietami") &&
+    guestsPage39.body.includes('data-diet="nut-allergy"') &&
+    guestsPage39.body.includes(NOTE39) &&
+    dietLeak39(tabletPage39.body) &&
+    guestsPageEn39.status === 200 &&
+    guestsPageEn39.body.includes("Import guests with diets") &&
+    ordersPage39.status === 200 &&
+    ordersPage39.body.includes("data-diet-section") &&
+    ordersPage39.body.includes("Diety i alergie (") &&
+    seatingPage39.status === 200 &&
+    seatingPage39.body.includes("data-diet-badges") &&
+    tabletPage39.status === 200 &&
+    tabletPage39.body.includes("data-diet-section") &&
+    tabletPage39.body.includes("Diets and allergies (") &&
+    tabletPage39.body.includes('data-diet-count="nut-allergy"') &&
+    tabletPagePl39.body.includes("Diety i alergie (") &&
+    floorPage39.status === 200 &&
+    floorPage39.body.includes("data-diet-section") &&
+    waiterPage39.status === 200 &&
+    waiterPage39.body.includes("data-diet-section"),
+  `${guestsPage39.status} ${guestsPageEn39.status} ${ordersPage39.status} ${seatingPage39.status} ${tabletPage39.status} ${floorPage39.status} ${waiterPage39.status}`,
+);
+
+const deleted39 = await staffCall(sessionOwner, eventApi(e39Id), { method: "DELETE" });
+check("diets: the section's event is deleted", deleted39.status === 200, String(deleted39.status));
 
 finish();

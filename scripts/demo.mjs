@@ -91,6 +91,34 @@ const GUESTS = [
 ];
 const ABSENT = "Weronika";
 const PINNED = "Pani Halinka";
+// guest-import-diets (S-23): the last ten guests come from a spreadsheet's CSV with their diets — [the diet column as
+// typed, the notes, the tags it must become]; Bartek and Kasia get theirs per guest („Dieta”). The tablet's counts
+// (present guests only, so not the absent Weronika) must match.
+const IMPORTED_GUESTS = GUESTS.slice(-10);
+const GUEST_DIETS = new Map([
+  ["Justyna", ["wegetariańska", "", ["vegetarian"]]],
+  ["Maciek", ["bez glutenu", "celiakia — osobna deska", ["gluten-free"]]],
+  ["Karolina", ["wegańska, bez laktozy", "", ["vegan", "lactose-free"]]],
+  ["Gosia Kowalska", ["alergia na orzechy", "także orzeszki ziemne", ["nut-allergy"]]],
+  ["Staszek „Szef”", ["Halal", "", ["halal"]]],
+  ["Pani Halinka", ["bez wieprzowiny", "", ["no-pork"]]],
+  ["Igor z IT", ["", "bez cebuli", []]],
+  ["Weronika", ["wege", "", ["vegetarian"]]],
+  ["Bartek", ["", "", ["seafood-allergy"]]],
+  ["Kasia", ["", "bez mleka krowiego", ["lactose-free"]]],
+]);
+const PATCHED_DIETS = ["Bartek", "Kasia"];
+// The tags in the app's order with their Polish labels (src/lib/diets/messages.ts).
+const DIET_LABELS = {
+  vegetarian: "wegetariańska",
+  vegan: "wegańska",
+  "gluten-free": "bez glutenu",
+  "lactose-free": "bez laktozy",
+  "nut-allergy": "alergia na orzechy",
+  "seafood-allergy": "alergia na ryby i owoce morza",
+  halal: "halal",
+  "no-pork": "bez wieprzowiny",
+};
 
 // Plan image size in pixels; rooms and tables are drawn on it and the pins are the table centres as fractions.
 const PLAN_WIDTH = 1600;
@@ -476,13 +504,56 @@ const tableByName = new Map(venue.tables.map((table) => [table.name, table]));
 
 // --- 3. Guests, groups, the absent guest --------------------------------------------------------------------------
 
-const pasted = await step("lista gości", `${api}/guests`, { method: "POST", json: { text: GUESTS.join("\n") } }, 201);
-const guestId = new Map(pasted.guests.map((guest) => [guest.displayName, guest.id]));
+await step(
+  "lista gości",
+  `${api}/guests`,
+  { method: "POST", json: { text: GUESTS.filter((name) => !IMPORTED_GUESTS.includes(name)).join("\n") } },
+  201,
+);
+// guest-import-diets (S-23): the rest from a CSV as a Polish spreadsheet saves it (UTF-8 with a BOM, `;`, a header,
+// quoted cells where needed): the preview first (nothing saved), then the import, all at once.
+const csvCell = (text) => (/[;"\r\n]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text);
+const importCsv =
+  "\uFEFFImię;Dieta;Uwagi\r\n" +
+  IMPORTED_GUESTS.map((name) => {
+    const [diet, note] = GUEST_DIETS.get(name) ?? ["", ""];
+    return [name, diet, note].map(csvCell).join(";");
+  }).join("\r\n") +
+  "\r\n";
+const importPreview = await step("podgląd importu gości", `${api}/guests/import`, {
+  method: "POST",
+  json: { text: importCsv, preview: true },
+});
+if (!importPreview.ready || importPreview.rows.length !== IMPORTED_GUESTS.length) {
+  fail(`Podgląd importu gości nie jest gotowy: ${importPreview.problems.join(" ")}`);
+}
+const imported = await step(
+  "import gości z dietami (CSV)",
+  `${api}/guests/import`,
+  { method: "POST", json: { text: importCsv } },
+  201,
+);
+const guestId = new Map(imported.guests.map((guest) => [guest.displayName, guest.id]));
 const missingNames = GUESTS.filter((name) => !guestId.has(name));
 if (missingNames.length > 0) {
-  fail(`Po wklejeniu brakuje gości: ${missingNames.join(", ")}.`);
+  fail(`Po wklejeniu i imporcie brakuje gości: ${missingNames.join(", ")}.`);
 }
 const idOf = (name) => guestId.get(name);
+const wrongDiets = IMPORTED_GUESTS.filter((name) => {
+  const guest = imported.guests.find((candidate) => candidate.displayName === name);
+  const [, note, tags] = GUEST_DIETS.get(name) ?? ["", "", []];
+  return JSON.stringify(guest?.diets) !== JSON.stringify(tags) || (guest?.dietNote ?? "") !== note;
+});
+if (wrongDiets.length > 0) {
+  fail(`Import nie zapisał diet: ${wrongDiets.join(", ")}.`);
+}
+for (const name of PATCHED_DIETS) {
+  const [, note, tags] = GUEST_DIETS.get(name);
+  await step(`dieta ${name}`, `${api}/guests/${idOf(name)}`, {
+    method: "PATCH",
+    json: { diets: tags, dietNote: note === "" ? null : note },
+  });
+}
 
 for (const group of GROUPS) {
   await step(
@@ -528,6 +599,22 @@ await step(`przypięcie ${PINNED}`, `${api}/seating/guests/${idOf(PINNED)}`, {
   json: { pinned: true },
 });
 const board = await step("publikacja na TV", `${api}/seating/publish`, { method: "POST" }, 201);
+
+// guest-import-diets (S-23): the kitchen's tablet counts the present guests' diets and shows each at its seat.
+const tabletView = await step("tablet: diety i alergie", `/api/r/${event.restaurantKey}/orders`);
+const expectedDietCounts = Object.keys(DIET_LABELS)
+  .map((tag) => ({
+    tag,
+    count: [...GUEST_DIETS].filter(([name, [, , tags]]) => name !== ABSENT && tags.includes(tag)).length,
+  }))
+  .filter((entry) => entry.count > 0);
+if (
+  JSON.stringify(tabletView.diets?.counts) !== JSON.stringify(expectedDietCounts) ||
+  (tabletView.diets?.unplaced?.length ?? -1) !== 0
+) {
+  fail(`Tablet nie pokazuje diet demo (${JSON.stringify(tabletView.diets ?? null).slice(0, 300)}).`);
+}
+const dietSummary = expectedDietCounts.map((entry) => `${DIET_LABELS[entry.tag]} ${String(entry.count)}`).join(", ");
 
 // --- 5. Guesses by organizer proxy ----------------------------------------------------------------------------
 
@@ -874,6 +961,7 @@ Dane demo gotowe („${RESTAURANT_NAME}” · „${EVENT_NAME}”, id ${String(e
 - rozsadzenie opublikowane na TV: ${board.assignments.length} osób, przypięta: ${PINNED}
 - strzały: ${guessCount} (remis: Bartek i Marta, strzał nieobecnej), brakuje: ${guessBoard.missing.length}
 - typy miejsc: ${placeCount} (wpisz prawidłową kwotę 1500, żeby zobaczyć podium i trafione miejsca)
+- import i diety: ${String(IMPORTED_GUESTS.length)} gości z pliku CSV (podgląd, potem zapis), ${String(PATCHED_DIETS.length)} diety wpisane ręcznie; obecni: ${dietSummary} (tablet, zamówienia, sala, rozsadzenie)
 - zamówienie: ${orderBoard.totals.lines} pozycji, ${orderBoard.totals.quantity} szt., wydane: ${orderBoard.totals.deliveredQuantity}
 - bez zmian: przyjmowanie strzałów otwarte, prawidłowa kwota niewpisana, dostęp gości wyłączony, pytania startowe
 - wydarzenia lokalu: nadchodzące ${String(eventLists.upcoming.length)}, minione ${String(eventLists.past.length)}, archiwum ${String(eventLists.archived.length)}

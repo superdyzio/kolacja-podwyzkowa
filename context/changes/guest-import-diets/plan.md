@@ -443,10 +443,10 @@ Additive (two columns with defaults/null and three CHECKs); old code ignores the
 
 #### Automated
 
-- [x] 2.1 Type checking passes
-- [x] 2.2 Linting passes
-- [x] 2.3 Tests pass
-- [x] 2.4 Build passes
+- [x] 2.1 Type checking passes — 645331b
+- [x] 2.2 Linting passes — 645331b
+- [x] 2.3 Tests pass — 645331b
+- [x] 2.4 Build passes — 645331b
 
 #### Manual
 
@@ -457,9 +457,9 @@ Additive (two columns with defaults/null and three CHECKs); old code ignores the
 
 #### Automated
 
-- [ ] 3.1 Smoke passes
-- [ ] 3.2 Demo passes
-- [ ] 3.3 Full suite, lint, type check and build stay green
+- [x] 3.1 Smoke passes
+- [x] 3.2 Demo passes
+- [x] 3.3 Full suite, lint, type check and build stay green
 
 #### Manual
 
