@@ -11046,4 +11046,332 @@ check(
 const deleted43 = await staffCall(sessionOwner, eventApi(e43Id), { method: "DELETE" });
 check("pub quiz: the section's event is deleted", deleted43.status === 200, String(deleted43.status));
 
+// 44. Room prints (room-prints, S-24; FR-038). The client and the venue print the board „Znajdź swój stolik”, table
+// cards, place cards and the staff list (diets) from the latest PUBLISHED seating, with the brand; waiters print the
+// staff list from their floor. A today event of A (panel) filled through its client link: two guests (one with a diet
+// and a note of this run), a room, a table of 4, a draft, a publish, a client logo. The client's print HTML carries no
+// key (relative links, the logo through /o/<key>/wydruki/logo); diets only on the staff list; panel prints for owners
+// and managers (support mode reads, without logo images); the staff floor and the per-event waiter print the staff
+// list. The event, its waiter and a template of A are deleted.
+const e44 = await staffCall(sessionOwner, eventsApiOf(restaurantA.id), {
+  method: "POST",
+  json: { name: `Wydruki ${RUN_TAG}`, date: today },
+});
+const e44Id = e44.data?.event?.id ?? 0;
+const org44 = keyOfPath(e44.data?.event?.links?.organizer);
+const tv44 = keyOfPath(e44.data?.event?.links?.tv);
+const tablet44 = keyOfPath(e44.data?.event?.links?.restaurant);
+const e44Api = `/api/o/${org44}`;
+const prints44 = `/o/${org44}/wydruki`;
+const print44 = (kind, query = "") => `${prints44}/${kind}${query}`;
+const panelPrint44 = (id, kind, query = "") => `${eventPage(id)}/wydruki/${kind}${query}`;
+const NOTE44 = `Bez orzechów laskowych ${RUN_TAG}`;
+const DIET44 = "alergia na orzechy";
+const ROZA44 = `Róża Drukowana ${RUN_TAG}`;
+const LEON44 = `Leon Drukowany ${RUN_TAG}`;
+const TABLE44 = `Stół wydruku ${RUN_TAG.slice(0, 6)}`;
+const before44 = await request(print44("tablica"));
+const guests44 = await request(`${e44Api}/guests`, { method: "POST", json: { text: `${ROZA44}\n${LEON44}` } });
+const roza44 = (guests44.data?.guests ?? []).find((guest) => guest.displayName === ROZA44)?.id ?? 0;
+const ids44 = (guests44.data?.guests ?? []).map((guest) => guest.id);
+const diet44 = await request(`${e44Api}/guests/${String(roza44)}`, {
+  method: "PATCH",
+  json: { diets: ["nut-allergy"], dietNote: NOTE44 },
+});
+const room44 = await request(`${e44Api}/rooms`, { method: "POST", json: { name: "Sala wydruków" } });
+const table44 = await request(`${e44Api}/tables`, {
+  method: "POST",
+  json: {
+    roomId: room44.data?.rooms?.find((room) => room.name === "Sala wydruków")?.id ?? 0,
+    name: TABLE44,
+    seatCount: 4,
+    shape: "round",
+    x: 0.5,
+    y: 0.5,
+  },
+});
+const tableId44 = table44.data?.tables?.find((table) => table.name === TABLE44)?.id ?? 0;
+const draft44 = await request(`${e44Api}/seating/draft`, {
+  method: "POST",
+  json: { seats: ids44.map((guestId, index) => ({ guestId, tableId: tableId44, seat: index + 1 })) },
+});
+const publish44 = await request(`${e44Api}/seating/publish`, { method: "POST" });
+const logo44 = await requestBytes(`${e44Api}/branding/logo`, {
+  method: "PUT",
+  body: TINY_PNG,
+  contentType: "image/png",
+});
+const links44 = await request(`${e44Api}/guest-links`);
+const guestKeys44 = (links44.data?.guests ?? []).map((guest) => guest.key);
+check(
+  "room prints: a today event of A with two guests (one with a nut allergy and a note), a table of 4, a published seating and a client logo; before the publish the board says nothing is published and has no sheet",
+  e44.status === 201 &&
+    ids44.length === 2 &&
+    diet44.status === 200 &&
+    tableId44 > 0 &&
+    draft44.status === 200 &&
+    publish44.status === 201 &&
+    logo44.status === 200 &&
+    guestKeys44.length === 2 &&
+    before44.status === 200 &&
+    before44.body.includes('data-print-empty="unpublished"') &&
+    !before44.body.includes("data-print-sheet"),
+  `${e44.status} ${guests44.status} ${diet44.status} ${table44.status} ${draft44.status} ${publish44.status} ${logo44.status} ${links44.status} ${before44.status}`,
+);
+
+const shell44 = await request(`/o/${org44}`);
+const hub44 = await request(prints44);
+const kinds44 = ["tablica", "karty-stolow", "winietki", "lista-obslugi"];
+check(
+  "room prints: the client shell has the „Wydruki dla sali” card, the hub lists the four prints with the QR cards and the published state",
+  shell44.status === 200 &&
+    shell44.body.includes("data-prints-card") &&
+    shell44.body.includes(prints44) &&
+    hub44.status === 200 &&
+    hub44.body.includes("data-print-links") &&
+    kinds44.every((kind) => hub44.body.includes(`data-print-link="${kind}"`)) &&
+    hub44.body.includes(`/o/${org44}/karteczki`) &&
+    hub44.body.includes('data-print-state="published"'),
+  `${shell44.status} ${hub44.status}`,
+);
+
+const secrets44 = [org44, tv44, tablet44, ...guestKeys44].filter((key) => key !== "");
+const keyFree44 = (res) => !secrets44.some((key) => res.body.includes(key));
+const count44 = (res, attribute) => res.body.split(attribute).length - 1;
+const board44 = await request(print44("tablica"));
+const cards44 = await request(print44("karty-stolow"));
+const cardsNames44 = await request(print44("karty-stolow", "?names=1"));
+const places44 = await request(print44("winietki"));
+const staff44 = await request(print44("lista-obslugi"));
+const clientPrints44 = [board44, cards44, cardsNames44, places44, staff44];
+const healthFree44 = (res) => !res.body.includes(NOTE44) && !res.body.includes(DIET44);
+check(
+  "room prints: every client print answers 200 from the published seating — the board with both names at the table, a table card (names only with names=1), a place card per guest, the staff list per seat — with the client logo through the relative ./logo and NO organizer, TV, tablet or guest key in its HTML",
+  clientPrints44.every((res) => res.status === 200 && keyFree44(res) && res.body.includes("data-print-sheet")) &&
+    board44.body.includes('data-room-print="tablica"') &&
+    board44.body.includes('data-print-format="a4"') &&
+    count44(board44, "data-board-guest") === 2 &&
+    board44.body.includes(ROZA44) &&
+    board44.body.includes(LEON44) &&
+    board44.body.includes(TABLE44) &&
+    board44.body.includes('data-print-logo="event"') &&
+    board44.body.includes('src="./logo?kind=event&amp;v=') &&
+    board44.body.includes("size: A4 portrait") &&
+    count44(cards44, "data-table-card") === 1 &&
+    cards44.body.includes(TABLE44) &&
+    !cards44.body.includes(ROZA44) &&
+    cardsNames44.body.includes(ROZA44) &&
+    count44(places44, "data-place-card") === 2 &&
+    places44.body.includes('data-print-format="tent-90x45"') &&
+    count44(staff44, "data-staff-seat") === 2 &&
+    staff44.body.includes('data-room-print="lista-obslugi"') &&
+    board44.body.includes('href="../wydruki"') &&
+    board44.body.includes('href="tablica?format=a3"'),
+  clientPrints44.map((res) => `${String(res.status)}:${String(keyFree44(res))}`).join(" "),
+);
+
+check(
+  "room prints: the diet and the note appear ONLY on the staff list (never on the board, the table cards with names or the place cards)",
+  staff44.body.includes(DIET44) &&
+    staff44.body.includes(NOTE44) &&
+    staff44.body.includes('data-diet="nut-allergy"') &&
+    [board44, cards44, cardsNames44, places44].every(healthFree44),
+  [board44, cards44, cardsNames44, places44].map((res) => String(healthFree44(res))).join(" "),
+);
+
+const a3_44 = await request(print44("tablica", "?format=a3"));
+const flat44 = await request(print44("winietki", "?format=flat-90x50"));
+const tent95_44 = await request(print44("winietki", "?format=tent-95x70"));
+const tableFlat44 = await request(print44("karty-stolow", "?format=flat&names=1"));
+const bogus44 = await request(print44("tablica", "?format=bogus"));
+const en44 = await request(print44("tablica"), { cookie: "kp-lang=en" });
+const lang44 = await request(print44("winietki", "?format=flat-90x50&lang=en"));
+check(
+  "room prints: formats — the A3 poster (@page A3, scaled sheet), flat and large folded place cards, flat table cards with names, an unknown format → the default; English with the kp-lang cookie; ?lang=en keeps the format through the 303",
+  a3_44.status === 200 &&
+    a3_44.body.includes('data-print-format="a3"') &&
+    a3_44.body.includes("size: A3 portrait") &&
+    a3_44.body.includes("--rp-w: 297mm") &&
+    flat44.status === 200 &&
+    flat44.body.includes('data-print-format="flat-90x50"') &&
+    count44(flat44, "data-place-card") === 2 &&
+    tent95_44.body.includes('data-print-format="tent-95x70"') &&
+    tableFlat44.body.includes('data-print-format="flat"') &&
+    tableFlat44.body.includes(LEON44) &&
+    bogus44.status === 200 &&
+    bogus44.body.includes('data-print-format="a4"') &&
+    en44.status === 200 &&
+    en44.body.includes('lang="en"') &&
+    en44.body.includes("Find your table") &&
+    lang44.status === 303 &&
+    lang44.location.endsWith("/winietki?format=flat-90x50"),
+  `${a3_44.status} ${flat44.status} ${tent95_44.status} ${tableFlat44.status} ${bogus44.status} ${en44.status} ${lang44.status} ${lang44.location}`,
+);
+
+const unknownKey44 = await request(`/o/${"Q".repeat(24)}/wydruki/tablica`);
+const tvKey44 = await request(`/o/${tv44}/wydruki/tablica`);
+const tvHub44 = await request(`/o/${tv44}/wydruki`);
+const kind44 = await request(print44("nic"));
+const logoRoute44 = await requestBytes(`${prints44}/logo?kind=event`);
+const logoApi44 = await requestBytes(`${e44Api}/branding/logo?kind=event`);
+const logoBogus44 = await request(`${prints44}/logo?kind=bogus`);
+const logoTv44 = await request(`/o/${tv44}/wydruki/logo?kind=event`);
+check(
+  "room prints: an unknown print → the no-access page; the TV key on a print and on the hub → the same 404 as an unknown key; the key-free logo route serves the client logo like the branding API (nosniff), an unknown kind → 404, a TV key → 404",
+  isNoAccessPage(kind44) &&
+    isNoAccessPage(unknownKey44) &&
+    tvKey44.status === 404 &&
+    tvKey44.body === unknownKey44.body &&
+    isNoAccessPage(tvHub44) &&
+    logoRoute44.status === 200 &&
+    logoRoute44.contentType === "image/png" &&
+    logoRoute44.nosniff === "nosniff" &&
+    sameBytes(logoRoute44.bytes, logoApi44.bytes) &&
+    logoBogus44.status === 404 &&
+    logoTv44.status === 404,
+  `${kind44.status} ${unknownKey44.status} ${tvKey44.status} ${tvHub44.status} ${logoRoute44.status} ${logoRoute44.contentType} ${logoBogus44.status} ${logoTv44.status}`,
+);
+
+const leon44 = ids44.find((id) => id !== roza44) ?? 0;
+const absent44 = await request(`${e44Api}/guests/${String(leon44)}`, { method: "PATCH", json: { isAbsent: true } });
+const changed44 = await request(print44("tablica"));
+const staffChanged44 = await request(print44("lista-obslugi"));
+check(
+  "room prints: a seated guest marked absent after the publish → the prints still show the published seating (both names) with the unpublished-changes note linking the seating relatively",
+  absent44.status === 200 &&
+    changed44.status === 200 &&
+    changed44.body.includes("data-print-unpublished") &&
+    changed44.body.includes('href="../rozsadzenie"') &&
+    count44(changed44, "data-board-guest") === 2 &&
+    changed44.body.includes(LEON44) &&
+    staffChanged44.body.includes("data-print-unpublished") &&
+    count44(staffChanged44, "data-staff-seat") === 2,
+  `${absent44.status} ${changed44.status} ${staffChanged44.status}`,
+);
+
+const card44 = await staffCall(sessionManager, eventPage(e44Id));
+const panelOwner44 = await staffCall(sessionOwner, panelPrint44(e44Id, "tablica"));
+const panelManager44 = await staffCall(sessionManager, panelPrint44(e44Id, "lista-obslugi"));
+const panelPlaces44 = await staffCall(sessionManager, panelPrint44(e44Id, "winietki", "?format=tent-95x70"));
+check(
+  "room prints: the event card has „Wydruki dla sali” with the four prints; the panel prints open for the owner and the manager, with the client logo through the dispatcher and the diet on the staff list",
+  card44.status === 200 &&
+    card44.body.includes("data-event-prints") &&
+    kinds44.every((kind) => card44.body.includes(`href="${panelPrint44(e44Id, kind)}"`)) &&
+    panelOwner44.status === 200 &&
+    panelOwner44.body.includes('data-room-print="tablica"') &&
+    panelOwner44.body.includes(ROZA44) &&
+    panelOwner44.body.includes(`/api/panel/events/${String(e44Id)}/klient/branding/logo?kind=event`) &&
+    keyFree44(panelOwner44) &&
+    panelManager44.status === 200 &&
+    panelManager44.body.includes(NOTE44) &&
+    panelManager44.body.includes(DIET44) &&
+    panelPlaces44.status === 200 &&
+    count44(panelPlaces44, "data-place-card") === 2,
+  `${card44.status} ${panelOwner44.status} ${panelManager44.status} ${panelPlaces44.status}`,
+);
+
+const template44 = await staffCall(sessionOwner, templatesApiOf(restaurantA.id), {
+  method: "POST",
+  json: { name: `Szablon wydruków ${RUN_TAG}` },
+});
+const template44Id = template44.data?.template?.id ?? 0;
+const panelDenied44 = [];
+for (const [name, token, path] of [
+  ["a waiter account", sessionWaiter, panelPrint44(e44Id, "tablica")],
+  ["owner B", sessionB, panelPrint44(e44Id, "lista-obslugi")],
+  ["the admin outside support", sessionAdmin, panelPrint44(e44Id, "tablica")],
+  ["event B (manager of A)", sessionManager, panelPrint44(eventB.id, "tablica")],
+  ["a malformed id", sessionOwner, "/panel/wydarzenia/abc/wydruki/tablica"],
+  ["an unknown id", sessionOwner, panelPrint44(2_000_000_000, "tablica")],
+  ["a template of A", sessionOwner, panelPrint44(template44Id, "tablica")],
+  ["an unknown print", sessionOwner, panelPrint44(e44Id, "nic")],
+]) {
+  const res = await staffCall(token, path);
+  if (!isNoAccessPage(res)) panelDenied44.push(`${name}: ${String(res.status)}`);
+}
+const panelNoSession44 = await request(panelPrint44(e44Id, "tablica"));
+const templateDeleted44 = await staffCall(sessionOwner, templateApi(template44Id), { method: "DELETE" });
+check(
+  "room prints: a waiter account, owner B, the admin outside support, event B's id, malformed and unknown ids, a template of A and an unknown print → the no-access page; no session → 303 /logowanie",
+  template44.status === 201 &&
+    template44Id > 0 &&
+    panelDenied44.length === 0 &&
+    panelNoSession44.status === 303 &&
+    panelNoSession44.location.endsWith("/logowanie") &&
+    templateDeleted44.status === 200,
+  `${template44.status} ${panelDenied44.join("; ")} ${panelNoSession44.status} ${panelNoSession44.location} ${templateDeleted44.status}`,
+);
+
+const leads44 = await staffCall(sessionOwner, eventApi(e44Id), { method: "PATCH", json: { venueLeads: true } });
+const clientLeads44 = await request(print44("karty-stolow"));
+const panelLeads44 = await staffCall(sessionManager, panelPrint44(e44Id, "karty-stolow"));
+check(
+  "room prints: prints are reads — with „Lokal prowadzi” on, the client's and the panel's prints still answer 200",
+  leads44.status === 200 && clientLeads44.status === 200 && panelLeads44.status === 200,
+  `${leads44.status} ${clientLeads44.status} ${panelLeads44.status}`,
+);
+
+const enter44 = await enterSupport(sessionAdmin, restaurantA.id);
+const support44 = await staffCall(sessionAdmin, panelPrint44(e44Id, "lista-obslugi"));
+const supportCard44 = await staffCall(sessionAdmin, eventPage(e44Id));
+const exit44 = await endSupportOf(sessionAdmin, restaurantA.id);
+check(
+  "room prints: in support mode the admin reads the staff list (the diet, the support banner) without any logo image, and the event card lists the prints; then support ends",
+  enter44.status === 201 &&
+    support44.status === 200 &&
+    support44.body.includes(NOTE44) &&
+    support44.body.includes("data-support-banner") &&
+    !support44.body.includes("data-print-logo") &&
+    !support44.body.includes("/branding/logo") &&
+    keyFree44(support44) &&
+    supportCard44.status === 200 &&
+    supportCard44.body.includes("data-event-prints") &&
+    exit44.status === 200,
+  `${enter44.status} ${support44.status} ${supportCard44.status} ${exit44.status}`,
+);
+
+const floorList44 = `${floorPageOf(e44Id)}/lista-obslugi`;
+const floorPage44 = await staffCall(sessionWaiter, floorPageOf(e44Id));
+const floorPrint44 = await staffCall(sessionWaiter, floorList44);
+const floorB44 = await staffCall(sessionB, floorList44);
+const floorAdmin44 = await staffCall(sessionAdmin, floorList44);
+const floorNoSession44 = await request(floorList44);
+const waiter44 = await addWaiter(sessionOwner, e44Id, `Kelner wydruków ${RUN_TAG}`);
+const waiterCookie44 = waiterCookieOf(await enterFloor({ link: linkTokenOf(waiter44.data?.issued ?? null) }));
+const waiterList44 = `${waiterFloorPageOf(e44Id)}/lista-obslugi`;
+const waiterPage44 = await waiterCall(waiterCookie44, waiterFloorPageOf(e44Id));
+const waiterPrint44 = await waiterCall(waiterCookie44, waiterList44);
+const waiterOther44 = await waiterCall(waiterCookie44, `${waiterFloorPageOf(eventB.id)}/lista-obslugi`);
+const waiterNoCookie44 = await request(waiterList44);
+check(
+  "room prints: the staff floor links its staff list, which opens for A's waiter with the diet and no logo image (owner B and the admin → the no-access page, no session → 303 /logowanie); the per-event waiter's floor links its own (200 with the diet; another event → the no-access page; no cookie → 303 /kelner)",
+  floorPage44.status === 200 &&
+    floorPage44.body.includes("data-floor-print-link") &&
+    floorPage44.body.includes(floorList44) &&
+    floorPrint44.status === 200 &&
+    floorPrint44.body.includes(NOTE44) &&
+    floorPrint44.body.includes(DIET44) &&
+    !floorPrint44.body.includes("data-print-logo") &&
+    floorPrint44.body.includes(`href="${floorPageOf(e44Id)}"`) &&
+    isNoAccessPage(floorB44) &&
+    isNoAccessPage(floorAdmin44) &&
+    floorNoSession44.status === 303 &&
+    floorNoSession44.location.endsWith("/logowanie") &&
+    waiterCookie44 !== "" &&
+    waiterPage44.status === 200 &&
+    waiterPage44.body.includes("data-floor-print-link") &&
+    waiterPage44.body.includes(waiterList44) &&
+    waiterPrint44.status === 200 &&
+    waiterPrint44.body.includes(NOTE44) &&
+    !waiterPrint44.body.includes("/panel/") &&
+    isNoAccessPage(waiterOther44) &&
+    waiterNoCookie44.status === 303 &&
+    waiterNoCookie44.location.endsWith("/kelner"),
+  `${floorPage44.status} ${floorPrint44.status} ${floorB44.status} ${floorAdmin44.status} ${floorNoSession44.status} ${waiter44.status} ${waiterPage44.status} ${waiterPrint44.status} ${waiterOther44.status} ${waiterNoCookie44.status}`,
+);
+
+const deleted44 = await staffCall(sessionOwner, eventApi(e44Id), { method: "DELETE" });
+check("room prints: the section's event is deleted", deleted44.status === 200, String(deleted44.status));
+
 finish();

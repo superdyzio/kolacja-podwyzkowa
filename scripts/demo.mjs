@@ -963,6 +963,47 @@ const READOUT_PATHS = {
   }
 }
 
+// --- 8e. Room prints (room-prints, S-24): the client's board shows the guests from the published seating and never a
+// diet; the staff list (the client's and the waiter's on the floor) shows the diets at the seats ----------------------
+
+const PRINT_PATHS = {
+  hub: `/o/${event.organizerKey}/wydruki`,
+  board: `/o/${event.organizerKey}/wydruki/tablica`,
+  staff: `/o/${event.organizerKey}/wydruki/lista-obslugi`,
+  panel: `/panel/wydarzenia/${String(event.id)}/wydruki/tablica`,
+  floor: `/panel/obsluga/${String(event.id)}/lista-obslugi`,
+};
+{
+  const boardPage = await request(PRINT_PATHS.board);
+  if (
+    boardPage.status !== 200 ||
+    !boardPage.text.includes("data-board-guest") ||
+    !boardPage.text.includes("Justyna") ||
+    boardPage.text.includes("alergia na orzechy") ||
+    boardPage.text.includes("celiakia") ||
+    boardPage.text.includes(event.organizerKey)
+  ) {
+    fail(
+      `Tablica „Znajdź swój stolik” nie pokazuje gości albo pokazuje dietę lub klucz (HTTP ${String(boardPage.status)}).`,
+    );
+  }
+  for (const [name, path, cookie] of [
+    ["klienta", PRINT_PATHS.staff, undefined],
+    ["kelnera na sali", PRINT_PATHS.floor, waiter.cookie],
+  ]) {
+    const staffPage = await request(path, { cookie });
+    if (
+      staffPage.status !== 200 ||
+      !staffPage.text.includes("data-staff-seat") ||
+      !staffPage.text.includes("Gosia Kowalska") ||
+      !staffPage.text.includes("alergia na orzechy") ||
+      !staffPage.text.includes("także orzeszki ziemne")
+    ) {
+      fail(`Lista dla obsługi (${name}) nie pokazuje diet przy miejscach (HTTP ${String(staffPage.status)}).`);
+    }
+  }
+}
+
 // --- 9. A support visit of the platform admin (admin-support-log): enter with a reason, two pages, exit -----------
 
 const SUPPORT_REASON = "Pokaz trybu wsparcia: sprawdzenie listy wydarzeń (demo)";
@@ -1210,6 +1251,7 @@ Dane demo gotowe („${RESTAURANT_NAME}” · „${EVENT_NAME}”, id ${String(e
 - marka: lokal w kolorze ${BRAND_COLOR} z logo, klient „${CLIENT_BRAND}” z logo (telefony gości, TV, tablet, karteczki, panel)
 - szablon sali „${TEMPLATE_NAME}” (${String(savedTemplate.template.roomCount)} sale, ${String(savedTemplate.template.tableCount)} stolików) i wydarzenie z niego „${TEMPLATE_EVENT}”
 - pub quiz: ${String(QUIZ.length)} pytania, 2 zadane, ${String(QUIZ_RESULTS.length)} gości odpowiedziało przez swoje linki; wyniki na TV (1. Ania i Bartek, 3. Kasia), trzecie pytanie czeka
+- wydruki dla sali: tablica „Znajdź swój stolik” (A4 / A3), karty stołów, winietki (3 formaty), lista dla obsługi z dietami (też dla kelnerów na sali)
 - retencja danych gości: ${String(retention.guestRetentionDays)} dni po wydarzeniu; „${PURGED_EVENT}” — dane gości usunięte (po terminie), eksport bez gości
 
 Organizator: ${organizerUrl}
@@ -1231,6 +1273,11 @@ Odczyt bez sieci (obsługa): stan zapisany na urządzeniu, które otworzyło wid
                  tablet: ${new URL(READOUT_PATHS.tablet, BASE_URL).href}
                  sala:   ${new URL(READOUT_PATHS.floor, BASE_URL).href} (po zalogowaniu)
                  kelner na imprezę: ${new URL(READOUT_PATHS.waiter, BASE_URL).href} (po wejściu linkiem lub kodem)
+Wydruki:         ${new URL(PRINT_PATHS.hub, BASE_URL).href} (tablica „Znajdź swój stolik”, karty stołów, winietki, lista dla obsługi)
+                 tablica: ${new URL(PRINT_PATHS.board, BASE_URL).href} (?format=a3 — plakat)
+                 lista dla obsługi z dietami: ${new URL(PRINT_PATHS.staff, BASE_URL).href}
+                 w panelu: ${new URL(PRINT_PATHS.panel, BASE_URL).href} (karta wydarzenia: „Wydruki dla sali”)
+                 na sali: ${new URL(PRINT_PATHS.floor, BASE_URL).href} (kelner, po zalogowaniu)
 Menu lokalu:     ${new URL(`/panel/restauracje/${String(restaurantId)}/menu`, BASE_URL).href} („Menu wydarzenia” na karcie wydarzenia)
 Praca klienta:   ${new URL(`/panel/wydarzenia/${String(event.id)}`, BASE_URL).href} (prowadzi klient: podgląd)
                  ${new URL(`/panel/wydarzenia/${String(venueLedEventId)}`, BASE_URL).href} (lokal prowadzi: edycja w panelu)
