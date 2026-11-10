@@ -13,23 +13,30 @@ import {
   resetPartLabels,
   selectAllResetParts,
   toggleResetPart,
+  TRIAL_RESET_PARTS,
 } from "@/lib/reset/parts";
 import { describeResetCount } from "@/lib/reset/summary";
 import { cn } from "@/lib/utils";
 import type { ResetPart } from "@/types";
 
 interface Props {
-  // The organizer API base, /api/o/<key>.
+  // The API base: the client link's /api/o/<key> („Reset prób”) or the panel's /api/panel/events/<id> (the full reset).
   apiBase: string;
+  // "full" (default): every part via <apiBase>/reset — the panel's „Reset danych”. "trial": the trial parts via
+  // <apiBase>/trial-reset — the client's „Reset prób” (client-restaurant-split).
+  variant?: "full" | "trial";
   locale: Locale;
 }
 
-// „Reset danych” on the organizer shell: „Resetuj…” opens a modal (native <dialog>: the page behind is inert, Esc
+// „Reset danych” (panel) and „Reset prób” (client shell): „Resetuj…” opens a modal (native <dialog>: the page behind is inert, Esc
 // closes it) listing the parts with fresh counts. Parts pulled in by another chosen part are ticked and locked. One
 // click on „Resetuj zaznaczone” resets — the modal is the confirmation. Afterwards it shows the summary, and closing it
 // reloads the shell so every card shows the new state. While the reset runs, nothing closes the modal.
-export function ResetPanel({ apiBase, locale }: Props) {
+export function ResetPanel({ apiBase, variant = "full", locale }: Props) {
   const t = resetMessages(locale);
+  const trial = variant === "trial";
+  const offered: readonly ResetPart[] = trial ? TRIAL_RESET_PARTS : RESET_PARTS;
+  const endpoint = `${apiBase}/${trial ? "trial-reset" : "reset"}`;
   const labels = resetPartLabels(locale);
   const descriptions = resetPartDescriptions(locale);
   const dialog = useRef<HTMLDialogElement>(null);
@@ -38,9 +45,9 @@ export function ResetPanel({ apiBase, locale }: Props) {
   const titleId = useId();
   const [open, setOpen] = useState(false);
   const [explicit, setExplicit] = useState<ResetPart[]>([]);
-  const { preview, loading, pending, failure, result, load, reset, forget } = useEventReset(apiBase, locale);
+  const { preview, loading, pending, failure, result, load, reset, forget } = useEventReset(endpoint, apiBase, locale);
   const selected = expandResetParts(explicit);
-  const everything = isEveryResetPartSelected(explicit);
+  const everything = isEveryResetPartSelected(explicit, offered);
 
   function reloadAfterReset() {
     // A sync that started before the reset could have saved old data meanwhile.
@@ -99,7 +106,7 @@ export function ResetPanel({ apiBase, locale }: Props) {
   return (
     <>
       <Button ref={opener} type="button" variant="outline" className="h-11 self-start" onClick={openDialog}>
-        {t.open}
+        {trial ? t.trialOpen : t.open}
       </Button>
 
       <dialog
@@ -117,9 +124,9 @@ export function ResetPanel({ apiBase, locale }: Props) {
           <div className="flex flex-col gap-4 p-4 sm:p-6">
             <header className="flex flex-col gap-1">
               <h2 id={titleId} className="text-xl font-semibold">
-                {t.title}
+                {trial ? t.trialTitle : t.title}
               </h2>
-              <p className="text-muted-foreground text-sm">{t.intro}</p>
+              <p className="text-muted-foreground text-sm">{trial ? t.trialIntro : t.intro}</p>
             </header>
 
             {result ? (
@@ -146,14 +153,14 @@ export function ResetPanel({ apiBase, locale }: Props) {
                       variant="link"
                       className="h-9 px-0"
                       onClick={() => {
-                        setExplicit(everything ? [] : selectAllResetParts());
+                        setExplicit(everything ? [] : selectAllResetParts(offered));
                       }}
                     >
                       {everything ? t.deselectAll : t.selectAll}
                     </Button>
                   </div>
                   <ul className="flex flex-col gap-2">
-                    {RESET_PARTS.map((part) => {
+                    {offered.map((part) => {
                       const lockedBy = requiredBy(part, explicit);
                       const checked = selected.includes(part);
                       return (

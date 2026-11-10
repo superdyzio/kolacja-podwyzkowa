@@ -11,6 +11,7 @@ import {
   RESET_PARTS,
   selectAllResetParts,
   toggleResetPart,
+  TRIAL_RESET_PARTS,
 } from "./parts";
 
 describe("reset parts", () => {
@@ -101,5 +102,14 @@ describe("selection in the modal", () => {
     expect(isEveryResetPartSelected(selectAllResetParts())).toBe(true);
     expect(isEveryResetPartSelected(["guests", "venue", "orders", "questions", "guestLinks"])).toBe(true);
     expect(isEveryResetPartSelected(["guests", "venue", "questions"])).toBe(false);
+  });
+
+  it("offers the client only the trial parts, with nothing implied beyond them", () => {
+    expect(TRIAL_RESET_PARTS).toEqual(["guesses", "seating"]);
+    expect(expandResetParts(TRIAL_RESET_PARTS)).toEqual([...TRIAL_RESET_PARTS]);
+    expect(selectAllResetParts(TRIAL_RESET_PARTS)).toEqual(["guesses", "seating"]);
+    expect(isEveryResetPartSelected(["guesses", "seating"], TRIAL_RESET_PARTS)).toBe(true);
+    expect(isEveryResetPartSelected(["seating"], TRIAL_RESET_PARTS)).toBe(false);
+    expect(isEveryResetPartSelected(["guests"], TRIAL_RESET_PARTS)).toBe(true);
   });
 });

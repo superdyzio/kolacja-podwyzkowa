@@ -21,9 +21,6 @@ export const shellMessages = defineMessages(
     organizerLinkHint: "Dodaj ten link do zakładek: to jedyne wejście do panelu. Nie udostępniaj go nikomu.",
     tvLink: "Adres TV",
     tvLinkHint: "Otwórz go na urządzeniu przy telewizorze. Pokazuje tylko rozsadzenie, bez strzałów i rankingu.",
-    restaurantLink: "Link dla restauracji",
-    restaurantLinkHint:
-      "Lista dań do przygotowania i co gdzie podać, bez cen. Wymienisz go w „Zamówienia i restauracja”.",
     sectionsHeading: "Przygotowanie i wieczór",
     open: "Otwórz",
     guestsTitle: "Goście i grupy",
@@ -42,14 +39,13 @@ export const shellMessages = defineMessages(
     aiTopicsText: (guestLimit: number, eventLimit: number) =>
       `Temat do rozmowy od AI w wybranej kategorii; gość ma ${guestLimit} na wieczór, wszyscy razem ${eventLimit}.`,
     ordersTitle: "Zamówienia i restauracja",
-    ordersText:
-      "Co kto zamówił, ceny i suma, odhaczanie wydanych dań oraz link dla restauracji: co przygotować i gdzie podać.",
+    ordersText: "Co kto zamówił, ceny i suma rachunku oraz odhaczanie wydanych dań.",
     readoutTitle: "Odczyt bez sieci",
     readoutText:
       "Ostatni opublikowany rozkład i ranking strzałów zapisane na tym urządzeniu — działa także bez internetu.",
-    resetHeading: "Reset danych",
+    resetHeading: "Reset prób",
     resetText:
-      "Czyści wybrane dane jednym kliknięciem, np. po próbie generalnej: strzały, licznik tematów AI, rozsadzenie, gości, plan lokalu, pytania albo linki gości. Link organizatora i adres TV zostają bez zmian.",
+      "Po próbie generalnej wyczyść rozsadzenie (z historią publikacji) i strzały; goście, sala, zamówienia i pytania zostają. Pełny reset danych prowadzi lokal.",
   },
   {
     appName: "Raise dinner",
@@ -66,9 +62,6 @@ export const shellMessages = defineMessages(
     organizerLinkHint: "Bookmark this link: it is the only way into the panel. Do not share it with anyone.",
     tvLink: "TV address",
     tvLinkHint: "Open it on the device by the TV. It shows only the seating, without guesses or the ranking.",
-    restaurantLink: "Restaurant link",
-    restaurantLinkHint:
-      "The dishes to prepare and where to serve them, without prices. You can replace it in “Orders and restaurant”.",
     sectionsHeading: "Preparation and the evening",
     open: "Open",
     guestsTitle: "Guests and groups",
@@ -89,12 +82,11 @@ export const shellMessages = defineMessages(
     aiTopicsText: (guestLimit: number, eventLimit: number) =>
       `A conversation topic from AI in the chosen category; each guest has ${guestLimit} for the evening, everyone together ${eventLimit}.`,
     ordersTitle: "Orders and restaurant",
-    ordersText:
-      "Who ordered what, prices and the total, ticking off served dishes and the restaurant link: what to prepare and where to serve it.",
+    ordersText: "Who ordered what, prices and the bill's total, and ticking off served dishes.",
     readoutTitle: "Offline readout",
     readoutText: "The last published seating and guess ranking saved on this device — works without the internet too.",
-    resetHeading: "Reset data",
+    resetHeading: "Reset trials",
     resetText:
-      "Clears the chosen data in one click, e.g. after the rehearsal: guesses, the AI topic counter, seating, guests, the venue plan, questions or guest links. The organizer link and the TV address stay the same.",
+      "After the rehearsal, clear the seating (with its publication history) and the guesses; guests, the venue, orders and questions stay. The full data reset is run by the venue.",
   },
 );

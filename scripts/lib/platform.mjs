@@ -244,6 +244,20 @@ export async function addMembership(env, restaurantId, accountId, role) {
   }
 }
 
+// Removes the account's membership of the restaurant (sessions stay; the account then opens nothing there). The smoke
+// uses it to drop a helper owner before the sections that count the team; no last-owner check (that is the team
+// routes' rule, not the script's).
+export async function removeMembership(env, restaurantId, accountId) {
+  const result = await rest(
+    env,
+    `restaurant_member?restaurant_id=eq.${String(Number(restaurantId))}&account_id=eq.${String(Number(accountId))}`,
+    { method: "DELETE", prefer: "return=minimal" },
+  );
+  if (!result.ok) {
+    throw new PlatformError(`Nie udało się usunąć osoby z restauracji (${describeFailure(result)}).`);
+  }
+}
+
 // A one-time link for the account (`invite` or `reset`; its older unused links stop working). Returns the link, its
 // expiry and the token (scripts that redeem it over HTTP need it).
 export async function issueStaffLink(env, accountId, kind, baseUrl) {

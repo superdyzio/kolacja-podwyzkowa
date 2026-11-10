@@ -4,9 +4,8 @@ import LeadBanner from "@/components/lead/LeadBanner.astro";
 import ReadOnlyFrame from "@/components/lead/ReadOnlyFrame.astro";
 import { OfflineSync } from "@/components/offline/OfflineSync";
 import { OrderManager } from "@/components/orders/OrderManager";
-import { RestaurantLinkCard } from "@/components/orders/RestaurantLinkCard";
 import Layout from "@/layouts/Layout.astro";
-import { accessFor, organizerPath, restaurantPath } from "@/lib/access";
+import { accessFor, organizerPath } from "@/lib/access";
 import { getDb } from "@/lib/db";
 import { getOrderBoard } from "@/lib/orders";
 import { orderMessages } from "@/lib/orders/messages";
@@ -29,8 +28,6 @@ const view =
         venueLeads: access.event.venueLeads,
         panelPath: organizerPath(access.event.organizerKey),
         apiBase: `/api${organizerPath(access.event.organizerKey)}`,
-        origin: Astro.url.origin,
-        restaurantPath: restaurantPath(access.event.restaurantKey),
         board: await getOrderBoard(db, access.event.id),
       }
     : null;
@@ -52,13 +49,6 @@ const view =
       {view.venueLeads && <LeadBanner kind="client" locale={locale} />}
       <OfflineSync client:load apiBase={view.apiBase} locale={locale} />
       <ReadOnlyFrame readOnly={view.venueLeads} locale={locale}>
-        <RestaurantLinkCard
-          client:load
-          apiBase={view.apiBase}
-          origin={view.origin}
-          initialPath={view.restaurantPath}
-          locale={locale}
-        />
         <OrderManager client:load apiBase={view.apiBase} initial={view.board} locale={locale} />
       </ReadOnlyFrame>
     </main>

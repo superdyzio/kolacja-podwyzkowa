@@ -117,7 +117,7 @@ export const orderMessages = defineMessages(
     backToPanel: "← Panel organizatora",
     heading: "Zamówienia i restauracja",
     intro:
-      "Co kto zamówił, za ile i co już wydano. Restauracja dostaje osobny link: widzi listę do przygotowania i gdzie co podać, bez cen.",
+      "Co kto zamówił, za ile i co już wydano. Obsługa lokalu widzi na tablecie listę do przygotowania i gdzie co podać, bez cen.",
     // OrderManager.
     total: "Razem",
     close: "Zamknij",
@@ -176,17 +176,6 @@ export const orderMessages = defineMessages(
     editLabel: (name: string) => `Zmień: ${name}`,
     remove: "Usuń",
     removeLabel: (name: string) => `Usuń: ${name}`,
-    // RestaurantLinkCard.
-    linkHeading: "Link dla restauracji",
-    linkIntro:
-      "Wyślij go restauracji: zobaczy listę dań do przygotowania i plan sali z tym, co gdzie podać — bez cen. Co odhaczysz jako wydane, u nich też jest oznaczone.",
-    copy: "Kopiuj",
-    copied: "Skopiowano link.",
-    copySelected: "Link jest zaznaczony — skopiuj go (Ctrl+C / Cmd+C).",
-    openPreview: "Otwórz podgląd",
-    rotate: "Wymień link",
-    confirmRotate: "Wymienić link restauracji? Stary link przestanie działać od razu — wyślij restauracji nowy.",
-    rotated: "Nowy link gotowy. Stary już nie działa.",
   },
   {
     dishEmpty: "Enter the dish name.",
@@ -201,7 +190,7 @@ export const orderMessages = defineMessages(
     backToPanel: "← Organizer panel",
     heading: "Orders and restaurant",
     intro:
-      "Who ordered what, for how much and what has been served. The restaurant gets its own link: it sees what to prepare and where to serve it, without prices.",
+      "Who ordered what, for how much and what has been served. The venue's staff see on their tablet what to prepare and where to serve it, without prices.",
     total: "Total",
     close: "Close",
     addHeading: "Add a line",
@@ -256,16 +245,6 @@ export const orderMessages = defineMessages(
     editLabel: (name: string) => `Edit: ${name}`,
     remove: "Remove",
     removeLabel: (name: string) => `Remove: ${name}`,
-    linkHeading: "Restaurant link",
-    linkIntro:
-      "Send it to the restaurant: they will see the dishes to prepare and the floor plan with what goes where — without prices. Whatever you tick as served is marked for them too.",
-    copy: "Copy",
-    copied: "Link copied.",
-    copySelected: "The link is selected — copy it (Ctrl+C / Cmd+C).",
-    openPreview: "Open preview",
-    rotate: "Replace link",
-    confirmRotate: "Replace the restaurant link? The old link stops working at once — send the restaurant the new one.",
-    rotated: "New link ready. The old one no longer works.",
   },
 );
 

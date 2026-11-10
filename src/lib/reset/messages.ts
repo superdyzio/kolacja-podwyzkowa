@@ -79,7 +79,12 @@ export const resetMessages = defineMessages(
     // The modal (ResetPanel).
     open: "Resetuj…",
     title: "Reset danych",
-    intro: "Zaznacz, co wyczyścić. Link organizatora i adres TV zostają bez zmian.",
+    intro: "Zaznacz, co wyczyścić. Linki wydarzenia (klienta, TV i tabletu) zostają bez zmian.",
+    // „Reset prób” of the client link (client-restaurant-split).
+    trialOpen: "Resetuj próby…",
+    trialTitle: "Reset prób",
+    trialIntro:
+      "Wyczyść rozsadzenie i strzały przed kolejną próbą. Goście, sala, zamówienia, pytania i linki zostają bez zmian.",
     done: "Zresetowano.",
     close: "Zamknij",
     counting: "Liczę dane…",
@@ -159,7 +164,11 @@ export const resetMessages = defineMessages(
     guestAccessOff: (label: string) => `${label}: guest access off.`,
     open: "Reset…",
     title: "Reset data",
-    intro: "Choose what to clear. The organizer link and the TV address stay the same.",
+    intro: "Choose what to clear. The event's links (client, TV and tablet) stay the same.",
+    trialOpen: "Reset trials…",
+    trialTitle: "Reset trials",
+    trialIntro:
+      "Clear the seating and the guesses before the next rehearsal. Guests, the venue, orders, questions and links stay the same.",
     done: "Reset done.",
     close: "Close",
     counting: "Counting…",

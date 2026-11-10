@@ -20,6 +20,7 @@ import {
   listRestaurants,
   PlatformError,
   readDbEnv,
+  removeMembership,
 } from "./lib/platform.mjs";
 
 const BASE_URL = process.env.BASE_URL ?? "http://localhost:4321";
@@ -142,6 +143,31 @@ try {
   finish();
 }
 console.log(`      database ${platformEnv.host}: events ${String(eventA.id)} (A) and ${String(eventB.id)} (B)`);
+
+// An „ops” owner of A with a panel session (client-restaurant-split): since S-14 the full reset, the AI costs and the
+// tablet link rotation live in the panel, so sections 20–24 use it there. Its membership is removed before section 25,
+// which builds the team of A from scratch (and sections 26/28 count it).
+const opsPanel = `/api/panel/events/${String(eventA.id)}`;
+let opsCookie = "";
+let opsAccount;
+try {
+  opsAccount = await ensureStaffAccount(platformEnv, {
+    email: `ops-${RUN_TAG}@smoke.stolik`,
+    displayName: "Smoke ops",
+  });
+  await addMembership(platformEnv, restaurantA.id, opsAccount.id, "owner");
+  const opsInvite = await issueStaffLink(platformEnv, opsAccount.id, "invite", BASE_URL);
+  const opsRedeemed = await request("/api/auth/password-link", {
+    method: "POST",
+    form: { token: opsInvite.token, password: "smoke-ops-haslo-1", repeat: "smoke-ops-haslo-1" },
+  });
+  const opsToken = /(?:^|[\s,])kp-session=([A-Za-z0-9_-]{43});/.exec(opsRedeemed.setCookie)?.[1];
+  opsCookie = opsToken ? `kp-session=${opsToken}` : "";
+} catch (error) {
+  check("the ops owner of A is created", false, error instanceof PlatformError ? error.message : String(error));
+}
+check("the ops owner of A has a panel session", opsCookie !== "");
+const asOps = (options = {}) => ({ ...options, cookie: opsCookie });
 const organizerKey = eventA.organizerKey;
 const tvKey = eventA.tvKey;
 check(
@@ -2316,9 +2342,13 @@ const usageText = (used, failed, lastFailureHint = null) =>
 const generatedTopics = [];
 const topicLeaks = (body) => generatedTopics.filter((text) => body.includes(text) || body.includes(escapeHtml(text)));
 
-const aiBoard = await request(aiApi);
+// client-restaurant-split: the AI board (usage, provider, spend) is the venue's — GET in the panel; the client link's
+// GET answers the identical denial and its generation answers the counts without spend or hints.
+const aiBoard = await request(`${opsPanel}/ai-topics`, asOps());
+const clientAiBoard = await request(aiApi);
+check("AI board on the client link: the identical denial", noAccessJson(clientAiBoard), String(clientAiBoard.status));
 check(
-  "AI board: usage starts at zero, with the limits and the provider (never a key)",
+  "AI board (panel): usage starts at zero, with the limits and the provider (never a key)",
   aiBoard.status === 200 &&
     aiBoard.cacheControl.includes("no-store") &&
     keysOf(aiBoard.data) === "provider,usage" &&
@@ -2454,20 +2484,18 @@ if (aiOnMock) {
   );
   const organizerFail = await request(aiApi, { method: "POST", json: { category: null }, extraHeaders: AI_FAIL });
   check(
-    "a failed organizer attempt: 503 with the reason for the organizer",
+    "a failed client attempt: 503 with the message and the counts, no hint (the cause is the venue's)",
     organizerFail.status === 503 &&
-      keysOf(organizerFail.data) === "error,hint,usage" &&
+      keysOf(organizerFail.data) === "error,usage" &&
       organizerFail.data.error.includes("nie zmniejszyła limitu") &&
-      typeof organizerFail.data.hint === "string" &&
-      organizerFail.data.hint.length > 0 &&
-      JSON.stringify(organizerFail.data.usage) === usageText(evening, 2, MOCK_FAILURE_HINT),
+      JSON.stringify(organizerFail.data.usage) === usageText(evening, 2),
     organizerFail.body,
   );
   const organizerExtra = await request(aiApi, { method: "POST", json: { category: null, guestId: ola.id } });
   check("organizer AI topic with an extra key: 400", organizerExtra.status === 400, String(organizerExtra.status));
-  const aiBoardAfter = await request(aiApi);
+  const aiBoardAfter = await request(`${opsPanel}/ai-topics`, asOps());
   check(
-    "AI board counts every success and every failure",
+    "AI board (panel) counts every success and every failure, with the latest failure's hint",
     aiBoardAfter.status === 200 &&
       JSON.stringify(aiBoardAfter.data?.usage) === usageText(evening, 2, MOCK_FAILURE_HINT),
     aiBoardAfter.body.slice(0, 200),
@@ -2500,31 +2528,44 @@ if (aiOnMock) {
     String(aniaPageAfterAi.status),
   );
 
-  // The organizer's AI panel on the questions page and the shell card (no „Wkrótce” card is left).
+  // The client's AI panel on the questions page and the shell card: counts only (client-restaurant-split); the
+  // provider, the failure hint and the cost are on the panel's event page („Koszty AI”).
   const aiPage = await request(`/o/${organizerKey}/pytania`);
   check(
-    "questions page has the organizer's AI panel with usage and provider",
+    "questions page has the client's AI panel with the usage only (no provider, hint or cost)",
     aiPage.status === 200 &&
       aiPage.body.includes('id="tematy-ai"') &&
       aiPage.body.includes("Temat od AI") &&
       aiPage.body.includes("Wygeneruj temat z AI") &&
       aiPage.body.includes(`Wykorzystano ${evening} z ${EVENT_AI_LIMIT} · nieudane: 2`) &&
-      aiPage.body.includes("atrapa AI") &&
-      aiPage.body.includes("Ostatnia próba (np. gościa) się nie udała") &&
-      aiPage.body.includes(MOCK_FAILURE_HINT) &&
-      // The mock bills nothing, so no cost line.
+      !aiPage.body.includes("atrapa AI") &&
+      !aiPage.body.includes("Ostatnia próba (np. gościa) się nie udała") &&
+      !aiPage.body.includes(MOCK_FAILURE_HINT) &&
       !aiPage.body.includes("Koszt AI") &&
       topicLeaks(aiPage.body).length === 0,
     String(aiPage.status),
   );
   const shellWithAi = await request(`/o/${organizerKey}`);
   check(
-    "organizer shell links to the AI panel with its summary",
+    "client shell links to the AI panel with the counts only",
     shellWithAi.status === 200 &&
       shellWithAi.body.includes(`/o/${organizerKey}/pytania#tematy-ai`) &&
-      shellWithAi.body.includes(`Tematy AI: ${evening} z ${EVENT_AI_LIMIT} · atrapa AI · ostatnia próba nieudana`) &&
+      shellWithAi.body.includes(`Tematy AI: ${evening} z ${EVENT_AI_LIMIT}`) &&
+      !shellWithAi.body.includes("atrapa AI") &&
+      !shellWithAi.body.includes("ostatnia próba nieudana") &&
       countOf(shellWithAi.body, "Wkrótce") === 0,
     String(shellWithAi.status),
+  );
+  const eventPageWithAi = await request(`/panel/wydarzenia/${String(eventA.id)}`, asOps());
+  check(
+    "the panel's event page shows „Koszty AI”: usage, the provider and the latest failure's hint",
+    eventPageWithAi.status === 200 &&
+      eventPageWithAi.body.includes("Koszty AI") &&
+      eventPageWithAi.body.includes(`Wykorzystano ${evening} z ${EVENT_AI_LIMIT} · nieudane: 2`) &&
+      eventPageWithAi.body.includes("atrapa AI") &&
+      eventPageWithAi.body.includes(MOCK_FAILURE_HINT) &&
+      topicLeaks(eventPageWithAi.body).length === 0,
+    String(eventPageWithAi.status),
   );
 }
 for (const [label, key] of [
@@ -2941,13 +2982,16 @@ if (aiOnMock) {
 // refused on /r/ and the restaurant key opens nothing else; „Wymień link” kills the old link at once.
 const ordersApi = `${api}/orders`;
 const shellWithOrders = await request(`/o/${organizerKey}`);
-const restaurantKey = new RegExp(`/r/(${KEY})`).exec(shellWithOrders.body)?.[1];
+// client-restaurant-split: the tablet link is the venue's (the panel's event card), never on the client's pages.
+const restaurantKey = eventA.restaurantKey;
 check(
-  "organizer shell shows the restaurant link and the orders card",
+  "client shell has the orders card and no tablet link",
   shellWithOrders.status === 200 &&
     Boolean(restaurantKey) &&
     restaurantKey !== organizerKey &&
     restaurantKey !== tvKey &&
+    !shellWithOrders.body.includes(restaurantKey) &&
+    !/\/r\/[A-Za-z0-9_-]{24}/.test(shellWithOrders.body) &&
     shellWithOrders.body.includes(`/o/${organizerKey}/zamowienia`) &&
     shellWithOrders.body.includes("Zamówienia i restauracja"),
   `${shellWithOrders.status} ${restaurantKey}`,
@@ -3416,10 +3460,11 @@ check(
 const ordersPage = await request(`/o/${organizerKey}/zamowienia`);
 const tvOrdersPage = await request(`/o/${tvKey}/zamowienia`);
 check(
-  "organizer order page renders with the restaurant link; other keys get the denial",
+  "client order page renders without the tablet link; other keys get the denial",
   ordersPage.status === 200 &&
     ordersPage.body.includes("Zamówienia i restauracja") &&
-    ordersPage.body.includes(`/r/${restaurantKey}`) &&
+    !ordersPage.body.includes(restaurantKey) &&
+    !ordersPage.body.includes("Wymień link") &&
     ordersPage.body.includes("Schabowy Smoke") &&
     tvOrdersPage.status === 404,
   `${ordersPage.status} ${tvOrdersPage.status}`,
@@ -3549,14 +3594,23 @@ check(
   `${wineDeleted.status} ${wineDeletedAgain.status}`,
 );
 
-const rotated = await request(`${api}/restaurant-link`, { method: "POST" });
-const newRestaurantKey = new RegExp(`^/r/(${KEY})$`).exec(rotated.data?.path ?? "")?.[1];
+// client-restaurant-split (FR-025): the client link cannot replace the tablet link any more (the identical denial);
+// the venue does it on the panel's event card.
+const clientRotation = await request(`${api}/restaurant-link`, { method: "POST" });
+const stillOldRestaurant = await request(`/r/${restaurantKey}`);
+check(
+  "„Wymień link” of the tablet on the client link: the identical denial, the tablet link unchanged",
+  noAccessJson(clientRotation) && stillOldRestaurant.status === 200,
+  `${clientRotation.status} ${stillOldRestaurant.status}`,
+);
+const rotated = await request(`${opsPanel}/links/restaurant`, asOps({ method: "POST" }));
+const newRestaurantKey = new RegExp(`^/r/(${KEY})$`).exec(rotated.data?.event?.links?.restaurant ?? "")?.[1];
 const oldRestaurantPage = await request(`/r/${restaurantKey}`);
 const oldRestaurantApi = await request(`${restaurantApiBase}/orders`);
 const newRestaurantPage = newRestaurantKey ? await request(`/r/${newRestaurantKey}`) : null;
 const shellAfterRotation = await request(`/o/${organizerKey}`);
 check(
-  "„Wymień link”: a new restaurant key, the old link dead at once",
+  "„Wymień link” in the panel: a new tablet key, the old link dead at once, never on the client shell",
   rotated.status === 200 &&
     Boolean(newRestaurantKey) &&
     newRestaurantKey !== restaurantKey &&
@@ -3565,9 +3619,10 @@ check(
     oldRestaurantApi.status === 404 &&
     oldRestaurantApi.body === JSON.stringify({ error: "No access" }) &&
     newRestaurantPage?.status === 200 &&
-    shellAfterRotation.body.includes(`/r/${newRestaurantKey}`) &&
+    shellAfterRotation.status === 200 &&
+    !shellAfterRotation.body.includes(`/r/${newRestaurantKey}`) &&
     !shellAfterRotation.body.includes(`/r/${restaurantKey}`),
-  `${rotated.status} ${rotated.body}`,
+  `${rotated.status} ${rotated.body.slice(0, 200)}`,
 );
 
 // 23d. Event isolation (multi-tenant-events, NFR-012). Event B (its own restaurant, created in section 3) gets guests, a
@@ -3655,7 +3710,7 @@ const B_READS = [
   "questions",
   "orders",
   "tv-spotlight",
-  "reset",
+  "trial-reset",
 ];
 const readB = async () => {
   const bodies = [];
@@ -3797,7 +3852,6 @@ await request(linksApi, { method: "PATCH", json: { enabled: false } });
 // Nothing A's organizer, TV or restaurant links read mentions B.
 const aReads = [
   ...B_READS.map((path) => `${api}/${path}`),
-  `${api}/ai-topics`,
   `/o/${organizerKey}`,
   `/o/${organizerKey}/goscie`,
   `/o/${organizerKey}/sale`,
@@ -3883,10 +3937,14 @@ check(
   bKeyDenials.join(", "),
 );
 
-// 24. Organizer reset („Reset danych”). Organizer only; one POST resets the chosen parts (implied ones added) in one
-// transaction and answers with the Polish summary. Here: a subset first (guesses + AI usage), then the guest links,
-// then everything — the organizer and TV links keep working, the event is empty except the 90 starter questions.
-const resetApi = `${api}/reset`;
+// 24. Reset. Since client-restaurant-split (FR-028) the full „Reset danych” is the venue's (panel, owners and
+// managers: the ops owner here) and the client link has „Reset prób” (seating + guesses only); the client's old reset
+// route answers the identical denial. One POST resets the chosen parts (implied ones added) in one transaction and
+// answers with the Polish summary. Here: a subset first (guesses + AI usage), then the guest links, then the client's
+// trial reset, then everything — the client and TV links keep working, the event is empty except the 90 starter
+// questions.
+const resetApi = `${opsPanel}/reset`;
+const trialResetApi = `${api}/trial-reset`;
 const RESET_PARTS = ["guesses", "aiUsage", "seating", "guests", "venue", "orders", "questions", "guestLinks"];
 const COUNT_KEYS = [
   "guesses",
@@ -3918,19 +3976,32 @@ const isSummary = (data, lines) =>
 
 const shellWithReset = await request(`/o/${organizerKey}`);
 const tvPageWithoutReset = await request(`/tv/${tvKey}`);
+const eventPageWithReset = await request(`/panel/wydarzenia/${String(eventA.id)}`, asOps());
 check(
-  "organizer shell ends with the „Reset danych” card; the TV page has none",
+  "client shell ends with the „Reset prób” card (no full reset); the TV page has none",
   shellWithReset.status === 200 &&
-    shellWithReset.body.includes("Reset danych") &&
+    shellWithReset.body.includes("Reset prób") &&
+    !shellWithReset.body.includes("Reset danych") &&
     shellWithReset.body.includes('component-export="ResetPanel"') &&
-    shellWithReset.body.indexOf("Reset danych") > shellWithReset.body.indexOf("Odczyt bez sieci") &&
+    shellWithReset.body.includes("&quot;variant&quot;:[0,&quot;trial&quot;]") &&
+    shellWithReset.body.indexOf("Reset prób") > shellWithReset.body.indexOf("Odczyt bez sieci") &&
     tvPageWithoutReset.status === 200 &&
+    !tvPageWithoutReset.body.includes("Reset prób") &&
     !tvPageWithoutReset.body.includes("Reset danych") &&
     !tvPageWithoutReset.body.includes("ResetPanel"),
   `${shellWithReset.status} ${tvPageWithoutReset.status}`,
 );
+check(
+  "the panel's event page has the full „Reset danych” for the owner",
+  eventPageWithReset.status === 200 &&
+    eventPageWithReset.body.includes("Reset danych") &&
+    eventPageWithReset.body.includes("data-event-reset") &&
+    eventPageWithReset.body.includes('component-export="ResetPanel"'),
+  String(eventPageWithReset.status),
+);
 
 for (const [label, key] of [
+  ["<organizer>", organizerKey],
   ["<tv>", tvKey],
   ["<guest>", aniaNewKey],
 ]) {
@@ -3939,11 +4010,29 @@ for (const [label, key] of [
       `/api/o/${key}/reset`,
       method === "POST" ? { method, json: { parts: [...RESET_PARTS] } } : {},
     );
-    check(`reset API with a wrong key: ${method} ${label}`, noAccessJson(res), `${res.status} ${res.body}`);
+    check(
+      `full reset on a key: ${method} ${label} → the identical denial`,
+      noAccessJson(res),
+      `${res.status} ${res.body}`,
+    );
   }
 }
+for (const [label, key] of [
+  ["<tv>", tvKey],
+  ["<guest>", aniaNewKey],
+]) {
+  for (const method of ["GET", "POST"]) {
+    const res = await request(
+      `/api/o/${key}/trial-reset`,
+      method === "POST" ? { method, json: { parts: ["seating"] } } : {},
+    );
+    check(`trial reset with a wrong key: ${method} ${label}`, noAccessJson(res), `${res.status} ${res.body}`);
+  }
+}
+const resetNoSession = await request(resetApi);
+check("panel reset without a session: 401", resetNoSession.status === 401, String(resetNoSession.status));
 
-const resetPreview = await request(resetApi);
+const resetPreview = await request(resetApi, asOps());
 const previewCounts = resetPreview.data?.counts;
 check(
   "reset preview: fresh counts of everything a reset would remove",
@@ -3972,10 +4061,19 @@ for (const [label, options] of [
   ["an extra key", { json: { parts: ["guesses"], organizerKey } }],
   ["malformed JSON", { rawBody: "{" }],
 ]) {
-  const res = await request(resetApi, { method: "POST", ...options });
+  const res = await request(resetApi, asOps({ method: "POST", ...options }));
   check(`reset refuses ${label}: 400`, res.status === 400 && errorOf(res) === "Nieprawidłowe dane.", res.body);
 }
-const previewAfterRefusals = await request(resetApi);
+for (const [label, options] of [
+  ["a part outside the trial", { json: { parts: ["guests"] } }],
+  ["the full list", { json: { parts: [...RESET_PARTS] } }],
+  ["an empty list", { json: { parts: [] } }],
+  ["an extra key", { json: { parts: ["seating"], organizerKey } }],
+]) {
+  const res = await request(trialResetApi, { method: "POST", ...options });
+  check(`trial reset refuses ${label}: 400`, res.status === 400 && errorOf(res) === "Nieprawidłowe dane.", res.body);
+}
+const previewAfterRefusals = await request(resetApi, asOps());
 check(
   "refused resets change nothing",
   previewAfterRefusals.status === 200 && previewAfterRefusals.body === resetPreview.body,
@@ -3983,9 +4081,9 @@ check(
 );
 
 const spotBeforeReset = await request(tvSpotApi, { method: "PUT", json: { kind: "question", text: SPOT_QUESTION } });
-const subsetReset = await request(resetApi, { method: "POST", json: { parts: ["aiUsage", "guesses"] } });
+const subsetReset = await request(resetApi, asOps({ method: "POST", json: { parts: ["aiUsage", "guesses"] } }));
 const guessesAfterSubset = await request(guessesApi);
-const aiAfterSubset = await request(aiApi);
+const aiAfterSubset = await request(`${opsPanel}/ai-topics`, asOps());
 const guestsAfterSubset = await request(`${api}/guests`);
 const venueAfterSubset = await request(`${api}/venue`);
 check(
@@ -4017,7 +4115,7 @@ check(
 
 await request(linksApi, { method: "PATCH", json: { enabled: true } });
 const aniaBeforeLinksReset = await request(guestStateApi(aniaNewKey));
-const linksReset = await request(resetApi, { method: "POST", json: { parts: ["guestLinks"] } });
+const linksReset = await request(resetApi, asOps({ method: "POST", json: { parts: ["guestLinks"] } }));
 const linksAfterReset = await request(linksApi);
 const aniaAfterLinksReset = await request(guestStateApi(aniaNewKey));
 check(
@@ -4033,8 +4131,36 @@ check(
   `${aniaBeforeLinksReset.status} ${linksReset.status} ${aniaAfterLinksReset.status}`,
 );
 
+// The client's „Reset prób”: the seating (with every publication) and the guesses go; guests, the venue, orders and
+// questions stay.
+const trialPreview = await request(trialResetApi);
+const panelPreviewBeforeTrial = await request(resetApi, asOps());
+const trialReset = await request(trialResetApi, { method: "POST", json: { parts: ["seating", "guesses"] } });
+const afterTrial = (await request(resetApi, asOps())).data?.counts;
+const beforeTrial = panelPreviewBeforeTrial.data?.counts;
+check(
+  "„Reset prób”: the preview is the panel's, the reset clears seating and guesses only",
+  trialPreview.status === 200 &&
+    trialPreview.body === panelPreviewBeforeTrial.body &&
+    beforeTrial?.snapshots > 0 &&
+    trialReset.status === 200 &&
+    JSON.stringify(trialReset.data?.parts) === JSON.stringify(["guesses", "seating"]) &&
+    isSummary(trialReset.data, 2) &&
+    afterTrial?.seats === 0 &&
+    afterTrial.snapshots === 0 &&
+    afterTrial.guesses === 0 &&
+    afterTrial.guests === beforeTrial.guests &&
+    afterTrial.groups === beforeTrial.groups &&
+    afterTrial.rooms === beforeTrial.rooms &&
+    afterTrial.tables === beforeTrial.tables &&
+    afterTrial.orders === beforeTrial.orders &&
+    afterTrial.questions === beforeTrial.questions &&
+    afterTrial.plan === beforeTrial.plan,
+  `${trialPreview.status} ${trialReset.status} ${trialReset.body.slice(0, 200)}`,
+);
+
 const tvBeforeFullReset = await request(tvSeatingApi);
-const fullReset = await request(resetApi, { method: "POST", json: { parts: [...RESET_PARTS] } });
+const fullReset = await request(resetApi, asOps({ method: "POST", json: { parts: [...RESET_PARTS] } }));
 check(
   "reset of everything answers with every part and its summary",
   fullReset.status === 200 &&
@@ -4052,7 +4178,7 @@ const publishedAfterReset = await request(`${seatingApi}/published`);
 const questionsAfterReset = await request(questionsApi);
 const guessesAfterReset = await request(guessesApi);
 const linksAfterFullReset = await request(linksApi);
-const previewAfterReset = await request(resetApi);
+const previewAfterReset = await request(resetApi, asOps());
 check(
   "after resetting everything: no guests, venue, seating or guesses",
   guestsAfterReset.data?.guests?.length === 0 &&
@@ -4126,6 +4252,15 @@ check(
   bAfterReset.every((body, index) => body === bBefore[index]),
   B_READS.filter((_, index) => bAfterReset[index] !== bBefore[index]).join(", "),
 );
+
+// The ops owner leaves A before the team sections (its session stays; it opens nothing in A any more).
+try {
+  if (opsAccount) await removeMembership(platformEnv, restaurantA.id, opsAccount.id);
+} catch (error) {
+  check("the ops owner leaves A", false, error instanceof PlatformError ? error.message : String(error));
+}
+const opsAfterLeaving = await request(`${opsPanel}/ai-topics`, asOps());
+check("the ops owner opens nothing in A after leaving", noAccessJson(opsAfterLeaving), String(opsAfterLeaving.status));
 
 // 25. Staff accounts (staff-accounts, F-03): one-time links set the password, e-mail + password log in for 30 days,
 // logout (here or everywhere) and a password change end sessions, failed logins are throttled per e-mail, every

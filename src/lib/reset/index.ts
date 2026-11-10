@@ -1,6 +1,12 @@
 // The organizer reset („Reset danych”). Server code imports from here; React islands import the pure modules
 // (`parts.ts`, `summary.ts`) directly, never this file (it re-exports the DB service).
-export { ResetCountsSchema, ResetEventAnswerSchema, ResetPartSchema, ResetRequestBody } from "./api";
+export {
+  ResetCountsSchema,
+  ResetEventAnswerSchema,
+  ResetPartSchema,
+  ResetRequestBody,
+  TrialResetRequestBody,
+} from "./api";
 export {
   expandResetParts,
   isEveryResetPartSelected,
@@ -14,6 +20,8 @@ export {
   resetPartLabels,
   selectAllResetParts,
   toggleResetPart,
+  TRIAL_RESET_PARTS,
+  type TrialResetPart,
 } from "./parts";
 export { resetMessages } from "./messages";
 export { getResetPreview, resetEvent, type ResetEventResult } from "./service";

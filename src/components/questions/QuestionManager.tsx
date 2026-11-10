@@ -7,7 +7,7 @@ import { ORGANIZER_DRAW_STORAGE_KEY } from "@/lib/questions/draw-memory";
 import { questionUiMessages } from "@/lib/questions/messages";
 import { countQuestions } from "@/lib/questions/summary";
 import type {
-  AiTopicBoardDto,
+  AiTopicUsageDto,
   QuestionDto,
   QuestionListDto,
   QuestionPasteResultDto,
@@ -28,8 +28,8 @@ interface Props {
   // Organizer API base, e.g. "/api/o/<key>".
   apiBase: string;
   initial: QuestionListDto;
-  // The evening's AI topic usage and the provider (S-08).
-  aiInitial: AiTopicBoardDto;
+  // The evening's AI topic usage, counts only (S-08; client-restaurant-split: no spend, no provider).
+  aiInitial: AiTopicUsageDto;
   // What is on the TV over the seating (tv-spotlight).
   tvInitial: TvSpotlightDto | null;
   locale: Locale;

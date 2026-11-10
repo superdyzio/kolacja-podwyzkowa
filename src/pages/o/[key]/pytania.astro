@@ -6,7 +6,7 @@ import { OfflineSync } from "@/components/offline/OfflineSync";
 import { QuestionManager } from "@/components/questions/QuestionManager";
 import Layout from "@/layouts/Layout.astro";
 import { accessFor, organizerPath } from "@/lib/access";
-import { getAiProviderStatus } from "@/lib/ai";
+import { clientAiUsage } from "@/lib/ai-topics/limits";
 import { getAiTopicUsage } from "@/lib/ai-topics/service";
 import { getDb } from "@/lib/db";
 import { getQuestionList } from "@/lib/questions";
@@ -16,7 +16,7 @@ import { getTvSpotlight } from "@/lib/tv-spotlight";
 // Organizer questions page (S-07, US-03, FR-014, FR-015): the TV controls (tv-spotlight, #ekran-tv: a question or an
 // AI topic for the whole room, a drawn guest), the organizer's own draw, the AI topic panel with the evening's usage
 // and the provider (S-08, FR-016, #tematy-ai), adding and pasting questions, the starter base and the whole list with
-// edit and delete. Organizer only — guests get just the question they draw (and the AI topic they generate) on their
+// edit and delete (the AI usage without provider or cost since client-restaurant-split). Organizer only — guests get just the question they draw (and the AI topic they generate) on their
 // phone; the TV only what the organizer explicitly sends there. The middleware has already checked the key; this is the second,
 // role-specific check.
 const locale = Astro.locals.locale;
@@ -44,7 +44,8 @@ const view =
         panelPath: organizerPath(access.event.organizerKey),
         apiBase: `/api${organizerPath(access.event.organizerKey)}`,
         list: loaded[0],
-        aiBoard: { usage: loaded[1], provider: getAiProviderStatus(locale) },
+        // client-restaurant-split: the counts only; the provider and the cost are the venue's.
+        aiUsage: clientAiUsage(loaded[1]),
         tv: loaded[2],
       }
     : null;
@@ -70,7 +71,7 @@ const view =
           client:load
           apiBase={view.apiBase}
           initial={view.list}
-          aiInitial={view.aiBoard}
+          aiInitial={view.aiUsage}
           tvInitial={view.tv}
           locale={locale}
         />

@@ -1,36 +1,18 @@
-import { noAccessMessages } from "@/lib/access/messages";
 import type { APIRoute } from "astro";
-import { jsonError, jsonResponse, readJsonBody } from "@/lib/http";
+import { noAccessMessages } from "@/lib/access/messages";
+import { jsonError } from "@/lib/http";
 import { organizerApi } from "@/lib/organizer-api";
-import { getResetPreview, resetEvent, ResetRequestBody } from "@/lib/reset";
 
 export const prerender = false;
 
-// The organizer's „Reset danych”. GET: fresh counts of what each part would remove (ResetPreviewDto) for the modal.
-// POST { parts }: resets the chosen parts (implied ones added) in one DB transaction → 200 ResetResultDto with the
-// summary in the request's language. Organizer only: the TV and guest keys get the guard's 404. The organizer and TV
-// keys never change.
+// The full „Reset danych” moved to the venue's panel (client-restaurant-split, FR-028:
+// /api/panel/events/<id>/reset); the client link keeps „Reset prób” (/api/o/<key>/trial-reset). Every method answers
+// the guard's identical denial, so the old address tells nothing.
 
-export const GET: APIRoute = async ({ locals }) => {
+function deniedForClient({ locals }: Parameters<APIRoute>[0]): Response {
   const api = organizerApi(locals);
-  if (api instanceof Response) {
-    return api;
-  }
-  const preview = await getResetPreview(api.db, api.access.event.id);
-  return preview ? jsonResponse(preview) : jsonError(404, noAccessMessages(locals.locale).title);
-};
+  return api instanceof Response ? api : jsonError(404, noAccessMessages(locals.locale).title);
+}
 
-export const POST: APIRoute = async ({ locals, request }) => {
-  const api = organizerApi(locals);
-  if (api instanceof Response) {
-    return api;
-  }
-  const body = await readJsonBody(request, ResetRequestBody, locals.locale);
-  if (!body.ok) {
-    return body.response;
-  }
-  const outcome = await resetEvent(api.db, api.access.event.id, body.data.parts, locals.locale);
-  return outcome.status === "reset"
-    ? jsonResponse(outcome.result)
-    : jsonError(404, noAccessMessages(locals.locale).title);
-};
+export const GET: APIRoute = deniedForClient;
+export const POST: APIRoute = deniedForClient;

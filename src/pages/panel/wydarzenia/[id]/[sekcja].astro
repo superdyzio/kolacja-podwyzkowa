@@ -12,7 +12,7 @@ import { SeatingEditor } from "@/components/seating/SeatingEditor";
 import SupportBanner from "@/components/support/SupportBanner.astro";
 import { VenueEditor } from "@/components/venue/VenueEditor";
 import { organizerPath } from "@/lib/access";
-import { getAiProviderStatus } from "@/lib/ai";
+import { clientAiUsage } from "@/lib/ai-topics/limits";
 import { getAiTopicUsage } from "@/lib/ai-topics/service";
 import { getClientAccess } from "@/lib/client-routes/access";
 import { clientWorkMessages } from "@/lib/client-routes/messages";
@@ -90,7 +90,8 @@ const data =
                 ? {
                     section,
                     list: await getQuestionList(db, eventId),
-                    ai: { usage: await getAiTopicUsage(db, eventId, locale), provider: getAiProviderStatus(locale) },
+                    // The island shows the counts only; the costs are on the event page („Koszty AI”).
+                    ai: clientAiUsage(await getAiTopicUsage(db, eventId, locale)),
                     tv: await getTvSpotlight(db, eventId),
                   }
                 : { section, board: await getOrderBoard(db, eventId) }

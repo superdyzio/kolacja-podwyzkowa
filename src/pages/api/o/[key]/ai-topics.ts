@@ -1,8 +1,9 @@
 import type { APIRoute } from "astro";
-import { getAiProvider, getAiProviderStatus } from "@/lib/ai";
+import { noAccessMessages } from "@/lib/access/messages";
+import { getAiProvider } from "@/lib/ai";
 import {
   aiTopicLimitMessages,
-  describeFailureForOrganizer,
+  clientAiUsage,
   generateTopic,
   getAiTopicUsage,
   mockFailureRequested,
@@ -10,25 +11,23 @@ import {
 import { GenerateTopicBody } from "@/lib/ai-topics/api";
 import { jsonError, jsonResponse, readJsonBody } from "@/lib/http";
 import { organizerApi } from "@/lib/organizer-api";
-import type { AiTopicBoardDto, OrganizerAiTopicAnswerDto } from "@/types";
+import type { OrganizerAiTopicAnswerDto } from "@/types";
 
 export const prerender = false;
 
-// GET: the evening's AI topic usage and which provider answers (S-08) — never the key.
-export const GET: APIRoute = async ({ locals }) => {
+// GET: the AI board (usage, provider, spend) moved to the venue's panel (client-restaurant-split, FR-028:
+// GET /api/panel/events/<id>/ai-topics); the client link gets the guard's identical denial.
+export const GET: APIRoute = ({ locals }) => {
   const api = organizerApi(locals);
   if (api instanceof Response) {
     return api;
   }
-  const board: AiTopicBoardDto = {
-    usage: await getAiTopicUsage(api.db, api.access.event.id, locals.locale),
-    provider: getAiProviderStatus(locals.locale),
-  };
-  return jsonResponse(board);
+  return jsonError(404, noAccessMessages(locals.locale).title);
 };
 
-// POST { category }: the organizer generates a topic for themself, without a personal limit (the evening's 300 still
-// apply). A failure carries a hint (in the request's language) about the cause (timeout, rejected key, missing key, …) for the organizer.
+// POST { category }: the client generates a topic for themself, without a personal limit (the evening's limit still
+// applies). Every answer carries the usage without spend (clientAiUsage); a failure carries no hint — the cause
+// (timeout, rejected key, no credits) is the venue's, shown in the panel's „Koszty AI”.
 export const POST: APIRoute = async ({ locals, request }) => {
   const api = organizerApi(locals);
   if (api instanceof Response) {
@@ -46,24 +45,18 @@ export const POST: APIRoute = async ({ locals, request }) => {
     { guestId: null, category: body.data.category, locale: locals.locale },
     { simulateFailure: mockFailureRequested(provider, request.headers) },
   );
-  const usage = await getAiTopicUsage(api.db, api.access.event.id, locals.locale);
+  const usage = clientAiUsage(await getAiTopicUsage(api.db, api.access.event.id, locals.locale));
   const messages = aiTopicLimitMessages(locals.locale);
   switch (result.status) {
     case "generated": {
       const answer: OrganizerAiTopicAnswerDto = { topic: result.topic, usage };
       return jsonResponse(answer);
     }
-    case "failed": {
-      const hint =
-        result.kind === "not-configured"
-          ? (getAiProviderStatus(locals.locale).problem ??
-            describeFailureForOrganizer(result.kind, undefined, locals.locale))
-          : describeFailureForOrganizer(result.kind, result.httpStatus, locals.locale);
-      return jsonError(503, messages.failed, { hint, usage });
-    }
+    case "failed":
+      return jsonError(503, messages.failed, { usage });
     case "event-limit":
       return jsonError(429, messages.eventLimit, { usage });
-    // The organizer has no personal limit and no guest row; these cannot happen for guestId null.
+    // The client has no personal limit and no guest row; these cannot happen for guestId null.
     case "guest-limit":
     case "busy":
     case "not-found":

@@ -1,0 +1,55 @@
+---
+import { formatSpend } from "@/lib/ai-topics/cost";
+import { formatUsage } from "@/lib/ai-topics/limits";
+import { aiTopicUiMessages } from "@/lib/ai-topics/messages";
+import { clientWorkMessages } from "@/lib/client-routes/messages";
+import type { Locale } from "@/lib/i18n";
+import type { AiTopicBoardDto } from "@/types";
+
+// „Koszty AI” on the panel's event page (client-restaurant-split, FR-028; server-rendered, also in support mode):
+// the evening's AI topic usage, which provider answers, the latest failure's hint and the cost estimate since the last
+// reset of the counter, with the link to the Anthropic console (the real balance). The client link sees the counts
+// only.
+interface Props {
+  board: AiTopicBoardDto;
+  locale: Locale;
+}
+
+const { board, locale } = Astro.props;
+const t = clientWorkMessages(locale);
+const ai = aiTopicUiMessages(locale);
+const { usage, provider } = board;
+const providerLine = !provider.ready
+  ? (provider.problem ?? ai.notConfigured)
+  : provider.kind === "mock"
+    ? ai.providerMock
+    : ai.providerClaude(provider.model);
+const showCost = provider.kind === "anthropic" || usage.inputTokens + usage.outputTokens > 0;
+// The real balance and costs live only in the Anthropic console (the Cost page; the balance is under Billing).
+const consoleUrl = "https://platform.claude.com/cost";
+---
+
+<section aria-labelledby="ai-costs-heading" class="flex flex-col gap-3 rounded-xl border p-4 sm:p-6" data-ai-costs>
+  <h2 id="ai-costs-heading" class="text-xl font-semibold">
+    {t.aiHeading}
+  </h2>
+  <p class="text-sm text-muted-foreground">{t.aiIntro}</p>
+  <p class="font-medium" data-ai-usage>
+    {formatUsage(usage, locale)}
+  </p>
+  <p class:list={provider.ready ? "text-sm text-muted-foreground" : "text-sm font-medium text-destructive"}>
+    {providerLine}
+  </p>
+  {usage.lastFailureHint && <p class="text-sm text-destructive">{ai.lastFailed(usage.lastFailureHint)}</p>}
+  {showCost && (
+    <p class="text-sm text-muted-foreground" data-ai-spend>
+      {ai.cost(formatSpend(usage, locale))}
+      {ai.balance}{" "}
+      <a class="underline" href={consoleUrl} target="_blank" rel="noopener noreferrer">
+        {ai.console}
+      </a>{" "}
+      {ai.consoleSuffix}
+    </p>
+  )}
+  <p class="text-sm text-muted-foreground">{ai.limits(usage.guestLimit, usage.limit)}</p>
+</section>

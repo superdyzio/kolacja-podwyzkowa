@@ -5,9 +5,8 @@ import ReadOnlyFrame from "@/components/lead/ReadOnlyFrame.astro";
 import { OfflineSync } from "@/components/offline/OfflineSync";
 import { ResetPanel } from "@/components/reset/ResetPanel";
 import Layout from "@/layouts/Layout.astro";
-import { accessFor, organizerPath, restaurantPath, tvPath } from "@/lib/access";
-import { getAiProviderStatus } from "@/lib/ai";
-import { formatAiTopicSummary, MAX_EVENT_TOPICS, MAX_GUEST_TOPICS } from "@/lib/ai-topics/limits";
+import { accessFor, organizerPath, tvPath } from "@/lib/access";
+import { formatClientAiTopicSummary, MAX_EVENT_TOPICS, MAX_GUEST_TOPICS } from "@/lib/ai-topics/limits";
 import { getAiTopicUsage } from "@/lib/ai-topics/service";
 import { getDb } from "@/lib/db";
 import { formatGuestLinksSummary, getGuestAccessEnabled } from "@/lib/guest-links";
@@ -48,7 +47,6 @@ const view = access
       apiBase: `/api${organizerPath(access.event.organizerKey)}`,
       organizerUrl: new URL(organizerPath(access.event.organizerKey), Astro.url).href,
       tvUrl: new URL(tvPath(access.event.tvKey), Astro.url).href,
-      restaurantUrl: new URL(restaurantPath(access.event.restaurantKey), Astro.url).href,
       guestsPath: `${organizerPath(access.event.organizerKey)}/goscie`,
       guestSummary: board ? formatGuestSummary(summarizeGuestList(board.guestList), locale) : null,
       venuePath: `${organizerPath(access.event.organizerKey)}/sale`,
@@ -66,7 +64,8 @@ const view = access
       questionsPath: `${organizerPath(access.event.organizerKey)}/pytania`,
       questionsSummary: questionList ? formatQuestionSummary(questionList.questions, locale) : null,
       aiTopicsPath: `${organizerPath(access.event.organizerKey)}/pytania#tematy-ai`,
-      aiTopicsSummary: aiUsage ? formatAiTopicSummary(aiUsage, getAiProviderStatus(locale), locale) : null,
+      // client-restaurant-split: the counts only; the provider and the cost are the venue's („Koszty AI”).
+      aiTopicsSummary: aiUsage ? formatClientAiTopicSummary(aiUsage, locale) : null,
       readoutPath: `${organizerPath(access.event.organizerKey)}/odczyt`,
       ordersPath: `${organizerPath(access.event.organizerKey)}/zamowienia`,
       ordersSummary: orderItems ? formatOrderSummary(orderTotals(orderItems), locale) : null,
@@ -113,19 +112,6 @@ const view = access
             class="w-full rounded-md border bg-muted px-3 py-2 font-mono text-sm"
           />
           <p class="text-sm text-muted-foreground">{t.tvLinkHint}</p>
-        </div>
-        <div class="flex flex-col gap-2">
-          <label for="restaurant-link" class="font-medium">
-            {t.restaurantLink}
-          </label>
-          <input
-            id="restaurant-link"
-            type="text"
-            readonly
-            value={view.restaurantUrl}
-            class="w-full rounded-md border bg-muted px-3 py-2 font-mono text-sm"
-          />
-          <p class="text-sm text-muted-foreground">{t.restaurantLinkHint}</p>
         </div>
       </section>
 
@@ -262,7 +248,7 @@ const view = access
         </h2>
         <p class="text-sm text-muted-foreground">{t.resetText}</p>
         <ReadOnlyFrame readOnly={view.venueLeads} locale={locale}>
-          <ResetPanel client:load apiBase={view.apiBase} locale={locale} />
+          <ResetPanel client:load apiBase={view.apiBase} variant="trial" locale={locale} />
         </ReadOnlyFrame>
       </section>
     </main>

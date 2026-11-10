@@ -21,9 +21,14 @@ export function clientSectionPath(eventId: number, section: ClientSection): stri
   return `${panelEventPath(eventId)}/${section}`;
 }
 
+// The event's panel API (/reset, /ai-topics, /links/<kind>, …).
+export function panelEventApiBase(eventId: number): string {
+  return `/api/panel/events/${String(eventId)}`;
+}
+
 // The client's API for the panel's islands (the dispatcher, src/pages/api/panel/events/[id]/klient/[...path].ts).
 export function panelClientApiBase(eventId: number): string {
-  return `/api/panel/events/${String(eventId)}/klient`;
+  return `${panelEventApiBase(eventId)}/klient`;
 }
 
 // What staff may do with the client's work, by who leads and whether it is the admin's support mode.
