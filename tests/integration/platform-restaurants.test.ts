@@ -17,6 +17,7 @@ import {
   setRestaurantDisabled,
 } from "@/lib/platform";
 import type { DbClient } from "@/lib/supabase-client";
+import { getSupportLog } from "@/lib/support";
 import { getTeam } from "@/lib/team";
 import { createTestEvent, hasLocalDb, localDb, releaseTestEvent, testTag, type TestEvent } from "./helpers";
 
@@ -162,8 +163,11 @@ describe.skipIf(!hasLocalDb)("platform restaurants (integration)", () => {
   });
 
   it("issues owner links: an invitation before the password, a reset after, never for a non-owner", async () => {
+    const admin = await createStaffAccount(db, { email: email("admin-linki"), isPlatformAdmin: true });
+    if (admin.status !== "created") throw new Error(admin.status);
+    accountIds.push(admin.id);
     const result = await created("linki", "wlasciciel-linkow");
-    const first = await issueOwnerLink(db, result.restaurantId, result.owner.accountId, null);
+    const first = await issueOwnerLink(db, result.restaurantId, result.owner.accountId, admin.id);
     expect(first).toMatchObject({ status: "issued", link: { kind: "invite" } });
     if (first.status !== "issued") return;
     // The fresh link supersedes the creation's invitation.
@@ -171,17 +175,45 @@ describe.skipIf(!hasLocalDb)("platform restaurants (integration)", () => {
 
     const redeemed = await redeemStaffToken(db, tokenOf(first.link.path), { password: PASSWORD, repeat: PASSWORD });
     expect(redeemed.status).toBe("ok");
-    const reset = await issueOwnerLink(db, result.restaurantId, result.owner.accountId, null);
+    const reset = await issueOwnerLink(db, result.restaurantId, result.owner.accountId, admin.id);
     expect(reset).toMatchObject({ status: "issued", link: { kind: "reset" } });
 
     const waiter = await activeAccount("kelner-linki");
     await addRestaurantMember(db, result.restaurantId, waiter.id, "waiter");
-    expect(await issueOwnerLink(db, result.restaurantId, waiter.id, null)).toEqual({ status: "not-found" });
+    expect(await issueOwnerLink(db, result.restaurantId, waiter.id, admin.id)).toEqual({ status: "not-found" });
     const other = await created("inna", "wlasciciel-innej");
-    expect(await issueOwnerLink(db, result.restaurantId, other.owner.accountId, null)).toEqual({
+    expect(await issueOwnerLink(db, result.restaurantId, other.owner.accountId, admin.id)).toEqual({
       status: "not-found",
     });
-    expect(await issueOwnerLink(db, 2_000_000_000, result.owner.accountId, null)).toEqual({ status: "not-found" });
+    expect(await issueOwnerLink(db, 2_000_000_000, result.owner.accountId, admin.id)).toEqual({ status: "not-found" });
+    // Only a platform administrator issues them (the route's guard decides first; the DB function checks again).
+    expect(await issueOwnerLink(db, result.restaurantId, waiter.id, waiter.id)).toEqual({ status: "not-found" });
+    expect(await issueOwnerLink(db, result.restaurantId, result.owner.accountId, waiter.id)).toEqual({
+      status: "not-found",
+    });
+
+    // review-fixes: every issued link is in the owner's support log (newest first), with the admin, the link's kind,
+    // the account's e-mail and the expiry; the refusals wrote nothing.
+    const log = await getSupportLog(db, result.restaurantId);
+    expect(log.entries.map((entry) => [entry.kind, entry.link])).toEqual([
+      ["link", { kind: "reset", email: email("wlasciciel-linkow") }],
+      ["link", { kind: "invite", email: email("wlasciciel-linkow") }],
+    ]);
+    expect(log.entries[0]?.admin.email).toBe(email("admin-linki"));
+    expect(new Date(log.entries[0]?.expiresAt ?? 0).toISOString()).toBe(
+      reset.status === "issued" ? reset.link.expiresAt : "",
+    );
+    expect((await getSupportLog(db, other.restaurantId)).entries).toEqual([]);
+    // An owner of two restaurants: the link opens both, so both owners' logs get the row.
+    await addRestaurantMember(db, other.restaurantId, result.owner.accountId, "manager");
+    expect(await issueOwnerLink(db, result.restaurantId, result.owner.accountId, admin.id)).toMatchObject({
+      status: "issued",
+      link: { kind: "reset" },
+    });
+    expect((await getSupportLog(db, result.restaurantId)).entries).toHaveLength(3);
+    expect((await getSupportLog(db, other.restaurantId)).entries.map((entry) => entry.link)).toEqual([
+      { kind: "reset", email: email("wlasciciel-linkow") },
+    ]);
   });
 
   it("a disabled restaurant opens nothing through the membership lookups and is listed as disabled", async () => {

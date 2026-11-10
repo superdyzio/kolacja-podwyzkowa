@@ -1,9 +1,11 @@
 import type { APIRoute } from "astro";
 import {
+  DATE_WOULD_PURGE_CODE,
   deleteEvent,
   EVENT_DELETE_ROLES,
   EVENT_STAFF_ROLES,
   eventInputProblemText,
+  formatEventDate,
   getEventCard,
   UpdateEventBody,
   updateEvent,
@@ -11,6 +13,7 @@ import {
 } from "@/lib/events";
 import { jsonError, jsonResponse, readJsonBody } from "@/lib/http";
 import { denied, panelEventApi } from "@/lib/panel-api";
+import { dateChangePurgesGuestData, privacyMessages } from "@/lib/privacy";
 import { supportEventSummary } from "@/lib/support";
 import type { EventCardAnswerDto, SupportEventAnswerDto } from "@/types";
 
@@ -23,6 +26,8 @@ export const prerender = false;
 // same 404 as a wrong link key. The platform administrator in support mode (admin-support-log, S-13) gets the GET
 // WITHOUT the links ({ event, support }: link keys never reach support mode) and never a PATCH or DELETE (the guard
 // admits reads only).
+// review-fixes: a PATCH moving the date past the restaurant's guest data term while the event holds guest data → 409
+// { error, code: "date-would-purge" } and nothing is saved (the next guard would delete the guests' data at once).
 
 async function cardAnswer(api: Awaited<ReturnType<typeof panelEventApi>>, locals: App.Locals): Promise<Response> {
   if (api instanceof Response) {
@@ -61,6 +66,16 @@ export const PATCH: APIRoute = async ({ request, locals, params }) => {
   const input = validateEventInput(body.data);
   if (!input.ok) {
     return jsonError(400, eventInputProblemText(input.problem, locals.locale));
+  }
+  if (input.value.date !== undefined) {
+    const warning = await dateChangePurgesGuestData(api.db, api.event.id, input.value.date, new Date());
+    if (warning) {
+      const text = privacyMessages(locals.locale).dateWouldPurge(
+        formatEventDate(warning.deleteAfter, locals.locale),
+        warning.retentionDays,
+      );
+      return jsonError(409, text, { code: DATE_WOULD_PURGE_CODE });
+    }
   }
   const patch = {
     ...input.value,

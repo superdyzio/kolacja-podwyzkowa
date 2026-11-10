@@ -5174,6 +5174,33 @@ check(
   `${resetC.status} ${resetC.data?.link?.kind} ${redeemedResetC.status} ${meCAfterReset.status} ${oldPasswordC.location} ${newPasswordC.location}`,
 );
 
+// review-fixes (PRD FR-021, NFR-012): both „Nowy link” of the admin for C's owner are in C's support log, newest first
+// — the reset (which logs whoever opens it in as the owner) and the invitation — with the admin's e-mail, the account
+// and the expiry; the owner's restaurant page shows them. The non-admins' attempts above wrote nothing (A's log stays
+// empty, section 29).
+const sessionCAfterReset = sessionOf(newPasswordC);
+const linkLogC = await request(`/api/panel/restaurants/${String(restaurantCId)}/support-log`, {
+  cookie: asStaff(sessionCAfterReset),
+});
+const linkLogPageC = await request(`/panel/restauracje/${String(restaurantCId)}`, {
+  cookie: asStaff(sessionCAfterReset),
+});
+const linkEntriesC = Array.isArray(linkLogC.data?.entries) ? linkLogC.data.entries : [];
+check(
+  "platform: C's owner sees both links of the admin in the support log (reset, then invitation; admin, account, expiry), also on the restaurant page",
+  linkLogC.status === 200 &&
+    linkEntriesC.map((entry) => `${entry.kind}:${entry.link?.kind}`).join(",") === "link:reset,link:invite" &&
+    linkEntriesC.every(
+      (entry) => entry.link?.email === emailC && entry.admin?.email === staff.admin.email && entry.expiresAt !== null,
+    ) &&
+    Date.parse(linkEntriesC[0]?.expiresAt ?? "") === Date.parse(resetC.data?.link?.expiresAt ?? "x") &&
+    linkLogPageC.status === 200 &&
+    (linkLogPageC.body.match(/data-support-entry="link"/g) ?? []).length === 2 &&
+    linkLogPageC.body.includes(`Wydanie linku do resetu hasła konta ${emailC}`) &&
+    linkLogPageC.body.includes(`Wydanie linku z zaproszeniem dla konta ${emailC}`),
+  `${linkLogC.status} ${linkLogC.body.slice(0, 300)} ${linkLogPageC.status}`,
+);
+
 // One more owner: an account that already has a password gets no link and sees the restaurant after logging in.
 const ownerAToB = await platformCall(sessionAdmin, `${idPath(restaurantB.id)}/owners`, {
   method: "POST",
@@ -6639,7 +6666,7 @@ const exitC = await endSupportOf(sessionAdmin, restaurantCId);
 const enableC = await platformCall(sessionAdmin, idPath(restaurantCId), { method: "PATCH", json: { disabled: false } });
 const logC = await staffCall(sessionCNow, supportLogApiOf(restaurantCId));
 check(
-  "support: the admin enters switched-off C (its owner stays out), the banner notes it; after enabling C its owner's log shows enter, two reads and exit",
+  "support: the admin enters switched-off C (its owner stays out), the banner notes it; after enabling C its owner's log shows enter, two reads and exit (after section 26's two „Nowy link” entries)",
   redirectsTo(loginC, "/panel") &&
     findListed(disableC, restaurantCId)?.disabled === true &&
     enteredC.status === 201 &&
@@ -6654,7 +6681,7 @@ check(
     logC.status === 200 &&
     logOf(logC)
       .map((entry) => entry.kind)
-      .join(",") === "exit,access,access,enter" &&
+      .join(",") === "exit,access,access,enter,link,link" &&
     logOf(logC)[3]?.reason === C_REASON,
   `${loginC.status} ${enteredC.status} ${apiCInSupport.status} ${pageCInSupport.status} ${ownerCWhileOff.status} ${logC.body.slice(0, 160)}`,
 );
@@ -10305,10 +10332,51 @@ const qLinks41 = await request(`${q41Api}/guest-links`, { method: "PATCH", json:
 const dorotaKey41 = qLinks41.data?.guests?.[0]?.key ?? "";
 const bGuestsBefore41 = (await request(`/api/o/${eventB.organizerKey}/guests`)).data?.guests?.length ?? -1;
 
-const moved41 = await staffCall(sessionOwner, eventApi(p41Id), {
+// review-fixes: a date change that would delete P's guest data at once is refused (409 date-would-purge, nothing
+// changes); a date whose last kept day is today is fine. The purge itself then comes through the seam (the DB write a
+// back-dated event or a shortened term amounts to).
+const harmless41 = await staffCall(sessionOwner, eventApi(p41Id), {
   method: "PATCH",
-  json: { date: shiftDate(today, -8) },
+  json: { date: shiftDate(today, -7) },
 });
+const harmlessGuests41 = await request(`${p41Api}/guests`);
+const refused41 = await staffCall(sessionOwner, eventApi(p41Id), {
+  method: "PATCH",
+  json: { name: `Retencja P ${RUN_TAG}`, date: shiftDate(today, -8) },
+});
+const refusedEn41 = await request(eventApi(p41Id), {
+  method: "PATCH",
+  json: { date: shiftDate(today, -400) },
+  cookie: `${asStaff(sessionManager)}; kp-lang=en`,
+});
+const refusedCard41 = await staffCall(sessionOwner, eventApi(p41Id));
+const refusedGuests41 = await request(`${p41Api}/guests`);
+const refusedState41 = await request(`/api/g/${aniaKey41}/state`);
+check(
+  "retention: moving P's date so its guest data would be purged at once → 409 date-would-purge naming the last kept day (PL/EN), nothing changes; a date whose last kept day is today is saved",
+  harmless41.status === 200 &&
+    harmless41.data?.event?.date === shiftDate(today, -7) &&
+    harmlessGuests41.data?.guests?.length === 3 &&
+    refused41.status === 409 &&
+    refused41.data?.code === "date-would-purge" &&
+    typeof refused41.data?.error === "string" &&
+    refused41.data.error.startsWith("Nie zmieniono daty") &&
+    refused41.data.error.includes("7 dni") &&
+    refusedEn41.status === 409 &&
+    refusedEn41.data?.code === "date-would-purge" &&
+    String(refusedEn41.data?.error).startsWith("The date was not changed") &&
+    refusedCard41.data?.event?.date === shiftDate(today, -7) &&
+    refusedGuests41.data?.guests?.length === 3 &&
+    refusedState41.status === 200,
+  `${harmless41.status} ${String(harmless41.data?.event?.date)} ${refused41.status} ${refused41.body.slice(0, 160)} ${refusedEn41.status} ${refusedEn41.body.slice(0, 80)} ${String(refusedCard41.data?.event?.date)} ${String(refusedGuests41.data?.guests?.length)} ${refusedState41.status}`,
+);
+
+let moved41 = "";
+try {
+  await setEventDate(platformEnv, p41Id, shiftDate(today, -8));
+} catch (error) {
+  moved41 = error instanceof Error ? error.message : String(error);
+}
 const guestState41 = await request(`/api/g/${aniaKey41}/state`);
 const guestPage41 = await request(`/g/${aniaKey41}`);
 const pGuests41 = await request(`${p41Api}/guests`);
@@ -10321,8 +10389,8 @@ const pTablet41 = await request(`/api/r/${p41Restaurant}/orders`);
 const pLine41 = pOrders41.data?.items?.find((item) => item.name === "Pierogi");
 const names41 = [ANIA41, BOREK41, CELA41];
 check(
-  "retention: P moved 8 days back (past A's 7) — the first request of its guest key is the identical 404; the client's link then shows no guests, no published seating, no TV person, no guest links, the order line without its note or guest but with its price; the TV and the tablet show no name",
-  moved41.status === 200 &&
+  "retention: P moved 8 days back (past A's 7; the seam) — the first request of its guest key is the identical 404; the client's link then shows no guests, no published seating, no TV person, no guest links, the order line without its note or guest but with its price; the TV and the tablet show no name",
+  moved41 === "" &&
     noAccessJson(guestState41) &&
     guestPage41.status === 404 &&
     guestPage41.body.includes(NO_ACCESS_TEXT) &&
@@ -10344,7 +10412,7 @@ check(
     !names41.some(
       (name) => pTv41.body.includes(name) || pTablet41.body.includes(name) || pOrders41.body.includes(name),
     ),
-  `${moved41.status} ${guestState41.status} ${guestPage41.status} ${pGuests41.status} ${pGuests41.body.slice(0, 120)} ${pPublished41.body.slice(0, 80)} ${pSpot41.body.slice(0, 80)} ${pOrders41.status} ${pTv41.status} ${pTablet41.status}`,
+  `${moved41 || "moved"} ${guestState41.status} ${guestPage41.status} ${pGuests41.status} ${pGuests41.body.slice(0, 120)} ${pPublished41.body.slice(0, 80)} ${pSpot41.body.slice(0, 80)} ${pOrders41.status} ${pTv41.status} ${pTablet41.status}`,
 );
 
 const shell41 = await request(`/o/${p41Organizer}`);

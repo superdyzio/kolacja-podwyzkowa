@@ -27,6 +27,7 @@ const entry = (overrides: Partial<SupportLogEntryDto>): SupportLogEntryDto => ({
   path: "/panel/restauracje/5",
   event: null,
   module: null,
+  link: null,
   ...overrides,
 });
 
@@ -139,6 +140,29 @@ describe("support formats", () => {
     expect(describeSupportEntry(event, "en")).toBe("Opened: event “Wigilia”");
     expect(describeSupportEntry(entry({ kind: "exit", method: null, path: null }))).toBe("Zakończenie trybu wsparcia");
     expect(describeSupportEntry(entry({ kind: "exit", method: null, path: null }), "en")).toBe("Left support mode");
+  });
+
+  it("describes the administrator's one-time links for an owner with the account and the expiry (review-fixes)", () => {
+    const link = (kind: "invite" | "reset") =>
+      entry({
+        kind: "link",
+        method: null,
+        path: null,
+        expiresAt: "2026-11-11T00:45:00Z",
+        link: { kind, email: "wlasciciel@demo.stolik" },
+      });
+    expect(describeSupportEntry(link("reset"))).toBe(
+      "Wydanie linku do resetu hasła konta wlasciciel@demo.stolik (ważny do 11.11.2026, 01:45; kto go użyje, zaloguje się na to konto)",
+    );
+    expect(describeSupportEntry(link("reset"), "en")).toBe(
+      "Issued a password reset link for the account wlasciciel@demo.stolik (valid until 11 Nov 2026, 01:45; whoever uses it logs in to that account)",
+    );
+    expect(describeSupportEntry(link("invite"))).toBe(
+      "Wydanie linku z zaproszeniem dla konta wlasciciel@demo.stolik (ważny do 11.11.2026, 01:45)",
+    );
+    expect(describeSupportEntry(link("invite"), "en")).toBe(
+      "Issued an invitation link for the account wlasciciel@demo.stolik (valid until 11 Nov 2026, 01:45)",
+    );
   });
 
   it("has a message for every reason problem in both languages", () => {

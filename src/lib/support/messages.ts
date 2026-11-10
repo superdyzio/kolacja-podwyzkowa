@@ -38,7 +38,7 @@ export const supportMessages = defineMessages(
     // The owner's log
     logHeading: "Dziennik wejść administratora",
     logIntro:
-      "Administrator platformy może w razie potrzeby wsparcia otworzyć dane tej restauracji: tylko do podglądu, najwyżej na 60 minut i po podaniu powodu. Każde wejście, każda otwarta strona i wyjście są tu zapisane. Wpisów nie da się zmienić ani usunąć.",
+      "Administrator platformy może w razie potrzeby wsparcia otworzyć dane tej restauracji: tylko do podglądu, najwyżej na 60 minut i po podaniu powodu. Każde wejście, każda otwarta strona i wyjście są tu zapisane — tak samo każdy jednorazowy link do konta właściciela (zaproszenie albo reset hasła), który wydał administrator. Wpisów nie da się zmienić ani usunąć.",
     logEmpty: "Administrator platformy nie wchodził w dane tej restauracji.",
     logTruncated: (count: number) => `Pokazano ${String(count)} najnowszych wpisów.`,
     logListLabel: "Wpisy dziennika, od najnowszego",
@@ -47,6 +47,10 @@ export const supportMessages = defineMessages(
     entryExit: "Zakończenie trybu wsparcia",
     entryUnlock: (module: string, event: string) => `Odblokowanie modułu płatnego „${module}” w wydarzeniu „${event}”`,
     entryLock: (module: string, event: string) => `Ponowna blokada modułu płatnego „${module}” w wydarzeniu „${event}”`,
+    entryLinkInvite: (email: string, until: string) =>
+      `Wydanie linku z zaproszeniem dla konta ${email} (ważny do ${until})`,
+    entryLinkReset: (email: string, until: string) =>
+      `Wydanie linku do resetu hasła konta ${email} (ważny do ${until}; kto go użyje, zaloguje się na to konto)`,
     entryReason: (reason: string) => `Powód: „${reason}”`,
     areaLabels: {
       restaurant: "strona restauracji",
@@ -95,7 +99,7 @@ export const supportMessages = defineMessages(
     // The owner's log
     logHeading: "Platform administrator access log",
     logIntro:
-      "When support is needed, the platform administrator can open this restaurant's data: view only, for at most 60 minutes and with a reason. Every entry, every page opened and the exit are recorded here. Entries cannot be changed or deleted.",
+      "When support is needed, the platform administrator can open this restaurant's data: view only, for at most 60 minutes and with a reason. Every entry, every page opened and the exit are recorded here — and so is every one-time link to an owner's account (an invitation or a password reset) the administrator issued. Entries cannot be changed or deleted.",
     logEmpty: "The platform administrator has not opened this restaurant's data.",
     logTruncated: (count: number) => `Showing the ${String(count)} newest entries.`,
     logListLabel: "Log entries, newest first",
@@ -104,6 +108,10 @@ export const supportMessages = defineMessages(
     entryExit: "Left support mode",
     entryUnlock: (module: string, event: string) => `Unlocked the paid module “${module}” for the event “${event}”`,
     entryLock: (module: string, event: string) => `Locked the paid module “${module}” again for the event “${event}”`,
+    entryLinkInvite: (email: string, until: string) =>
+      `Issued an invitation link for the account ${email} (valid until ${until})`,
+    entryLinkReset: (email: string, until: string) =>
+      `Issued a password reset link for the account ${email} (valid until ${until}; whoever uses it logs in to that account)`,
     entryReason: (reason: string) => `Reason: “${reason}”`,
     areaLabels: {
       restaurant: "restaurant page",

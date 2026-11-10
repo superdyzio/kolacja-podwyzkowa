@@ -1,5 +1,7 @@
 import { issueStaffToken } from "@/lib/auth/service";
+import { tokenTtlMs } from "@/lib/auth/limits";
 import { setPasswordPath } from "@/lib/auth/paths";
+import { generateSecretToken, hashSecretToken } from "@/lib/auth/tokens";
 import type { DbClient } from "@/lib/supabase-client";
 import type { OwnerResultDto, PlatformOwnerDto, PlatformRestaurantDto, StaffLinkDto } from "@/types";
 
@@ -175,29 +177,38 @@ export type OwnerLinkResult = { status: "issued"; link: StaffLinkDto } | { statu
 
 // A fresh one-time link for an OWNER of the restaurant (US-05: a lost password never locks the restaurant out): an
 // invitation while the account has no password (e.g. the first one expired), else a password-reset link. Their
-// earlier unused link stops working. Anyone who is not an owner of that restaurant → not-found.
+// earlier unused link stops working. Anyone who is not an owner of that restaurant → not-found. A reset link logs
+// whoever opens it in AS the owner, so the DB function writes a 'link' row to the support log of every restaurant the
+// account belongs to, in the same transaction as the token (review-fixes; PRD FR-021, NFR-012: the owner sees every
+// way of the platform administrator into the restaurant's data). `adminId` must be a platform administrator.
 export async function issueOwnerLink(
   db: DbClient,
   restaurantId: number,
   accountId: number,
-  createdBy: number | null,
+  adminId: number,
 ): Promise<OwnerLinkResult> {
-  const { data, error } = await db
-    .from("restaurant_member")
-    .select("role, staff_account(password_hash)")
-    .eq("restaurant_id", restaurantId)
-    .eq("account_id", accountId)
-    .maybeSingle();
+  const token = generateSecretToken();
+  const now = Date.now();
+  const { data, error } = await db.rpc("issue_owner_link", {
+    p_restaurant_id: restaurantId,
+    p_admin_id: adminId,
+    p_account_id: accountId,
+    p_token_hash: hashSecretToken(token),
+    p_invite_expires_at: new Date(now + tokenTtlMs("invite")).toISOString(),
+    p_reset_expires_at: new Date(now + tokenTtlMs("reset")).toISOString(),
+  });
   if (error) {
+    if (error.message.includes("OWNER_NOT_FOUND") || error.message.includes("NOT_ADMIN")) {
+      return { status: "not-found" };
+    }
     fail("link dla właściciela", error);
   }
-  if (data?.role !== "owner") {
-    return { status: "not-found" };
+  const row = data.at(0);
+  if (!row || (row.link_kind !== "invite" && row.link_kind !== "reset")) {
+    throw new PlatformError("link dla właściciela", "brak odpowiedzi bazy");
   }
-  const kind = data.staff_account.password_hash === null ? "invite" : "reset";
-  const issued = await issueStaffToken(db, accountId, kind, createdBy);
-  if (issued.status !== "issued") {
-    return { status: "not-found" };
-  }
-  return { status: "issued", link: { kind, path: setPasswordPath(issued.token), expiresAt: issued.expiresAt } };
+  return {
+    status: "issued",
+    link: { kind: row.link_kind, path: setPasswordPath(token), expiresAt: new Date(row.link_expires_at).toISOString() },
+  };
 }

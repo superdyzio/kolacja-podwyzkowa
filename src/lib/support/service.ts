@@ -139,7 +139,14 @@ export async function listActiveSupport(db: DbClient, sessionId: number): Promis
 }
 
 function isKind(value: string): value is SupportLogKind {
-  return value === "enter" || value === "access" || value === "exit" || value === "unlock" || value === "lock";
+  return (
+    value === "enter" ||
+    value === "access" ||
+    value === "exit" ||
+    value === "unlock" ||
+    value === "lock" ||
+    value === "link"
+  );
 }
 
 // The restaurant's log for its owner: the newest SUPPORT_LOG_LIMIT entries, newest first.
@@ -147,7 +154,7 @@ export async function getSupportLog(db: DbClient, restaurantId: number): Promise
   const { data, error } = await db
     .from("support_log")
     .select(
-      "id, kind, created_at, admin_email, admin_name, reason, expires_at, method, path, event_id, event_name, module",
+      "id, kind, created_at, admin_email, admin_name, reason, expires_at, method, path, event_id, event_name, module, link_kind, target_email",
     )
     .eq("restaurant_id", restaurantId)
     .order("id", { ascending: false })
@@ -169,6 +176,10 @@ export async function getSupportLog(db: DbClient, restaurantId: number): Promise
       path: row.path,
       event: row.event_id !== null && row.event_name !== null ? { id: row.event_id, name: row.event_name } : null,
       module: isModuleKey(row.module) ? row.module : null,
+      link:
+        (row.link_kind === "invite" || row.link_kind === "reset") && row.target_email !== null
+          ? { kind: row.link_kind, email: row.target_email }
+          : null,
     }));
   return { restaurantId, entries, truncated: data.length > SUPPORT_LOG_LIMIT };
 }

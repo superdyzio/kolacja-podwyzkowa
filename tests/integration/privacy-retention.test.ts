@@ -5,6 +5,7 @@ import { createEvent, createRestaurant } from "@/lib/event";
 import { createGroup, getGuestList } from "@/lib/guests";
 import {
   claimRetentionSweep,
+  dateChangePurgesGuestData,
   enforceGuestRetention,
   getEventExport,
   getEventRetention,
@@ -218,6 +219,33 @@ describe.skipIf(!hasLocalDb)("privacy retention (integration)", () => {
     expect((await purgeEventGuestData(db, b, NOW)).status).toBe("purged");
     // The other restaurant's event was not touched by that.
     expect(await count("guest", a)).toBe(1);
+  });
+
+  it("warns before a date change that would purge the guests' data at once, and only then (review-fixes)", async () => {
+    const r = await restaurant("data", 7);
+    const withGuests = await event(r, "z-goscmi", "2026-11-20");
+    const empty = await event(r, "bez-gosci", "2026-11-20");
+    await addGuest(withGuests, "Datowany");
+    // Past the term (2026-11-02 + 7 = 2026-11-09 < 2026-11-10) with guest data → the warning, with the last day kept.
+    expect(await dateChangePurgesGuestData(db, withGuests, "2026-11-02", NOW)).toEqual({
+      deleteAfter: "2026-11-09",
+      retentionDays: 7,
+    });
+    expect(await dateChangePurgesGuestData(db, withGuests, "2025-11-20", NOW)).toEqual({
+      deleteAfter: "2025-11-27",
+      retentionDays: 7,
+    });
+    // Inside the term (the last day is today), a later date, an event without guest data: no warning.
+    expect(await dateChangePurgesGuestData(db, withGuests, "2026-11-03", NOW)).toBeNull();
+    expect(await dateChangePurgesGuestData(db, withGuests, "2026-12-24", NOW)).toBeNull();
+    expect(await dateChangePurgesGuestData(db, empty, "2025-11-20", NOW)).toBeNull();
+    // The same date (an expired event is purged by its guard before the route runs) and an unknown id: no warning.
+    const old = await event(r, "stare", "2025-01-01");
+    await addGuest(old, "Stary");
+    expect(await dateChangePurgesGuestData(db, old, "2025-01-01", NOW)).toBeNull();
+    expect(await dateChangePurgesGuestData(db, 2_000_000_000, "2025-01-01", NOW)).toBeNull();
+    // Nothing was purged by asking.
+    expect(await count("guest", withGuests)).toBe(1);
   });
 
   it("deletes every guest datum of the event and keeps the venue's records", async () => {

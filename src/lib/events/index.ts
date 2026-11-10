@@ -15,6 +15,7 @@ export { eventInputProblemText, eventPanelMessages } from "./messages";
 export {
   canDeleteEvents,
   canManageEvents,
+  DATE_WOULD_PURGE_CODE,
   EVENT_DELETE_ROLES,
   EVENT_LINK_KINDS,
   EVENT_NAME_MAX,

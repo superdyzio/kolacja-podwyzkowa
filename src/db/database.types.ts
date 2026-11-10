@@ -1498,7 +1498,8 @@ export interface Database {
         Row: {
           id: number;
           restaurant_id: number;
-          grant_id: number;
+          // review-fixes: null only for a 'link' row (the platform administrator's „Nowy link”, no support grant).
+          grant_id: number | null;
           account_id: number;
           admin_email: string;
           admin_name: string | null;
@@ -1510,12 +1511,14 @@ export interface Database {
           event_id: number | null;
           event_name: string | null;
           module: string | null;
+          link_kind: string | null;
+          target_email: string | null;
           created_at: string;
         };
         Insert: {
           id?: never;
           restaurant_id: number;
-          grant_id: number;
+          grant_id?: number | null;
           account_id: number;
           admin_email: string;
           admin_name?: string | null;
@@ -1527,12 +1530,14 @@ export interface Database {
           event_id?: number | null;
           event_name?: string | null;
           module?: string | null;
+          link_kind?: string | null;
+          target_email?: string | null;
           created_at?: string;
         };
         Update: {
           id?: never;
           restaurant_id?: number;
-          grant_id?: number;
+          grant_id?: number | null;
           account_id?: number;
           admin_email?: string;
           admin_name?: string | null;
@@ -1544,6 +1549,8 @@ export interface Database {
           event_id?: number | null;
           event_name?: string | null;
           module?: string | null;
+          link_kind?: string | null;
+          target_email?: string | null;
           created_at?: string;
         };
         Relationships: [
@@ -1657,6 +1664,11 @@ export interface Database {
       quiz_tv_state: {
         Args: { p_event_id: number };
         Returns: Json;
+      };
+      // review-fixes: deletes a quiz question under the quiz lock (QUESTION_NOT_FOUND, QUESTION_ON_TV).
+      delete_quiz_question: {
+        Args: { p_event_id: number; p_question_id: number };
+        Returns: undefined;
       };
       // pub-quiz: the client's board (JSON; null for an unknown event or a template).
       quiz_board: {
@@ -1903,6 +1915,18 @@ export interface Database {
         Args: {
           p_restaurant_id: number;
           p_actor_id: number;
+          p_account_id: number;
+          p_token_hash: string;
+          p_invite_expires_at: string;
+          p_reset_expires_at: string;
+        };
+        Returns: { link_kind: string; link_expires_at: string }[];
+      };
+      // review-fixes: the platform administrator's one-time link for an owner, logged as 'link' for the owner.
+      issue_owner_link: {
+        Args: {
+          p_restaurant_id: number;
+          p_admin_id: number;
           p_account_id: number;
           p_token_hash: string;
           p_invite_expires_at: string;

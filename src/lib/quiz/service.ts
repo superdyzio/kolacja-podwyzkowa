@@ -161,35 +161,25 @@ export async function updateQuizQuestion(
 
 export type DeleteQuizQuestionResult = { status: "deleted" } | { status: "not-found" } | { status: "on-tv" };
 
-// Deletes a question with its answers (a closed one changes the live standings); never the one on the TV now.
+// Deletes a question with its answers (a closed one changes the live standings); never the one on the TV now. One DB
+// function under the quiz lock (3013, event), so an `ask` of the same question at the same moment either waits for
+// the delete or makes it refuse (review-fixes; the check and the delete were two requests before).
 export async function deleteQuizQuestion(
   db: DbClient,
   eventId: number,
   questionId: number,
 ): Promise<DeleteQuizQuestionResult> {
-  const [row, run] = await Promise.all([
-    findQuestion(db, eventId, questionId),
-    db.from("quiz_run").select("question_id").eq("event_id", eventId).maybeSingle(),
-  ]);
-  if (run.error) {
-    fail("odczytać quizu", run.error.message);
-  }
-  if (!row) {
-    return { status: "not-found" };
-  }
-  if (run.data?.question_id === questionId) {
-    return { status: "on-tv" };
-  }
-  const { data, error } = await db
-    .from("quiz_question")
-    .delete()
-    .eq("event_id", eventId)
-    .eq("id", questionId)
-    .select("id");
+  const { error } = await db.rpc("delete_quiz_question", { p_event_id: eventId, p_question_id: questionId });
   if (error) {
+    if (error.message.includes("QUESTION_ON_TV")) {
+      return { status: "on-tv" };
+    }
+    if (error.message.includes("QUESTION_NOT_FOUND")) {
+      return { status: "not-found" };
+    }
     fail("usunąć pytania quizu", error.message);
   }
-  return data.length > 0 ? { status: "deleted" } : { status: "not-found" };
+  return { status: "deleted" };
 }
 
 export type QuizRunResult =

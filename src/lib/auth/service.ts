@@ -1,4 +1,5 @@
 import { enforceGuestRetention } from "@/lib/privacy/service";
+import { endSupport, listActiveSupport } from "@/lib/support/service";
 import type { DbClient } from "@/lib/supabase-client";
 import { loginKeyHash, normalizeEmail } from "./email";
 import { LOGIN_FAILURE_LIMIT, LOGIN_WINDOW_SECONDS, SESSION_MAX_AGE_SECONDS, tokenTtlMs } from "./limits";
@@ -289,7 +290,9 @@ export type ChangePasswordResult =
   | { status: Exclude<NewPasswordCheck, "ok"> };
 
 // A logged-in person changes the password: the current one is checked through the same throttle as the login, the
-// new hash is stored and every OTHER session of the person ends (this device stays logged in).
+// new hash is stored and every OTHER session of the person ends (this device stays logged in). A platform
+// administrator's support mode ends with it on this login too (admin-support-log: a password change ends support
+// mode; every live grant of the kept session ends with an `exit` row in its restaurant's log — review-fixes).
 export async function changePassword(
   db: DbClient,
   session: StaffSession,
@@ -318,6 +321,9 @@ export async function changePassword(
   });
   if (changeError) {
     fail("zmiana hasła", changeError);
+  }
+  for (const grant of await listActiveSupport(db, session.sessionId)) {
+    await endSupport(db, session.sessionId, grant.restaurantId);
   }
   return { status: "ok" };
 }

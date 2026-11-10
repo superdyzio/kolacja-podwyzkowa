@@ -263,6 +263,41 @@ describe.skipIf(!hasLocalDb)("pub quiz (integration)", () => {
     expect((await getQuizBoard(db, b.id))?.questions).toHaveLength(1);
   });
 
+  it("a question added or deleted during a run changes the TV token; the 204 and the 200 path still agree (review-fixes)", async () => {
+    expect((await runQuizAction(db, a.id, { action: "start" })).status).toBe("done");
+    const before = await tvTokensAgree();
+    const totalBefore = (await getTvQuiz(db, a.id))?.quiz.total ?? 0;
+    // A draft added mid-run: the TV's count changes, and so does its token (else the 204 path hides it).
+    const draft = await add(a.id, "Dopisane w trakcie?", ["A", "B"], 1);
+    const added = await tvTokensAgree();
+    expect(added).not.toBe(before);
+    expect((await getTvQuiz(db, a.id))?.quiz.total).toBe(totalBefore + 1);
+    const phoneBefore = await phoneTokensAgree("Ania");
+    // An edit of a never-asked question changes nothing the TV shows (no new token needed).
+    expect((await updateQuizQuestion(db, a.id, draft, { text: "Dopisane i poprawione?" })).status).toBe("updated");
+    expect(await tvTokensAgree()).toBe(added);
+    // Deleted mid-run: the TV's token changes again, and the phone's (its quizKey carries the count).
+    expect((await deleteQuizQuestion(db, a.id, draft)).status).toBe("deleted");
+    const deleted = await tvTokensAgree();
+    expect(deleted).not.toBe(added);
+    expect((await getTvQuiz(db, a.id))?.quiz.total).toBe(totalBefore);
+    expect(await phoneTokensAgree("Ania")).not.toBe(phoneBefore);
+    // The question on the TV is never deleted (one DB function under the quiz lock); another event's is unknown.
+    const shown = await add(a.id, "Na ekranie?", ["A", "B"], 0);
+    expect((await runQuizAction(db, a.id, { action: "ask", questionId: shown })).status).toBe("done");
+    expect((await deleteQuizQuestion(db, a.id, shown)).status).toBe("on-tv");
+    expect((await deleteQuizQuestion(db, a.id, foreignQuestion)).status).toBe("not-found");
+    expect((await deleteQuizQuestion(db, a.id, 9_000_000_000)).status).toBe("not-found");
+    expect((await runQuizAction(db, a.id, { action: "end" })).status).toBe("done");
+    expect((await deleteQuizQuestion(db, a.id, shown)).status).toBe("deleted");
+    // Without a run nothing changes on the TV (no quiz part) and a question still adds and deletes.
+    const idle = await getTvScreenVersion(db, a.id, true, true);
+    const later = await add(a.id, "Bez quizu?", ["A", "B"], 0);
+    expect(await getTvScreenVersion(db, a.id, true, true)).toBe(idle);
+    expect((await deleteQuizQuestion(db, a.id, later)).status).toBe("deleted");
+    expect((await getQuizBoard(db, b.id))?.questions).toHaveLength(1);
+  });
+
   it("frees a run whose question was deleted from under it (no stuck phase)", async () => {
     const extra = await add(a.id, "Pytanie do usunięcia?", ["A", "B"], 0);
     expect((await runQuizAction(db, a.id, { action: "ask", questionId: extra })).status).toBe("done");

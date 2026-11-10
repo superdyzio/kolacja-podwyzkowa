@@ -24,6 +24,8 @@ export const privacyMessages = defineMessages(
     deleteAfter: (date: string, days: number) =>
       `Dane gości zostaną usunięte po ${date} (${String(days)} ${days === 1 ? "dzień" : "dni"} po wydarzeniu).`,
     purged: (date: string) => `Dane gości usunięte ${date}.`,
+    dateWouldPurge: (date: string, days: number) =>
+      `Nie zmieniono daty: z tą datą dane gości tego wydarzenia zostałyby od razu i bezpowrotnie usunięte (lokal przechowuje je ${String(days)} ${days === 1 ? "dzień" : "dni"} po wydarzeniu, czyli tylko do ${date}). Sprawdź, czy data jest poprawna; dane, które chcesz zachować, pobierz najpierw w „Dane gości i eksport”.`,
     purgedHint: "Zostały sala, pytania i rachunek bez imion i uwag. Nowo dopisani goście też zostaną usunięci.",
     exportIntro:
       "Pobierz dane wydarzenia przed ich usunięciem. Plik zawiera dane o zdrowiu gości (diety i alergie) — przechowuj go bezpiecznie i usuń, gdy nie będzie potrzebny.",
@@ -49,6 +51,8 @@ export const privacyMessages = defineMessages(
     deleteAfter: (date: string, days: number) =>
       `Guests' data will be deleted after ${date} (${String(days)} ${days === 1 ? "day" : "days"} after the event).`,
     purged: (date: string) => `Guests' data deleted on ${date}.`,
+    dateWouldPurge: (date: string, days: number) =>
+      `The date was not changed: with this date the guests' data of this event would be deleted at once and for good (the venue keeps it for ${String(days)} ${days === 1 ? "day" : "days"} after the event, i.e. only until ${date}). Check that the date is right; download the data you want to keep from “Guests' data and export” first.`,
     purgedHint:
       "The room, the questions and the bill without names or notes remain. Guests added later are deleted too.",
     exportIntro:

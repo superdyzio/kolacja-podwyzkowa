@@ -207,3 +207,33 @@ export async function getEventRetention(db: DbClient, eventId: number): Promise<
     purgedAt: data.guest_data_purged_at,
   };
 }
+
+export interface DatePurgeWarning {
+  // The last day ("YYYY-MM-DD") the guests' data would be kept with the new date, and the restaurant's term.
+  deleteAfter: string;
+  retentionDays: number;
+}
+
+// review-fixes: would moving the event to `date` delete its guests' data at once? Every guard purges an event past its
+// term before serving it, so a mistyped or back-dated date would wipe the guest list, the seating, the RSVPs and the
+// rest on the next request, irreversibly. A warning only when the date CHANGES, the new date is past the restaurant's
+// term and the event still holds guest data; null otherwise (also for an unknown id or a template). Creating events
+// with old dates, adding guests to old events and the term setting are not affected.
+export async function dateChangePurgesGuestData(
+  db: DbClient,
+  eventId: number,
+  date: string,
+  now: Date,
+): Promise<DatePurgeWarning | null> {
+  const retention = await getEventRetention(db, eventId);
+  if (!retention || retention.eventDate === date || !isGuestDataExpired(date, retention.retentionDays, now)) {
+    return null;
+  }
+  const { data, error } = await db.rpc("event_has_guest_data", { p_event_id: eventId });
+  if (error) {
+    fail("sprawdzić danych gości", error.message);
+  }
+  return data
+    ? { deleteAfter: guestDataDeleteAfter(date, retention.retentionDays), retentionDays: retention.retentionDays }
+    : null;
+}

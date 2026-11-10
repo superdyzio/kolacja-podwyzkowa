@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { createStaffAccount, getSession, issueStaffToken, logout, redeemStaffToken } from "@/lib/auth";
+import { changePassword, createStaffAccount, getSession, issueStaffToken, logout, redeemStaffToken } from "@/lib/auth";
 import type { StaffSession } from "@/lib/auth/types";
 import { createEvent, createRestaurant } from "@/lib/event";
 import type { DbClient } from "@/lib/supabase-client";
@@ -208,6 +208,28 @@ describe.skipIf(!hasLocalDb)("admin support access (integration)", () => {
     await logout(db, admin.session);
     expect(await grants(admin.session.sessionId)).toEqual([]);
     expect(await logRows(r.id)).toHaveLength(4);
+  });
+
+  it("a password change ends this login's support mode with an exit row and keeps the session (review-fixes)", async () => {
+    const r = await restaurant("haslo");
+    const second = await restaurant("haslo-druga");
+    const admin = await login("admin-haslo");
+    expect((await beginSupport(db, admin.session, r.id, "Przed zmianą hasła")).status).toBe("entered");
+    expect((await beginSupport(db, admin.session, second.id, "Druga restauracja")).status).toBe("entered");
+    const changed = await changePassword(db, admin.session, {
+      current: PASSWORD,
+      password: "nowe-haslo-wsparcia-456",
+      repeat: "nowe-haslo-wsparcia-456",
+    });
+    expect(changed).toEqual({ status: "ok" });
+    expect(await grants(admin.session.sessionId)).toEqual([]);
+    expect(await listActiveSupport(db, admin.session.sessionId)).toEqual([]);
+    expect(await recordSupportAccess(db, admin.session.sessionId, { restaurantId: r.id }, GET)).toBeNull();
+    expect((await logRows(r.id)).map((row) => row.kind)).toEqual(["enter", "exit"]);
+    expect((await logRows(second.id)).map((row) => row.kind)).toEqual(["enter", "exit"]);
+    // The login itself stays (only the OTHER sessions end with a password change).
+    const { data } = await db.from("staff_session").select("id").eq("id", admin.session.sessionId);
+    expect(data).toHaveLength(1);
   });
 
   it("keeps the log append-only; deleting the restaurant takes its rows", async () => {

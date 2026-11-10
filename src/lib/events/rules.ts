@@ -16,6 +16,10 @@ export const EVENT_DATE_MAX = "2100-12-31";
 export const EVENT_STAFF_ROLES: readonly StaffRole[] = ["owner", "manager"];
 export const EVENT_DELETE_ROLES: readonly StaffRole[] = ["owner"];
 
+// review-fixes: the 409 code of a date change that would delete the guests' data at once — the new date is already past
+// the restaurant's guest data term and the event still holds guest data (the next guard would purge it).
+export const DATE_WOULD_PURGE_CODE = "date-would-purge";
+
 export function canManageEvents(role: StaffRole): boolean {
   return EVENT_STAFF_ROLES.includes(role);
 }

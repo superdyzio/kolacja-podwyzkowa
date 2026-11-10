@@ -50,7 +50,7 @@ export function formatSupportTime(iso: string, locale: Locale = "pl"): string {
 }
 
 // What a log row says happened: the entry with its end time, the part of the panel an access opened (the event's
-// name when an event was opened; „(API)” for an API read), the exit.
+// name when an event was opened; „(API)” for an API read), the exit, an unlock / lock, a one-time link for an owner.
 export function describeSupportEntry(entry: SupportLogEntryDto, locale: Locale = "pl"): string {
   const t = supportMessages(locale);
   switch (entry.kind) {
@@ -68,6 +68,11 @@ export function describeSupportEntry(entry: SupportLogEntryDto, locale: Locale =
       const module = entry.module ? modulesMessages(locale).names[entry.module] : "—";
       const event = entry.event?.name ?? "—";
       return entry.kind === "unlock" ? t.entryUnlock(module, event) : t.entryLock(module, event);
+    }
+    case "link": {
+      const email = entry.link?.email ?? "—";
+      const until = entry.expiresAt ? formatSupportTime(entry.expiresAt, locale) : "—";
+      return entry.link?.kind === "invite" ? t.entryLinkInvite(email, until) : t.entryLinkReset(email, until);
     }
   }
 }

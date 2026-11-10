@@ -1139,7 +1139,8 @@ export interface SupportGrantDto {
 }
 
 // event-modules: "unlock" / "lock" = the administrator unlocked (locked again) a paid module of an event.
-export type SupportLogKind = "enter" | "access" | "exit" | "unlock" | "lock";
+// review-fixes: "link" = the administrator issued a one-time link (invite or password reset) for an owner („Nowy link”).
+export type SupportLogKind = "enter" | "access" | "exit" | "unlock" | "lock" | "link";
 
 // One row of the owner's „Dziennik wejść administratora”: who (snapshot of the admin's e-mail and name), when, and
 // what — the reason and end time of an entry, the method and path of an access (with the event's name), an exit.
@@ -1155,6 +1156,9 @@ export interface SupportLogEntryDto {
   event: { id: number; name: string } | null;
   // event-modules: the module of an unlock / lock entry, else null.
   module: ModuleKey | null;
+  // review-fixes: a link entry's link kind and the account it was issued for (e-mail snapshot), else null; `expiresAt`
+  // is then the link's expiry.
+  link: { kind: StaffLinkDto["kind"]; email: string } | null;
 }
 
 // GET /api/panel/restaurants/<id>/support-log (owners): newest first; `truncated` when older entries exist.

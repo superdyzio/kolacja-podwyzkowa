@@ -140,6 +140,7 @@ describe("event modules", () => {
       path: null,
       event: { id: 7, name: "Wigilia" },
       module: "aiTopics" as const,
+      link: null,
     };
     expect(describeSupportEntry(entry)).toBe("Odblokowanie modułu płatnego „Tematy AI” w wydarzeniu „Wigilia”");
     expect(describeSupportEntry({ ...entry, kind: "lock" }, "en")).toBe(
