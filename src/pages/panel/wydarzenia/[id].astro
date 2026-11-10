@@ -35,6 +35,8 @@ import { courseLabel, getEventMenu, groupByCourse, menuMessages } from "@/lib/me
 import { formatAmount } from "@/lib/guesses/amount";
 import { EventWaitersManager } from "@/components/event-waiters/EventWaitersManager";
 import { eventWaiterMessages, getEventWaiters } from "@/lib/event-waiters";
+import GuestDataNote from "@/components/privacy/GuestDataNote.astro";
+import { EXPORT_FORMATS, exportPath, getEventRetention, privacyMessages } from "@/lib/privacy";
 
 // The event card (restaurant-events, S-11; US-06, US-09, FR-025): owners and managers of the event's restaurant see
 // what it is, copy, open and replace its client, TV and staff tablet links, edit it, archive or restore it; owners also
@@ -57,6 +59,7 @@ const tmod = modulesMessages(locale);
 const tmenu = menuMessages(locale);
 const tbrand = brandingMessages(locale);
 const twaiters = eventWaiterMessages(locale);
+const tprivacy = privacyMessages(locale);
 const panel = await findPanelEvent(Astro.locals, Astro.params.id, EVENT_STAFF_ROLES);
 const loaded = panel
   ? await Promise.all([
@@ -81,6 +84,8 @@ const loaded = panel
         : getEventWaiters(panel.db, panel.event.restaurantId, panel.event.id, new Date()),
       // guest-rsvp-menu (S-25): the venue's counts on „Potwierdzenia i wybór dania”.
       getRsvpBoard(panel.db, panel.event.id, new Date()),
+      // privacy-retention (S-26): „Dane gości i eksport” (the guard has applied the retention already).
+      getEventRetention(panel.db, panel.event.id),
     ])
   : null;
 const card = loaded?.[0] ?? null;
@@ -103,8 +108,10 @@ const work = loaded
         branding,
         waiters,
         rsvpBoard,
+        retention,
       ] = loaded;
       return {
+        retention,
         branding,
         waiters,
         templates,
@@ -270,6 +277,41 @@ const work = loaded
               locale={locale}
             />
           </ReadOnlyFrame>
+        </section>
+      )}
+      {work.retention && (
+        <section
+          aria-labelledby="event-privacy-heading"
+          class="flex flex-col gap-3 rounded-xl border p-4 sm:p-6"
+          data-event-privacy
+        >
+          <h2 id="event-privacy-heading" class="text-xl font-semibold">
+            {tprivacy.eventHeading}
+          </h2>
+          <GuestDataNote retention={work.retention} locale={locale} />
+          {!panel.support && (
+            <>
+              <p class="text-sm text-muted-foreground">{tprivacy.exportIntro}</p>
+              <ul class="flex flex-wrap gap-2">
+                {EXPORT_FORMATS.map((format) => (
+                  <li>
+                    <a
+                      href={exportPath(card.id, format)}
+                      download
+                      class="inline-flex rounded-md border px-3 py-2 text-sm font-medium hover:bg-muted"
+                      data-event-export={format}
+                    >
+                      {format === "json"
+                        ? tprivacy.exportJson
+                        : format === "guests-csv"
+                          ? tprivacy.exportGuestsCsv
+                          : tprivacy.exportOrdersCsv}
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
         </section>
       )}
       <AiCosts board={work.ai} locale={locale} />

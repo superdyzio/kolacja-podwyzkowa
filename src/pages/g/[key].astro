@@ -15,6 +15,7 @@ import { getEventBranding } from "@/lib/branding";
 import { getDb } from "@/lib/db";
 import { getGuestState, guestPhoneMessages } from "@/lib/guest-links";
 import { guestModulesOf } from "@/lib/modules/rules";
+import { privacyNoticeMessages } from "@/lib/privacy/messages";
 
 // The guest's phone page (S-05, US-03, FR-013, NFR-003, NFR-008): mobile-first, Polish or English (i18n). The middleware has already
 // checked the key AND the guest-access switch (off, revoked or unknown → the same no-access page); this is the
@@ -31,6 +32,7 @@ import { guestModulesOf } from "@/lib/modules/rules";
 // every generate answer; the topics themselves are never stored, so they never appear in this HTML.
 const locale = Astro.locals.locale;
 const t = guestPhoneMessages(locale);
+const tp = privacyNoticeMessages(locale);
 const access = accessFor(Astro.locals, "guest");
 const db = access ? getDb() : null;
 if (!access || !db) {
@@ -104,6 +106,17 @@ const view =
       </GuestModuleGate>
 
       <GuestRsvpView client:load apiBase={view.apiBase} initial={view.initial} locale={locale} placement="closed" />
+
+      {/* privacy-retention (S-26): the guest's privacy notice (a draft for legal review). */}
+      <footer class="border-t pt-4 text-center text-sm">
+        <a
+          href={`${guestPath(Astro.params.key ?? "")}/prywatnosc`}
+          class="text-muted-foreground underline underline-offset-4"
+          data-privacy-link
+        >
+          {tp.footerLink}
+        </a>
+      </footer>
     </main>
   </Layout>
 ) : (

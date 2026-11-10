@@ -1305,3 +1305,59 @@ export interface EventRetentionDto {
   deleteAfter: string;
   purgedAt: string | null;
 }
+
+// GET /api/panel/events/<id>/export (format=json): one event's data for its restaurant's owners and managers, to keep
+// before the guests' data is deleted. NO ids, link keys, tokens or hashes anywhere: guests, tables and rooms are
+// referenced by name, groups by their number in this file. After a purge `guests` is empty and `purgedAt` is set.
+export interface EventExportDto {
+  version: 1;
+  exportedAt: string;
+  event: {
+    name: string;
+    date: string;
+    restaurant: string;
+    archived: boolean;
+    guestData: { retentionDays: number; deleteAfter: string; purgedAt: string | null };
+  };
+  guests: EventExportGuestDto[];
+  // Each inseparable group as its members' names (a guest's `group` is the number of its group here, from 1).
+  groups: string[][];
+  // null while the client asks no RSVP.
+  rsvp: { deadline: string; open: boolean; options: RsvpOptionDto[] } | null;
+  venue: { rooms: { name: string; tables: { name: string; shape: TableShape; seatCount: number }[] }[] };
+  // The latest published seating (null before the first publish).
+  seating: { publishedAt: string; tables: PublishedTableDto[] } | null;
+  orders: {
+    lines: EventExportOrderLineDto[];
+    drinks: { name: string; quantity: number; unitPriceGrosze: number; totalGrosze: number }[];
+    dishesGrosze: number;
+    drinksGrosze: number;
+    billGrosze: number;
+  };
+  guesses: { intakeOpen: boolean; correctAmountGrosze: number | null };
+}
+
+export interface EventExportGuestDto {
+  name: string;
+  absent: boolean;
+  group: number | null;
+  diets: DietTag[];
+  dietNote: string | null;
+  // The invitation answer (null while the client asks no RSVP).
+  rsvp: { attending: boolean | null; dish: string | null; byOrganizer: boolean; answeredAt: string | null } | null;
+  // The guest's seat in the latest published seating.
+  seat: { room: string; table: string; seat: number } | null;
+  guess: { amountGrosze: number; predictedPlace: number | null } | null;
+}
+
+export interface EventExportOrderLineDto {
+  name: string;
+  course: MenuCourse | null;
+  note: string | null;
+  quantity: number;
+  unitPriceGrosze: number;
+  totalGrosze: number;
+  deliveredPieces: number;
+  // For whom: a guest (by name) or the middle of a table; null = not assigned (or its guest / table is gone).
+  place: { guest: string } | { table: string } | null;
+}

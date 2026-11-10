@@ -24,6 +24,8 @@ import { formatRsvpSummary, getRsvpBoard } from "@/lib/rsvp";
 import { formatSeatingSummary, getSeatingBoard, summarizeSeating } from "@/lib/seating";
 import { shellMessages } from "@/lib/shell/messages";
 import { formatVenueSummary, summarizeVenue } from "@/lib/venue";
+import GuestDataNote from "@/components/privacy/GuestDataNote.astro";
+import { getEventRetention } from "@/lib/privacy/service";
 
 // Organizer view (shell). The middleware has already checked the key; this is the second, role-specific check.
 const locale = Astro.locals.locale;
@@ -37,7 +39,18 @@ const db = access ? getDb() : null;
 // One read of the seating board carries the guest list and the venue too.
 // event-modules (S-17): a switched-off module's card is gone and its data is not read.
 const on = access?.event.modules;
-const [board, guestAccessEnabled, guessBoard, questionList, aiUsage, orderItems, modules, branding, rsvpBoard] =
+const [
+  board,
+  guestAccessEnabled,
+  guessBoard,
+  questionList,
+  aiUsage,
+  orderItems,
+  modules,
+  branding,
+  rsvpBoard,
+  retention,
+] =
   access && db
     ? await Promise.all([
         getSeatingBoard(db, access.event.id),
@@ -51,8 +64,10 @@ const [board, guestAccessEnabled, guessBoard, questionList, aiUsage, orderItems,
         getEventBranding(db, access.event.id),
         // guest-rsvp-menu (S-25): the RSVP card's summary.
         getRsvpBoard(db, access.event.id, new Date()),
+        // privacy-retention (S-26): when the guests' data goes (the key lookup has applied the retention already).
+        getEventRetention(db, access.event.id),
       ])
-    : [null, false, null, null, null, null, null, null, null];
+    : [null, false, null, null, null, null, null, null, null, null];
 const view = access
   ? {
       name: access.event.name,
@@ -93,6 +108,7 @@ const view = access
       modules,
       modulesApi: `/api${organizerPath(access.event.organizerKey)}/modules`,
       branding,
+      retention,
     }
   : null;
 const tm = modulesMessages(locale);
@@ -106,6 +122,7 @@ const tb = brandingMessages(locale);
         <BrandHeader branding={view.branding} base={`${view.apiBase}/branding`} locale={locale} />
         <p class="text-sm text-muted-foreground">{t.kicker}</p>
         <h1 class="text-3xl font-bold">{view.name}</h1>
+        {view.retention && <GuestDataNote retention={view.retention} locale={locale} />}
       </header>
       {view.venueLeads && <LeadBanner kind="client" locale={locale} />}
       <OfflineSync client:load apiBase={view.apiBase} locale={locale} />

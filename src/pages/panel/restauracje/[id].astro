@@ -24,6 +24,8 @@ import {
   getRestaurantBranding,
   restaurantLogoUrl,
 } from "@/lib/branding";
+import { RetentionSettingsForm } from "@/components/privacy/RetentionSettingsForm";
+import { getRestaurantRetention, privacyMessages, RETENTION_EDIT_ROLES, RETENTION_VIEW_ROLES } from "@/lib/privacy";
 
 // The restaurant panel (platform-restaurants, S-10; restaurant-events, S-11; restaurant-team, S-12): the restaurant,
 // the person's role, its events and (owners and managers) the team. Owners and managers create an event („Nowe
@@ -73,6 +75,14 @@ const brandEditor = Boolean(panel && !support && BRAND_EDIT_ROLES.includes(panel
 const brandBase = panel ? `/api/panel/restaurants/${String(panel.restaurant.id)}/branding` : "";
 const brandLogo = brand?.logo && !support ? restaurantLogoUrl(brandBase, brand.logo.version) : null;
 const tb = brandingMessages(locale);
+// privacy-retention (S-26): owners and managers (and support) see „Prywatność danych gości”; only owners change the
+// term (a restaurant setting).
+const retention =
+  panel && RETENTION_VIEW_ROLES.includes(panel.role)
+    ? await getRestaurantRetention(panel.db, panel.restaurant.id)
+    : null;
+const retentionEditor = Boolean(panel && !support && RETENTION_EDIT_ROLES.includes(panel.role));
+const tp = privacyMessages(locale);
 const listParam = Astro.url.searchParams.get("lista");
 const tab = listParam === "minione" ? "past" : listParam === "archiwum" ? "archived" : "upcoming";
 const tabs = lists
@@ -156,6 +166,26 @@ if (!panel) {
               </div>
               <p class="text-muted-foreground">{tb.restaurantReadOnly}</p>
             </dl>
+          )}
+        </section>
+      )}
+
+      {retention && (
+        <section
+          aria-labelledby="retention-heading"
+          class="flex flex-col gap-3 rounded-xl border p-4 sm:p-6"
+          data-retention-section
+        >
+          <h2 id="retention-heading" class="text-xl font-semibold">
+            {tp.retentionHeading}
+          </h2>
+          <p class="text-sm text-muted-foreground">{tp.retentionIntro}</p>
+          {retentionEditor ? (
+            <RetentionSettingsForm client:load initial={retention} locale={locale} />
+          ) : (
+            <p class="text-sm" data-retention-read-only={retention.guestRetentionDays}>
+              {tp.readOnly(retention.guestRetentionDays)}
+            </p>
           )}
         </section>
       )}

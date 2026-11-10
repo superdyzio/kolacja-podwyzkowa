@@ -447,10 +447,10 @@ events: the first panel page view (or `npm run retention`) purges up to 25 expir
 
 #### Automated
 
-- [x] 1.1 `npx supabase migration up` applies on the populated local DB (demo data of HEAD) with row counts unchanged; `npx supabase db reset` applies from zero
-- [x] 1.2 `AI_PROVIDER=mock npm test` passes (unit + DB integration)
-- [x] 1.3 `npm run lint` and `npx astro check` pass
-- [x] 1.4 `npm run retention -- --dry-run` lists against the local DB; without `--remote` a non-local URL is refused
+- [x] 1.1 `npx supabase migration up` applies on the populated local DB (demo data of HEAD) with row counts unchanged; `npx supabase db reset` applies from zero — ea90138
+- [x] 1.2 `AI_PROVIDER=mock npm test` passes (unit + DB integration) — ea90138
+- [x] 1.3 `npm run lint` and `npx astro check` pass — ea90138
+- [x] 1.4 `npm run retention -- --dry-run` lists against the local DB; without `--remote` a non-local URL is refused — ea90138
 
 #### Manual
 
@@ -460,7 +460,7 @@ events: the first panel page view (or `npm run retention`) purges up to 25 expir
 
 #### Automated
 
-- [ ] 2.1 `AI_PROVIDER=mock npm test`, `npm run lint`, `npx astro check`, `npm run build` pass
+- [x] 2.1 `AI_PROVIDER=mock npm test`, `npm run lint`, `npx astro check`, `npm run build` pass
 
 #### Manual
 

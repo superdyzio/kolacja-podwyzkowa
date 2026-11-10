@@ -6,6 +6,7 @@ import { createGroup, getGuestList } from "@/lib/guests";
 import {
   claimRetentionSweep,
   enforceGuestRetention,
+  getEventExport,
   getEventRetention,
   getRestaurantRetention,
   listExpiredGuestDataEvents,
@@ -430,6 +431,113 @@ describe.skipIf(!hasLocalDb)("privacy retention (integration)", () => {
     expect(await count("guest", old)).toBe(0);
     const { data: account } = await db.from("staff_account").select("id").eq("id", created.id).throwOnError();
     expect(account).toHaveLength(1); // staff accounts are never touched
+  });
+
+  it("exports an event by names only — no ids, keys, tokens or hashes — and nothing of its guests once purged", async () => {
+    const r = await restaurant("eksport", 30);
+    const other = await restaurant("eksport-obcy", 30);
+    const eventId = await event(r, "eksport", "2026-11-05");
+    const seating = await createTestSeating(db, eventId, `${tag}e`, [{ seatCount: 4, shape: "rectangular" }], 3);
+    const [g1, g2, g3] = seating.guestIds as [number, number, number];
+    const tableId = seating.tableIds[0] ?? 0;
+    await db
+      .from("guest")
+      .update({ diets: ["gluten-free"], diet_note: "bez cebuli" })
+      .eq("id", g1)
+      .throwOnError();
+    await db.from("guest").update({ is_absent: true }).eq("id", g3).throwOnError();
+    expect((await createGroup(db, eventId, [g1, g2])).status).toBe("created");
+    await db.from("event").update({ rsvp_deadline: "2026-11-04T22:00:00Z" }).eq("id", eventId).throwOnError();
+    await db
+      .from("guest_rsvp")
+      .insert({ guest_id: g1, event_id: eventId, restaurant_id: r, menu_item_id: null, answered_by: "guest" })
+      .throwOnError();
+    await db
+      .from("guess")
+      .insert({ guest_id: g2, event_id: eventId, amount_grosze: 123_456, predicted_place: 1 })
+      .throwOnError();
+    expect((await seatGuest(db, eventId, g1, tableId, 1)).status).toBe("seated");
+    expect((await seatGuest(db, eventId, g2, tableId, 2)).status).toBe("seated");
+    expect((await publishSeating(db, eventId)).status).toBe("published");
+    await db
+      .from("order_item")
+      .insert([
+        { event_id: eventId, name: "Rosół", note: "bez makaronu", quantity: 2, unit_price_grosze: 1800, guest_id: g1 },
+        { event_id: eventId, name: "Deska", quantity: 1, unit_price_grosze: 5000, table_id: tableId },
+      ])
+      .throwOnError();
+    await db
+      .from("drink_item")
+      .insert({ event_id: eventId, name: "Kompot", quantity: 2, unit_price_grosze: 1200 })
+      .throwOnError();
+
+    const data = await getEventExport(db, r, eventId, NOW);
+    expect(data).not.toBeNull();
+    if (!data) return;
+    const [n1, n2, n3] = seating.guestNames as [string, string, string];
+    expect(data.event).toEqual({
+      name: `Retencja eksport ${tag}`,
+      date: "2026-11-05",
+      restaurant: `Retencja eksport ${tag}`,
+      archived: false,
+      guestData: { retentionDays: 30, deleteAfter: "2026-12-05", purgedAt: null },
+    });
+    const byName = new Map(data.guests.map((guest) => [guest.name, guest]));
+    expect(byName.get(n1)).toMatchObject({
+      absent: false,
+      group: 1,
+      diets: ["gluten-free"],
+      dietNote: "bez cebuli",
+      rsvp: { attending: true, byOrganizer: false },
+      seat: { room: `Sala ${tag}e`, table: `T1 ${tag}e`, seat: 1 },
+      guess: null,
+    });
+    expect(byName.get(n2)).toMatchObject({ group: 1, guess: { amountGrosze: 123_456, predictedPlace: 1 } });
+    expect(byName.get(n3)).toMatchObject({ absent: true, group: null, seat: null, rsvp: { attending: false } });
+    expect(data.groups).toEqual([[n1, n2].sort((a, b) => a.localeCompare(b, "pl"))]);
+    expect(data.seating?.tables[0]?.seats).toEqual([
+      { seat: 1, name: n1 },
+      { seat: 2, name: n2 },
+    ]);
+    expect(data.orders.lines.map((line) => [line.name, line.totalGrosze, line.place])).toEqual([
+      ["Rosół", 3600, { guest: n1 }],
+      ["Deska", 5000, { table: `T1 ${tag}e` }],
+    ]);
+    expect([data.orders.dishesGrosze, data.orders.drinksGrosze, data.orders.billGrosze]).toEqual([8600, 2400, 11_000]);
+
+    // No secret and no internal id anywhere in the file.
+    const json = JSON.stringify(data);
+    const keys = await readEventKeys(db, eventId);
+    const guestKeys = await db.from("guest").select("access_key").eq("event_id", eventId).throwOnError();
+    for (const secret of [
+      keys.organizerKey,
+      keys.tvKey,
+      keys.restaurantKey,
+      ...guestKeys.data.map((row) => row.access_key),
+    ]) {
+      expect(json).not.toContain(secret);
+    }
+    expect(json).not.toMatch(/"(id|\w+Id|\w*[Kk]ey|\w*[Tt]oken|\w*[Hh]ash|access_key)"\s*:/);
+
+    // Another restaurant's id and a template open nothing.
+    expect(await getEventExport(db, other, eventId, NOW)).toBeNull();
+    const template = await createVenueTemplate(db, r, `Szablon eksport ${tag}`, null);
+    if (template.status !== "created") throw new Error(template.status);
+    expect(await getEventExport(db, r, template.template.id, NOW)).toBeNull();
+
+    // After the purge: no guests, no published names, no notes; the bill stays.
+    const later = new Date("2026-12-06T12:00:00Z");
+    expect((await purgeEventGuestData(db, eventId, later)).status).toBe("purged");
+    const purged = await getEventExport(db, r, eventId, later);
+    expect(purged?.guests).toEqual([]);
+    expect(purged?.groups).toEqual([]);
+    expect(purged?.seating).toBeNull();
+    expect(purged?.event.guestData.purgedAt).not.toBeNull();
+    expect(purged?.orders.lines.map((line) => [line.note, line.place])).toEqual([
+      [null, null],
+      [null, { table: `T1 ${tag}e` }],
+    ]);
+    expect(purged?.orders.billGrosze).toBe(11_000);
   });
 
   it("lets one caller per interval claim the sweep", async () => {

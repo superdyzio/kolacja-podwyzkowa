@@ -1,0 +1,96 @@
+---
+import NoAccess from "@/components/NoAccess.astro";
+import Layout from "@/layouts/Layout.astro";
+import { accessFor, guestPath } from "@/lib/access";
+import { getEventBranding } from "@/lib/branding";
+import { getDb } from "@/lib/db";
+import { formatEventDate } from "@/lib/events/dates";
+import { getEventRetention, privacyNoticeMessages } from "@/lib/privacy";
+
+// The guests' privacy notice (privacy-retention, S-26; FR-040, US-09, NFR-019, NFR-021): what happens to the guest's
+// data, from their own link. A DRAFT for legal review (PRD v2 Open Question 6 stays open) — clearly marked. The
+// controller is the restaurant (its name); the processor is only „the system provider”: guests never see the
+// platform's name (white-label). The middleware has already checked the guest key and the guest-access switch (and
+// applied the retention: past the term this key opens nothing); this is the second, role-specific check.
+const locale = Astro.locals.locale;
+const t = privacyNoticeMessages(locale);
+const access = accessFor(Astro.locals, "guest");
+const db = access ? getDb() : null;
+const [branding, retention] =
+  access && db
+    ? await Promise.all([getEventBranding(db, access.event.id), getEventRetention(db, access.event.id)])
+    : [null, null];
+const view =
+  access && retention
+    ? {
+        eventName: access.event.name,
+        restaurant: branding?.restaurant.name ?? "",
+        days: retention.retentionDays,
+        deleteAfter: formatEventDate(retention.deleteAfter, locale),
+        backPath: guestPath(Astro.params.key ?? ""),
+      }
+    : null;
+if (!view) {
+  Astro.response.status = 404;
+}
+const sections = view
+  ? [
+      { id: "controller", heading: t.controllerHeading, text: t.controllerText(view.restaurant) },
+      { id: "processor", heading: t.processorHeading, text: t.processorText },
+      { id: "purpose", heading: t.purposeHeading, text: t.purposeText },
+      { id: "audience", heading: t.audienceHeading, text: t.audienceText },
+      { id: "ai", heading: t.aiHeading, text: t.aiText },
+      { id: "retention", heading: t.retentionHeading, text: t.retentionText(view.days, view.deleteAfter) },
+      { id: "rights", heading: t.rightsHeading, text: t.rightsText },
+      { id: "browser", heading: t.browserHeading, text: t.browserText },
+    ]
+  : [];
+---
+
+{view ? (
+  <Layout title={t.pageTitle}>
+    <main class="mx-auto flex min-h-screen max-w-md flex-col gap-6 px-4 pt-6 pb-12" data-privacy-notice>
+      <a href={view.backPath} class="self-start py-2 text-sm text-muted-foreground underline-offset-4 hover:underline">
+        {t.back}
+      </a>
+      <header class="flex flex-col gap-1">
+        <p class="text-sm font-medium tracking-wide text-muted-foreground uppercase">{t.eventLine(view.eventName)}</p>
+        <h1 class="text-2xl font-bold">{t.heading}</h1>
+      </header>
+      <div
+        class="flex flex-col gap-1 rounded-xl border border-amber-400 bg-amber-50 p-4 text-amber-950"
+        data-privacy-draft
+      >
+        <p class="font-semibold">{t.draft}</p>
+        <p class="text-sm">{t.draftText}</p>
+      </div>
+      <section aria-labelledby="privacy-data-heading" class="flex flex-col gap-2">
+        <h2 id="privacy-data-heading" class="text-lg font-semibold">
+          {t.dataHeading}
+        </h2>
+        <ul class="list-disc pl-5 text-sm">
+          {t.dataItems.map((item) => (
+            <li>{item}</li>
+          ))}
+        </ul>
+      </section>
+      {sections.map((section) => (
+        <section
+          aria-labelledby={`privacy-${section.id}-heading`}
+          class="flex flex-col gap-2"
+          data-privacy-section={section.id}
+        >
+          <h2 id={`privacy-${section.id}-heading`} class="text-lg font-semibold">
+            {section.heading}
+          </h2>
+          <p class="text-sm">{section.text}</p>
+        </section>
+      ))}
+      <a href={view.backPath} class="self-start py-2 text-sm font-medium underline-offset-4 hover:underline">
+        {t.back}
+      </a>
+    </main>
+  </Layout>
+) : (
+  <NoAccess />
+)}
