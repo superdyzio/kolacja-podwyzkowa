@@ -18,6 +18,7 @@ import {
 } from "@/lib/auth";
 import { getDb } from "@/lib/db";
 import { LOCALE_PARAM, isLocale, localeCookieName, resolveLocale } from "@/lib/i18n";
+import { clientMayWrite, isOrganizerApiPath, LEAD_CODES, leadMessages } from "@/lib/lead";
 
 // Link-key guard (PRD Access Control). Every path under /o/, /tv/, /g/, /r/ and /api/{o,tv,g,r}/ needs a valid key of the
 // matching role; anything else gets the same 404 "brak dostępu" response, whatever the reason (malformed, unknown or
@@ -31,6 +32,10 @@ import { LOCALE_PARAM, isLocale, localeCookieName, resolveLocale } from "@/lib/i
 // session → 303 to the login page, /api/panel/ without one → 401 with one fixed body (whatever the cookie was). The
 // login page with a session → 303 to the panel. `locals.staffRequest` (method, path) lets the central panel guards
 // admit the platform admin's support access only on reads and log what was opened (admin-support-log, S-13).
+//
+// „Lokal prowadzi” (client-restaurant-split, S-14): while the restaurant's staff lead the event, the organizer link is
+// view-only — every non-safe method under /api/o/<key>/ gets a 409 with `code: "venue-leads"` before the route runs.
+// Reads, pages, the guests', the TV's and the tablet's links are never affected.
 
 const PRIVATE_HEADERS: Record<string, string> = {
   "Cache-Control": "no-store",
@@ -128,6 +133,19 @@ export const onRequest = defineMiddleware(async (context, next) => {
       return next();
     case "granted":
       context.locals.access = decision.access;
+      if (
+        decision.access.role === "organizer" &&
+        !clientMayWrite(decision.access.event.venueLeads) &&
+        isOrganizerApiPath(pathname) &&
+        isMutation(context.request.method)
+      ) {
+        return withPrivateHeaders(
+          Response.json(
+            { error: leadMessages(context.locals.locale).clientReadOnly, code: LEAD_CODES.venueLeads },
+            { status: 409 },
+          ),
+        );
+      }
       return withPrivateHeaders(await next());
     case "denied":
       if (decision.isApi) {

@@ -36,6 +36,7 @@ describe.skipIf(!hasLocalDb)("access matrix against the local DB", () => {
             organizerKey: event.organizerKey,
             tvKey: event.tvKey,
             restaurantKey: event.restaurantKey,
+            venueLeads: false,
           },
         },
       });

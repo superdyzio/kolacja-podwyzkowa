@@ -17,7 +17,7 @@ import type { EventCardAnswerDto, SupportEventAnswerDto } from "@/types";
 export const prerender = false;
 
 // One event of the logged-in person's restaurant (staff-accounts, F-03; restaurant-events, S-11). Owners and managers:
-// GET → its card with the three link paths; PATCH { name?, date?, expectedGuests?, archived? } (at least one) → the
+// GET → its card with the three link paths; PATCH { name?, date?, expectedGuests?, archived?, venueLeads? } (at least one; venueLeads = „Lokal prowadzi”, client-restaurant-split) → the
 // card. DELETE → the event with everything in it, OWNERS only → { deleted, restaurantId }. A waiter (their access to
 // events comes with S-21), a manager deleting, another restaurant's event, an unknown or malformed id all get the
 // same 404 as a wrong link key. The platform administrator in support mode (admin-support-log, S-13) gets the GET
@@ -62,7 +62,11 @@ export const PATCH: APIRoute = async ({ request, locals, params }) => {
   if (!input.ok) {
     return jsonError(400, eventInputProblemText(input.problem, locals.locale));
   }
-  const patch = { ...input.value, ...(body.data.archived === undefined ? {} : { archived: body.data.archived }) };
+  const patch = {
+    ...input.value,
+    ...(body.data.archived === undefined ? {} : { archived: body.data.archived }),
+    ...(body.data.venueLeads === undefined ? {} : { venueLeads: body.data.venueLeads }),
+  };
   if ((await updateEvent(api.db, api.event.restaurantId, api.event.id, patch)) === "not-found") {
     return denied(locals);
   }

@@ -7,9 +7,18 @@ import { parseAccessPath, type AccessRole } from "./paths";
 // A guest key opens /g/ paths only while the organizer's guest-access switch is on (S-05); switched off, revoked,
 // unknown and other roles' keys all get the same denial.
 
+// `venueLeads` (client-restaurant-split, S-14): „Lokal prowadzi” is on — the link is view-only (the middleware refuses
+// its writes with a 409) and its pages render read-only.
 export interface OrganizerAccess {
   role: "organizer";
-  event: { id: number; name: string; organizerKey: string; tvKey: string; restaurantKey: string };
+  event: {
+    id: number;
+    name: string;
+    organizerKey: string;
+    tvKey: string;
+    restaurantKey: string;
+    venueLeads: boolean;
+  };
 }
 
 export interface TvAccess {
@@ -54,7 +63,7 @@ export async function resolveAccess(db: DbClient, role: AccessRole, key: string)
     case "organizer": {
       const { data, error } = await db
         .from("event")
-        .select("id, name, organizer_key, tv_key, restaurant_key")
+        .select("id, name, organizer_key, tv_key, restaurant_key, venue_leads")
         .eq("organizer_key", key)
         .maybeSingle();
       if (error) {
@@ -71,6 +80,7 @@ export async function resolveAccess(db: DbClient, role: AccessRole, key: string)
           organizerKey: data.organizer_key,
           tvKey: data.tv_key,
           restaurantKey: data.restaurant_key,
+          venueLeads: data.venue_leads,
         },
       };
     }

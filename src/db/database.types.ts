@@ -57,6 +57,8 @@ export interface Database {
           expected_guests: number | null;
           // restaurant-events: null = active; set = archived (only moves it between the panel's lists).
           archived_at: string | null;
+          // client-restaurant-split: „Lokal prowadzi” — true = staff edit in the panel, the organizer link is view-only.
+          venue_leads: boolean;
         };
         Insert: {
           id?: never;
@@ -73,6 +75,7 @@ export interface Database {
           event_date?: string;
           expected_guests?: number | null;
           archived_at?: string | null;
+          venue_leads?: boolean;
         };
         Update: {
           id?: never;
@@ -88,6 +91,7 @@ export interface Database {
           event_date?: string;
           expected_guests?: number | null;
           archived_at?: string | null;
+          venue_leads?: boolean;
         };
         Relationships: [
           {

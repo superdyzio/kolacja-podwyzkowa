@@ -9,7 +9,14 @@ const GUESTS = z.number().nullable().optional();
 
 export const CreateEventBody = z.object({ name: TEXT, date: DATE, expectedGuests: GUESTS }).strict();
 
+// client-restaurant-split (S-14): `venueLeads` flips „Lokal prowadzi”.
 export const UpdateEventBody = z
-  .object({ name: TEXT.optional(), date: DATE.optional(), expectedGuests: GUESTS, archived: z.boolean().optional() })
+  .object({
+    name: TEXT.optional(),
+    date: DATE.optional(),
+    expectedGuests: GUESTS,
+    archived: z.boolean().optional(),
+    venueLeads: z.boolean().optional(),
+  })
   .strict()
   .refine((body) => Object.keys(body).length > 0);

@@ -1,7 +1,7 @@
 ---
 change_id: client-restaurant-split
 title: Client / venue split, the „lokal prowadzi” switch and the client's trial reset
-status: plan_reviewed
+status: implementing
 created: 2026-11-10
 updated: 2026-11-10
 archived_at: null

@@ -72,6 +72,7 @@ describe("support rules", () => {
       restaurantId: 5,
       restaurantName: "Pod Lipą",
       archivedAt: null,
+      venueLeads: true,
       guestCount: 12,
       links: { organizer: "/o/AAAA", tv: "/tv/BBBB", restaurant: "/r/CCCC" },
     });

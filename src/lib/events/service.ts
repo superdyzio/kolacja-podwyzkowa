@@ -68,7 +68,7 @@ export async function getEventCard(
     db
       .from("event")
       .select(
-        "id, name, event_date, expected_guests, archived_at, organizer_key, tv_key, restaurant_key, restaurant_id, restaurant(name)",
+        "id, name, event_date, expected_guests, archived_at, venue_leads, organizer_key, tv_key, restaurant_key, restaurant_id, restaurant(name)",
       )
       .eq("id", eventId)
       .eq("restaurant_id", restaurantId)
@@ -90,6 +90,7 @@ export async function getEventCard(
     restaurantId: row.restaurant_id,
     restaurantName: row.restaurant.name,
     archivedAt: row.archived_at,
+    venueLeads: row.venue_leads,
     guestCount: guests.count ?? 0,
     links: {
       organizer: organizerPath(row.organizer_key),
@@ -128,6 +129,8 @@ export async function createRestaurantEvent(
 
 export interface EventPatch extends ValidEventInput {
   archived?: boolean;
+  // client-restaurant-split (S-14): „Lokal prowadzi”.
+  venueLeads?: boolean;
 }
 
 // Edits the event's name, date or expected guests and archives (archived_at = now) or restores it.
@@ -144,6 +147,7 @@ export async function updateEvent(
       ...(patch.date === undefined ? {} : { event_date: patch.date }),
       ...(patch.expectedGuests === undefined ? {} : { expected_guests: patch.expectedGuests }),
       ...(patch.archived === undefined ? {} : { archived_at: patch.archived ? new Date().toISOString() : null }),
+      ...(patch.venueLeads === undefined ? {} : { venue_leads: patch.venueLeads }),
     })
     .eq("id", eventId)
     .eq("restaurant_id", restaurantId)

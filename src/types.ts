@@ -856,6 +856,8 @@ export interface EventCardDto extends EventSummaryDto {
   restaurantId: number;
   restaurantName: string;
   archivedAt: string | null;
+  // client-restaurant-split (S-14): „Lokal prowadzi” — the staff edit the client's work, the organizer link is view-only.
+  venueLeads: boolean;
   guestCount: number;
   links: EventLinksDto;
 }
