@@ -270,10 +270,10 @@ in CLAUDE.md „Scale”): pass the version reads into `getGuestState`; cache `g
 
 #### Automated
 
-- [x] 2.1 `npm run build` passes
-- [x] 2.2 `npm run smoke` passes against `AI_PROVIDER=mock npm run preview` (section 35 included)
-- [x] 2.3 `npm run load:local` runs against the preview and every phone + the TV see a publish within 5 s
-- [x] 2.4 `npm run demo` passes
+- [x] 2.1 `npm run build` passes — e765c7d
+- [x] 2.2 `npm run smoke` passes against `AI_PROVIDER=mock npm run preview` (section 35 included) — e765c7d
+- [x] 2.3 `npm run load:local` runs against the preview and every phone + the TV see a publish within 5 s — e765c7d
+- [x] 2.4 `npm run demo` passes — e765c7d
 
 #### Manual
 
