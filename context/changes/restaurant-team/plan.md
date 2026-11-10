@@ -325,7 +325,7 @@ Additive (functions only); the new code calls them, so the migration goes to the
 
 #### Automated
 
-- [x] 4.1 Lint and type check pass; only docs touched
+- [x] 4.1 Lint and type check pass; only docs touched — 76dcd49
 
 #### Manual
 

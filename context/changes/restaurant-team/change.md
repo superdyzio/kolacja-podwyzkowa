@@ -1,7 +1,7 @@
 ---
 change_id: restaurant-team
 title: Restaurant team — invitations, roles, removal and password-reset links
-status: implementing
+status: implemented
 created: 2026-11-10
 updated: 2026-11-10
 archived_at: null
