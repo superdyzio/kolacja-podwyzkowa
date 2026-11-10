@@ -288,10 +288,10 @@ None (no migration, no API change).
 
 #### Automated
 
-- [x] 1.1 Unit tests pass, incl. the new matcher tests and the unchanged offline readout tests
-- [x] 1.2 Lint passes
-- [x] 1.3 Type check passes
-- [x] 1.4 Build passes
+- [x] 1.1 Unit tests pass, incl. the new matcher tests and the unchanged offline readout tests — 829534d
+- [x] 1.2 Lint passes — 829534d
+- [x] 1.3 Type check passes — 829534d
+- [x] 1.4 Build passes — 829534d
 
 #### Manual
 
@@ -301,10 +301,10 @@ None (no migration, no API change).
 
 #### Automated
 
-- [ ] 2.1 Tests with the local DB pass
-- [ ] 2.2 Lint, type check and build pass
-- [ ] 2.3 Smoke passes incl. section 38
-- [ ] 2.4 Demo still fills the local app
+- [x] 2.1 Tests with the local DB pass
+- [x] 2.2 Lint, type check and build pass
+- [x] 2.3 Smoke passes incl. section 38
+- [x] 2.4 Demo still fills the local app
 
 #### Manual
 

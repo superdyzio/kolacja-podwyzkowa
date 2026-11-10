@@ -9107,4 +9107,113 @@ check(
   cleanup37.join(" "),
 );
 
+// 38. Guest search on the venue map (guest-map-search, S-22; FR-048, US-08). A today event of A (panel) with two
+// guests at one table, published, guest links on and a per-event waiter. Every page that draws the FULL published map
+// renders the search field (`data-map-search`): the guest's phone, the kitchen tablet, the client's orders page, the
+// floor and the per-event waiter's floor; the tablet before the first publish has no map and no field; the TV renders
+// the names but never a search. The search runs in the browser over names the page already has, so the guest's and
+// the tablet's answers keep exactly their fields (key sets compared with src/types.ts). The event is deleted.
+const MAP_SEARCH_MARKER = "data-map-search";
+const fieldsOf38 = (value) =>
+  value && typeof value === "object" ? Object.keys(value).sort().join(" ") : String(value);
+const e38 = await staffCall(sessionOwner, eventsApiOf(restaurantA.id), {
+  method: "POST",
+  json: { name: `Wyszukiwanie smoke ${RUN_TAG}`, date: today },
+});
+const e38Id = e38.data?.event?.id ?? 0;
+const e38Api = `/api/o/${keyOfPath(e38.data?.event?.links?.organizer)}`;
+const e38Tv = keyOfPath(e38.data?.event?.links?.tv);
+const e38Restaurant = keyOfPath(e38.data?.event?.links?.restaurant);
+const guests38 = await request(`${e38Api}/guests`, {
+  method: "POST",
+  json: { text: `Żaneta Szukana ${RUN_TAG}\nŁukasz Szukany ${RUN_TAG}` },
+});
+const room38 = await request(`${e38Api}/rooms`, { method: "POST", json: { name: "Sala szukania" } });
+const roomId38 = room38.data?.rooms?.find((room) => room.name === "Sala szukania")?.id ?? 0;
+const table38 = await request(`${e38Api}/tables`, {
+  method: "POST",
+  json: { roomId: roomId38, name: "Stół szukania", seatCount: 4, shape: "round", x: 0.5, y: 0.5 },
+});
+const tableId38 = table38.data?.tables?.find((table) => table.name === "Stół szukania")?.id ?? 0;
+const tabletBefore38 = await request(`/r/${e38Restaurant}`);
+const ids38 = (guests38.data?.guests ?? []).map((guest) => guest.id);
+const draft38 = await request(`${e38Api}/seating/draft`, {
+  method: "POST",
+  json: { seats: ids38.map((guestId, index) => ({ guestId, tableId: tableId38, seat: index + 1 })) },
+});
+const publish38 = await request(`${e38Api}/seating/publish`, { method: "POST" });
+const links38 = await request(`${e38Api}/guest-links`, { method: "PATCH", json: { enabled: true } });
+const guestKey38 = links38.data?.guests?.[0]?.key ?? "";
+const waiter38 = await addWaiter(sessionOwner, e38Id, `Kelner szukania ${RUN_TAG}`);
+const waiterCookie38 = waiterCookieOf(await enterFloor({ link: linkTokenOf(waiter38.data?.issued ?? null) }));
+check(
+  "map search: a today event of A with two guests at one table, published, guest links on, a per-event waiter in",
+  e38.status === 201 &&
+    guests38.status === 201 &&
+    ids38.length === 2 &&
+    tableId38 > 0 &&
+    draft38.status === 200 &&
+    publish38.status === 201 &&
+    links38.status === 200 &&
+    guestKey38.length === 24 &&
+    waiterCookie38 !== "",
+  `${e38.status} ${guests38.status} ${table38.status} ${draft38.status} ${publish38.status} ${links38.status} ${waiter38.status}`,
+);
+
+const guestPage38 = await request(`/g/${guestKey38}`);
+const guestPageEn38 = await request(`/g/${guestKey38}`, { cookie: "kp-lang=en" });
+const tablet38 = await request(`/r/${e38Restaurant}`);
+const clientOrders38 = await request(`/o/${keyOfPath(e38.data?.event?.links?.organizer)}/zamowienia`);
+const floor38 = await staffCall(sessionOwner, floorPageOf(e38Id));
+const waiterFloor38 = await waiterCall(waiterCookie38, waiterFloorPageOf(e38Id));
+const tv38 = await request(`/tv/${e38Tv}`);
+check(
+  "map search: the field is on the guest's phone (PL label), the tablet, the client's orders page, the floor and the per-event waiter's floor; the tablet before the first publish has none; the TV shows the names and no search",
+  guestPage38.status === 200 &&
+    guestPage38.body.includes(MAP_SEARCH_MARKER) &&
+    guestPage38.body.includes("Znajdź gościa na planie") &&
+    tablet38.status === 200 &&
+    tablet38.body.includes(MAP_SEARCH_MARKER) &&
+    tablet38.body.includes("Find a guest on the plan") &&
+    clientOrders38.status === 200 &&
+    clientOrders38.body.includes(MAP_SEARCH_MARKER) &&
+    clientOrders38.body.includes("Szuka w opublikowanym rozsadzeniu") &&
+    floor38.status === 200 &&
+    floor38.body.includes(MAP_SEARCH_MARKER) &&
+    waiterFloor38.status === 200 &&
+    waiterFloor38.body.includes(MAP_SEARCH_MARKER) &&
+    tabletBefore38.status === 200 &&
+    !tabletBefore38.body.includes(MAP_SEARCH_MARKER) &&
+    tv38.status === 200 &&
+    tv38.body.includes(`Łukasz Szukany ${RUN_TAG}`) &&
+    !tv38.body.includes(MAP_SEARCH_MARKER) &&
+    !tv38.body.includes("Znajdź gościa"),
+  `${guestPage38.status} ${tablet38.status} ${clientOrders38.status} ${floor38.status} ${waiterFloor38.status} ${tabletBefore38.status} ${tv38.status}`,
+);
+check(
+  "map search: the guest's page in English has the English label",
+  guestPageEn38.status === 200 && guestPageEn38.body.includes("Find a guest on the plan"),
+  String(guestPageEn38.status),
+);
+
+const state38 = await request(`/api/g/${guestKey38}/state`);
+const tabletApi38 = await request(`/api/r/${e38Restaurant}/orders`);
+const drawingTable38 = state38.data?.drawing?.tables?.[0];
+check(
+  "map search: no new data — the guest's state and the tablet's view keep exactly their fields (state, seat, drawing table and seat; view and its seating)",
+  state38.status === 200 &&
+    fieldsOf38(state38.data) === "drawing guess modules name orders planVersion seat status version" &&
+    fieldsOf38(state38.data?.seat) === "room seat seatCount shape table tablemates x y" &&
+    fieldsOf38(drawingTable38) === "name room rotation seatCount seats shape x y" &&
+    fieldsOf38(drawingTable38?.seats?.[0]) === "name seat" &&
+    tabletApi38.status === 200 &&
+    fieldsOf38(tabletApi38.data) === "placement prep seating totals version" &&
+    fieldsOf38(tabletApi38.data?.seating) === "chairPitch planVersion publishedAt rooms tables version" &&
+    fieldsOf38(tabletApi38.data?.seating?.tables?.[0]?.seats?.[0]) === "name seat",
+  `${state38.status} [${fieldsOf38(state38.data)}] [${fieldsOf38(state38.data?.seat)}] [${fieldsOf38(drawingTable38)}] ${tabletApi38.status} [${fieldsOf38(tabletApi38.data)}] [${fieldsOf38(tabletApi38.data?.seating)}]`,
+);
+
+const deleted38 = await staffCall(sessionOwner, eventApi(e38Id), { method: "DELETE" });
+check("map search: the section's event is deleted", deleted38.status === 200, String(deleted38.status));
+
 finish();
