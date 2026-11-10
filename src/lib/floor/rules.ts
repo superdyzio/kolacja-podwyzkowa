@@ -1,6 +1,6 @@
 import type { StaffRole } from "@/lib/auth/types";
 import type { ClientRoutePattern } from "@/lib/client-routes/match";
-import { eventTiming } from "@/lib/events/dates";
+import { addDays, DAY_ROLLOVER_HOUR, eventTiming, localInputToInstant } from "@/lib/events/dates";
 
 // The floor — the waiter's day view (waiter-day-and-refills, S-21; PRD v2 FR-029, US-08). Pure rules shared by the
 // guard, the floor dispatcher, the pages and the tests.
@@ -13,6 +13,16 @@ export const FLOOR_ROLES: readonly StaffRole[] = ["owner", "manager", "waiter"];
 // (eventTiming's noon rule) — and is not archived. Outside that window every floor route and page is the identical 404.
 export function isFloorOpen(eventDate: string, archivedAt: string | null, now: Date): boolean {
   return archivedAt === null && eventTiming(eventDate, now) === "today";
+}
+
+// The instant the floor window of an event dated `eventDate` closes: noon Europe/Warsaw of the next day (DST-correct).
+// staff-offline-readout (S-27): the staff's offline copies expire then, so nothing of the event day outlives it.
+export function floorWindowEnd(eventDate: string): string {
+  const instant = localInputToInstant(`${addDays(eventDate, 1)}T${String(DAY_ROLLOVER_HOUR).padStart(2, "0")}:00`);
+  if (instant === null) {
+    throw new Error(`Nieprawidłowa data wydarzenia: ${eventDate}`);
+  }
+  return instant;
 }
 
 // What the floor may run of the client's order routes (the organizer route modules, through the floor dispatcher):

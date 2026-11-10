@@ -70,7 +70,7 @@ Restauracja, która gościła kolację 2026-11-08, chce tego narzędzia do włas
 | S-24  | room-prints             | klient i lokal drukują tablicę „znajdź swój stolik”, karty stołów, winietki w formacie i listę dla obsługi z dietami                         | S-18, S-23       | FR-038                                                                                        | proposed |
 | S-25  | guest-rsvp-menu         | gość potwierdza obecność i wybiera danie do terminu, klient wpisuje za gościa, a klient i lokal widzą zliczenia                              | S-16             | FR-039, US-07                                                                                 | done        |
 | S-26  | privacy-retention       | dane gości znikają N dni po imprezie, menedżer eksportuje dane wydarzenia, a gość czyta informację o prywatności                             | S-11             | FR-040, US-09, NFR-019                                                                        | done        |
-| S-27  | staff-offline-readout   | tablet obsługi i kelner bez sieci widzą ostatni stan zamówień i rozsadzenia, także po odświeżeniu                                            | S-21             | FR-047, US-08, NFR-017                                                                        | proposed |
+| S-27  | staff-offline-readout   | tablet obsługi i kelner bez sieci widzą ostatni stan zamówień i rozsadzenia, także po odświeżeniu                                            | S-21             | FR-047, US-08, NFR-017                                                                        | in-progress |
 | S-28  | pub-quiz                | klient przygotowuje pub quiz i prowadzi go na TV, a goście odpowiadają na telefonach                                                         | S-17             | FR-049                                                                                        | proposed |
 | S-29  | demo-restaurant         | administrator platformy przygotowuje restaurację demo na prawdziwym planie i menu z przykładową imprezą firmową                              | S-15, S-16, S-21 | FR-042, US-05, US-06, US-07, US-08, US-09                                                     | proposed |
 | S-30  | landing-legal           | odwiedzający widzi publiczną stronę produktu z logowaniem oraz szkice regulaminu i polityki prywatności                                      | S-29             | FR-041                                                                                        | proposed |
@@ -370,7 +370,7 @@ Fundamenty poniżej zakładają, że to istnieje, i NIE budują tego od nowa.
 - **Blockers:** —
 - **Unknowns:** —
 - **Risk:** Wzorzec z v1 (odczyt bez sieci u organizatora) przenosi się na nowe widoki. Zapisany stan nie może się pokazać pod innym linkiem ani innemu wydarzeniu.
-- **Status:** proposed
+- **Status:** in-progress
 
 ### S-28: Pub quiz
 

@@ -97,7 +97,16 @@ describe.skipIf(!hasLocalDb)("access matrix against the local DB", () => {
         const decision = await decideAccess(db, path);
         expect(decision).toEqual({
           kind: "granted",
-          access: { role: "restaurant", event: { id: event.id, name: event.name, modules: NEW_EVENT_MODULES } },
+          access: {
+            role: "restaurant",
+            // staff-offline-readout (S-27): the event's day, for the tablet's offline copy's expiry.
+            event: {
+              id: event.id,
+              name: event.name,
+              date: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/) as string,
+              modules: NEW_EVENT_MODULES,
+            },
+          },
         });
         expect(JSON.stringify(decision)).not.toContain(event.restaurantKey);
       }

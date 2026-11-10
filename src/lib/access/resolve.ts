@@ -41,9 +41,11 @@ export interface GuestAccess {
 }
 
 // The restaurant's read-only view of the food order (restaurant-orders): the prep list and where to serve, no prices.
+// staff-offline-readout (S-27): `date` ("YYYY-MM-DD") — the tablet's offline copy expires when the event's floor
+// window ends.
 export interface RestaurantAccess {
   role: "restaurant";
-  event: { id: number; name: string; modules: EventModules };
+  event: { id: number; name: string; date: string; modules: EventModules };
 }
 
 export type Access = OrganizerAccess | TvAccess | GuestAccess | RestaurantAccess;
@@ -158,7 +160,10 @@ export async function resolveAccess(
         return null;
       }
       await enforceGuestRetention(db, retentionRow(data), now);
-      return { role: "restaurant", event: { id: data.id, name: data.name, modules: modulesOf(data) } };
+      return {
+        role: "restaurant",
+        event: { id: data.id, name: data.name, date: data.event_date, modules: modulesOf(data) },
+      };
     }
     case "guest": {
       // One round trip: the guest by key with the event's switch embedded (every guest poll pays this lookup).

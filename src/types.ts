@@ -896,6 +896,13 @@ export interface RestaurantViewDto {
   diets: DietBoardDto;
 }
 
+// staff-offline-readout (S-27): what the kitchen tablet and both floors keep on the device for a readout without
+// network — the tablet's view without its polling token (no prices, ids, keys or who marked a piece), plus the plan
+// photo's aspect ratio measured online (the photo itself is an API answer no worker stores), for that plan version.
+export interface StaffReadoutDto extends Omit<RestaurantViewDto, "version"> {
+  planAspect: { planVersion: number; aspect: number } | null;
+}
+
 // --- Platform panel (platform-restaurants, S-10) -------------------------------------------------------------------
 
 // An owner of a restaurant as the platform administrator sees them: no hashes, no sessions.

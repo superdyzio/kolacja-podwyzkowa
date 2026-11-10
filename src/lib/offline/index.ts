@@ -30,3 +30,29 @@ export {
 } from "./readout";
 export { offlineMessages } from "./messages";
 export { readOfflineState, type FetchFunction, type OfflineReadResult } from "./sync";
+// The staff's offline readout (staff-offline-readout, S-27).
+export {
+  STAFF_READOUT_AREAS,
+  STAFF_READOUT_PATH_PREFIXES,
+  STAFF_READOUT_STORAGE_KEYS,
+  STAFF_READOUT_VERSION,
+  floorReadoutScope,
+  isAppDenial,
+  isStaffReadout,
+  isStaffReadoutApiBase,
+  liveStaffEntry,
+  parseStaffOfflineEntry,
+  readStaffReadoutOnce,
+  serializeStaffOfflineEntry,
+  staffOfflineEntry,
+  staffReadoutFromBoard,
+  staffReadoutFromView,
+  staffReadoutOwner,
+  tabletReadoutScope,
+  waiterReadoutScope,
+  type StaffOfflineEntry,
+  type StaffReadResult,
+  type StaffReadoutArea,
+  type StaffReadoutScope,
+} from "./staff";
+export { staffOfflineMessages } from "./staff-messages";

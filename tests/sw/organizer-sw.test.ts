@@ -54,7 +54,7 @@ interface FakeRequest {
   mode: string;
 }
 type RequestLike = string | FakeRequest;
-type Route = () => Response | Promise<Response>;
+type Route = (init?: RequestInit) => Response | Promise<Response>;
 type Listener = (event: object) => void;
 
 function urlOf(request: RequestLike): string {
@@ -163,11 +163,11 @@ function startWorker(caches: FakeCacheStorage, routes: Map<string, Route>, scope
       listeners.set(type, listener);
     },
   };
-  const fetch = vi.fn((request: RequestLike) => {
+  const fetch = vi.fn((request: RequestLike, init?: RequestInit) => {
     const url = urlOf(request);
     fetched.push(url);
     const route = routes.get(url);
-    return route ? Promise.resolve().then(route) : Promise.reject(new TypeError("Failed to fetch"));
+    return route ? Promise.resolve().then(() => route(init)) : Promise.reject(new TypeError("Failed to fetch"));
   });
   const context = vm.createContext({
     self,
@@ -531,5 +531,148 @@ describe("organizer service worker: scopes", () => {
     const worker = startWorker(caches, routes, `${SCOPE}/`);
     await worker.install();
     expect(caches.only(PREFIX).entries.has(READOUT)).toBe(true);
+  });
+});
+
+// staff-offline-readout (S-27): the same script serves the kitchen tablet, the staff floor and the per-event waiter's
+// floor, each under its own scope. Staff areas without a session answer with a redirect to their login page.
+describe("readout worker: staff scopes", () => {
+  const FLOOR_SCOPE = `${ORIGIN}/panel/obsluga/7`;
+  const FLOOR_READOUT = `${FLOOR_SCOPE}/odczyt`;
+  const FLOOR_PREFIX = `kolacja-odczyt|${FLOOR_SCOPE}|`;
+  const WAITER_SCOPE = `${ORIGIN}/kelner/sala/1`;
+  const WAITER_PREFIX = `kolacja-odczyt|${WAITER_SCOPE}|`;
+
+  // What the browser gives a `redirect: "manual"` fetch of a redirect (and a navigation of one).
+  function opaqueRedirect(location: string): Response {
+    const response = new Response(null, { status: 303, headers: { Location: location } });
+    Object.defineProperty(response, "type", { value: "opaqueredirect" });
+    return response;
+  }
+
+  // What a following fetch would end with: the login page itself (200), marked as redirected.
+  function loginPage(): Response {
+    const response = page("<h1>Logowanie</h1>");
+    Object.defineProperty(response, "redirected", { value: true });
+    return response;
+  }
+
+  // The staff area's answer without a session: a redirect, followed unless the fetch asks for "manual".
+  function sessionGone(location: string): Route {
+    return (init) => (init?.redirect === "manual" ? opaqueRedirect(location) : loginPage());
+  }
+
+  it("copies a staff scope's readout page like the organizer's, fetched without following redirects", async () => {
+    const seen: (RequestInit | undefined)[] = [];
+    routes.set(FLOOR_READOUT, (init) => {
+      seen.push(init);
+      return page(READOUT_HTML);
+    });
+    const worker = startWorker(caches, routes, FLOOR_SCOPE);
+    await worker.install();
+
+    expect([...caches.only(FLOOR_PREFIX).entries.keys()].sort()).toEqual(
+      [FLOOR_READOUT, ...Object.keys(CHUNKS).map(asset)].sort(),
+    );
+    expect(seen).toEqual([{ cache: "no-store", redirect: "manual" }]);
+  });
+
+  it("never stores a login page: a readout answered with a redirect drops the copy and unregisters", async () => {
+    routes.set(FLOOR_READOUT, () => page(READOUT_HTML));
+    const worker = startWorker(caches, routes, FLOOR_SCOPE);
+    await worker.install();
+    expect(caches.namesOf(FLOOR_PREFIX)).toHaveLength(1);
+
+    routes.set(FLOOR_READOUT, sessionGone("/logowanie"));
+    vi.setSystemTime(T0 + 11 * MINUTE);
+    await worker.message({ type: "refresh" });
+
+    expect(caches.namesOf(FLOOR_PREFIX)).toEqual([]);
+    expect(worker.self.registration.unregister).toHaveBeenCalled();
+  });
+
+  it("installs nothing when the first copy already meets the login redirect", async () => {
+    routes.set(FLOOR_READOUT, sessionGone("/logowanie"));
+    const worker = startWorker(caches, routes, FLOOR_SCOPE);
+    await worker.install();
+
+    expect(caches.namesOf(FLOOR_PREFIX)).toEqual([]);
+    expect([...caches.stores.values()].some((cache) => [...cache.entries.values()].length > 0)).toBe(false);
+    expect(worker.self.registration.unregister).toHaveBeenCalled();
+  });
+
+  it("treats a guarded 401 like a denial", async () => {
+    routes.set(FLOOR_READOUT, () => page(READOUT_HTML));
+    const worker = startWorker(caches, routes, FLOOR_SCOPE);
+    await worker.install();
+
+    routes.set(FLOOR_READOUT, () => Response.json({ error: "Zaloguj się." }, { status: 401, headers: DENIAL_HEADERS }));
+    vi.setSystemTime(T0 + 11 * MINUTE);
+    await worker.message({ type: "refresh" });
+    expect(caches.namesOf(FLOOR_PREFIX)).toEqual([]);
+  });
+
+  it("drops the copy when a navigation is redirected (the session ended)", async () => {
+    routes.set(FLOOR_READOUT, () => page(READOUT_HTML));
+    const worker = startWorker(caches, routes, FLOOR_SCOPE);
+    await worker.install();
+
+    routes.set(FLOOR_SCOPE, () => opaqueRedirect("/logowanie"));
+    routes.set(FLOOR_READOUT, sessionGone("/logowanie"));
+    const navigation = worker.navigate(FLOOR_SCOPE);
+    const answer = await navigation.response;
+    await navigation.settled();
+
+    expect(answer?.type).toBe("opaqueredirect");
+    expect(caches.namesOf(FLOOR_PREFIX)).toEqual([]);
+    expect(worker.self.registration.unregister).toHaveBeenCalled();
+  });
+
+  it("serves its copy offline inside its own path segment only", async () => {
+    routes.set(`${WAITER_SCOPE}/odczyt`, () => page(READOUT_HTML));
+    const worker = startWorker(caches, routes, WAITER_SCOPE);
+    await worker.install();
+    expect(caches.namesOf(WAITER_PREFIX)).toHaveLength(1);
+
+    expect(await text(worker.navigate(WAITER_SCOPE).response)).toBe(READOUT_HTML);
+    expect(await text(worker.navigate(`${WAITER_SCOPE}/inna`).response)).toBe(READOUT_HTML);
+
+    // `/kelner/sala/12` starts with this scope's string but is another event: neither answered nor refreshed.
+    const before = worker.fetched.length;
+    for (const url of [`${ORIGIN}/kelner/sala/12`, `${ORIGIN}/kelner/sala/12/odczyt`, `${ORIGIN}/kelner/sala/1x`]) {
+      const sibling = worker.navigate(url);
+      expect(sibling.response).toBeUndefined();
+      await sibling.settled();
+    }
+    expect(worker.fetched.length).toBe(before);
+  });
+
+  it("never answers an API request, navigations included", async () => {
+    const tabletScope = `${ORIGIN}/r/${KEY}`;
+    routes.set(`${tabletScope}/odczyt`, () => page(READOUT_HTML));
+    const worker = startWorker(caches, routes, tabletScope);
+    await worker.install();
+
+    for (const url of [`${ORIGIN}/api/r/${KEY}/orders`, `${ORIGIN}/api/r/${KEY}/plan/image?v=1`]) {
+      expect(worker.request(url).response).toBeUndefined();
+      expect(worker.navigate(url).response).toBeUndefined();
+    }
+  });
+
+  it("keeps each staff scope's copy apart from the others' denials", async () => {
+    routes.set(FLOOR_READOUT, () => page(READOUT_HTML));
+    routes.set(`${WAITER_SCOPE}/odczyt`, () => page(READOUT_HTML));
+    const floor = startWorker(caches, routes, FLOOR_SCOPE);
+    const waiter = startWorker(caches, routes, WAITER_SCOPE);
+    await floor.install();
+    await waiter.install();
+
+    routes.set(`${WAITER_SCOPE}/odczyt`, sessionGone("/kelner"));
+    vi.setSystemTime(T0 + 11 * MINUTE);
+    await waiter.message({ type: "refresh" });
+
+    expect(caches.namesOf(WAITER_PREFIX)).toEqual([]);
+    expect(caches.namesOf(FLOOR_PREFIX)).toHaveLength(1);
+    expect(floor.self.registration.unregister).not.toHaveBeenCalled();
   });
 });

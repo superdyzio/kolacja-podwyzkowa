@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { CLIENT_ROUTE_PATTERNS } from "@/lib/client-routes/match";
-import { FLOOR_ROLES, FLOOR_ROUTES, floorRouteAllows, isFloorOpen } from "./rules";
+import { FLOOR_ROLES, FLOOR_ROUTES, floorRouteAllows, floorWindowEnd, isFloorOpen } from "./rules";
 import { floorMessages } from "./messages";
 
 // Fixed instants only (never the real clock). 2026-11-14 is a Saturday in CET (UTC+1).
@@ -28,6 +28,29 @@ describe("isFloorOpen (the event window, Europe/Warsaw)", () => {
   it("follows summer time too (CEST, UTC+2)", () => {
     expect(isFloorOpen("2026-07-04", null, new Date("2026-07-05T09:59:00Z"))).toBe(true); // 11:59 next day
     expect(isFloorOpen("2026-07-04", null, new Date("2026-07-05T10:00:00Z"))).toBe(false); // 12:00 next day
+  });
+});
+
+describe("floorWindowEnd (staff-offline-readout: when the staff's offline copies expire)", () => {
+  it("is noon Europe/Warsaw of the next day, in winter (CET) and in summer (CEST)", () => {
+    expect(floorWindowEnd(EVENT)).toBe("2026-11-15T11:00:00.000Z");
+    expect(floorWindowEnd("2026-07-04")).toBe("2026-07-05T10:00:00.000Z");
+  });
+
+  it("crosses the clock changes and the year's end", () => {
+    // 2026-03-29: summer time starts at 02:00 — noon of that day is already CEST.
+    expect(floorWindowEnd("2026-03-28")).toBe("2026-03-29T10:00:00.000Z");
+    // 2026-10-25: winter time starts at 03:00 — noon of that day is CET.
+    expect(floorWindowEnd("2026-10-24")).toBe("2026-10-25T11:00:00.000Z");
+    expect(floorWindowEnd("2026-12-31")).toBe("2027-01-01T11:00:00.000Z");
+  });
+
+  it("is exactly where the floor closes", () => {
+    for (const date of [EVENT, "2026-07-04", "2026-03-28", "2026-10-24"]) {
+      const end = Date.parse(floorWindowEnd(date));
+      expect(isFloorOpen(date, null, new Date(end - 1))).toBe(true);
+      expect(isFloorOpen(date, null, new Date(end))).toBe(false);
+    }
   });
 });
 
