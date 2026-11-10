@@ -874,3 +874,57 @@ export interface EventCardAnswerDto {
   event: EventCardDto;
   role: "owner" | "manager" | "waiter";
 }
+
+// --- Platform admin's support access (admin-support-log, S-13) ------------------------------------------------------
+
+// What a page or route opened in support mode knows about it (the banner): no grant, session or account id.
+export interface SupportAccessDto {
+  restaurantId: number;
+  restaurantName: string;
+  // Switched off by the platform admin (platform-restaurants): support mode still opens it.
+  restaurantDisabled: boolean;
+  reason: string;
+  startedAt: string;
+  expiresAt: string;
+}
+
+// A live support session of the admin's login in one restaurant (the platform page's „Wsparcie aktywne”).
+export interface SupportGrantDto {
+  restaurantId: number;
+  // "/panel/restauracje/<id>": where support mode starts.
+  path: string;
+  startedAt: string;
+  expiresAt: string;
+}
+
+export type SupportLogKind = "enter" | "access" | "exit";
+
+// One row of the owner's „Dziennik wejść administratora”: who (snapshot of the admin's e-mail and name), when, and
+// what — the reason and end time of an entry, the method and path of an access (with the event's name), an exit.
+export interface SupportLogEntryDto {
+  id: number;
+  kind: SupportLogKind;
+  at: string;
+  admin: { email: string; name: string | null };
+  reason: string | null;
+  expiresAt: string | null;
+  method: string | null;
+  path: string | null;
+  event: { id: number; name: string } | null;
+}
+
+// GET /api/panel/restaurants/<id>/support-log (owners): newest first; `truncated` when older entries exist.
+export interface SupportLogDto {
+  restaurantId: number;
+  entries: SupportLogEntryDto[];
+  truncated: boolean;
+}
+
+// The event card as support mode shows it: everything but the links (keys never reach support mode).
+export type SupportEventSummaryDto = Omit<EventCardDto, "links">;
+
+// GET /api/panel/events/<id> in support mode.
+export interface SupportEventAnswerDto {
+  event: SupportEventSummaryDto;
+  support: SupportAccessDto;
+}

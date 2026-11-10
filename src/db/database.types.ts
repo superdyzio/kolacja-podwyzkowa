@@ -1024,6 +1024,121 @@ export interface Database {
         };
         Relationships: [];
       };
+      // admin-support-log: a platform administrator's login session in support mode (read-only) in one restaurant.
+      support_grant: {
+        Row: {
+          id: number;
+          session_id: number;
+          account_id: number;
+          restaurant_id: number;
+          reason: string;
+          started_at: string;
+          expires_at: string;
+        };
+        Insert: {
+          id?: never;
+          session_id: number;
+          account_id: number;
+          restaurant_id: number;
+          reason: string;
+          started_at?: string;
+          expires_at: string;
+        };
+        Update: {
+          id?: never;
+          session_id?: number;
+          account_id?: number;
+          restaurant_id?: number;
+          reason?: string;
+          started_at?: string;
+          expires_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "support_grant_session_id_fkey";
+            columns: ["session_id"];
+            isOneToOne: false;
+            referencedRelation: "staff_session";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "support_grant_account_id_fkey";
+            columns: ["account_id"];
+            isOneToOne: false;
+            referencedRelation: "staff_account";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "support_grant_restaurant_id_fkey";
+            columns: ["restaurant_id"];
+            isOneToOne: false;
+            referencedRelation: "restaurant";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      // admin-support-log: the append-only record of support access ('enter' | 'access' | 'exit') for the owner;
+      // snapshots of the admin and the event, no FK to the grant, session, account or event. Update and delete are
+      // refused by a trigger (only the cascade of a deleted restaurant passes).
+      support_log: {
+        Row: {
+          id: number;
+          restaurant_id: number;
+          grant_id: number;
+          account_id: number;
+          admin_email: string;
+          admin_name: string | null;
+          kind: string;
+          reason: string | null;
+          expires_at: string | null;
+          method: string | null;
+          path: string | null;
+          event_id: number | null;
+          event_name: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: never;
+          restaurant_id: number;
+          grant_id: number;
+          account_id: number;
+          admin_email: string;
+          admin_name?: string | null;
+          kind: string;
+          reason?: string | null;
+          expires_at?: string | null;
+          method?: string | null;
+          path?: string | null;
+          event_id?: number | null;
+          event_name?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: never;
+          restaurant_id?: number;
+          grant_id?: number;
+          account_id?: number;
+          admin_email?: string;
+          admin_name?: string | null;
+          kind?: string;
+          reason?: string | null;
+          expires_at?: string | null;
+          method?: string | null;
+          path?: string | null;
+          event_id?: number | null;
+          event_name?: string | null;
+          created_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "support_log_restaurant_id_fkey";
+            columns: ["restaurant_id"];
+            isOneToOne: false;
+            referencedRelation: "restaurant";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
     };
     Views: { [_ in never]: never };
     Functions: {
@@ -1215,6 +1330,37 @@ export interface Database {
           p_reset_expires_at: string;
         };
         Returns: { link_kind: string; link_expires_at: string }[];
+      };
+      // admin-support-log: a platform administrator's login session enters support mode in a restaurant (logged).
+      begin_support_access: {
+        Args: { p_session_id: number; p_restaurant_id: number; p_reason: string; p_minutes: number };
+        Returns: { grant_id: number; started_at: string; expires_at: string }[];
+      };
+      // admin-support-log: the guard's check — a live grant → the access is logged and the restaurant (event) returned.
+      record_support_access: {
+        Args: {
+          p_session_id: number;
+          p_restaurant_id: number | null;
+          p_event_id: number | null;
+          p_method: string;
+          p_path: string;
+        };
+        Returns: {
+          restaurant_id: number;
+          restaurant_name: string;
+          restaurant_disabled: boolean;
+          event_id: number | null;
+          event_name: string | null;
+          grant_id: number;
+          reason: string;
+          started_at: string;
+          expires_at: string;
+        }[];
+      };
+      // admin-support-log: ends support mode; true when a live grant ended (logged as exit).
+      end_support_access: {
+        Args: { p_session_id: number; p_restaurant_id: number };
+        Returns: boolean;
       };
     };
     Enums: { [_ in never]: never };
