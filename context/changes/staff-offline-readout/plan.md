@@ -299,10 +299,10 @@ None (no schema change). Existing organizer workers keep working: the file name 
 
 #### Automated
 
-- [x] 2.1 All tests pass
-- [x] 2.2 Type check passes
-- [x] 2.3 Lint passes
-- [x] 2.4 Build passes
+- [x] 2.1 All tests pass — 1c1304e
+- [x] 2.2 Type check passes — 1c1304e
+- [x] 2.3 Lint passes — 1c1304e
+- [x] 2.4 Build passes — 1c1304e
 
 #### Manual
 
@@ -314,9 +314,9 @@ None (no schema change). Existing organizer workers keep working: the file name 
 
 #### Automated
 
-- [ ] 3.1 Smoke passes against the production preview
-- [ ] 3.2 Demo passes
-- [ ] 3.3 Full suite, lint, check, build pass
+- [x] 3.1 Smoke passes against the production preview
+- [x] 3.2 Demo passes
+- [x] 3.3 Full suite, lint, check, build pass
 
 #### Manual
 

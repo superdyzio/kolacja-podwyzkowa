@@ -937,6 +937,31 @@ const eventWaiter = addedWaiter.issued;
   }
 }
 
+// --- 8d. The staff's offline readout (staff-offline-readout, S-27): the tablet's and the floor's readout pages open
+// (the saved state itself lives in the browser that opened the live page; their HTML carries no guest or dish) ---------
+
+const READOUT_PATHS = {
+  tablet: `/r/${event.restaurantKey}/odczyt`,
+  floor: `/panel/obsluga/${String(event.id)}/odczyt`,
+  waiter: `/kelner/sala/${String(event.id)}/odczyt`,
+};
+{
+  const someGuest = board.guestList.guests[0]?.displayName ?? "";
+  for (const [area, path, cookie] of [
+    ["tablet", READOUT_PATHS.tablet, undefined],
+    ["floor", READOUT_PATHS.floor, waiter.cookie],
+  ]) {
+    const page = await request(path, { cookie });
+    if (
+      page.status !== 200 ||
+      !page.text.includes(`data-staff-readout="${area}"`) ||
+      (someGuest !== "" && page.text.includes(someGuest))
+    ) {
+      fail(`Odczyt bez sieci (${area}) nie otwiera się albo niesie dane w HTML (HTTP ${String(page.status)}).`);
+    }
+  }
+}
+
 // --- 9. A support visit of the platform admin (admin-support-log): enter with a reason, two pages, exit -----------
 
 const SUPPORT_REASON = "Pokaz trybu wsparcia: sprawdzenie listy wydarzeń (demo)";
@@ -1112,6 +1137,10 @@ Wydarzenia lokalu: ${new URL(`/panel/restauracje/${String(restaurantId)}`, BASE_
 Obsługa sali:    ${new URL(`/panel/obsluga/${String(event.id)}`, BASE_URL).href} (kelner ${TEAM[1].email} / ${WAITER_PASSWORD}: dziś do południa jutra; dokładka „${REFILL}” dopisana i wydana)
 Kelner na imprezę: ${new URL(eventWaiter.path, BASE_URL).href} („${EVENT_WAITER}”: jednorazowy link)
                  albo kod ${eventWaiter.code} na ${new URL("/kelner", BASE_URL).href} — pierwsze użycie zużywa oba; sala „${EVENT_NAME}” do południa jutra
+Odczyt bez sieci (obsługa): stan zapisany na urządzeniu, które otworzyło widok na żywo (do południa jutra)
+                 tablet: ${new URL(READOUT_PATHS.tablet, BASE_URL).href}
+                 sala:   ${new URL(READOUT_PATHS.floor, BASE_URL).href} (po zalogowaniu)
+                 kelner na imprezę: ${new URL(READOUT_PATHS.waiter, BASE_URL).href} (po wejściu linkiem lub kodem)
 Menu lokalu:     ${new URL(`/panel/restauracje/${String(restaurantId)}/menu`, BASE_URL).href} („Menu wydarzenia” na karcie wydarzenia)
 Praca klienta:   ${new URL(`/panel/wydarzenia/${String(event.id)}`, BASE_URL).href} (prowadzi klient: podgląd)
                  ${new URL(`/panel/wydarzenia/${String(venueLedEventId)}`, BASE_URL).href} (lokal prowadzi: edycja w panelu)

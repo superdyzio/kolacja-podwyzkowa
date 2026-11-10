@@ -75,6 +75,8 @@ async function request(
     setCookie: response.headers.get("set-cookie") ?? "",
     frameOptions: response.headers.get("x-frame-options") ?? "",
     retryAfter: response.headers.get("retry-after") ?? "",
+    robots: response.headers.get("x-robots-tag") ?? "",
+    contentType: response.headers.get("content-type") ?? "",
     body: text,
     data,
   };
@@ -10332,6 +10334,231 @@ check(
   "retention: the section's events and template are deleted, A's term is back to 30 days",
   cleanup41.length === 0 && restoreTerm41.status === 200,
   `${cleanup41.join("; ")} ${restoreTerm41.status}`,
+);
+
+// 42. The staff's offline readout (staff-offline-readout, S-27; FR-047, US-08, NFR-017). The kitchen tablet, the staff
+// floor and the per-event waiter's floor keep the last state they read on the DEVICE (localStorage; a browser-only
+// feature, checked by unit tests), so the server's part is three readout pages behind the same guards as their live
+// pages, with no saved data in their HTML (the copy comes from the browser), and the signals the browser relies on: the
+// app's denial carries the guard's X-Robots-Tag, the staff areas redirect without a session, the worker script is
+// served. A today event of A (panel) with two guests at one table, published, a line of 2 served in part and a
+// per-event waiter; a second today event of A with its own waiter. Both events deleted.
+const tomorrow42 = shiftDate(today, 1);
+const makeEvent42 = (name, date = today) =>
+  staffCall(sessionOwner, eventsApiOf(restaurantA.id), { method: "POST", json: { name: `${name} ${RUN_TAG}`, date } });
+const e42 = await makeEvent42("Odczyt obsługi");
+const other42 = await makeEvent42("Odczyt obsługi 2");
+const later42 = await makeEvent42("Odczyt obsługi jutro", tomorrow42);
+const e42Id = e42.data?.event?.id ?? 0;
+const other42Id = other42.data?.event?.id ?? 0;
+const later42Id = later42.data?.event?.id ?? 0;
+const e42Api = `/api/o/${keyOfPath(e42.data?.event?.links?.organizer)}`;
+const tablet42 = keyOfPath(e42.data?.event?.links?.restaurant);
+const tv42 = keyOfPath(e42.data?.event?.links?.tv);
+const tabletReadout42 = (key) => `/r/${key}/odczyt`;
+const floorReadout42 = (id) => `${floorPageOf(id)}/odczyt`;
+const waiterReadout42 = (id) => `${waiterFloorPageOf(id)}/odczyt`;
+const tabletBefore42 = await request(tabletReadout42(tablet42));
+const HANKA42 = `Hanka Odczytowa ${RUN_TAG}`;
+const IGOR42 = `Igor Odczytowy ${RUN_TAG}`;
+const guests42 = await request(`${e42Api}/guests`, { method: "POST", json: { text: `${HANKA42}\n${IGOR42}` } });
+const room42 = await request(`${e42Api}/rooms`, { method: "POST", json: { name: "Sala odczytu" } });
+const table42 = await request(`${e42Api}/tables`, {
+  method: "POST",
+  json: {
+    roomId: room42.data?.rooms?.find((room) => room.name === "Sala odczytu")?.id ?? 0,
+    name: "Stół odczytu",
+    seatCount: 4,
+    shape: "round",
+    x: 0.5,
+    y: 0.5,
+  },
+});
+const tableId42 = table42.data?.tables?.find((table) => table.name === "Stół odczytu")?.id ?? 0;
+const ids42 = (guests42.data?.guests ?? []).map((guest) => guest.id);
+const draft42 = await request(`${e42Api}/seating/draft`, {
+  method: "POST",
+  json: { seats: ids42.map((guestId, index) => ({ guestId, tableId: tableId42, seat: index + 1 })) },
+});
+const publish42 = await request(`${e42Api}/seating/publish`, { method: "POST" });
+const board42 = await request(`${e42Api}/orders`);
+const dish42 = board42.data?.menu?.active ? (board42.data.menu.items[0]?.name ?? "") : `Barszcz odczytu ${RUN_TAG}`;
+const line42 = await request(`${e42Api}/orders`, {
+  method: "POST",
+  json: { name: dish42, quantity: 2, assignment: { guestId: ids42[0] ?? 0 } },
+});
+const lineId42 = line42.data?.items?.find((item) => item.name === dish42)?.id ?? 0;
+const piece42 = await request(`${e42Api}/orders/${String(lineId42)}/pieces`, {
+  method: "PUT",
+  json: { piece: 1, delivered: true },
+});
+const waiter42 = await addWaiter(sessionOwner, e42Id, `Kelner odczytu ${RUN_TAG}`);
+const waiterCookie42 = waiterCookieOf(await enterFloor({ link: linkTokenOf(waiter42.data?.issued ?? null) }));
+const otherWaiter42 = await addWaiter(sessionOwner, other42Id, `Kelner odczytu 2 ${RUN_TAG}`);
+const otherCookie42 = waiterCookieOf(await enterFloor({ link: linkTokenOf(otherWaiter42.data?.issued ?? null) }));
+check(
+  "staff readout: today events of A (one with two guests at one table, published, a line of 2 served in part, a per-event waiter; one with its own waiter) and a tomorrow one",
+  e42.status === 201 &&
+    other42.status === 201 &&
+    later42.status === 201 &&
+    ids42.length === 2 &&
+    tableId42 > 0 &&
+    draft42.status === 200 &&
+    publish42.status === 201 &&
+    line42.status === 201 &&
+    piece42.status === 200 &&
+    waiterCookie42 !== "" &&
+    otherCookie42 !== "",
+  `${e42.status} ${other42.status} ${later42.status} ${guests42.status} ${table42.status} ${draft42.status} ${publish42.status} ${line42.status} ${piece42.status} ${waiter42.status} ${otherWaiter42.status}`,
+);
+
+const secrets42 = [HANKA42, IGOR42, dish42, keyOfPath(e42.data?.event?.links?.organizer), tv42];
+const dataFree42 = (res) => !secrets42.some((value) => value !== "" && res.body.includes(value));
+const tablet42Page = await request(tabletReadout42(tablet42));
+const tabletPl42 = await request(tabletReadout42(tablet42), { cookie: "kp-lang-r=pl" });
+const expiry42 = new RegExp(`expiresAt&quot;:\\[0,&quot;${tomorrow42}T1[01]:00:00\\.000Z&quot;`);
+const tabletLive42 = await request(`/r/${tablet42}`);
+const unknown42 = await request(tabletReadout42("Q".repeat(24)));
+const tvKey42 = await request(tabletReadout42(tv42));
+check(
+  "staff readout: /r/<key>/odczyt is the tablet's readout (200, English by default, Polish with its cookie, the scope's expiry at noon after the event, no-store and X-Robots-Tag) — before the first publish too — with no guest, dish or other key in its HTML; the tablet page links it; a TV key and an unknown key → the identical 404",
+  tabletBefore42.status === 200 &&
+    tablet42Page.status === 200 &&
+    tablet42Page.body.includes('data-staff-readout="tablet"') &&
+    tablet42Page.body.includes('lang="en"') &&
+    tablet42Page.body.includes("Offline readout") &&
+    expiry42.test(tablet42Page.body) &&
+    tablet42Page.cacheControl.includes("no-store") &&
+    tablet42Page.robots.includes("noindex") &&
+    dataFree42(tablet42Page) &&
+    dataFree42(tabletBefore42) &&
+    tabletPl42.status === 200 &&
+    tabletPl42.body.includes("Odczyt bez sieci") &&
+    tabletLive42.status === 200 &&
+    tabletLive42.body.includes("data-staff-readout-link") &&
+    tabletLive42.body.includes(tabletReadout42(tablet42)) &&
+    tabletLive42.body.includes(HANKA42) &&
+    // The tablet's area defaults to English, so its no-access page is compared with an unknown key's.
+    unknown42.status === 404 &&
+    unknown42.robots.includes("noindex") &&
+    !unknown42.body.includes("data-staff-readout") &&
+    tvKey42.status === 404 &&
+    tvKey42.body === unknown42.body,
+  `${tabletBefore42.status} ${tablet42Page.status} ${tablet42Page.robots} ${tabletPl42.status} ${tabletLive42.status} ${unknown42.status} ${tvKey42.status}`,
+);
+
+const floor42 = await staffCall(sessionWaiter, floorReadout42(e42Id));
+const floorLive42 = await staffCall(sessionWaiter, floorPageOf(e42Id));
+const floorDenied42 = [];
+for (const [name, token, path] of [
+  ["owner B", sessionB, floorReadout42(e42Id)],
+  ["the admin", sessionAdmin, floorReadout42(e42Id)],
+  ["a malformed id", sessionWaiter, "/panel/obsluga/abc/odczyt"],
+  ["an unknown id", sessionWaiter, floorReadout42(2147483000)],
+  ["tomorrow's event", sessionWaiter, floorReadout42(later42Id)],
+  ["event B", sessionWaiter, floorReadout42(eventB.id)],
+]) {
+  const res = await staffCall(token, path);
+  if (!isNoAccessPage(res)) floorDenied42.push(`${name}: ${String(res.status)}`);
+}
+const floorNoSession42 = await request(floorReadout42(e42Id));
+const floorApiNoSession42 = await request(`${floorApiOf(e42Id)}/orders`);
+const floorApiB42 = await staffCall(sessionB, `${floorApiOf(e42Id)}/orders`);
+check(
+  "staff readout: /panel/obsluga/<id>/odczyt opens for A's waiter (200, data-free, no-store) exactly like the floor, which links it; owner B, the admin, malformed / unknown ids, tomorrow's event and event B → the no-access page; no session → 303 /logowanie; the floor API without a session 401 and owner B's 404 carry X-Robots-Tag",
+  floor42.status === 200 &&
+    floor42.body.includes('data-staff-readout="floor"') &&
+    floor42.body.includes("Odczyt bez sieci") &&
+    floor42.cacheControl.includes("no-store") &&
+    dataFree42(floor42) &&
+    floorLive42.status === 200 &&
+    floorLive42.body.includes("data-staff-readout-link") &&
+    floorLive42.body.includes(floorReadout42(e42Id)) &&
+    floorDenied42.length === 0 &&
+    floorNoSession42.status === 303 &&
+    floorNoSession42.location.endsWith("/logowanie") &&
+    floorApiNoSession42.status === 401 &&
+    floorApiNoSession42.robots.includes("noindex") &&
+    noAccessJson(floorApiB42) &&
+    floorApiB42.robots.includes("noindex"),
+  `${floor42.status} ${floorLive42.status} ${floorDenied42.join("; ")} ${floorNoSession42.status} ${floorNoSession42.location} ${floorApiNoSession42.status} ${floorApiNoSession42.robots} ${floorApiB42.status} ${floorApiB42.robots}`,
+);
+
+const waiterPage42 = await waiterCall(waiterCookie42, waiterReadout42(e42Id));
+const waiterLive42 = await waiterCall(waiterCookie42, waiterFloorPageOf(e42Id));
+const waiterOther42 = await waiterCall(otherCookie42, waiterReadout42(e42Id));
+const waiterNoCookie42 = await request(waiterReadout42(e42Id));
+const waiterStaff42 = await staffCall(sessionWaiter, waiterReadout42(e42Id));
+const waiterApiNoCookie42 = await request(`${waiterFloorApiOf(e42Id)}/orders`);
+const waiterApiOther42 = await waiterCall(otherCookie42, `${waiterFloorApiOf(e42Id)}/orders`);
+check(
+  "staff readout: /kelner/sala/<id>/odczyt opens for its waiter (200, data-free), whose floor links it; another event's waiter → the no-access page; no waiter cookie and a staff session → 303 /kelner; the waiter API without a cookie 401 and another event's waiter 404 carry X-Robots-Tag",
+  waiterPage42.status === 200 &&
+    waiterPage42.body.includes('data-staff-readout="waiter"') &&
+    dataFree42(waiterPage42) &&
+    waiterLive42.status === 200 &&
+    waiterLive42.body.includes("data-staff-readout-link") &&
+    waiterLive42.body.includes(waiterReadout42(e42Id)) &&
+    isNoAccessPage(waiterOther42) &&
+    waiterNoCookie42.status === 303 &&
+    waiterNoCookie42.location.endsWith("/kelner") &&
+    waiterStaff42.status === 303 &&
+    waiterStaff42.location.endsWith("/kelner") &&
+    waiterApiNoCookie42.status === 401 &&
+    waiterApiNoCookie42.robots.includes("noindex") &&
+    noAccessJson(waiterApiOther42) &&
+    waiterApiOther42.robots.includes("noindex"),
+  `${waiterPage42.status} ${waiterLive42.status} ${waiterOther42.status} ${waiterNoCookie42.status} ${waiterNoCookie42.location} ${waiterStaff42.status} ${waiterApiNoCookie42.status} ${waiterApiNoCookie42.robots} ${waiterApiOther42.status} ${waiterApiOther42.robots}`,
+);
+
+const rotated42 = await staffCall(sessionOwner, `${eventApi(e42Id)}/links/restaurant`, { method: "POST" });
+const newTablet42 = keyOfPath(rotated42.data?.event?.links?.restaurant);
+const oldReadout42 = await request(tabletReadout42(tablet42));
+const oldApi42 = await request(`/api/r/${tablet42}/orders`);
+const unknownApi42 = await request(`/api/r/${"Q".repeat(24)}/orders`);
+const newReadout42 = await request(tabletReadout42(newTablet42));
+check(
+  "staff readout: after „Wymień link” the old tablet key's readout page and API answer the identical 404 with X-Robots-Tag (the browser drops its copy and worker on exactly that); the new key's readout opens",
+  rotated42.status === 200 &&
+    newTablet42.length === 24 &&
+    newTablet42 !== tablet42 &&
+    oldReadout42.status === 404 &&
+    oldReadout42.body === unknown42.body &&
+    oldReadout42.robots.includes("noindex") &&
+    oldApi42.status === 404 &&
+    oldApi42.body === unknownApi42.body &&
+    oldApi42.robots.includes("noindex") &&
+    newReadout42.status === 200,
+  `${rotated42.status} ${oldReadout42.status} ${oldReadout42.robots} ${oldApi42.status} ${oldApi42.robots} ${newReadout42.status}`,
+);
+
+const login42 = await request("/logowanie");
+const kelnerNoCookie42 = await request("/kelner");
+const kelnerWithCookie42 = await waiterCall(waiterCookie42, "/kelner");
+const worker42 = await request("/organizer-sw.js");
+check(
+  "staff readout: /logowanie and /kelner without a waiter session clear the area's copies (data-clear-staff-readout), /kelner with one does not; the readout worker script is served as JavaScript and fetches the copy with redirect: manual",
+  login42.status === 200 &&
+    login42.body.includes('data-clear-staff-readout="floor"') &&
+    kelnerNoCookie42.status === 200 &&
+    kelnerNoCookie42.body.includes('data-clear-staff-readout="waiter"') &&
+    kelnerWithCookie42.status === 200 &&
+    !kelnerWithCookie42.body.includes("data-clear-staff-readout") &&
+    worker42.status === 200 &&
+    /javascript/.test(worker42.contentType) &&
+    worker42.body.includes('redirect: "manual"') &&
+    worker42.body.includes("/kelner/sala/"),
+  `${login42.status} ${kelnerNoCookie42.status} ${kelnerWithCookie42.status} ${worker42.status} ${worker42.contentType}`,
+);
+
+const deleted42 = [];
+for (const id of [e42Id, other42Id, later42Id]) {
+  deleted42.push((await staffCall(sessionOwner, eventApi(id), { method: "DELETE" })).status);
+}
+check(
+  "staff readout: the section's events are deleted",
+  deleted42.every((status) => status === 200),
+  deleted42.join(" "),
 );
 
 finish();
