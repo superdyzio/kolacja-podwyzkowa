@@ -11,8 +11,9 @@
 // admin@demo.stolik with a fixed local password (platform-restaurants: the platform panel's login, printed at the end),
 // who pays the restaurant one logged support visit (admin-support-log: enter with a reason, the restaurant page, the
 // main event's card, exit), so the owner's „Dziennik wejść administratora” is not empty. client-restaurant-split: the
-// main event stays client-led and its order lines are priced by the owner („Cennik wydarzenia”); the upcoming company
-// Christmas party is switched to „Lokal prowadzi” and gets its first guests through the panel.
+// main event stays client-led; the upcoming company Christmas party is switched to „Lokal prowadzi” and gets its first
+// guests through the panel. menu-catalog-courses: the owner fills the restaurant's menu (all five courses) and gives
+// the main event a reduced menu, from which the client's order lines take their price and course.
 // Every write after that goes through the HTTP API of a running server, so it passes the same validation as the UI.
 // Defaults stay as they are: guest access OFF, guess intake OPEN, no correct amount, only the starter questions.
 // Usage: npm run build && npm run preview, then npm run demo   (BASE_URL, default http://localhost:4321)
@@ -166,7 +167,31 @@ const ORDERS = [
   ["Tort czekoladowy", "180,00", 1, "na deser, ze świeczką", null],
 ];
 
+// menu-catalog-courses (S-16): the demo restaurant's menu — every course, every dish of ORDERS at its price; the
+// main event gets a REDUCED menu (the items marked true), so the client picks from those and the kitchen list on the
+// tablet is grouped by course.
+const MENU = [
+  ["Tatar wołowy", "starter", "48,00", false],
+  ["Sałatka z kozim serem", "starter", "36,00", true],
+  ["Deska serów", "starter", "79,00", true],
+  ["Rosół z makaronem", "soup", "18,00", true],
+  ["Żurek staropolski", "soup", "22,00", false],
+  ["Schabowy z ziemniakami", "main", "42,00", true],
+  ["Pierogi ruskie", "main", "32,50", true],
+  ["Polędwica z dzika", "main", "89,00", false],
+  ["Tort czekoladowy", "dessert", "180,00", true],
+  ["Sernik baskijski", "dessert", "24,00", true],
+  ["Dzbanek kompotu", "drinks", "24,00", true],
+  ["Lemoniada", "drinks", "14,00", true],
+  ["Woda gazowana 0,7 l", "drinks", "16,00", false],
+];
+
 // --- Helpers ---------------------------------------------------------------------------------------------------
+
+// 1850 → "18,50" (the price format of MENU and ORDERS).
+function formatGrosze(grosze) {
+  return `${String(Math.floor(grosze / 100))},${String(grosze % 100).padStart(2, "0")}`;
+}
 
 function fail(message) {
   console.error(message);
@@ -493,9 +518,26 @@ for (const [name, amount, place] of GUESSES) {
 
 // --- 6. Food order -----------------------------------------------------------------------------------------------
 
-// client-restaurant-split (FR-027): the client adds lines without prices; the owner sets each dish's price in
-// „Cennik wydarzenia” (PUT /api/panel/events/<id>/prices), which prices every line of that name.
-const priced = new Set();
+// menu-catalog-courses (S-16): the owner fills the restaurant's menu (all five courses) and gives the main event a
+// reduced menu; the client then orders only from it and every line takes the menu's price and course (no
+// „Cennik wydarzenia” needed — that stays the venue's way to re-price an event).
+let catalog;
+for (const [name, course, price] of MENU) {
+  catalog = await step(
+    `menu ${name}`,
+    `/api/panel/restaurants/${String(restaurantId)}/menu`,
+    { method: "POST", json: { name, course, price }, cookie: ownerCookie },
+    201,
+  );
+}
+const reducedIds = MENU.filter((entry) => entry[3]).map(
+  ([name]) => catalog.items.find((item) => item.name === name)?.id ?? 0,
+);
+const eventMenu = await step("menu wydarzenia (okrojone)", `/api/panel/events/${String(event.id)}/menu`, {
+  method: "PUT",
+  json: { mode: "reduced", itemIds: reducedIds },
+  cookie: ownerCookie,
+});
 for (const [name, price, quantity, note, target] of ORDERS) {
   const assignment =
     target === null
@@ -503,22 +545,18 @@ for (const [name, price, quantity, note, target] of ORDERS) {
       : typeof target === "string"
         ? { guestId: idOf(target) }
         : { tableId: tableByName.get(target.table).id };
-  await step(
+  const added = await step(
     `zamówienie ${name}`,
     `${api}/orders`,
     { method: "POST", json: { name, quantity, note, assignment } },
     201,
   );
-  if (!priced.has(name.toLowerCase())) {
-    priced.add(name.toLowerCase());
-    await step(`cena ${name}`, `/api/panel/events/${String(event.id)}/prices`, {
-      method: "PUT",
-      json: { kind: "dish", name, price },
-      cookie: ownerCookie,
-    });
+  const line = added.items.at(-1);
+  if (line?.course === null || formatGrosze(line?.unitPriceGrosze ?? -1) !== price) {
+    fail(`Pozycja „${name}” nie wzięła ceny i kursu z menu (${JSON.stringify(line)}).`);
   }
 }
-let orderBoard = await step("zamówienie z cenami", `${api}/orders`);
+let orderBoard = await step("zamówienie z menu", `${api}/orders`);
 const firstLine = orderBoard.items[0];
 orderBoard = await step(`wydane: ${firstLine.name}`, `${api}/orders/${firstLine.id}`, {
   method: "PATCH",
@@ -709,7 +747,8 @@ Dane demo gotowe („${RESTAURANT_NAME}” · „${EVENT_NAME}”, id ${String(e
 - wydarzenia lokalu: nadchodzące ${String(eventLists.upcoming.length)}, minione ${String(eventLists.past.length)}, archiwum ${String(eventLists.archived.length)}
 - zespół lokalu: ${String(team.team.members.length)} osoby (właściciel, menedżer, kelner)
 - dziennik wejść administratora: wejście jako wsparcie z powodem, 2 otwarte strony, wyjście (widzi go właściciel na stronie restauracji)
-- ceny zamówienia ustawione przez lokal („Cennik wydarzenia”); „${VENUE_LED_EVENT}”: lokal prowadzi, ${String(VENUE_LED_GUESTS.length)} gości dodanych w panelu
+- menu lokalu: ${String(catalog.items.length)} pozycji w 5 kursach; menu „${EVENT_NAME}” okrojone do ${String(eventMenu.items.filter((item) => item.available).length)} pozycji, zamówienie z niego (ceny i kursy z menu, kuchnia na tablecie po kursach)
+- „${VENUE_LED_EVENT}”: lokal prowadzi, ${String(VENUE_LED_GUESTS.length)} gości dodanych w panelu
 - szablon sali „${TEMPLATE_NAME}” (${String(savedTemplate.template.roomCount)} sale, ${String(savedTemplate.template.tableCount)} stolików) i wydarzenie z niego „${TEMPLATE_EVENT}”
 
 Organizator: ${organizerUrl}
@@ -720,6 +759,7 @@ Panel lokalu: ${new URL("/logowanie", BASE_URL).href} — e-mail ${owner.email},
              e-mail ${TEAM[0].email}, hasło ${MANAGER_PASSWORD} (rola: menedżer)
              e-mail ${TEAM[1].email}, hasło ${WAITER_PASSWORD} (rola: kelner)
 Wydarzenia lokalu: ${new URL(`/panel/restauracje/${String(restaurantId)}`, BASE_URL).href} (po zalogowaniu)
+Menu lokalu:     ${new URL(`/panel/restauracje/${String(restaurantId)}/menu`, BASE_URL).href} („Menu wydarzenia” na karcie wydarzenia)
 Praca klienta:   ${new URL(`/panel/wydarzenia/${String(event.id)}`, BASE_URL).href} (prowadzi klient: podgląd)
                  ${new URL(`/panel/wydarzenia/${String(venueLedEventId)}`, BASE_URL).href} (lokal prowadzi: edycja w panelu)
 Szablon sali:    ${new URL(`/panel/szablony/${String(templateId)}`, BASE_URL).href} („Zaktualizuj z szablonu” na karcie wydarzenia)

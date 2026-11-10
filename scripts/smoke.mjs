@@ -7183,4 +7183,325 @@ check(
   `${renamed31.status} ${deleted31.status} ${goneTpl.status} ${nAfterDelete.status} ${fromEventDeleted.status} ${tplBDeleted.status}`,
 );
 
+// 32. Menu catalog with courses (menu-catalog-courses, S-16; FR-037, FR-027, US-07). The manager keeps restaurant A's
+// catalog (five courses, prices), an event of A created here gets a reduced menu, the client orders only from it (free
+// text → 400 while the menu is active, lines take the menu's spelling, course and the event's price), a catalog price
+// change never moves an ordered line, the tablet lists the kitchen's prep by course without prices, and switching the
+// menu off brings free text back. A waiter, owner B and the admin outside support mode → the identical 404 on every
+// menu route; owner B cannot put its own item on A's event; no session → 401; a foreign Origin → 403; support mode
+// reads only. Uses the sessions of 25–31. Runs last: restaurant A has a catalog afterwards.
+const menuApiOf = (restaurantId) => `/api/panel/restaurants/${String(restaurantId)}/menu`;
+const menuItemApi = (restaurantId, itemId) => `${menuApiOf(restaurantId)}/${String(itemId)}`;
+const eventMenuApi = (id) => `${eventApi(id)}/menu`;
+const menuPageOf = (restaurantId) => `/panel/restauracje/${String(restaurantId)}/menu`;
+
+const e32 = await staffCall(sessionOwner, eventsApiOf(restaurantA.id), {
+  method: "POST",
+  json: { name: `Menu smoke ${RUN_TAG}`, date: futureDate },
+});
+const e32Id = e32.data?.event?.id ?? 0;
+const e32Key = keyOfPath(e32.data?.event?.links?.organizer);
+const e32Tablet = keyOfPath(e32.data?.event?.links?.restaurant);
+const e32Api = `/api/o/${e32Key}`;
+const before32 = await request(`${e32Api}/orders`);
+const legacy32 = await request(`${e32Api}/orders`, { method: "POST", json: { name: "Barszcz", quantity: 1 } });
+check(
+  "menu: a new event of a restaurant without a catalog takes free text as before (menu inactive)",
+  e32.status === 201 &&
+    before32.status === 200 &&
+    before32.data?.menu?.active === false &&
+    legacy32.status === 201 &&
+    legacy32.data?.items?.[0]?.course === null,
+  `${e32.status} ${before32.status} ${JSON.stringify(before32.data?.menu)} ${legacy32.status}`,
+);
+
+const MENU32 = [
+  ["Tatar", "starter", "32"],
+  ["Rosół", "soup", "18,50"],
+  ["Schabowy", "main", "45"],
+  ["Pierogi", "main", "29"],
+  ["Sernik", "dessert", "16"],
+  ["Lemoniada", "drinks", "12"],
+];
+const added32 = [];
+for (const [name, course, price] of MENU32) {
+  added32.push(
+    await staffCall(sessionManager, menuApiOf(restaurantA.id), { method: "POST", json: { name, course, price } }),
+  );
+}
+const catalog32 = added32.at(-1)?.data;
+const itemId32 = (name) => catalog32?.items?.find((item) => item.name === name)?.id ?? 0;
+check(
+  "menu: the manager adds dishes and drinks in all five courses → 201, the catalog by course (starters, soups, mains, desserts, drinks) with prices in grosze",
+  added32.every((res) => res.status === 201) &&
+    JSON.stringify(catalog32?.items?.map((item) => [item.name, item.course, item.priceGrosze])) ===
+      JSON.stringify([
+        ["Tatar", "starter", 3200],
+        ["Rosół", "soup", 1850],
+        ["Pierogi", "main", 2900],
+        ["Schabowy", "main", 4500],
+        ["Sernik", "dessert", 1600],
+        ["Lemoniada", "drinks", 1200],
+      ]),
+  added32.map((res) => res.status).join(" "),
+);
+
+const badName32 = await staffCall(sessionManager, menuApiOf(restaurantA.id), {
+  method: "POST",
+  json: { name: "  ", course: "main", price: "1" },
+});
+const badCourse32 = await staffCall(sessionManager, menuApiOf(restaurantA.id), {
+  method: "POST",
+  json: { name: "Śniadanie", course: "breakfast", price: "1" },
+});
+const badPrice32 = await staffCall(sessionManager, menuApiOf(restaurantA.id), {
+  method: "POST",
+  json: { name: "Śniadanie", course: "main", price: "abc" },
+});
+const extra32 = await staffCall(sessionManager, menuApiOf(restaurantA.id), {
+  method: "POST",
+  json: { name: "Śniadanie", course: "main", price: "1", id: 5 },
+});
+const dup32 = await staffCall(sessionManager, menuApiOf(restaurantA.id), {
+  method: "POST",
+  json: { name: "rosół", course: "main", price: "1" },
+});
+const patched32 = await staffCall(sessionManager, menuItemApi(restaurantA.id, itemId32("Sernik")), {
+  method: "PATCH",
+  json: { price: "17" },
+});
+check(
+  "menu: an empty name, an unknown course, a bad price and an unknown field → 400; the same name in another letter case → 409; a price change → 200",
+  badName32.status === 400 &&
+    badCourse32.status === 400 &&
+    badCourse32.data?.error === "Wybierz kurs." &&
+    badPrice32.status === 400 &&
+    extra32.status === 400 &&
+    dup32.status === 409 &&
+    patched32.status === 200 &&
+    patched32.data?.items?.find((item) => item.name === "Sernik")?.priceGrosze === 1700,
+  `${badName32.status} ${badCourse32.status} ${badPrice32.status} ${extra32.status} ${dup32.status} ${patched32.status}`,
+);
+
+const itemB32 = await staffCall(sessionB, menuApiOf(restaurantB.id), {
+  method: "POST",
+  json: { name: "Danie B", course: "main", price: "10" },
+});
+const itemB32Id = itemB32.data?.items?.[0]?.id ?? 0;
+const outsiders32 = [];
+for (const [who, token] of [
+  ["waiter", sessionWaiter],
+  ["owner B", sessionB],
+  ["admin", sessionAdmin],
+]) {
+  for (const [method, path, json] of [
+    ["GET", menuApiOf(restaurantA.id)],
+    ["POST", menuApiOf(restaurantA.id), { name: "Obce", course: "main", price: "1" }],
+    ["PATCH", menuItemApi(restaurantA.id, itemId32("Tatar")), { price: "1" }],
+    ["DELETE", menuItemApi(restaurantA.id, itemId32("Tatar"))],
+    ["GET", eventMenuApi(e32Id)],
+    ["PUT", eventMenuApi(e32Id), { mode: "off" }],
+  ]) {
+    const res = await staffCall(token, path, json ? { method, json } : { method });
+    if (!noAccessJson(res)) outsiders32.push(`${who} ${method} ${path}: ${String(res.status)}`);
+  }
+  const page = await staffCall(token, menuPageOf(restaurantA.id));
+  if (!isNoAccessPage(page)) outsiders32.push(`${who} page: ${String(page.status)}`);
+}
+const foreignIds32 = [];
+for (const [method, path, json] of [
+  ["PATCH", menuItemApi(restaurantA.id, itemB32Id), { price: "1" }],
+  ["DELETE", menuItemApi(restaurantA.id, itemB32Id)],
+  ["PATCH", menuItemApi(restaurantA.id, "abc"), { price: "1" }],
+  ["DELETE", menuItemApi(restaurantA.id, 2_000_000_000)],
+  ["PUT", eventMenuApi(e32Id), { mode: "reduced", itemIds: [itemId32("Tatar"), itemB32Id] }],
+  // (owner A also belongs to B by now — section 28 — so B's event is checked through owner B's session above)
+  ["GET", eventMenuApi(2_000_000_000)],
+  ["GET", eventMenuApi("abc")],
+]) {
+  const res = await staffCall(sessionOwner, path, json ? { method, json } : { method });
+  if (!noAccessJson(res)) foreignIds32.push(`${method} ${path}: ${String(res.status)}`);
+}
+const ownerBOwn = await staffCall(sessionB, menuApiOf(restaurantB.id));
+const noSession32 = await staffCall(null, menuApiOf(restaurantA.id));
+const noSessionEvent32 = await staffCall(null, eventMenuApi(e32Id));
+const foreign32 = await staffCall(sessionOwner, menuApiOf(restaurantA.id), {
+  method: "POST",
+  json: { name: "Obcy Origin", course: "main", price: "1" },
+  extraHeaders: FOREIGN,
+});
+const foreignEvent32 = await staffCall(sessionOwner, eventMenuApi(e32Id), {
+  method: "PUT",
+  json: { mode: "off" },
+  extraHeaders: FOREIGN,
+});
+const stillFull32 = await staffCall(sessionOwner, eventMenuApi(e32Id));
+check(
+  "menu: a waiter, owner B and the admin outside support mode → the identical 404 on every menu route and page; B's item on A's catalog or A's event, unknown and malformed ids → the same 404, nothing changed; no session → 401; a foreign Origin → 403",
+  itemB32.status === 201 &&
+    outsiders32.length === 0 &&
+    foreignIds32.length === 0 &&
+    ownerBOwn.status === 200 &&
+    ownerBOwn.data?.items?.length === 1 &&
+    noSession32.status === 401 &&
+    noSessionEvent32.status === 401 &&
+    foreign32.status === 403 &&
+    foreignEvent32.status === 403 &&
+    stillFull32.status === 200 &&
+    stillFull32.data?.mode === "full" &&
+    stillFull32.data.items.every((item) => item.available),
+  `${outsiders32.join("; ")} | ${foreignIds32.join("; ")} | ${noSession32.status} ${foreign32.status} ${foreignEvent32.status} ${stillFull32.data?.mode}`,
+);
+
+const reduced32 = await staffCall(sessionManager, eventMenuApi(e32Id), {
+  method: "PUT",
+  json: { mode: "reduced", itemIds: ["Tatar", "Rosół", "Schabowy", "Lemoniada"].map(itemId32) },
+});
+const board32 = await request(`${e32Api}/orders`);
+check(
+  "menu: the manager sets a reduced menu; the client's board shows exactly those items by course with prices, without catalog ids",
+  reduced32.status === 200 &&
+    reduced32.data?.mode === "reduced" &&
+    reduced32.data.items.filter((item) => item.available).length === 4 &&
+    board32.status === 200 &&
+    board32.data?.menu?.active === true &&
+    JSON.stringify(board32.data.menu.items) ===
+      JSON.stringify([
+        { name: "Tatar", course: "starter", priceGrosze: 3200 },
+        { name: "Rosół", course: "soup", priceGrosze: 1850 },
+        { name: "Schabowy", course: "main", priceGrosze: 4500 },
+        { name: "Lemoniada", course: "drinks", priceGrosze: 1200 },
+      ]),
+  `${reduced32.status} ${board32.status} ${JSON.stringify(board32.data?.menu)}`,
+);
+
+const freeText32 = await request(`${e32Api}/orders`, { method: "POST", json: { name: "Kebab", quantity: 1 } });
+const offMenu32 = await request(`${e32Api}/orders`, { method: "POST", json: { name: "Sernik", quantity: 1 } });
+const withPrice32 = await request(`${e32Api}/orders`, {
+  method: "POST",
+  json: { name: "Rosół", quantity: 1, price: "1" },
+});
+const fromMenu32 = await request(`${e32Api}/orders`, { method: "POST", json: { name: "rosół", quantity: 2 } });
+const rosolLine = fromMenu32.data?.items?.find((item) => item.course === "soup");
+const legacyLine = fromMenu32.data?.items?.find((item) => item.name === "Barszcz");
+const legacyEdit32 = await request(`${e32Api}/orders/${String(legacyLine?.id ?? 0)}`, {
+  method: "PATCH",
+  json: { quantity: 3 },
+});
+const renameOff32 = await request(`${e32Api}/orders/${String(rosolLine?.id ?? 0)}`, {
+  method: "PATCH",
+  json: { name: "Kebab" },
+});
+check(
+  "menu: the client's free text and an item outside the reduced menu → 400; a price in the body → 400; a menu item in any letter case → 201 with the menu's spelling, course and price; a line from before the menu still edits; a rename off the menu → 400",
+  freeText32.status === 400 &&
+    freeText32.data?.error === "Tej pozycji nie ma w menu wydarzenia. Wybierz z listy." &&
+    offMenu32.status === 400 &&
+    withPrice32.status === 400 &&
+    fromMenu32.status === 201 &&
+    rosolLine?.name === "Rosół" &&
+    rosolLine.unitPriceGrosze === 1850 &&
+    rosolLine.quantity === 2 &&
+    legacyEdit32.status === 200 &&
+    renameOff32.status === 400,
+  `${freeText32.status} ${offMenu32.status} ${withPrice32.status} ${fromMenu32.status} ${JSON.stringify(rosolLine)} ${legacyEdit32.status} ${renameOff32.status}`,
+);
+
+const repriced32 = await staffCall(sessionManager, menuItemApi(restaurantA.id, itemId32("Rosół")), {
+  method: "PATCH",
+  json: { price: "25" },
+});
+const afterPrice32 = await request(`${e32Api}/orders`);
+const tablet32 = await request(`/api/r/${e32Tablet}/orders`);
+check(
+  "menu: a catalog price change keeps the ordered line's price and the event's price of that name (the bill does not move); the tablet's prep is grouped by course (soup before the free-text line), without prices",
+  repriced32.status === 200 &&
+    repriced32.data?.items?.find((item) => item.name === "Rosół")?.priceGrosze === 2500 &&
+    afterPrice32.data?.items?.find((item) => item.course === "soup")?.unitPriceGrosze === 1850 &&
+    afterPrice32.data?.menu?.items?.find((item) => item.name === "Rosół")?.priceGrosze === 1850 &&
+    tablet32.status === 200 &&
+    JSON.stringify(tablet32.data?.prep?.map((line) => [line.course, line.name, line.quantity])) ===
+      JSON.stringify([
+        ["soup", "Rosół", 2],
+        [null, "Barszcz", 3],
+      ]) &&
+    !/Grosze|price/i.test(tablet32.body),
+  `${repriced32.status} ${JSON.stringify(afterPrice32.data?.items?.map((item) => [item.name, item.unitPriceGrosze]))} ${tablet32.status} ${JSON.stringify(tablet32.data?.prep)}`,
+);
+
+const catalogPage32 = await staffCall(sessionManager, menuPageOf(restaurantA.id));
+const catalogPageEn32 = await staffCall(sessionManager, menuPageOf(restaurantA.id), {
+  extraHeaders: { Cookie: `${asStaff(sessionManager)}; kp-lang=en` },
+});
+const restaurantPage32 = await staffCall(sessionManager, restaurantPageOf(restaurantA.id));
+const eventPage32 = await staffCall(sessionManager, eventPage(e32Id));
+const clientPage32 = await request(`/o/${e32Key}/zamowienia`);
+check(
+  "menu: the catalog page (PL and EN), the restaurant page's „Menu lokalu” section, the event card's „Menu wydarzenia” and the client's order page with the menu list render",
+  catalogPage32.status === 200 &&
+    catalogPage32.body.includes(`data-menu-page="${String(restaurantA.id)}"`) &&
+    catalogPage32.body.includes("data-menu-catalog") &&
+    catalogPage32.body.includes("Dania główne") &&
+    catalogPageEn32.status === 200 &&
+    catalogPageEn32.body.includes("Restaurant menu") &&
+    restaurantPage32.body.includes("data-menu-section") &&
+    eventPage32.status === 200 &&
+    eventPage32.body.includes('data-event-menu="reduced"') &&
+    clientPage32.status === 200 &&
+    clientPage32.body.includes("data-menu-select") &&
+    clientPage32.body.includes("Przystawki"),
+  `${catalogPage32.status} ${catalogPageEn32.status} ${restaurantPage32.status} ${eventPage32.status} ${clientPage32.status}`,
+);
+
+const enter32 = await enterSupport(sessionAdmin, restaurantA.id);
+const supportCatalog32 = await staffCall(sessionAdmin, menuApiOf(restaurantA.id));
+const supportEventMenu32 = await staffCall(sessionAdmin, eventMenuApi(e32Id));
+const supportPage32 = await staffCall(sessionAdmin, menuPageOf(restaurantA.id));
+const supportWrites32 = [];
+for (const [method, path, json] of [
+  ["POST", menuApiOf(restaurantA.id), { name: "Wsparcie", course: "main", price: "1" }],
+  ["PATCH", menuItemApi(restaurantA.id, itemId32("Tatar")), { price: "1" }],
+  ["DELETE", menuItemApi(restaurantA.id, itemId32("Tatar"))],
+  ["PUT", eventMenuApi(e32Id), { mode: "off" }],
+]) {
+  const res = await staffCall(sessionAdmin, path, json ? { method, json } : { method });
+  if (!noAccessJson(res)) supportWrites32.push(`${method} ${path}: ${String(res.status)}`);
+}
+const exit32 = await endSupportOf(sessionAdmin, restaurantA.id);
+check(
+  "menu: the admin in support mode reads the catalog, the event menu and a static catalog page (no forms); every write → the identical 404",
+  enter32.status === 201 &&
+    supportCatalog32.status === 200 &&
+    supportCatalog32.data?.items?.length === MENU32.length &&
+    supportEventMenu32.status === 200 &&
+    supportPage32.status === 200 &&
+    supportPage32.body.includes("data-menu-item") &&
+    !supportPage32.body.includes("data-menu-catalog") &&
+    supportWrites32.length === 0 &&
+    exit32.status === 200,
+  `${enter32.status} ${supportCatalog32.status} ${supportEventMenu32.status} ${supportPage32.status} ${supportWrites32.join("; ")} ${exit32.status}`,
+);
+
+const off32 = await staffCall(sessionOwner, eventMenuApi(e32Id), { method: "PUT", json: { mode: "off" } });
+const freeAgain32 = await request(`${e32Api}/orders`, { method: "POST", json: { name: "Kebab", quantity: 1 } });
+const removed32 = await staffCall(sessionOwner, menuItemApi(restaurantA.id, itemId32("Rosół")), { method: "DELETE" });
+const afterRemove32 = await request(`${e32Api}/orders`);
+const deleted32 = await staffCall(sessionOwner, eventApi(e32Id), { method: "DELETE" });
+check(
+  "menu: switching the event's menu off brings free text back; deleting a catalog item keeps the line ordered from it (name, course, price); the event is deleted",
+  off32.status === 200 &&
+    off32.data?.mode === "off" &&
+    off32.data.items.every((item) => !item.available) &&
+    freeAgain32.status === 201 &&
+    removed32.status === 200 &&
+    afterRemove32.data?.menu?.active === false &&
+    JSON.stringify(
+      afterRemove32.data?.items
+        ?.filter((item) => item.course === "soup")
+        .map((item) => [item.name, item.unitPriceGrosze]),
+    ) === JSON.stringify([["Rosół", 1850]]) &&
+    deleted32.status === 200,
+  `${off32.status} ${freeAgain32.status} ${removed32.status} ${deleted32.status}`,
+);
+
 finish();

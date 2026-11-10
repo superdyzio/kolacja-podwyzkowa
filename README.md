@@ -107,6 +107,16 @@ Właściciel i menedżer zapisują układ sali lokalu raz i tworzą z niego wyda
 
 Szablon nie ma gości ani linków i nie pojawia się na liście wydarzeń ani w licznikach panelu platformy. Na produkcji ta zmiana wymaga migracji bazy **przed** wdrożeniem kodu (każde czytanie wydarzenia sprawdza nową kolumnę); migracja dodaje kolumnę z wartością domyślną i funkcje, więc istniejące wydarzenia się nie zmieniają.
 
+### Menu lokalu
+
+Właściciel i menedżer prowadzą katalog dań i napojów lokalu z ceną i kursem (przystawki, zupy, dania główne, desery, napoje): sekcja „Menu lokalu” w `/panel/restauracje/<id>` prowadzi do `/panel/restauracje/<id>/menu` (dodawanie, zmiana, usuwanie). Na karcie wydarzenia „Menu wydarzenia” ustala, co klient może zamówić: „Bez menu” (dowolne pozycje jak dotąd), „Pełne menu lokalu” albo „Okrojone menu” (zaznaczone pozycje).
+
+1. Dopóki wydarzenie ma dostępne menu (pełne albo okrojone z co najmniej jedną pozycją), klient — i personel za klienta — wybiera danie z listy z cenami; dowolny tekst jest odrzucany. Wydarzenia sprzed tej zmiany mają „Bez menu”; nowe mają „Pełne menu”, które działa jak „Bez menu”, dopóki lokal nie ma katalogu.
+2. Cena: nowa pozycja bierze cenę tej nazwy już zamówionej w wydarzeniu, a jeśli jej nie ma — cenę z menu. Zmiana ceny w menu lokalu nie zmienia pozycji już zamówionych ani ceny dania, które wydarzenie już ma; przecenić wydarzenie można tylko „Cennikiem wydarzenia”.
+3. „Do przygotowania” u klienta i na tablecie `/r/<klucz>` jest pogrupowane po kursach; pozycje z dowolnym tekstem są na końcu jako „Bez kursu”. Napoje do rachunku zostają listą klienta (bez menu), ale podpowiadają napoje z menu i biorą ich cenę.
+
+Na produkcji migracja `20261110220000_menu_catalog.sql` musi trafić do bazy **przed** kodem (zamówienia czytają nowe kolumny); jest addytywna, istniejące wydarzenia dostają „Bez menu”.
+
 ## Języki
 
 Cała aplikacja działa po polsku i po angielsku. Przełącznik **PL / EN** jest w prawym górnym rogu każdej strony (poza TV i karteczkami do druku); wybór zapamiętuje ciasteczko na rok. Domyślnie wszystko jest po polsku, a link restauracji po angielsku — restauracja ma własne ciasteczko, więc wybór organizatora nie zmienia jej tabletu i odwrotnie. Język da się też ustawić linkiem: dopisz `?lang=en` albo `?lang=pl` (np. dla TV: `/tv/<klucz>?lang=en`). Nie tłumaczą się treści z bazy: imiona, nazwy sal, stolików i dań, uwagi oraz pytania (także baza startowa). Tematy AI powstają w języku osoby, która je losuje.

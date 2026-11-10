@@ -208,5 +208,5 @@ database BEFORE the code.
 
 #### Automated
 
-- [ ] 3.1 `npm run smoke` passes
-- [ ] 3.2 `npm run demo` passes
+- [x] 3.1 `npm run smoke` passes
+- [x] 3.2 `npm run demo` passes
