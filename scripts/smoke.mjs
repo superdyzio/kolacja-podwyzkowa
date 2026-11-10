@@ -6606,6 +6606,77 @@ check(
   `${supportClientGuests.status} ${supportClientLinks.status} ${supportPreview.status} ${supportPreviewLinks.status} ${supportPreviewOrders.status} ${supportPrices.status} ${supportAi.status} ${supportS14Writes.join("; ")}`,
 );
 
+// Support mode never sees diets (the PR #4 review's decision 2: health data, like the export). Event A's client gives
+// one guest a diet and a note of the run; its owner (a member) sees them through the dispatcher and the previews; the
+// admin in support mode sees neither in any answer or page of the visit — the dispatcher's guests, seating, orders and
+// RSVP, the previews, the event card and the prints — and the staff list is the no-access page with no log row (like
+// the export); the card lists no staff list. The guest is deleted again.
+const DIET_NOTE29 = `Smoke dieta wsparcia ${RUN_TAG}`;
+const DIET_TAG29 = "seafood-allergy";
+const DIET_GUEST29 = `Dieta Wsparcie ${RUN_TAG}`;
+const clientApi29 = `/api/o/${aLinkKeys[0]}`;
+const dietGuest29 = await request(`${clientApi29}/guests`, { method: "POST", json: { text: DIET_GUEST29 } });
+const dietGuestId29 = guestNamed(dietGuest29, DIET_GUEST29)?.id ?? 0;
+const dietSet29 = await request(`${clientApi29}/guests/${String(dietGuestId29)}`, {
+  method: "PATCH",
+  json: { diets: [DIET_TAG29], dietNote: DIET_NOTE29 },
+});
+const jsonLeak29 = (res) => res.body.includes(DIET_NOTE29) || res.body.includes(`"${DIET_TAG29}"`);
+const pageLeak29 = (res) => res.body.includes(DIET_NOTE29) || res.body.includes(`data-diet="${DIET_TAG29}"`);
+const dietApis29 = ["guests", "seating", "orders", "rsvp"].map((path) => `${eventApi(eventA.id)}/klient/${path}`);
+const dietPages29 = [
+  ...["goscie", "rozsadzenie", "zamowienia", "potwierdzenia"].map((section) => `${eventPage(eventA.id)}/${section}`),
+  eventPage(eventA.id),
+  ...["tablica", "karty-stolow", "winietki"].map((kind) => `${eventPage(eventA.id)}/wydruki/${kind}`),
+];
+const ownerSees29 = [];
+for (const path of [`${eventApi(eventA.id)}/klient/guests`, `${eventApi(eventA.id)}/klient/orders`]) {
+  const res = await staffCall(sessionOwner, path);
+  if (res.status !== 200 || !jsonLeak29(res)) ownerSees29.push(`${path}: ${String(res.status)}`);
+}
+for (const section of ["goscie", "zamowienia"]) {
+  const res = await staffCall(sessionOwner, `${eventPage(eventA.id)}/${section}`);
+  if (res.status !== 200 || !pageLeak29(res)) ownerSees29.push(`${section}: ${String(res.status)}`);
+}
+const ownerStaffList29 = await staffCall(sessionOwner, `${eventPage(eventA.id)}/wydruki/lista-obslugi`);
+const ownerCard29 = await staffCall(sessionOwner, eventPage(eventA.id));
+const supportLeaks29 = [];
+for (const path of dietApis29) {
+  const res = await staffCall(sessionAdmin, path);
+  if (res.status !== 200 || jsonLeak29(res)) supportLeaks29.push(`${path}: ${String(res.status)}`);
+}
+let supportCard29 = { status: 0, body: "" };
+for (const path of dietPages29) {
+  const res = await staffCall(sessionAdmin, path);
+  if (path === eventPage(eventA.id)) supportCard29 = res;
+  if (res.status !== 200 || pageLeak29(res)) supportLeaks29.push(`${path}: ${String(res.status)}`);
+}
+const supportGuests29 = await supportKlient("guests");
+const logBeforeStaffList29 = (await readLogA()).data?.entries?.[0];
+const supportStaffList29 = await staffCall(sessionAdmin, `${eventPage(eventA.id)}/wydruki/lista-obslugi`);
+const logAfterStaffList29 = (await readLogA()).data?.entries?.[0];
+const dietGuestGone29 = await request(`${clientApi29}/guests/${String(dietGuestId29)}`, { method: "DELETE" });
+check(
+  "support: no diets in support mode — the owner sees the guest's diet and note (dispatcher, previews, staff list); the admin's dispatcher answers, previews, event card and prints carry neither (the guest still listed), the staff list is the no-access page with no log row and is not on the card; the guest deleted",
+  dietGuest29.status === 201 &&
+    dietGuestId29 > 0 &&
+    dietSet29.status === 200 &&
+    ownerSees29.length === 0 &&
+    ownerStaffList29.status === 200 &&
+    ownerCard29.body.includes('data-print-link="lista-obslugi"') &&
+    supportLeaks29.length === 0 &&
+    guestNamed(supportGuests29, DIET_GUEST29)?.dietNote === null &&
+    JSON.stringify(guestNamed(supportGuests29, DIET_GUEST29)?.diets) === "[]" &&
+    supportCard29.body.includes("data-event-prints") &&
+    supportCard29.body.includes('data-print-link="tablica"') &&
+    !supportCard29.body.includes('data-print-link="lista-obslugi"') &&
+    isNoAccessPage(supportStaffList29) &&
+    logBeforeStaffList29?.id !== undefined &&
+    logAfterStaffList29?.id === logBeforeStaffList29.id &&
+    dietGuestGone29.status === 200,
+  `${dietGuest29.status} ${dietSet29.status} [${ownerSees29.join("; ")}] ${ownerStaffList29.status} [${supportLeaks29.join("; ")}] ${supportStaffList29.status} ${String(logBeforeStaffList29?.id)}/${String(logAfterStaffList29?.id)} ${dietGuestGone29.status}`,
+);
+
 // Support mode belongs to the login session: the admin's second login is outside it.
 const secondAdminLogin = await logIn(staff.admin.email, STAFF_PASSWORD);
 const secondAdmin = sessionOf(secondAdminLogin);
@@ -10516,6 +10587,123 @@ check(
   `${cleanup41.join("; ")} ${restoreTerm41.status}`,
 );
 
+// 41b. Guest erasure (guest-erasure; the PR #4 review's decision 1, GDPR art. 17). A today event of A (panel) with
+// two guests at one table, published, guest links on, the leaving guest drawn as the person on the TV. Deleting that
+// guest through the client's link erases the name at once — no republish: the TV's poll with its old version answers
+// 200 without the name and without the spotlight, the other guest's phone (old version → 200) lists no tablemate and
+// draws the chair empty, the tablet's poll answers 200 without the name, the TV page has no trace of it, the client's
+// board stays up to date (nothing to publish), and the new versions answer 204 again. The event is deleted.
+const STAYS41B = `Zostaje Smoke ${RUN_TAG}`;
+const GOES41B = `Odchodzi Smoke ${RUN_TAG}`;
+const e41b = await staffCall(sessionOwner, eventsApiOf(restaurantA.id), {
+  method: "POST",
+  json: { name: `Usunięcie gościa ${RUN_TAG}`, date: today },
+});
+const e41bId = e41b.data?.event?.id ?? 0;
+const e41bApi = `/api/o/${keyOfPath(e41b.data?.event?.links?.organizer)}`;
+const e41bTv = keyOfPath(e41b.data?.event?.links?.tv);
+const e41bTablet = keyOfPath(e41b.data?.event?.links?.restaurant);
+const guests41b = await request(`${e41bApi}/guests`, { method: "POST", json: { text: `${STAYS41B}\n${GOES41B}` } });
+const staysId41b = guestNamed(guests41b, STAYS41B)?.id ?? 0;
+const goesId41b = guestNamed(guests41b, GOES41B)?.id ?? 0;
+const room41b = await request(`${e41bApi}/rooms`, { method: "POST", json: { name: "Sala usunięcia" } });
+const roomId41b = room41b.data?.rooms?.find((room) => room.name === "Sala usunięcia")?.id ?? 0;
+const table41b = await request(`${e41bApi}/tables`, {
+  method: "POST",
+  json: { roomId: roomId41b, name: "Stół usunięcia", seatCount: 4, shape: "round", x: 0.5, y: 0.5 },
+});
+const tableId41b = table41b.data?.tables?.find((table) => table.name === "Stół usunięcia")?.id ?? 0;
+const draft41b = await request(`${e41bApi}/seating/draft`, {
+  method: "POST",
+  json: {
+    seats: [
+      { guestId: staysId41b, tableId: tableId41b, seat: 1 },
+      { guestId: goesId41b, tableId: tableId41b, seat: 2 },
+    ],
+  },
+});
+const publish41b = await request(`${e41bApi}/seating/publish`, { method: "POST" });
+const links41b = await request(`${e41bApi}/guest-links`, { method: "PATCH", json: { enabled: true } });
+const staysKey41b = links41b.data?.guests?.find((guest) => guest.id === staysId41b)?.key ?? "";
+// Two present guests: the draw never repeats the person on the TV, so the leaving guest comes up within two draws.
+let person41b = null;
+for (let attempt = 0; attempt < 4 && person41b?.data?.spotlight?.text !== GOES41B; attempt++) {
+  person41b = await request(`${e41bApi}/tv-spotlight/person`, { method: "POST" });
+}
+const tvApi41b = `/api/tv/${e41bTv}/seating`;
+const guestApi41b = `/api/g/${staysKey41b}/state`;
+const tabletApi41b = `/api/r/${e41bTablet}/orders`;
+const tvBefore41b = await request(tvApi41b);
+const guestBefore41b = await request(guestApi41b);
+const tabletBefore41b = await request(tabletApi41b);
+check(
+  "erasure: a today event of A, two guests published at one table, guest links on, the leaving guest on the TV as the person and at the other guest's table",
+  e41b.status === 201 &&
+    staysId41b > 0 &&
+    goesId41b > 0 &&
+    tableId41b > 0 &&
+    draft41b.status === 200 &&
+    publish41b.status === 201 &&
+    staysKey41b.length === 24 &&
+    person41b?.status === 200 &&
+    person41b.data?.spotlight?.kind === "person" &&
+    tvBefore41b.status === 200 &&
+    tvBefore41b.data?.spotlight?.text === GOES41B &&
+    tvBefore41b.body.includes(GOES41B) &&
+    guestBefore41b.status === 200 &&
+    guestBefore41b.data?.seat?.tablemates?.some((mate) => mate.name === GOES41B) &&
+    tabletBefore41b.status === 200 &&
+    tabletBefore41b.body.includes(GOES41B),
+  `${e41b.status} ${guests41b.status} ${table41b.status} ${draft41b.status} ${publish41b.status} ${links41b.status} ${person41b?.status} ${tvBefore41b.status} ${guestBefore41b.status} ${tabletBefore41b.status}`,
+);
+
+const since41b = (path, res) => `${path}?since=${encodeURIComponent(res.data?.version ?? "")}`;
+const unchangedTv41b = await request(since41b(tvApi41b, tvBefore41b));
+const unchangedGuest41b = await request(since41b(guestApi41b, guestBefore41b));
+const deleted41b = await request(`${e41bApi}/guests/${String(goesId41b)}`, { method: "DELETE" });
+const tvAfter41b = await request(since41b(tvApi41b, tvBefore41b));
+const guestAfter41b = await request(since41b(guestApi41b, guestBefore41b));
+const tabletAfter41b = await request(since41b(tabletApi41b, tabletBefore41b));
+const tvPage41b = await request(`/tv/${e41bTv}`);
+const board41b = await request(`${e41bApi}/seating`);
+const tvAgain41b = await request(since41b(tvApi41b, tvAfter41b));
+const guestAgain41b = await request(since41b(guestApi41b, guestAfter41b));
+const tabletAgain41b = await request(since41b(tabletApi41b, tabletAfter41b));
+const drawingNames41b = (guestAfter41b.data?.drawing?.tables ?? []).flatMap((table) =>
+  (table.seats ?? []).map((seat) => seat.name),
+);
+check(
+  "erasure: deleting the guest erases the name at once — the TV's and the phone's old versions answer 200 without it (no spotlight, no tablemate, an empty chair), the tablet's too, the TV page has none, the board stays up to date; the new versions answer 204",
+  unchangedTv41b.status === 204 &&
+    unchangedGuest41b.status === 204 &&
+    deleted41b.status === 200 &&
+    tvAfter41b.status === 200 &&
+    tvAfter41b.data?.version !== tvBefore41b.data?.version &&
+    tvAfter41b.data?.spotlight === null &&
+    !tvAfter41b.body.includes(GOES41B) &&
+    tvAfter41b.body.includes(STAYS41B) &&
+    guestAfter41b.status === 200 &&
+    !guestAfter41b.body.includes(GOES41B) &&
+    Array.isArray(guestAfter41b.data?.seat?.tablemates) &&
+    guestAfter41b.data.seat.tablemates.length === 0 &&
+    drawingNames41b.length === 1 &&
+    drawingNames41b[0] === STAYS41B &&
+    tabletAfter41b.status === 200 &&
+    !tabletAfter41b.body.includes(GOES41B) &&
+    tabletAfter41b.body.includes(STAYS41B) &&
+    tvPage41b.status === 200 &&
+    !tvPage41b.body.includes(GOES41B) &&
+    tvPage41b.body.includes(STAYS41B) &&
+    board41b.status === 200 &&
+    board41b.data?.upToDate === true &&
+    tvAgain41b.status === 204 &&
+    guestAgain41b.status === 204 &&
+    tabletAgain41b.status === 204,
+  `${unchangedTv41b.status} ${unchangedGuest41b.status} ${deleted41b.status} ${tvAfter41b.status} ${guestAfter41b.status} ${tabletAfter41b.status} ${tvPage41b.status} ${String(board41b.data?.upToDate)} ${tvAgain41b.status} ${guestAgain41b.status} ${tabletAgain41b.status}`,
+);
+const eventDeleted41b = await staffCall(sessionOwner, eventApi(e41bId), { method: "DELETE" });
+check("erasure: the section's event is deleted", eventDeleted41b.status === 200, String(eventDeleted41b.status));
+
 // 42. The staff's offline readout (staff-offline-readout, S-27; FR-047, US-08, NFR-017). The kitchen tablet, the staff
 // floor and the per-event waiter's floor keep the last state they read on the DEVICE (localStorage; a browser-only
 // feature, checked by unit tests), so the server's part is three readout pages behind the same guards as their live
@@ -11223,8 +11411,9 @@ check("pub quiz: the section's event is deleted", deleted43.status === 200, Stri
 // staff list from their floor. A today event of A (panel) filled through its client link: two guests (one with a diet
 // and a note of this run), a room, a table of 4, a draft, a publish, a client logo. The client's print HTML carries no
 // key (relative links, the logo through /o/<key>/wydruki/logo); diets only on the staff list; panel prints for owners
-// and managers (support mode reads, without logo images); the staff floor and the per-event waiter print the staff
-// list. The event, its waiter and a template of A are deleted.
+// and managers (support mode reads the other prints without logo images, never the staff list — no log row either);
+// the staff floor and the per-event waiter print the staff list. The event, its waiter and a template of A are
+// deleted.
 const e44 = await staffCall(sessionOwner, eventsApiOf(restaurantA.id), {
   method: "POST",
   json: { name: `Wydruki ${RUN_TAG}`, date: today },
@@ -11485,22 +11674,31 @@ check(
 );
 
 const enter44 = await enterSupport(sessionAdmin, restaurantA.id);
+const logBefore44 = (await readLogA()).data?.entries?.[0];
 const support44 = await staffCall(sessionAdmin, panelPrint44(e44Id, "lista-obslugi"));
+const logAfter44 = (await readLogA()).data?.entries?.[0];
+const supportBoard44 = await staffCall(sessionAdmin, panelPrint44(e44Id, "tablica"));
 const supportCard44 = await staffCall(sessionAdmin, eventPage(e44Id));
 const exit44 = await endSupportOf(sessionAdmin, restaurantA.id);
 check(
-  "room prints: in support mode the admin reads the staff list (the diet, the support banner) without any logo image, and the event card lists the prints; then support ends",
+  "room prints: in support mode the staff list is the no-access page with no log row (diets — the PR #4 review's decision 2, like the export); the admin reads the board (names, the support banner) without the diet or any logo image, and the event card lists the prints without the staff list; then support ends",
   enter44.status === 201 &&
-    support44.status === 200 &&
-    support44.body.includes(NOTE44) &&
-    support44.body.includes("data-support-banner") &&
-    !support44.body.includes("data-print-logo") &&
-    !support44.body.includes("/branding/logo") &&
-    keyFree44(support44) &&
+    isNoAccessPage(support44) &&
+    !support44.body.includes(NOTE44) &&
+    logBefore44?.id !== undefined &&
+    logAfter44?.id === logBefore44.id &&
+    supportBoard44.status === 200 &&
+    supportBoard44.body.includes("data-support-banner") &&
+    !supportBoard44.body.includes(NOTE44) &&
+    !supportBoard44.body.includes("data-print-logo") &&
+    !supportBoard44.body.includes("/branding/logo") &&
+    keyFree44(supportBoard44) &&
     supportCard44.status === 200 &&
     supportCard44.body.includes("data-event-prints") &&
+    supportCard44.body.includes('data-print-link="tablica"') &&
+    !supportCard44.body.includes('data-print-link="lista-obslugi"') &&
     exit44.status === 200,
-  `${enter44.status} ${support44.status} ${supportCard44.status} ${exit44.status}`,
+  `${enter44.status} ${support44.status} ${String(logBefore44?.id)}/${String(logAfter44?.id)} ${supportBoard44.status} ${supportCard44.status} ${exit44.status}`,
 );
 
 const floorList44 = `${floorPageOf(e44Id)}/lista-obslugi`;

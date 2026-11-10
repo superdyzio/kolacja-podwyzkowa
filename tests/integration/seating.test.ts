@@ -213,7 +213,7 @@ describe.skipIf(!hasLocalDb)("seating service", () => {
     expect((await getSeatingBoard(db, event.id)).upToDate).toBe(true);
   });
 
-  it("keeps a snapshot readable after its guest and table are deleted", async () => {
+  it("keeps a snapshot readable after its table is deleted; a deleted guest's seat is erased from it", async () => {
     const { s, t1, t2, g1, g2 } = await setup();
     await seatGuest(db, event.id, g1, t1, 1);
     await seatGuest(db, event.id, g2, t2, 2);
@@ -221,11 +221,11 @@ describe.skipIf(!hasLocalDb)("seating service", () => {
     await db.from("guest").delete().eq("id", g1);
     await db.from("venue_table").delete().eq("id", t2);
 
+    // guest-erasure: G1's seat and name are gone from the snapshot (counted in erasedSeats); T2's copy stays.
     const snap = await snapshot(id);
-    expect(snapshotNames(snap, s.tableNames)).toEqual(
-      [`${s.tableNames[0]}#1=${s.guestNames[0]}`, `${s.tableNames[1]}#2=${s.guestNames[1]}`].sort(),
-    );
-    expect(snap.seats.find((seat) => seat.guestName === s.guestNames[0])?.guestId).toBeNull();
+    expect(snapshotNames(snap, s.tableNames)).toEqual([`${s.tableNames[1]}#2=${s.guestNames[1]}`]);
+    expect(snap.seats.some((seat) => seat.guestName === s.guestNames[0])).toBe(false);
+    expect(snap.erasedSeats).toBe(1);
     expect(snap.tables.find((table) => table.name === s.tableNames[1])?.tableId).toBeNull();
     expect((await getSeatingBoard(db, event.id)).upToDate).toBe(false);
   });

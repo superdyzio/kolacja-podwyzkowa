@@ -31,6 +31,7 @@ import {
 import { EVENT_STAFF_ROLES } from "@/lib/events";
 import { getGuestLinks } from "@/lib/guest-links";
 import { getGuessBoard } from "@/lib/guesses";
+import { withoutDiets } from "@/lib/diets/support";
 import { getGuestList } from "@/lib/guests";
 import { getOrderBoard, priceList } from "@/lib/orders";
 import { findPanelEvent } from "@/lib/panel-api";
@@ -47,7 +48,9 @@ import { getVenue } from "@/lib/venue";
 // base (/api/panel/events/<id>/klient → the organizer routes for this event). Owners and managers; editable only while
 // „Lokal prowadzi” is on — otherwise the island is read-only (inert) under a banner saying the client leads. The
 // platform admin in support mode gets a static render (no hydration, so no polling log rows) without the guests' link
-// keys (no „linki”). ONE guard call; a waiter, another restaurant, an unknown section or id → the no-access page (404).
+// keys (no „linki”) and without the guests' diets, allergies and notes for the kitchen (withoutDiets; the PR #4
+// review's decision 2: health data, like the export support mode never gets). ONE guard call; a waiter, another
+// restaurant, an unknown section or id → the no-access page (404).
 const locale = Astro.locals.locale;
 const t = clientWorkMessages(locale);
 const shell = shellMessages(locale);
@@ -94,8 +97,8 @@ const titles = {
   quiz: shell.quizTitle,
 } as const;
 
-// The same server reads as the client's page of that section.
-const data =
+// The same server reads as the client's page of that section (support mode: without the diets).
+const loaded =
   access && db && section
     ? section === "goscie"
       ? { section, list: await getGuestList(db, eventId) }
@@ -121,6 +124,7 @@ const data =
                     ? { section, quiz: quizOn ? await getQuizBoard(db, eventId) : null }
                     : { section, board: await getOrderBoard(db, eventId) }
     : null;
+const data = support && loaded ? withoutDiets(loaded) : loaded;
 const cardsPath = access && !support ? `${organizerPath(access.event.organizerKey)}/karteczki` : "";
 // A section whose module is off shows ModuleOff OUTSIDE the read-only frame, so its way back stays reachable.
 const moduleOff =

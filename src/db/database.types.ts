@@ -460,18 +460,22 @@ export interface Database {
           published_at: string;
           // venue-drawing: the venue's chair pitch at publish time; null = published before (read as the default).
           chair_pitch: number | null;
+          // guest-erasure: seats erased since the publish (a deleted guest's rows removed); only ever grows.
+          erased_seats: number;
         };
         Insert: {
           id?: never;
           event_id: number;
           published_at?: string;
           chair_pitch?: number | null;
+          erased_seats?: number;
         };
         Update: {
           id?: never;
           event_id?: number;
           published_at?: string;
           chair_pitch?: number | null;
+          erased_seats?: number;
         };
         Relationships: [
           {
@@ -1242,6 +1246,8 @@ export interface Database {
           kind: string;
           text: string;
           shown_at: string;
+          // guest-erasure: the guest a 'person' row shows (the row goes with the guest); null for questions and topics.
+          guest_id: number | null;
         };
         Insert: {
           id?: never;
@@ -1249,6 +1255,7 @@ export interface Database {
           kind: string;
           text: string;
           shown_at?: string;
+          guest_id?: number | null;
         };
         Update: {
           id?: never;
@@ -1256,6 +1263,7 @@ export interface Database {
           kind?: string;
           text?: string;
           shown_at?: string;
+          guest_id?: number | null;
         };
         Relationships: [
           {
@@ -1264,6 +1272,13 @@ export interface Database {
             isOneToOne: false;
             referencedRelation: "event";
             referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "tv_spotlight_guest_fkey";
+            columns: ["event_id", "guest_id"];
+            isOneToOne: false;
+            referencedRelation: "guest";
+            referencedColumns: ["event_id", "id"];
           },
         ];
       };

@@ -192,6 +192,29 @@ describe("guestStateVersion", () => {
     expect(new Set(versions).size).toBe(versions.length);
   });
 
+  it("folds the seats erased from the snapshot into the hashed part, and only above 0 (guest-erasure)", () => {
+    const plain = guestStateVersion("4.17", "Ania", OPEN, []);
+    expect(guestStateVersion("4.17", "Ania", OPEN, [], undefined, null, null, 0)).toBe(plain);
+    const once = guestStateVersion("4.17", "Ania", OPEN, [], undefined, null, null, 1);
+    const twice = guestStateVersion("4.17", "Ania", OPEN, [], undefined, null, null, 2);
+    expect(new Set([plain, once, twice]).size).toBe(3);
+    // Same number of parts: the seating prefix and the visible parts are unchanged.
+    expect(once.split(".").length).toBe(plain.split(".").length);
+    expect(once.startsWith("4.17.")).toBe(true);
+    expect(
+      toGuestState({
+        seatingVersion: "4.17",
+        snapshotId: 4,
+        planVersion: 17,
+        name: "Ania",
+        seat: null,
+        guess: OPEN,
+        orders: [],
+        erasedSeats: 2,
+      }).version,
+    ).toBe(twice);
+  });
+
   it("starts with the seating token and stays short enough for the 64-character limit", () => {
     const version = guestStateVersion(
       `${Number.MAX_SAFE_INTEGER}.${Number.MAX_SAFE_INTEGER}`,
@@ -203,6 +226,11 @@ describe("guestStateVersion", () => {
         maxPlace: 100,
       },
       [],
+      undefined,
+      null,
+      null,
+      // guest-erasure: any number of erased seats lives in the hashed part, never in the length.
+      Number.MAX_SAFE_INTEGER,
     );
     expect(version.startsWith(`${Number.MAX_SAFE_INTEGER}.${Number.MAX_SAFE_INTEGER}.`)).toBe(true);
     expect(version.length).toBeLessThanOrEqual(64);

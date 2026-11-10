@@ -49,6 +49,7 @@ export function guestStateVersion(
   modules: GuestModules = ALL_GUEST_MODULES,
   rsvp: GuestRsvpDto | null = null,
   quiz: GuestQuizDto | null = null,
+  erasedSeats = 0,
 ): string {
   const amount = guess.amountGrosze ?? "n";
   const place = guess.predictedPlace ?? "n";
@@ -57,8 +58,11 @@ export function guestStateVersion(
   const rsvpPart = rsvp === null ? "" : `\u0000${rsvpKey(rsvp)}`;
   // pub-quiz: and the guest's own quiz — appended only while one runs (and the module is on).
   const quizPart = quiz === null ? "" : `\u0000quiz\u0000${quizKey(quiz)}`;
+  // guest-erasure: and the seats erased from the published snapshot since its publish (a deleted guest's name leaves
+  // the drawing and the tablemates without a republish) — appended only above 0, so other events keep their tokens.
+  const erasedPart = erasedSeats > 0 ? `\u0000erased\u0000${String(erasedSeats)}` : "";
   const live = shortHash(
-    `${name}\u0000${guestOrdersKey(orders)}\u0000${guestModulesKey(modules)}${rsvpPart}${quizPart}`,
+    `${name}\u0000${guestOrdersKey(orders)}\u0000${guestModulesKey(modules)}${rsvpPart}${quizPart}${erasedPart}`,
   );
   return `${seatingVersion}.${live}.${guess.intakeOpen ? "1" : "0"}.${amount}.${place}.${guess.maxPlace}`;
 }
@@ -84,6 +88,8 @@ export interface GuestStateInput {
   rsvp?: GuestRsvpDto | null;
   // pub-quiz: the guest's own quiz (getGuestQuiz), null without a run or with the module off; null when omitted.
   quiz?: GuestQuizDto | null;
+  // guest-erasure: seats erased from the latest snapshot since its publish (getPublishedVersion); 0 when omitted.
+  erasedSeats?: number;
 }
 
 export function toGuestState({
@@ -98,8 +104,9 @@ export function toGuestState({
   modules = ALL_GUEST_MODULES,
   rsvp = null,
   quiz = null,
+  erasedSeats = 0,
 }: GuestStateInput): GuestStateDto {
-  const version = guestStateVersion(seatingVersion, name, guess, orders, modules, rsvp, quiz);
+  const version = guestStateVersion(seatingVersion, name, guess, orders, modules, rsvp, quiz, erasedSeats);
   const own: GuestGuessDto = {
     intakeOpen: guess.intakeOpen,
     amountGrosze: guess.amountGrosze,
@@ -141,8 +148,8 @@ export function toGuestState({
 
 // Everyone else at the guest's table in the same snapshot (rows = that table's snapshot seats, names as published),
 // in seat order, with the guest's neighbours marked by the seat contract: side neighbours, then the opposite seat of a
-// rectangular table. The guest's own seat is left out by seat number (a deleted guest's row has no id but still shows
-// on the TV, so it shows here too).
+// rectangular table. The guest's own seat is left out by seat number. A guest deleted since the publish has no row any
+// more (guest-erasure): their seat is empty here, on the TV and on every other screen.
 export function toTablemates(
   table: { shape: TableShape; seatCount: number },
   ownSeat: number,

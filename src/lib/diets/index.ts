@@ -15,3 +15,4 @@ export {
 } from "./rules";
 export { EMPTY_DIET_BOARD, dietBoard, dietSeatLookup, type DietGuestSource } from "./board";
 export { dietMessages } from "./messages";
+export { withoutDiets, withoutDietsInResponse } from "./support";

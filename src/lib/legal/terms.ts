@@ -118,7 +118,7 @@ export const termsMessages = defineMessages<LegalDocument>(
           "Zasady powierzenia określa [umowa powierzenia przetwarzania danych — osobny dokument do przygotowania].",
           `Właściciel ustawia, po ilu dniach od imprezy dane gości są usuwane (od ${String(MIN_GUEST_RETENTION_DAYS)} do ${String(MAX_GUEST_RETENTION_DAYS)}, domyślnie ${String(DEFAULT_GUEST_RETENTION_DAYS)}). Po tym terminie Platforma usuwa gości razem z dietami, potwierdzeniami, miejscami i notatkami; zostaje rachunek bez imion i uwag.`,
           "Przed usunięciem właściciel albo menedżer może wyeksportować dane wydarzenia (JSON, CSV).",
-          "Diety i alergie to dane o zdrowiu. Widzą je Klient i Personel Lokalu, a podczas zapisanej w dzienniku wizyty wsparcia także Administrator platformy; nigdy inni goście, ekran TV ani usługi sztucznej inteligencji.",
+          "Diety i alergie to dane o zdrowiu. Widzą je Klient i Personel Lokalu; nigdy Administrator platformy (także podczas zapisanej w dzienniku wizyty wsparcia), inni goście, ekran TV ani usługi sztucznej inteligencji.",
         ],
       },
       {
@@ -282,7 +282,7 @@ export const termsMessages = defineMessages<LegalDocument>(
           "The rules of that processing are set out in [data processing agreement — a separate document to be prepared].",
           `The owner sets after how many days from the event the guests' data is deleted (${String(MIN_GUEST_RETENTION_DAYS)} to ${String(MAX_GUEST_RETENTION_DAYS)}, by default ${String(DEFAULT_GUEST_RETENTION_DAYS)}). After that term the Platform deletes the guests with their diets, replies, seats and notes; the bill remains, without names or notes.`,
           "Before the deletion the owner or a manager can export the event's data (JSON, CSV).",
-          "Diets and allergies are health data. They are seen by the Client and the Venue's Staff, and during a logged support visit by the Platform administrator; never by other guests, the TV screen or artificial intelligence services.",
+          "Diets and allergies are health data. They are seen by the Client and the Venue's Staff; never by the Platform administrator (not even during a logged support visit), other guests, the TV screen or artificial intelligence services.",
         ],
       },
       {

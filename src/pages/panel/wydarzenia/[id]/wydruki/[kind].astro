@@ -4,19 +4,26 @@ import RoomPrint from "@/components/prints/RoomPrint.astro";
 import Layout from "@/layouts/Layout.astro";
 import { panelClientApiBase } from "@/lib/client-routes/sections";
 import { EVENT_STAFF_ROLES } from "@/lib/events";
-import { findPanelEvent } from "@/lib/panel-api";
+import { findMemberEvent, findPanelEvent } from "@/lib/panel-api";
 import { getRoomPrintSource, isPrintKind, parsePrintOptions, printMessages } from "@/lib/prints";
 
 // A room print of the venue (room-prints, S-24; FR-038): /panel/wydarzenia/<id>/wydruki/<kind> for the owners and
 // managers of the event's restaurant, whoever leads the event — the same sheets as the client's, from the latest
 // published seating. The logos come through the client dispatcher (`…/klient/branding/logo`). The platform
-// administrator in support mode reads them too (one logged read: ONE guard call, no logo images, the support banner on
-// screen). An unknown print is refused BEFORE the guard (no log row); a waiter, another restaurant, a template and an
-// unknown or malformed id → the no-access page (404).
+// administrator in support mode reads the board, the table cards and the place cards too (one logged read: ONE guard
+// call, no logo images, the support banner on screen) — but never the staff list: its purpose is the guests' diets,
+// allergies and notes (health data), so `lista-obslugi` opens for MEMBERS only (findMemberEvent, like the export: the
+// admin, in support mode too, gets the identical no-access page and no log row — the PR #4 review's decision 2). An
+// unknown print is refused BEFORE the guard (no log row); a waiter, another restaurant, a template and an unknown or
+// malformed id → the no-access page (404).
 const locale = Astro.locals.locale;
 const t = printMessages(locale);
 const kind = Astro.params.kind;
-const panel = isPrintKind(kind) ? await findPanelEvent(Astro.locals, Astro.params.id, EVENT_STAFF_ROLES) : null;
+const panel = !isPrintKind(kind)
+  ? null
+  : kind === "lista-obslugi"
+    ? await findMemberEvent(Astro.locals, Astro.params.id, EVENT_STAFF_ROLES)
+    : await findPanelEvent(Astro.locals, Astro.params.id, EVENT_STAFF_ROLES);
 const source =
   panel && isPrintKind(kind)
     ? await getRoomPrintSource(panel.db, panel.event.id, { diets: kind === "lista-obslugi" })

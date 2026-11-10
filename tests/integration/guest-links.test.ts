@@ -188,10 +188,14 @@ describe.skipIf(!hasLocalDb)("guest link services", () => {
     // Another table's guests never show up.
     expect((await getGuestState(db, event.id, { id: g4, displayName: n4 })).seat?.tablemates).toEqual([]);
 
-    // An unpublished move changes nothing; a guest deleted after the publish still shows on the TV, so here too.
+    // An unpublished move changes nothing.
     await seatGuest(db, event.id, g3, t1, 6);
-    await deleteGuest(db, event.id, g2);
     expect((await getGuestState(db, event.id, { id: g1, displayName: n1 })).seat?.tablemates).toEqual(expected);
+    // guest-erasure: a guest deleted after the publish leaves it at once (their seat is empty, no republish).
+    await deleteGuest(db, event.id, g2);
+    expect((await getGuestState(db, event.id, { id: g1, displayName: n1 })).seat?.tablemates).toEqual([
+      { seat: 5, name: n3, relation: "opposite" },
+    ]);
   });
 
   it("leaves absent guests out (they are not in the snapshot)", async () => {

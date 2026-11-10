@@ -207,7 +207,11 @@ const work = loaded
           seatingHref={`/panel/wydarzenia/${String(card.id)}/rozsadzenie`}
           locale={locale}
         />
-        <PrintLinks base={`/panel/wydarzenia/${String(card.id)}/wydruki`} locale={locale} />
+        <PrintLinks
+          base={`/panel/wydarzenia/${String(card.id)}/wydruki`}
+          support={panel.support !== null}
+          locale={locale}
+        />
       </section>
       {!panel.support && (
         <EventTemplateActions

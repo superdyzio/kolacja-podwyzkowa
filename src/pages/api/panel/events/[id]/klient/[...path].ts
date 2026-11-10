@@ -3,6 +3,7 @@ import { isMutation } from "@/lib/auth";
 import { getClientAccess } from "@/lib/client-routes/access";
 import { isKeyRoute, matchClientRoute } from "@/lib/client-routes/match";
 import { clientRouteHandler } from "@/lib/client-routes/table";
+import { withoutDietsInResponse } from "@/lib/diets/support";
 import { EVENT_STAFF_ROLES } from "@/lib/events";
 import { jsonError } from "@/lib/http";
 import { LEAD_CODES, leadMessages, staffMayWrite } from "@/lib/lead";
@@ -17,7 +18,8 @@ export const prerender = false;
 // support mode reads only, never the guests' link keys). Reads always; writes only while „Lokal prowadzi” is on, else
 // 409 { code: "client-leads" } (the client edits, the staff preview). A sub-path or method the client's API does not
 // have, another restaurant's event and unknown or malformed ids all get the identical 404. The Origin check of
-// /api/panel/ mutations runs in the middleware before this.
+// /api/panel/ mutations runs in the middleware before this. Support mode never sees diets (the PR #4 review's
+// decision 2): its answers lose the guests' diets, allergies and notes for the kitchen (withoutDiets).
 
 const handle: APIRoute = async ({ locals, params, request }) => {
   const api = await panelEventApi(locals, params.id, EVENT_STAFF_ROLES);
@@ -47,7 +49,8 @@ const handle: APIRoute = async ({ locals, params, request }) => {
   // A new locals object: the organizer route sees the event's organizer access, the request's own locals stay as the
   // middleware left them.
   const context = { locals: { ...locals, access }, params: { key: "", id: match.id }, request };
-  return handler(context as unknown as APIContext);
+  const response = await handler(context as unknown as APIContext);
+  return api.support ? withoutDietsInResponse(response) : response;
 };
 
 export const GET = handle;

@@ -187,9 +187,11 @@ interface SnapshotRow {
   id: number;
   published_at: string;
   chair_pitch: number | null;
+  // guest-erasure: seats erased since the publish (the TV's token and the guest's hashed part carry it).
+  erased_seats: number;
 }
 
-const SNAPSHOT_COLUMNS = "id, published_at, chair_pitch";
+const SNAPSHOT_COLUMNS = "id, published_at, chair_pitch, erased_seats";
 
 async function latestSnapshotRow(db: DbClient, eventId: number): Promise<SnapshotRow | null> {
   const { data, error } = await db
@@ -247,6 +249,7 @@ async function readSnapshot(db: DbClient, row: SnapshotRow): Promise<SeatingSnap
     // Snapshots published before the drawing existed: the defaults (they still count as up to date).
     chairPitch: row.chair_pitch ?? DEFAULT_CHAIR_PITCH,
     rooms,
+    erasedSeats: row.erased_seats,
     tables: tables.data.map((table): SnapshotTable => {
       if (!isTableShape(table.shape)) {
         fail("odczytać publikacji", `nieznany typ stolika ${table.shape}`);
@@ -357,23 +360,32 @@ export async function getPlanVersion(db: DbClient, eventId: number): Promise<num
   return data ? Date.parse(data.updated_at) : null;
 }
 
-// What is published now, without reading it: the latest snapshot id, the plan version and their polling token
-// (two tiny queries, no seats). The TV and guest phones (S-05) poll against this.
+// What is published now, without reading it: the latest snapshot id, the plan version, the seats erased from that
+// snapshot since (guest-erasure) and the two-part polling token (two tiny queries, no seats). The TV and guest phones
+// (S-05) poll against this; `version` is the guests' prefix — the TV's token adds the erasures (getSeatingVersion).
 export interface PublishedVersion {
   snapshotId: number | null;
   planVersion: number | null;
+  erasedSeats: number;
   version: string;
 }
 
 export async function getPublishedVersion(db: DbClient, eventId: number): Promise<PublishedVersion> {
   const [latest, plan] = await Promise.all([latestSnapshotRow(db, eventId), getPlanVersion(db, eventId)]);
   const snapshotId = latest?.id ?? null;
-  return { snapshotId, planVersion: plan, version: seatingVersion(snapshotId, plan) };
+  return {
+    snapshotId,
+    planVersion: plan,
+    erasedSeats: latest?.erased_seats ?? 0,
+    version: seatingVersion(snapshotId, plan),
+  };
 }
 
-// The polling token of what the TV shows (latest snapshot id + plan version).
+// The polling token of what the TV shows (latest snapshot id with its erasures + plan version; = toTvSeating's
+// version). Differs from getPublishedVersion().version once a published guest was deleted (guest-erasure).
 export async function getSeatingVersion(db: DbClient, eventId: number): Promise<string> {
-  return (await getPublishedVersion(db, eventId)).version;
+  const published = await getPublishedVersion(db, eventId);
+  return seatingVersion(published.snapshotId, published.planVersion, published.erasedSeats);
 }
 
 // The TV state: the latest snapshot as names on tables, plus the plan version for the image URL.

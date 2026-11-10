@@ -12,13 +12,15 @@ import {
 } from "@/lib/prints/options";
 
 // The list of the room prints (room-prints, S-24): each print with its description and a link per format, under
-// `base` (`/o/<key>/wydruki` on the client's hub, `/panel/wydarzenia/<id>/wydruki` on the event card).
+// `base` (`/o/<key>/wydruki` on the client's hub, `/panel/wydarzenia/<id>/wydruki` on the event card). `support`: the
+// platform administrator's support mode, which never opens the staff list (diets — the PR #4 review's decision 2).
 interface Props {
   base: string;
+  support?: boolean;
   locale: Locale;
 }
 
-const { base, locale } = Astro.props;
+const { base, support = false, locale } = Astro.props;
 const t = printMessages(locale);
 
 function formatsOf(kind: PrintKind): { label: string; options: PrintOptions }[] {
@@ -37,7 +39,7 @@ function formatsOf(kind: PrintKind): { label: string; options: PrintOptions }[] 
   }
 }
 
-const prints = PRINT_KINDS.map((kind) => ({
+const prints = PRINT_KINDS.filter((kind) => !(support && kind === "lista-obslugi")).map((kind) => ({
   kind,
   href: `${base}/${kind}`,
   formats: formatsOf(kind).map((format) => ({

@@ -247,7 +247,8 @@ export interface DrawingRoomDto extends RoomOutline {
   name: string;
 }
 
-// A seated (present) guest in a snapshot, with the display name at publish time. guestId is null once deleted.
+// A seated (present) guest in a snapshot, with the display name at publish time. guest-erasure: a deleted guest's rows
+// are removed (DB trigger), so guestId is null only in theory (the column keeps its `on delete set null`).
 export interface SnapshotSeat {
   snapshotTableId: number;
   seat: number;
@@ -264,6 +265,9 @@ export interface SeatingSnapshot {
   seats: SnapshotSeat[];
   chairPitch: number;
   rooms: DrawingRoomDto[];
+  // guest-erasure: seats erased since the publish (a deleted guest's seat rows are removed); 0 when omitted. Part of
+  // the TV's polling token (seatingVersion()), so the TV drops an erased name without a republish.
+  erasedSeats?: number;
 }
 
 // What the TV may see: names on seats, no ids, pins, absences or keys.

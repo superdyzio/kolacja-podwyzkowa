@@ -133,7 +133,8 @@ async function guestSeat(db: DbClient, snapshotId: number, guestId: number): Pro
 }
 
 // The drawing of snapshot `snapshotId` as a guest may see it (venue-drawing): every table's geometry and name, the
-// outlined rooms and the pitch — never who sits where.
+// outlined rooms, the pitch and (guest-venue-names) the published names at their chairs — what the TV shows, no ids. A
+// guest deleted since has no seat row (guest-erasure), so their chair is empty.
 async function guestDrawing(db: DbClient, snapshotId: number): Promise<GuestDrawingDto> {
   // At most MAX_GUESTS (150) seats per snapshot: one page (max_rows 1000), no paging needed.
   const [snapshot, tables, seats, rooms] = await Promise.all([
@@ -207,6 +208,7 @@ export async function getGuestState(
     seatingVersion: published.version,
     snapshotId: published.snapshotId,
     planVersion: published.planVersion,
+    erasedSeats: published.erasedSeats,
     name: guest.displayName,
     seat,
     guess,
@@ -233,5 +235,14 @@ export async function getGuestStateVersion(
     getGuestRsvp(db, eventId, guest.id),
     modules.pubQuiz ? getGuestQuiz(db, eventId, guest.id) : Promise.resolve(null),
   ]);
-  return guestStateVersion(published.version, guest.displayName, guess, orders, modules, rsvp, quiz);
+  return guestStateVersion(
+    published.version,
+    guest.displayName,
+    guess,
+    orders,
+    modules,
+    rsvp,
+    quiz,
+    published.erasedSeats,
+  );
 }

@@ -12,6 +12,8 @@ import { isTvSpotlightKind, normalizeSpotlightText, tvScreenVersion } from "./ru
 //
 // public.tv_spotlight: every show inserts a new row and then deletes the older ones, hiding deletes them all; readers
 // take the newest row. Its id is the last part of the TV polling token, so every show is a new version for the TV.
+// guest-erasure: a „person” row names its guest (guest_id), so deleting the guest deletes the row (foreign key cascade)
+// and the TV drops the name on its next poll.
 
 function fail(action: string, message: string): never {
   throw new Error(`Nie udało się ${action}: ${message}`);
@@ -66,10 +68,11 @@ async function show(
   eventId: number,
   kind: TvSpotlightDto["kind"],
   text: string,
+  guestId: number | null = null,
 ): Promise<TvSpotlightDto> {
   const { data, error } = await db
     .from("tv_spotlight")
-    .insert({ event_id: eventId, kind, text })
+    .insert({ event_id: eventId, kind, text, guest_id: guestId })
     .select("id, shown_at")
     .single();
   if (error) {
@@ -104,7 +107,7 @@ export type DrawPersonResult = { status: "shown"; spotlight: TvSpotlightDto } | 
 // are the only one present.
 export async function drawPersonOnTv(db: DbClient, eventId: number): Promise<DrawPersonResult> {
   const [guests, current] = await Promise.all([
-    db.from("guest").select("display_name").eq("event_id", eventId).eq("is_absent", false),
+    db.from("guest").select("id, display_name").eq("event_id", eventId).eq("is_absent", false),
     newestRow(db, eventId),
   ]);
   if (guests.error) {
@@ -116,10 +119,12 @@ export async function drawPersonOnTv(db: DbClient, eventId: number): Promise<Dra
     shownName,
     secureRandom,
   );
-  if (name === null) {
+  // Display names are unique per event, so the name picks exactly one guest.
+  const guest = name === null ? undefined : guests.data.find((row) => row.display_name === name);
+  if (name === null || !guest) {
     return { status: "nobody" };
   }
-  return { status: "shown", spotlight: await show(db, eventId, "person", name) };
+  return { status: "shown", spotlight: await show(db, eventId, "person", name, guest.id) };
 }
 
 // Back to the plan.
