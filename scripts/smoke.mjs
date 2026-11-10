@@ -3,8 +3,8 @@
 // two restaurants with one event each straight in the database (multi-tenant-events: nothing in the app creates events
 // yet), runs every section on event A and proves at the end that A's links never reach event B. Staff accounts of its
 // own (e-mails tagged with the run, so a throttle of an earlier run never applies) check login, sessions, the panel
-// guard and the platform panel (which adds restaurants of the run). Other events and accounts in the database are
-// never touched, so it runs again and again on the same database.
+// guard, the platform panel (which adds restaurants of the run) and the admin's logged support access to them. Other
+// events and accounts in the database are never touched, so it runs again and again on the same database.
 // Zero dependencies on purpose. Usage: BASE_URL=http://localhost:4321 npm run smoke
 
 import { Buffer } from "node:buffer";
@@ -5892,6 +5892,433 @@ check(
     teamOrigin.length === 0 &&
     JSON.stringify(teamAfterOrigin.data) === JSON.stringify(teamBeforeOutsiders.data),
   `${teamNoSession.join("; ")} ${teamOrigin.join("; ")}`,
+);
+
+// 29. Platform admin's support access (admin-support-log, S-13): the admin opens a restaurant's data only after
+// „Wejdź jako wsparcie” with a reason (3–300 characters), read-only, for 60 minutes, bound to that login session.
+// Every entry, every read and every exit lands in an append-only log that only the restaurant's owners read. Outside
+// support mode — and for every mutation inside it — the admin gets the identical 404 of an unknown restaurant; the
+// event's links (keys) never reach support mode. Restaurant C's switch is restored. Uses the sessions of 25–28.
+const supportApiOf = (restaurantId) => `${PLATFORM_API}/${String(restaurantId)}/support`;
+const supportLogApiOf = (restaurantId) => `/api/panel/restaurants/${String(restaurantId)}/support-log`;
+const restaurantApiOf = (restaurantId) => `/api/panel/restaurants/${String(restaurantId)}`;
+const logOf = (res) => (Array.isArray(res.data?.entries) ? res.data.entries : []);
+const SUPPORT_REASON = `Smoke: prośba właściciela ${RUN_TAG}`;
+const enterSupport = (token, restaurantId, json = { reason: SUPPORT_REASON }, options = {}) =>
+  staffCall(token, supportApiOf(restaurantId), { method: "POST", json, ...options });
+const endSupportOf = (token, restaurantId, options = {}) =>
+  staffCall(token, supportApiOf(restaurantId), { method: "DELETE", ...options });
+const readLogA = (token = sessionOwner) => staffCall(token, supportLogApiOf(restaurantA.id));
+// Every read support mode opens (API), in this order; and the two pages.
+const supportReads = (restaurantId, eventId) => [
+  ["restaurant", restaurantApiOf(restaurantId)],
+  ["events", eventsApiOf(restaurantId)],
+  ["team", teamApiOf(restaurantId)],
+  ["log", supportLogApiOf(restaurantId)],
+  ["event", eventApi(eventId)],
+];
+const supportPages = (restaurantId, eventId) => [restaurantPageOf(restaurantId), eventPage(eventId)];
+
+// Event A's keys as its owner sees them (links) plus its guests' keys: none may appear in support mode.
+const ownerCardA = await staffCall(sessionOwner, eventApi(eventA.id));
+const aLinkKeys = LINK_KINDS.map((kind) => keyOfPath(ownerCardA.data?.event?.links?.[kind]));
+const aGuestKeys = ((await request(`/api/o/${aLinkKeys[0]}/guest-links`)).data?.guests ?? []).map((guest) => guest.key);
+const aKeys = [...aLinkKeys, ...aGuestKeys].filter((key) => typeof key === "string" && key.length === 24);
+const leaksAKey = (body) => aKeys.some((key) => body.includes(key)) || new RegExp(`/(o|tv|r|g)/${KEY}`).test(body);
+const adminUnknownPage = await staffCall(sessionAdmin, restaurantPageOf(2_000_000_000));
+const adminUnknownEventPage = await staffCall(sessionAdmin, eventPage(2_000_000_000));
+const ownerPageA = await staffCall(sessionOwner, restaurantPageOf(restaurantA.id));
+check(
+  "support: event A's three link keys are known to its owner, the owner's page carries the writing islands",
+  ownerCardA.status === 200 &&
+    aLinkKeys.every((key) => key.length === 24) &&
+    ownerPageA.status === 200 &&
+    ownerPageA.body.includes("NewEventForm") &&
+    ownerPageA.body.includes("TeamManager"),
+  `${ownerCardA.status} ${aKeys.length} ${ownerPageA.status}`,
+);
+
+// Before entering: the identical 404 everywhere, nothing logged.
+const logBeforeSupport = await readLogA();
+const deniedBefore = [];
+for (const [name, path] of supportReads(restaurantA.id, eventA.id)) {
+  const res = await staffCall(sessionAdmin, path);
+  if (!noAccessJson(res)) {
+    deniedBefore.push(`${name}: ${String(res.status)}`);
+  }
+}
+const [pageABefore, eventPageABefore] = await Promise.all(
+  supportPages(restaurantA.id, eventA.id).map((path) => staffCall(sessionAdmin, path)),
+);
+const logStillEmpty = await readLogA();
+check(
+  "support: before entering, the admin gets the identical 404 on A's routes and pages; the owner's log is empty and stays so",
+  deniedBefore.length === 0 &&
+    isNoAccessPage(pageABefore) &&
+    pageABefore.body === adminUnknownPage.body &&
+    isNoAccessPage(eventPageABefore) &&
+    eventPageABefore.body === adminUnknownEventPage.body &&
+    logBeforeSupport.status === 200 &&
+    logOf(logBeforeSupport).length === 0 &&
+    logBeforeSupport.data?.truncated === false &&
+    logOf(logStillEmpty).length === 0,
+  `${deniedBefore.join("; ")} ${pageABefore.status} ${eventPageABefore.status} ${logBeforeSupport.status} ${logBeforeSupport.body.slice(0, 120)}`,
+);
+
+// Entering: Origin, platform admin, known id, a reason of 3–300 characters; nothing is logged for a refusal.
+const enterRefusals = [];
+for (const [label, options] of [
+  ["no Origin", { noOrigin: true }],
+  ["foreign Origin", { extraHeaders: FOREIGN }],
+]) {
+  const res = await enterSupport(sessionAdmin, restaurantA.id, undefined, options);
+  if (res.status !== 403) {
+    enterRefusals.push(`${label}: ${String(res.status)}`);
+  }
+}
+for (const [who, token] of [
+  ["owner A", sessionOwner],
+  ["manager A", sessionManager],
+  ["waiter A", sessionWaiter],
+  ["owner B", sessionB],
+]) {
+  const res = await enterSupport(token, restaurantA.id);
+  if (!noAccessJson(res)) {
+    enterRefusals.push(`${who}: ${String(res.status)}`);
+  }
+}
+for (const id of ["2000000000", "abc", "99999999999", "-1", "1.5"]) {
+  const res = await staffCall(sessionAdmin, `${PLATFORM_API}/${id}/support`, {
+    method: "POST",
+    json: { reason: SUPPORT_REASON },
+  });
+  if (!noAccessJson(res)) {
+    enterRefusals.push(`id ${id}: ${String(res.status)}`);
+  }
+}
+for (const [label, json] of [
+  ["empty", { reason: "" }],
+  ["two characters", { reason: "  a​b " }],
+  ["301 characters", { reason: "x".repeat(301) }],
+  ["an extra field", { reason: SUPPORT_REASON, minutes: 600 }],
+  ["no reason", {}],
+]) {
+  const res = await enterSupport(sessionAdmin, restaurantA.id, json);
+  if (res.status !== 400) {
+    enterRefusals.push(`${label}: ${String(res.status)}`);
+  }
+}
+const shortReason = await enterSupport(sessionAdmin, restaurantA.id, { reason: "ab" });
+const enterNoSession = await enterSupport(null, restaurantA.id);
+const stillDeniedAfterRefusals = await staffCall(sessionAdmin, restaurantApiOf(restaurantA.id));
+const logAfterRefusals = await readLogA();
+check(
+  "support: entering needs the page's Origin (403), a platform admin (owner, manager and waiter of A, owner B → the identical 404), a known id (404) and a reason of 3–300 characters (400); no session → 401; nothing opens, nothing is logged",
+  enterRefusals.length === 0 &&
+    shortReason.status === 400 &&
+    shortReason.data?.error === "Wpisz powód wejścia (co najmniej 3 znaki)." &&
+    enterNoSession.status === 401 &&
+    enterNoSession.body === meNoCookie.body &&
+    noAccessJson(stillDeniedAfterRefusals) &&
+    logOf(logAfterRefusals).length === 0,
+  `${enterRefusals.join("; ")} ${shortReason.status} ${enterNoSession.status} ${logOf(logAfterRefusals).length}`,
+);
+
+const enteredAt = Date.now();
+const enteredA = await enterSupport(sessionAdmin, restaurantA.id);
+const grantA = enteredA.data?.support;
+const grantMinutes = (Date.parse(grantA?.expiresAt ?? "") - enteredAt) / 60_000;
+const platformPageInSupport = await staffCall(sessionAdmin, "/panel/platforma");
+check(
+  "support: the admin enters A with a reason → 201 with the restaurants and where support starts, for 60 minutes; the platform page shows it as active",
+  enteredA.status === 201 &&
+    Array.isArray(enteredA.data?.restaurants) &&
+    grantA?.restaurantId === restaurantA.id &&
+    grantA.path === restaurantPageOf(restaurantA.id) &&
+    grantMinutes > 58 &&
+    grantMinutes < 62 &&
+    !leaksAKey(enteredA.body) &&
+    platformPageInSupport.status === 200 &&
+    platformPageInSupport.body.includes(`data-support-active="${String(restaurantA.id)}"`) &&
+    platformPageInSupport.body.includes("Wsparcie aktywne do"),
+  `${enteredA.status} ${JSON.stringify(grantA)} ${grantMinutes.toFixed(1)} ${platformPageInSupport.status}`,
+);
+
+// In support mode: the owner's view, read-only, without keys; B stays closed.
+const supportAnswers = {};
+for (const [name, path] of supportReads(restaurantA.id, eventA.id)) {
+  supportAnswers[name] = await staffCall(sessionAdmin, path);
+}
+const [pageAInSupport, eventPageAInSupport] = [
+  await staffCall(sessionAdmin, restaurantPageOf(restaurantA.id)),
+  await staffCall(sessionAdmin, eventPage(eventA.id)),
+];
+const supportInfo = supportAnswers.restaurant.data?.support;
+const allListedIds = ["upcoming", "past", "archived"].flatMap((list) => listIds(supportAnswers.events, list));
+check(
+  "support: in support mode the admin reads A as its owner (restaurant, events, team, log, event) — the event WITHOUT its links and no key anywhere",
+  Object.values(supportAnswers).every((res) => res.status === 200) &&
+    supportAnswers.restaurant.data?.role === "owner" &&
+    supportInfo?.restaurantId === restaurantA.id &&
+    supportInfo.reason === SUPPORT_REASON &&
+    supportInfo.restaurantDisabled === false &&
+    Object.keys(supportInfo).sort().join(",") ===
+      "expiresAt,reason,restaurantDisabled,restaurantId,restaurantName,startedAt" &&
+    allListedIds.includes(eventA.id) &&
+    memberIn(supportAnswers.team, staff.ownerA.email)?.role === "owner" &&
+    supportAnswers.event.data?.event?.id === eventA.id &&
+    supportAnswers.event.data.event.name === EVENT_NAME &&
+    supportAnswers.event.data.event.links === undefined &&
+    supportAnswers.event.data.support?.restaurantId === restaurantA.id &&
+    Object.values(supportAnswers).every((res) => !leaksAKey(res.body)),
+  Object.entries(supportAnswers)
+    .map(([name, res]) => `${name} ${String(res.status)}`)
+    .join(", "),
+);
+check(
+  "support: A's page shows the banner with the reason, the events, the team as a list and the log — no writing island; the event card page is a summary without links",
+  pageAInSupport.status === 200 &&
+    pageAInSupport.body.includes("data-support-banner") &&
+    pageAInSupport.body.includes(SUPPORT_REASON) &&
+    pageAInSupport.body.includes(`data-event-id="${String(eventA.id)}"`) &&
+    pageAInSupport.body.includes("data-support-team") &&
+    pageAInSupport.body.includes(staff.ownerA.email) &&
+    pageAInSupport.body.includes("data-support-log") &&
+    pageAInSupport.body.includes('data-support-entry="enter"') &&
+    !pageAInSupport.body.includes("NewEventForm") &&
+    !pageAInSupport.body.includes("TeamManager") &&
+    !leaksAKey(pageAInSupport.body) &&
+    eventPageAInSupport.status === 200 &&
+    eventPageAInSupport.body.includes(`data-support-event="${String(eventA.id)}"`) &&
+    eventPageAInSupport.body.includes("data-support-banner") &&
+    eventPageAInSupport.body.includes(escapeHtml(EVENT_NAME)) &&
+    !eventPageAInSupport.body.includes("EventCard") &&
+    !leaksAKey(eventPageAInSupport.body),
+  `${pageAInSupport.status} ${eventPageAInSupport.status}`,
+);
+const deniedB = [];
+for (const [name, path] of supportReads(restaurantB.id, eventB.id)) {
+  const res = await staffCall(sessionAdmin, path);
+  if (!noAccessJson(res)) {
+    deniedB.push(`${name}: ${String(res.status)}`);
+  }
+}
+for (const path of supportPages(restaurantB.id, eventB.id)) {
+  const res = await staffCall(sessionAdmin, path);
+  if (!isNoAccessPage(res)) {
+    deniedB.push(`${path}: ${String(res.status)}`);
+  }
+}
+check("support: support mode in A opens nothing of B (the identical 404)", deniedB.length === 0, deniedB.join("; "));
+
+// Read-only: every mutation of the admin on A's routes is the identical 404 and changes nothing, logs nothing.
+const eventsBeforeWrites = await staffCall(sessionOwner, eventsApiOf(restaurantA.id));
+const cardBeforeWrites = await staffCall(sessionOwner, eventApi(eventA.id));
+const teamBeforeWrites = await readTeamA();
+const logBeforeWrites = await readLogA();
+const supportWrites = [
+  [
+    "create event",
+    eventsApiOf(restaurantA.id),
+    { method: "POST", json: { name: "Wsparcie pisze", date: "2030-01-01" } },
+  ],
+  ["edit event", eventApi(eventA.id), { method: "PATCH", json: { name: "Zmienione przez wsparcie" } }],
+  ["archive event", eventApi(eventA.id), { method: "PATCH", json: { archived: true } }],
+  ["delete event", eventApi(eventA.id), { method: "DELETE" }],
+  ["replace link", `${eventApi(eventA.id)}/links/organizer`, { method: "POST" }],
+  ["invite", teamApiOf(restaurantA.id), { method: "POST", json: { email: staffEmail("wsparcie"), role: "waiter" } }],
+  ["role", memberApiOf(staff.waiterA.id), { method: "PATCH", json: { role: "manager" } }],
+  ["remove", memberApiOf(staff.waiterA.id), { method: "DELETE" }],
+  ["member link", `${memberApiOf(staff.waiterA.id)}/link`, { method: "POST" }],
+];
+const writesLetThrough = [];
+for (const [name, path, options] of supportWrites) {
+  const res = await staffCall(sessionAdmin, path, options);
+  if (!noAccessJson(res)) {
+    writesLetThrough.push(`${name}: ${String(res.status)}`);
+  }
+}
+for (const method of ["POST", "PATCH", "PUT", "DELETE"]) {
+  const res = await staffCall(sessionAdmin, supportLogApiOf(restaurantA.id), { method, json: { entries: [] } });
+  const ownerRes = await staffCall(sessionOwner, supportLogApiOf(restaurantA.id), { method, json: { entries: [] } });
+  if (![404, 405].includes(res.status) || ![404, 405].includes(ownerRes.status)) {
+    writesLetThrough.push(`log ${method}: ${String(res.status)} / owner ${String(ownerRes.status)}`);
+  }
+}
+const eventsAfterWrites = await staffCall(sessionOwner, eventsApiOf(restaurantA.id));
+const cardAfterWrites = await staffCall(sessionOwner, eventApi(eventA.id));
+const teamAfterWrites = await readTeamA();
+const logAfterWrites = await readLogA();
+check(
+  "support: every write in support mode (events, links, team, the log itself) → the identical 404 (the log has no write method at all); A's events, card, team and log are unchanged",
+  writesLetThrough.length === 0 &&
+    eventsAfterWrites.body === eventsBeforeWrites.body &&
+    cardAfterWrites.body === cardBeforeWrites.body &&
+    JSON.stringify(teamAfterWrites.data) === JSON.stringify(teamBeforeWrites.data) &&
+    logAfterWrites.body === logBeforeWrites.body,
+  writesLetThrough.join("; "),
+);
+
+// The owner's log: the entry with the reason, every read (method, path, the event's name), nothing denied.
+const expectedAccess = [
+  ...supportReads(restaurantA.id, eventA.id).map(([, path]) => path),
+  ...supportPages(restaurantA.id, eventA.id),
+];
+const oldestFirst = [...logOf(logAfterWrites)].reverse();
+const [enterEntry, ...accessEntries] = oldestFirst;
+const eventPaths = new Set([eventApi(eventA.id), eventPage(eventA.id)]);
+check(
+  "support: owner A's log lists, newest first, the entry (reason, the admin's e-mail, until when) and one GET per read in support mode (the event's with its name) — nothing for refusals and writes",
+  logAfterWrites.status === 200 &&
+    oldestFirst.length === 1 + expectedAccess.length &&
+    logOf(logAfterWrites).every((entry, index, all) => index === 0 || all[index - 1].id > entry.id) &&
+    enterEntry?.kind === "enter" &&
+    enterEntry.reason === SUPPORT_REASON &&
+    enterEntry.admin?.email === staff.admin.email &&
+    enterEntry.expiresAt === grantA?.expiresAt &&
+    accessEntries.every(
+      (entry, index) =>
+        entry.kind === "access" &&
+        entry.method === "GET" &&
+        entry.path === expectedAccess[index] &&
+        entry.admin?.email === staff.admin.email &&
+        (eventPaths.has(entry.path)
+          ? entry.event?.id === eventA.id && entry.event.name === EVENT_NAME
+          : entry.event === null),
+    ),
+  oldestFirst.map((entry) => `${entry.kind} ${entry.method ?? ""} ${entry.path ?? ""}`).join(" | "),
+);
+const ownerPageWithLog = await staffCall(sessionOwner, restaurantPageOf(restaurantA.id));
+const managerLog = await readLogA(sessionManager);
+const waiterLog = await readLogA(sessionWaiter);
+const ownerBLog = await readLogA(sessionB);
+const noSessionLog = await readLogA(null);
+const managerPageA = await staffCall(sessionManager, restaurantPageOf(restaurantA.id));
+const waiterPage = await staffCall(sessionWaiter, restaurantPageOf(restaurantA.id));
+const oddLogIds = [];
+for (const id of ["2000000000", "abc", "99999999999", "-1"]) {
+  const res = await staffCall(sessionOwner, supportLogApiOf(id));
+  if (!noAccessJson(res)) {
+    oddLogIds.push(`${id}: ${String(res.status)}`);
+  }
+}
+check(
+  "support: the owner's page shows „Dziennik wejść administratora” with the reason; manager A, waiter A, owner B → the identical 404 on the log and no section; unknown ids 404, no session 401",
+  ownerPageWithLog.status === 200 &&
+    ownerPageWithLog.body.includes("data-support-log") &&
+    ownerPageWithLog.body.includes("Dziennik wejść administratora") &&
+    ownerPageWithLog.body.includes(SUPPORT_REASON) &&
+    ownerPageWithLog.body.includes(staff.admin.email) &&
+    !ownerPageWithLog.body.includes("data-support-banner") &&
+    noAccessJson(managerLog) &&
+    noAccessJson(waiterLog) &&
+    noAccessJson(ownerBLog) &&
+    noSessionLog.status === 401 &&
+    managerPageA.status === 200 &&
+    !managerPageA.body.includes("data-support-log") &&
+    waiterPage.status === 200 &&
+    !waiterPage.body.includes("data-support-log") &&
+    oddLogIds.length === 0,
+  `${ownerPageWithLog.status} ${managerLog.status} ${waiterLog.status} ${ownerBLog.status} ${noSessionLog.status} ${oddLogIds.join("; ")}`,
+);
+
+// Support mode belongs to the login session: the admin's second login is outside it.
+const secondAdminLogin = await logIn(staff.admin.email, STAFF_PASSWORD);
+const secondAdmin = sessionOf(secondAdminLogin);
+const secondReadsA = await staffCall(secondAdmin, restaurantApiOf(restaurantA.id));
+const secondPlatformPage = await staffCall(secondAdmin, "/panel/platforma");
+check(
+  "support: another login of the same admin is not in support mode (the identical 404, no active support on its platform page)",
+  redirectsTo(secondAdminLogin, "/panel") &&
+    noAccessJson(secondReadsA) &&
+    secondPlatformPage.status === 200 &&
+    !secondPlatformPage.body.includes("data-support-active"),
+  `${secondAdminLogin.status} ${secondReadsA.status}`,
+);
+
+// Exit: Origin required, logged once; afterwards the identical 404 again.
+const exitNoOrigin = await endSupportOf(sessionAdmin, restaurantA.id, { noOrigin: true });
+const exitForeign = await endSupportOf(sessionAdmin, restaurantA.id, { extraHeaders: FOREIGN });
+const exitByOwner = await endSupportOf(sessionOwner, restaurantA.id);
+const stillInSupport = await staffCall(sessionAdmin, restaurantApiOf(restaurantA.id));
+const exitA = await endSupportOf(sessionAdmin, restaurantA.id);
+const exitAgain = await endSupportOf(sessionAdmin, restaurantA.id);
+const exitUnknown = await endSupportOf(sessionAdmin, 2_000_000_000);
+const afterExitApi = await staffCall(sessionAdmin, restaurantApiOf(restaurantA.id));
+const afterExitPage = await staffCall(sessionAdmin, restaurantPageOf(restaurantA.id));
+const logAfterExit = await readLogA();
+check(
+  "support: „Zakończ wsparcie” needs the page's Origin (403) and the admin (404 for the owner); → ended, again → nothing to end; afterwards the identical 404; the log ends with the exit",
+  exitNoOrigin.status === 403 &&
+    exitForeign.status === 403 &&
+    noAccessJson(exitByOwner) &&
+    stillInSupport.status === 200 &&
+    exitA.status === 200 &&
+    exitA.data?.ended === true &&
+    Array.isArray(exitA.data?.restaurants) &&
+    exitAgain.status === 200 &&
+    exitAgain.data?.ended === false &&
+    noAccessJson(exitUnknown) &&
+    noAccessJson(afterExitApi) &&
+    isNoAccessPage(afterExitPage) &&
+    afterExitPage.body === adminUnknownPage.body &&
+    logOf(logAfterExit)[0]?.kind === "exit" &&
+    logOf(logAfterExit)[0].admin?.email === staff.admin.email &&
+    logOf(logAfterExit).length === oldestFirst.length + 2,
+  `${exitNoOrigin.status} ${exitForeign.status} ${exitByOwner.status} ${exitA.status} ${exitA.body.slice(-30)} ${exitAgain.body.slice(-30)} ${afterExitApi.status} ${logOf(logAfterExit).length}`,
+);
+
+// A switched-off restaurant opens in support mode too (its staff stay out); C's switch is restored.
+const loginC = await logIn(emailC, RESET_STAFF_PASSWORD);
+const sessionCNow = sessionOf(loginC);
+const C_REASON = `Smoke: wyłączona restauracja ${RUN_TAG}`;
+const disableC = await platformCall(sessionAdmin, idPath(restaurantCId), { method: "PATCH", json: { disabled: true } });
+const enteredC = await enterSupport(sessionAdmin, restaurantCId, { reason: C_REASON });
+const apiCInSupport = await staffCall(sessionAdmin, restaurantApiOf(restaurantCId));
+const pageCInSupport = await staffCall(sessionAdmin, restaurantPageOf(restaurantCId));
+const ownerCWhileOff = await staffCall(sessionCNow, restaurantApiOf(restaurantCId));
+const exitC = await endSupportOf(sessionAdmin, restaurantCId);
+const enableC = await platformCall(sessionAdmin, idPath(restaurantCId), { method: "PATCH", json: { disabled: false } });
+const logC = await staffCall(sessionCNow, supportLogApiOf(restaurantCId));
+check(
+  "support: the admin enters switched-off C (its owner stays out), the banner notes it; after enabling C its owner's log shows enter, two reads and exit",
+  redirectsTo(loginC, "/panel") &&
+    findListed(disableC, restaurantCId)?.disabled === true &&
+    enteredC.status === 201 &&
+    apiCInSupport.status === 200 &&
+    apiCInSupport.data?.support?.restaurantDisabled === true &&
+    pageCInSupport.status === 200 &&
+    pageCInSupport.body.includes("Ta restauracja jest wyłączona") &&
+    pageCInSupport.body.includes(C_REASON) &&
+    noAccessJson(ownerCWhileOff) &&
+    exitC.data?.ended === true &&
+    findListed(enableC, restaurantCId)?.disabled === false &&
+    logC.status === 200 &&
+    logOf(logC)
+      .map((entry) => entry.kind)
+      .join(",") === "exit,access,access,enter" &&
+    logOf(logC)[3]?.reason === C_REASON,
+  `${loginC.status} ${enteredC.status} ${apiCInSupport.status} ${pageCInSupport.status} ${ownerCWhileOff.status} ${logC.body.slice(0, 160)}`,
+);
+
+// Logging out ends support mode with the login; the entry stays in the owner's log.
+const SECOND_REASON = `Smoke: drugie logowanie ${RUN_TAG}`;
+const enteredSecond = await enterSupport(secondAdmin, restaurantA.id, { reason: SECOND_REASON });
+const secondInSupport = await staffCall(secondAdmin, restaurantApiOf(restaurantA.id));
+const firstOutside = await staffCall(sessionAdmin, restaurantApiOf(restaurantA.id));
+const loggedOutSecond = await request("/api/auth/logout", { method: "POST", form: {}, cookie: asStaff(secondAdmin) });
+const thirdAdmin = sessionOf(await logIn(staff.admin.email, STAFF_PASSWORD));
+const thirdReadsA = await staffCall(thirdAdmin, restaurantApiOf(restaurantA.id));
+const logAfterLogout = await readLogA();
+check(
+  "support: logging out ends support mode (a new login → the identical 404); the entry of that login stays in the owner's log",
+  enteredSecond.status === 201 &&
+    secondInSupport.status === 200 &&
+    noAccessJson(firstOutside) &&
+    loggedOutSecond.status === 303 &&
+    noAccessJson(thirdReadsA) &&
+    logOf(logAfterLogout).some((entry) => entry.kind === "enter" && entry.reason === SECOND_REASON),
+  `${enteredSecond.status} ${secondInSupport.status} ${firstOutside.status} ${loggedOutSecond.status} ${thirdReadsA.status}`,
 );
 
 finish();

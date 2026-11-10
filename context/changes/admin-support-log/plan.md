@@ -364,11 +364,11 @@ Additive (two tables, three functions, triggers); no existing row or function ch
 
 #### Automated
 
-- [x] 2.1 Type check passes
-- [x] 2.2 Lint passes
-- [x] 2.3 Tests pass
-- [x] 2.4 Build passes
-- [x] 2.5 The existing smoke (sections 1–28) still passes
+- [x] 2.1 Type check passes — ae7284b
+- [x] 2.2 Lint passes — ae7284b
+- [x] 2.3 Tests pass — ae7284b
+- [x] 2.4 Build passes — ae7284b
+- [x] 2.5 The existing smoke (sections 1–28) still passes — ae7284b
 
 #### Manual
 
@@ -378,9 +378,9 @@ Additive (two tables, three functions, triggers); no existing row or function ch
 
 #### Automated
 
-- [ ] 3.1 Smoke passes twice in a row on the same database
-- [ ] 3.2 Demo runs on the same database
-- [ ] 3.3 Deliberate break makes smoke section 29 fail
+- [x] 3.1 Smoke passes twice in a row on the same database
+- [x] 3.2 Demo runs on the same database
+- [x] 3.3 Deliberate break makes smoke section 29 fail
 
 #### Manual
 

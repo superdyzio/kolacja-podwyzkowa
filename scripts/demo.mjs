@@ -8,7 +8,9 @@
 // three more events of the restaurant (restaurant-events): an upcoming, a past and an archived one, so the restaurant
 // page shows every tab filled, and invites a manager and a waiter into the restaurant's team (restaurant-team), who
 // set fixed local demo passwords over HTTP (logins printed at the end). It also keeps ONE platform admin account
-// admin@demo.stolik with a fixed local password (platform-restaurants: the platform panel's login, printed at the end).
+// admin@demo.stolik with a fixed local password (platform-restaurants: the platform panel's login, printed at the end),
+// who pays the restaurant one logged support visit (admin-support-log: enter with a reason, the restaurant page, the
+// main event's card, exit), so the owner's „Dziennik wejść administratora” is not empty.
 // Every write after that goes through the HTTP API of a running server, so it passes the same validation as the UI.
 // Defaults stay as they are: guest access OFF, guess intake OPEN, no correct amount, only the starter questions.
 // Usage: npm run build && npm run preview, then npm run demo   (BASE_URL, default http://localhost:4321)
@@ -368,20 +370,25 @@ const setAdminPassword = (token) =>
     method: "POST",
     form: { token, password: ADMIN_PASSWORD, repeat: ADMIN_PASSWORD },
   });
-let adminReady = admin.token
-  ? toPanel(await setAdminPassword(admin.token))
-  : toPanel(
+// The session cookie of an answer that logged the person in (303 to /panel), else null.
+const panelCookieOf = (res) => {
+  const token = /(?:^|[\s,])kp-session=([A-Za-z0-9_-]{43});/.exec(res.setCookie)?.[1];
+  return toPanel(res) && token ? `kp-session=${token}` : null;
+};
+let adminCookie = admin.token
+  ? panelCookieOf(await setAdminPassword(admin.token))
+  : panelCookieOf(
       await request("/api/auth/login", { method: "POST", form: { email: admin.email, password: ADMIN_PASSWORD } }),
     );
-if (!adminReady) {
+if (!adminCookie) {
   try {
     const reset = await issueStaffLink(env, admin.id, "reset", BASE_URL);
-    adminReady = toPanel(await setAdminPassword(reset.token));
+    adminCookie = panelCookieOf(await setAdminPassword(reset.token));
   } catch (error) {
     fail(error instanceof PlatformError ? error.message : String(error));
   }
 }
-if (!adminReady) {
+if (!adminCookie) {
   fail(`Nie udało się ustawić hasła administratora demo (${ADMIN_EMAIL}).`);
 }
 
@@ -579,7 +586,40 @@ if (team.team?.members?.length !== 3 || !team.team.members.every((member) => mem
   fail("Zespół lokalu demo nie ma trzech osób z ustawionym hasłem (właściciel, menedżer, kelner).");
 }
 
-// --- 9. Summary -------------------------------------------------------------------------------------------------
+// --- 9. A support visit of the platform admin (admin-support-log): enter with a reason, two pages, exit -----------
+
+const SUPPORT_REASON = "Pokaz trybu wsparcia: sprawdzenie listy wydarzeń (demo)";
+const supportApi = `/api/panel/platform/restaurants/${String(restaurantId)}/support`;
+await step(
+  "wejście administratora jako wsparcie",
+  supportApi,
+  { method: "POST", json: { reason: SUPPORT_REASON }, cookie: adminCookie },
+  201,
+);
+for (const [name, path] of [
+  ["strona restauracji", `/panel/restauracje/${String(restaurantId)}`],
+  ["karta wydarzenia", `/panel/wydarzenia/${String(event.id)}`],
+]) {
+  const page = await request(path, { cookie: adminCookie });
+  if (page.status !== 200 || !page.text.includes("data-support-banner")) {
+    fail(`Tryb wsparcia nie otworzył: ${name} (HTTP ${String(page.status)}).`);
+  }
+}
+const supportEnded = await step("koniec trybu wsparcia", supportApi, { method: "DELETE", cookie: adminCookie });
+if (supportEnded.ended !== true) {
+  fail("Tryb wsparcia administratora demo nie był aktywny przy wyjściu.");
+}
+const supportLog = await step(
+  "dziennik wejść administratora",
+  `/api/panel/restaurants/${String(restaurantId)}/support-log`,
+  { cookie: ownerCookie },
+);
+const supportKinds = supportLog.entries.map((entry) => entry.kind).join(",");
+if (supportKinds !== "exit,access,access,enter" || supportLog.entries[3].reason !== SUPPORT_REASON) {
+  fail(`Dziennik wejść administratora demo ma nieoczekiwane wpisy: ${supportKinds || "brak"}.`);
+}
+
+// --- 10. Summary ------------------------------------------------------------------------------------------------
 
 const seatTotal = venue.tables.reduce((sum, table) => sum + table.seatCount, 0);
 const guessCount = guessBoard.guests.filter((guest) => guest.amountGrosze !== null).length;
@@ -597,6 +637,7 @@ Dane demo gotowe („${RESTAURANT_NAME}” · „${EVENT_NAME}”, id ${String(e
 - bez zmian: przyjmowanie strzałów otwarte, prawidłowa kwota niewpisana, dostęp gości wyłączony, pytania startowe
 - wydarzenia lokalu: nadchodzące ${String(eventLists.upcoming.length)}, minione ${String(eventLists.past.length)}, archiwum ${String(eventLists.archived.length)}
 - zespół lokalu: ${String(team.team.members.length)} osoby (właściciel, menedżer, kelner)
+- dziennik wejść administratora: wejście jako wsparcie z powodem, 2 otwarte strony, wyjście (widzi go właściciel na stronie restauracji)
 
 Organizator: ${organizerUrl}
 TV:          ${new URL(`/tv/${event.tvKey}`, BASE_URL).href}
