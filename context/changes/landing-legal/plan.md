@@ -397,7 +397,7 @@ None (no migration, no new API route).
 
 #### Automated
 
-- [x] 3.1 Prettier check of the docs passes: `npx prettier --check CLAUDE.md README.md docs/scenariusz-pokazu.md`
+- [x] 3.1 Prettier check of the docs passes: `npx prettier --check CLAUDE.md README.md docs/scenariusz-pokazu.md` — 1a51d9b
 
 #### Manual
 

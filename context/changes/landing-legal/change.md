@@ -1,7 +1,7 @@
 ---
 change_id: landing-legal
 title: Public product page with login and draft terms and privacy policy
-status: implementing
+status: implemented
 created: 2026-11-10
 updated: 2026-11-10
 archived_at: null
