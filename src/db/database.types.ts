@@ -165,6 +165,9 @@ export interface Database {
           created_at: string;
           // S-05: personal link key (/g/<key>), 24 chars base64url; the DB default generates it.
           access_key: string;
+          // guest-import-diets (S-23): diet and allergy tags (src/lib/diets/DIET_TAGS) and a note ≤ 120; health data.
+          diets: string[];
+          diet_note: string | null;
         };
         Insert: {
           id?: never;
@@ -174,6 +177,8 @@ export interface Database {
           group_id?: number | null;
           created_at?: string;
           access_key?: string;
+          diets?: string[];
+          diet_note?: string | null;
         };
         Update: {
           id?: never;
@@ -183,6 +188,8 @@ export interface Database {
           group_id?: number | null;
           created_at?: string;
           access_key?: string;
+          diets?: string[];
+          diet_note?: string | null;
         };
         Relationships: [
           {

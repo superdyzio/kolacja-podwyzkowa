@@ -29,6 +29,20 @@ export {
   type DeleteGuestResult,
   type DissolveGroupResult,
   type GuestPatch,
+  type NewGuestInput,
   type UpdateGuestResult,
 } from "./service";
+export {
+  MAX_IMPORT_RECORDS,
+  MAX_IMPORT_TEXT_LENGTH,
+  checkImportAgainstList,
+  describeImportProblem,
+  detectSeparator,
+  parseGuestImport,
+  splitRecords,
+  toImportPreview,
+  type GuestImportProblem,
+  type GuestImportRow,
+  type ParsedGuestImport,
+} from "./import";
 export { formatGuestSummary, pluralPl, summarizeGuestList, type GuestListSummary } from "./summary";

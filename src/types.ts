@@ -1,4 +1,5 @@
 import type { Database } from "@/db/database.types";
+import type { DietTag } from "@/lib/diets/rules";
 import type { GuestModules, ModuleKey } from "@/lib/modules/rules";
 
 // Shared entity types (DB rows and DTOs).
@@ -16,6 +17,69 @@ export interface GuestDto {
   isAbsent: boolean;
   // The inseparable group this guest belongs to (at most one), or null.
   groupId: number | null;
+  // guest-import-diets (S-23): diet and allergy tags (DIET_TAGS order) and the note for the kitchen (≤ 120), or none.
+  // Health data: GuestDto is the organizer's (client link, panel through the dispatcher) — never a guest's or the TV's.
+  diets: DietTag[];
+  dietNote: string | null;
+}
+
+// --- Diets at the seat (guest-import-diets, S-23) — the kitchen's and the staff's view, no ids ---------------------
+
+// A present guest at a published seat with a diet or a note (the name as published, like the TV).
+export interface DietSeatDto {
+  seat: number;
+  guestName: string;
+  diets: DietTag[];
+  note: string | null;
+}
+
+// A published table with the seats that have a diet, in seat order.
+export interface DietTableDto {
+  name: string;
+  room: string;
+  seats: DietSeatDto[];
+}
+
+// A present guest with a diet who has no seat in the latest published snapshot (live name).
+export interface DietGuestDto {
+  guestName: string;
+  diets: DietTag[];
+  note: string | null;
+}
+
+export interface DietCountDto {
+  tag: DietTag;
+  count: number;
+}
+
+// tables: by room, then table name; unplaced: Polish name order; counts: DIET_TAGS order, zeros left out; guests: the
+// present guests with any diet or note. Built by dietBoard() (src/lib/diets/board.ts).
+export interface DietBoardDto {
+  tables: DietTableDto[];
+  unplaced: DietGuestDto[];
+  counts: DietCountDto[];
+  guests: number;
+}
+
+// One row of a guest import as it would be saved (line = the 1-based line of the file, header counted).
+export interface GuestImportRowDto {
+  line: number;
+  name: string;
+  diets: DietTag[];
+  note: string | null;
+}
+
+export type GuestImportSeparator = "tab" | "semicolon" | "comma" | "none";
+
+// POST /api/o/<key>/guests/import { text, preview: true } → the preview (nothing saved); also the body of a 400 when
+// a save finds problems. problems: one localized line each („Linia 4: …”); ready: no problems and at least one row.
+export interface GuestImportPreviewDto {
+  rows: GuestImportRowDto[];
+  problems: string[];
+  header: boolean;
+  separator: GuestImportSeparator;
+  existing: number;
+  ready: boolean;
 }
 
 // An inseparable group of 2–5 guests; memberIds in the same (Polish alphabetical) order as the guest list.
@@ -760,6 +824,8 @@ export interface OrderBoardDto {
   drinkTotals: DrinkTotalsDto;
   // menu-catalog-courses: the event's available menu (no catalog ids); active = new lines must come from it.
   menu: OrderMenuDto;
+  // guest-import-diets (S-23): diets at the published seats and the counts (client, panel preview, both floors).
+  diets: DietBoardDto;
 }
 
 // GET /api/r/<key>/orders: the restaurant's view. seating = what the TV draws (names at chairs, no ids); no prices,
@@ -770,6 +836,8 @@ export interface RestaurantViewDto {
   prep: PrepLineDto[];
   placement: OrderPlacementDto<RestaurantItemDto>;
   totals: { quantity: number; toServe: number };
+  // guest-import-diets (S-23): diets at the published seats and the counts (no ids); covered by `version`.
+  diets: DietBoardDto;
 }
 
 // --- Platform panel (platform-restaurants, S-10) -------------------------------------------------------------------

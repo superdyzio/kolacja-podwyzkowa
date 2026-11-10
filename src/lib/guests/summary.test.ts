@@ -27,9 +27,9 @@ describe("summarizeGuestList", () => {
   it("counts guests, absences and groups", () => {
     const summary = summarizeGuestList({
       guests: [
-        { id: 1, displayName: "Ania", isAbsent: false, groupId: 7 },
-        { id: 2, displayName: "Kuba", isAbsent: true, groupId: 7 },
-        { id: 3, displayName: "Ola", isAbsent: false, groupId: null },
+        { id: 1, displayName: "Ania", isAbsent: false, groupId: 7, diets: [], dietNote: null },
+        { id: 2, displayName: "Kuba", isAbsent: true, groupId: 7, diets: [], dietNote: null },
+        { id: 3, displayName: "Ola", isAbsent: false, groupId: null, diets: [], dietNote: null },
       ],
       groups: [{ id: 7, memberIds: [1, 2] }],
     });

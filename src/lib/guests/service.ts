@@ -1,4 +1,5 @@
 import type { Database } from "@/db/database.types";
+import { normalizeDiets, parseDietNote, type DietTag } from "@/lib/diets/rules";
 import type { DbClient } from "@/lib/supabase-client";
 import type { GuestDto, GuestGroupDto, GuestListDto, GuestRow } from "@/types";
 import {
@@ -18,9 +19,10 @@ import {
 // trigger dissolves any group that drops below 2 members (e.g. when a member is deleted).
 
 const UNIQUE_VIOLATION = "23505";
-const GUEST_COLUMNS = "id, display_name, is_absent, group_id";
+// guest-import-diets (S-23): the diet columns are health data — read here for the organizer's list only (never logged).
+const GUEST_COLUMNS = "id, display_name, is_absent, group_id, diets, diet_note";
 
-type GuestColumns = Pick<GuestRow, "id" | "display_name" | "is_absent" | "group_id">;
+type GuestColumns = Pick<GuestRow, "id" | "display_name" | "is_absent" | "group_id" | "diets" | "diet_note">;
 type GuestUpdate = Database["public"]["Tables"]["guest"]["Update"];
 
 const polishCollator = new Intl.Collator("pl");
@@ -34,7 +36,7 @@ export type UpdateGuestResult =
   | { status: "updated"; guest: GuestDto }
   | { status: "not-found" }
   | { status: "duplicate" }
-  | { status: "invalid"; reason: DisplayNameProblem };
+  | { status: "invalid"; reason: DisplayNameProblem | "note-too-long" };
 
 export type DeleteGuestResult = { status: "deleted" } | { status: "not-found" };
 
@@ -49,10 +51,27 @@ export type DissolveGroupResult = { status: "dissolved" } | { status: "not-found
 export interface GuestPatch {
   displayName?: string;
   isAbsent?: boolean;
+  // guest-import-diets (S-23): the whole set of tags (unknown ones dropped) and the note (empty / null = none).
+  diets?: readonly DietTag[];
+  dietNote?: string | null;
+}
+
+// A guest to add: a name, or (import, S-23) a name with a diet and a note. Expected parsed already.
+export interface NewGuestInput {
+  name: string;
+  diets?: readonly DietTag[];
+  dietNote?: string | null;
 }
 
 function toGuestDto(row: GuestColumns): GuestDto {
-  return { id: row.id, displayName: row.display_name, isAbsent: row.is_absent, groupId: row.group_id };
+  return {
+    id: row.id,
+    displayName: row.display_name,
+    isAbsent: row.is_absent,
+    groupId: row.group_id,
+    diets: normalizeDiets(row.diets),
+    dietNote: row.diet_note,
+  };
 }
 
 function compareGuests(a: GuestDto, b: GuestDto): number {
@@ -107,12 +126,22 @@ async function readAllNames(db: DbClient, eventId: number): Promise<string[]> {
   return data.map((row) => row.display_name);
 }
 
-// Adds guests all-or-nothing. Expects names already parsed (parseGuestList); an invalid name is a caller bug.
-export async function addGuests(db: DbClient, eventId: number, names: readonly string[]): Promise<AddGuestsResult> {
-  const normalized = names.map(normalizeDisplayName);
+// Adds guests all-or-nothing (one insert). Expects names already parsed (parseGuestList / parseGuestImport); an invalid
+// name or note is a caller bug.
+export async function addGuests(
+  db: DbClient,
+  eventId: number,
+  guests: readonly (string | NewGuestInput)[],
+): Promise<AddGuestsResult> {
+  const inputs = guests.map((guest) => (typeof guest === "string" ? { name: guest } : guest));
+  const normalized = inputs.map((input) => normalizeDisplayName(input.name));
   const invalid = normalized.find((name) => validateDisplayName(name) !== null);
   if (invalid !== undefined) {
     throw new TypeError(`Nieprawidłowa nazwa gościa: „${invalid}”`);
+  }
+  const notes = inputs.map((input) => parseDietNote(input.dietNote));
+  if (notes.some((note) => !note.ok)) {
+    throw new TypeError("Za długie uwagi gościa.");
   }
   if (normalized.length === 0) {
     return { status: "added", added: [] };
@@ -129,7 +158,17 @@ export async function addGuests(db: DbClient, eventId: number, names: readonly s
 
   const { data, error } = await db
     .from("guest")
-    .insert(normalized.map((display_name) => ({ event_id: eventId, display_name })))
+    .insert(
+      normalized.map((display_name, index) => {
+        const note = notes[index];
+        return {
+          event_id: eventId,
+          display_name,
+          diets: normalizeDiets(inputs[index].diets ?? []),
+          diet_note: note.ok ? note.note : null,
+        };
+      }),
+    )
     .select(GUEST_COLUMNS);
   if (error) {
     // Someone added the same name in the meantime: the unique index is the backstop.
@@ -142,7 +181,7 @@ export async function addGuests(db: DbClient, eventId: number, names: readonly s
   return { status: "added", added: data.map(toGuestDto).sort(compareGuests) };
 }
 
-// Renames and/or marks a guest absent/present. Group membership is never changed here.
+// Renames, marks a guest absent/present and/or sets their diet (S-23). Group membership is never changed here.
 export async function updateGuest(
   db: DbClient,
   eventId: number,
@@ -160,6 +199,16 @@ export async function updateGuest(
   }
   if (patch.isAbsent !== undefined) {
     update.is_absent = patch.isAbsent;
+  }
+  if (patch.diets !== undefined) {
+    update.diets = normalizeDiets(patch.diets);
+  }
+  if (patch.dietNote !== undefined) {
+    const note = parseDietNote(patch.dietNote);
+    if (!note.ok) {
+      return { status: "invalid", reason: "note-too-long" };
+    }
+    update.diet_note = note.note;
   }
 
   const query =

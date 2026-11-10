@@ -106,9 +106,16 @@ describe.skipIf(!hasLocalDb)("guest list, groups and absences against the local 
       expect((await ownList()).guests).toEqual([]);
     });
 
-    it("adds new guests present and without a group", async () => {
+    it("adds new guests present, without a group and without a diet", async () => {
       const [ania] = await add("Ania");
-      expect(ania).toEqual({ id: ania.id, displayName: named("Ania"), isAbsent: false, groupId: null });
+      expect(ania).toEqual({
+        id: ania.id,
+        displayName: named("Ania"),
+        isAbsent: false,
+        groupId: null,
+        diets: [],
+        dietNote: null,
+      });
     });
 
     it("rejects the whole batch when a name is already on the list (any letter case)", async () => {

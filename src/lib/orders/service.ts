@@ -1,4 +1,5 @@
 import { generateAccessKey } from "@/lib/access/keys";
+import { dietBoard } from "@/lib/diets/board";
 import { getGuestList } from "@/lib/guests/service";
 import { toTvSeating } from "@/lib/seating/published";
 import { getLatestSnapshot, getPlanVersion } from "@/lib/seating/service";
@@ -130,6 +131,8 @@ export function toOrderBoard(
     drinkTotals: drinkTotals(drinks),
     // menu-catalog-courses: what a new order line of each available item costs now (the event's price first).
     menu: orderMenu(available, (name) => eventPriceOf(items, name)),
+    // guest-import-diets (S-23): the diets at the published seats (live guest rows, never the snapshot).
+    diets: dietBoard(snapshot, guestList.guests),
   };
 }
 
@@ -156,7 +159,12 @@ export async function getRestaurantView(db: DbClient, eventId: number): Promise<
     getLatestSnapshot(db, eventId),
     getPlanVersion(db, eventId),
   ]);
-  return toRestaurantView(items, placementSource(guestList, venue, snapshot), planVersion);
+  return toRestaurantView(
+    items,
+    placementSource(guestList, venue, snapshot),
+    planVersion,
+    dietBoard(snapshot, guestList.guests),
+  );
 }
 
 export interface OrderItemInput {

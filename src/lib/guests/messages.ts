@@ -26,6 +26,18 @@ export const guestsMessages = defineMessages(
     groupNotFound: "Nie znaleziono grupy.",
     groupSize: (min: number, max: number) => `Grupa musi mieć od ${min} do ${max} osób.`,
     alreadyGrouped: "Ktoś z zaznaczonych jest już w grupie.",
+    // import.ts (guest-import-diets, S-23)
+    importNameMissing: (line: number) => `Linia ${line}: brak imienia — dieta lub uwagi bez osoby.`,
+    importOnList: (line: number, text: string) => `Linia ${line}: „${text}” — już jest na liście gości.`,
+    importUnknownDiet: (line: number, text: string, words: string) =>
+      `Linia ${line}: „${text}” — nieznana dieta: ${words}. Użyj diety z listy albo wpisz to w kolumnie uwag.`,
+    importNoteTooLong: (line: number, text: string) =>
+      `Linia ${line}: „${text}” — za długie uwagi (najwyżej 120 znaków).`,
+    importTooMany: (max: number, existing: number, rows: number) =>
+      `Za dużo gości: na liście jest ${existing}, import dodałby ${rows}, a limit to ${max}.`,
+    importTooManyLines: (max: number) => `Plik ma więcej niż ${max} wierszy — podziel go na części.`,
+    importEmpty: "Brak gości do dodania — sprawdź plik lub wklejkę.",
+    importTooLarge: "Plik lub wklejka jest za duża.",
   },
   {
     lineTooLong: (line: number, text: string, max: number) =>
@@ -46,6 +58,17 @@ export const guestsMessages = defineMessages(
     groupNotFound: "Group not found.",
     groupSize: (min: number, max: number) => `A group must have ${min} to ${max} people.`,
     alreadyGrouped: "Someone you selected is already in a group.",
+    importNameMissing: (line: number) => `Line ${line}: no name — a diet or notes without a person.`,
+    importOnList: (line: number, text: string) => `Line ${line}: “${text}” — already on the guest list.`,
+    importUnknownDiet: (line: number, text: string, words: string) =>
+      `Line ${line}: “${text}” — unknown diet: ${words}. Use a diet from the list or put it in the notes column.`,
+    importNoteTooLong: (line: number, text: string) =>
+      `Line ${line}: “${text}” — notes too long (at most 120 characters).`,
+    importTooMany: (max: number, existing: number, rows: number) =>
+      `Too many guests: the list has ${existing}, the import would add ${rows}, and the limit is ${max}.`,
+    importTooManyLines: (max: number) => `The file has more than ${max} rows — split it into parts.`,
+    importEmpty: "No guests to add — check the file or the paste.",
+    importTooLarge: "The file or the paste is too large.",
   },
 );
 
