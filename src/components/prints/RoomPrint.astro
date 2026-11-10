@@ -1,0 +1,556 @@
+---
+import { EMPTY_DIET_BOARD } from "@/lib/diets/board";
+import { formatDateTime, formatEventDate } from "@/lib/events/dates";
+import type { Locale } from "@/lib/i18n/locale";
+import { boardEntries, boardPages } from "@/lib/prints/board";
+import { printBrand } from "@/lib/prints/brand";
+import { BOARD_PAPER, printFormat, printPaper, type PrintOptions } from "@/lib/prints/options";
+import { placeCardLayout, placeCardSheets, placeCards } from "@/lib/prints/place-cards";
+import { staffList, staffListPages } from "@/lib/prints/staff-list";
+import { printEmptyReason } from "@/lib/prints/state";
+import { tableCardSheets, tableCards } from "@/lib/prints/table-cards";
+import type { RoomPrintSourceDto, SupportAccessDto } from "@/types";
+import FindTableBoard from "./FindTableBoard.astro";
+import PlaceCards from "./PlaceCards.astro";
+import PrintToolbar from "./PrintToolbar.astro";
+import StaffList from "./StaffList.astro";
+import TableCards from "./TableCards.astro";
+
+// One room print page (room-prints, S-24; FR-038) — the body every print page renders after its own guard: the page
+// size (`@page` with margin 0, so browsers print no header with the address), the screen-only toolbar and the fixed
+// sheets of the print, all from the latest PUBLISHED seating. The pages differ only in the paths and the logo base:
+// the client's print is relative (no key in its HTML), the panel's goes through the dispatcher, support mode and the
+// floors load no image.
+interface Props {
+  options: PrintOptions;
+  source: RoomPrintSourceDto;
+  logoBase: string | null;
+  back: { href: string; label: string };
+  seatingHref: string | null;
+  support: SupportAccessDto | null;
+  locale: Locale;
+}
+
+const { options, source, logoBase, back, seatingHref, support, locale } = Astro.props;
+const brand = printBrand(source.branding, logoBase);
+const published = source.published;
+const empty = printEmptyReason(options.kind, published, source.event.purgedAt);
+const eventLine = brand?.clientName ? `${brand.clientName} · ${source.event.name}` : source.event.name;
+const subtitle = `${eventLine} · ${formatEventDate(source.event.date, locale)}`;
+const paper = printPaper(options);
+const format = printFormat(options) ?? "a4";
+
+const board =
+  options.kind === "tablica" && empty === null
+    ? { pages: boardPages(boardEntries(published)), ...BOARD_PAPER[options.format] }
+    : null;
+const tables =
+  options.kind === "karty-stolow" && empty === null
+    ? { sheets: tableCardSheets(tableCards(published), options.format), format: options.format, names: options.names }
+    : null;
+const places =
+  options.kind === "winietki" && empty === null
+    ? (() => {
+        const layout = placeCardLayout(options.format);
+        return { sheets: placeCardSheets(placeCards(published), layout), layout, format: options.format };
+      })()
+    : null;
+const staff =
+  options.kind === "lista-obslugi" && empty === null
+    ? staffListPages(staffList(published, source.diets ?? EMPTY_DIET_BOARD))
+    : null;
+---
+
+{/* The page size: A4, or A3 for the board's poster (a static rule per size, never request text). */}
+{paper.page === "A3" ? (
+  <style is:inline>
+    @page {
+      size: A3 portrait;
+      margin: 0;
+    }
+  </style>
+) : (
+  <style is:inline>
+    @page {
+      size: A4 portrait;
+      margin: 0;
+    }
+  </style>
+)}
+<main class="flex flex-col gap-6 p-4 sm:p-8 print:p-0" data-room-print={options.kind} data-print-format={format}>
+  <PrintToolbar
+    options={options}
+    eventName={eventLine}
+    back={back}
+    publishedAt={published ? formatDateTime(published.publishedAt, locale) : null}
+    unpublished={published !== null && !source.upToDate}
+    seatingHref={seatingHref}
+    empty={empty}
+    support={support}
+    locale={locale}
+  />
+  <div class="rp-sheets overflow-x-auto print:overflow-visible">
+    {board && (
+      <FindTableBoard
+        pages={board.pages}
+        paper={board.paper}
+        scale={board.scale}
+        brand={brand}
+        subtitle={subtitle}
+        locale={locale}
+      />
+    )}
+    {tables && (
+      <TableCards
+        sheets={tables.sheets}
+        format={tables.format}
+        withNames={tables.names}
+        brand={brand}
+        subtitle={subtitle}
+        locale={locale}
+      />
+    )}
+    {places && (
+      <PlaceCards sheets={places.sheets} layout={places.layout} format={places.format} brand={brand} locale={locale} />
+    )}
+    {staff && <StaffList pages={staff} brand={brand} subtitle={subtitle} locale={locale} />}
+  </div>
+</main>
+
+<style is:global>
+  /* Room prints (S-24): fixed sheets in mm like the QR cards (/o/<key>/karteczki). Printed at 1 mm less than the
+     paper so Chrome never spills a blank page between sheets. Cut lines dashed, fold lines dotted. Colours print as
+     they are (print-color-adjust). */
+  .rp-sheet {
+    position: relative;
+    box-sizing: border-box;
+    width: var(--rp-w);
+    min-height: var(--rp-h);
+    margin: 0 auto 8mm;
+    background: #fff;
+    color: #000;
+    box-shadow: 0 1px 6px rgb(0 0 0 / 0.25);
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+
+  .rp-sheet * {
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+
+  .rp-foot {
+    position: absolute;
+    right: 0;
+    bottom: calc(5mm * var(--rp-s, 1));
+    left: 0;
+    margin: 0;
+    text-align: center;
+    font-size: calc(8pt * var(--rp-s, 1));
+    color: #444;
+  }
+
+  .rp-face-upside-down {
+    transform: rotate(180deg);
+  }
+
+  /* The brand: a row above a board or a staff page (a rule in the restaurant's colour), a line on a card. */
+  .rp-brand {
+    display: flex;
+    align-items: center;
+    gap: 4mm;
+  }
+
+  .rp-brand-side {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    gap: 2mm;
+  }
+
+  .rp-brand-logo {
+    display: block;
+    width: auto;
+    object-fit: contain;
+  }
+
+  .rp-brand--sheet {
+    justify-content: space-between;
+    min-height: calc(12mm * var(--rp-s, 1));
+    padding-bottom: calc(2mm * var(--rp-s, 1));
+    border-bottom: calc(1.2mm * var(--rp-s, 1)) solid #000;
+    font-size: calc(11pt * var(--rp-s, 1));
+    font-weight: 700;
+  }
+
+  .rp-brand--sheet .rp-brand-logo {
+    max-width: calc(55mm * var(--rp-s, 1));
+    max-height: calc(12mm * var(--rp-s, 1));
+  }
+
+  .rp-brand--card {
+    justify-content: center;
+    gap: 3mm;
+    font-size: 8pt;
+    font-weight: 700;
+  }
+
+  .rp-brand--card .rp-brand-logo {
+    max-width: 28mm;
+    max-height: 7mm;
+  }
+
+  /* „Znajdź swój stolik”: three columns of BOARD_ROWS rows; the A3 poster scales everything by --rp-s. */
+  .rp-board {
+    display: flex;
+    flex-direction: column;
+    padding: calc(11mm * var(--rp-s)) calc(12mm * var(--rp-s)) calc(12mm * var(--rp-s));
+    font-size: calc(10.5pt * var(--rp-s));
+    --rp-row: calc(6.6mm * var(--rp-s));
+  }
+
+  .rp-board-title {
+    margin: calc(3mm * var(--rp-s)) 0 0;
+    text-align: center;
+    font-size: calc(24pt * var(--rp-s));
+    font-weight: 800;
+    line-height: 1.15;
+  }
+
+  .rp-board-subtitle {
+    margin: 0 0 calc(4mm * var(--rp-s));
+    text-align: center;
+    font-size: calc(11pt * var(--rp-s));
+    color: #333;
+  }
+
+  .rp-board-columns {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    align-items: start;
+    column-gap: calc(6mm * var(--rp-s));
+  }
+
+  .rp-board-column {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .rp-board-letter {
+    display: flex;
+    align-items: flex-end;
+    gap: calc(1.5mm * var(--rp-s));
+    height: var(--rp-row);
+    box-sizing: border-box;
+    border-bottom: calc(0.4mm * var(--rp-s)) solid #000;
+    font-size: calc(13pt * var(--rp-s));
+    font-weight: 800;
+    line-height: 1.1;
+  }
+
+  .rp-board-continued {
+    font-size: calc(8pt * var(--rp-s));
+    font-weight: 400;
+  }
+
+  .rp-board-guest {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: calc(2mm * var(--rp-s));
+    min-height: calc(var(--rp-row) * var(--rp-units, 1));
+    box-sizing: border-box;
+    border-bottom: calc(0.2mm * var(--rp-s)) dotted #999;
+    line-height: 1.2;
+  }
+
+  .rp-board-name {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+
+  .rp-board-table {
+    flex: none;
+    max-width: 55%;
+    text-align: right;
+    font-weight: 700;
+    overflow-wrap: anywhere;
+  }
+
+  .rp-board-room {
+    font-size: 0.85em;
+    font-weight: 400;
+  }
+
+  /* Table cards: two A5-sized faces per A4 sheet — folded (tent, the upper face upside down) or cut (flat). */
+  .rp-table-sheet {
+    height: var(--rp-h);
+    overflow: hidden;
+  }
+
+  .rp-table-sheet::after {
+    content: "";
+    position: absolute;
+    top: 50%;
+    right: 0;
+    left: 0;
+    border-top: 0.3mm dashed #888;
+  }
+
+  .rp-table-sheet--tent::after {
+    border-top-style: dotted;
+    border-top-color: #555;
+  }
+
+  .rp-table-tent {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+  }
+
+  .rp-table-face {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 3mm;
+    box-sizing: border-box;
+    height: 50%;
+    padding: 10mm 14mm 8mm;
+    overflow: hidden;
+    border-top: 2.5mm solid transparent;
+    text-align: center;
+  }
+
+  .rp-table-name {
+    max-width: 100%;
+    margin: auto 0 0;
+    font-weight: 800;
+    line-height: 1.05;
+    overflow-wrap: anywhere;
+  }
+
+  .rp-table-room {
+    margin: 0;
+    font-size: 16pt;
+    color: #333;
+  }
+
+  .rp-table-guests {
+    max-width: 100%;
+    margin: 2mm 0 0;
+    padding: 0;
+    list-style: none;
+    column-gap: 8mm;
+    text-align: left;
+    font-size: 12pt;
+    line-height: 1.35;
+  }
+
+  .rp-table-guests li {
+    break-inside: avoid;
+  }
+
+  .rp-table-event {
+    margin: auto 0 0;
+    font-size: 8pt;
+    color: #555;
+  }
+
+  /* Place cards: absolutely placed pieces (sizes and offsets from the layout), cut lines as outlines. */
+  .rp-place-sheet {
+    height: var(--rp-h);
+    overflow: hidden;
+  }
+
+  .rp-place-card {
+    position: absolute;
+    display: flex;
+    flex-direction: column;
+    box-sizing: border-box;
+    outline: 0.3mm dashed #888;
+    outline-offset: -0.15mm;
+  }
+
+  .rp-place-card--folded::after {
+    content: "";
+    position: absolute;
+    top: 50%;
+    right: 0;
+    left: 0;
+    border-top: 0.3mm dotted #555;
+  }
+
+  .rp-place-face {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    box-sizing: border-box;
+    padding: 2.5mm 4mm 3mm;
+    overflow: hidden;
+    border-top: 1.5mm solid transparent;
+    text-align: center;
+  }
+
+  .rp-place-name {
+    max-width: 100%;
+    margin: auto 0;
+    font-weight: 700;
+    line-height: 1.1;
+    overflow-wrap: anywhere;
+  }
+
+  .rp-place-table {
+    margin: 0;
+    font-size: 8pt;
+    color: #333;
+  }
+
+  /* The staff list: STAFF_PAGE_UNITS rows of --rp-unit per page; rows grow rather than cut a note off. */
+  .rp-staff {
+    padding: 11mm 12mm 12mm;
+    font-size: 10pt;
+    --rp-unit: 6.3mm;
+  }
+
+  .rp-staff-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 4mm;
+    margin-top: 2mm;
+  }
+
+  .rp-staff-title {
+    margin: 0;
+    font-size: 16pt;
+    font-weight: 800;
+  }
+
+  .rp-staff-subtitle {
+    margin: 0;
+    text-align: right;
+    font-size: 10pt;
+    color: #333;
+  }
+
+  .rp-staff-intro {
+    margin: 0.5mm 0 2mm;
+    font-size: 8pt;
+    color: #444;
+  }
+
+  .rp-staff-summary {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 1mm 3mm;
+    box-sizing: border-box;
+    padding: 1mm 2mm;
+    border: 0.3mm solid #000;
+  }
+
+  .rp-staff-summary-title {
+    font-weight: 800;
+  }
+
+  .rp-staff-count {
+    margin-left: 2mm;
+    padding: 0 1.5mm;
+    border: 0.2mm solid #999;
+    border-radius: 1mm;
+    font-size: 9pt;
+    font-weight: 400;
+    white-space: nowrap;
+  }
+
+  .rp-staff-allergy {
+    border-color: #b91c1c;
+    color: #b91c1c;
+    font-weight: 700;
+  }
+
+  .rp-staff-table {
+    width: 100%;
+    margin-top: 1mm;
+    border-collapse: collapse;
+    table-layout: fixed;
+  }
+
+  .rp-staff-table caption {
+    box-sizing: border-box;
+    padding-top: 1.5mm;
+    caption-side: top;
+    text-align: left;
+  }
+
+  .rp-staff-table-name {
+    font-size: 12pt;
+    font-weight: 800;
+  }
+
+  .rp-staff-table th {
+    padding: 0 1.5mm;
+    border-bottom: 0.3mm solid #000;
+    text-align: left;
+    font-size: 8pt;
+    font-weight: 600;
+    color: #333;
+  }
+
+  .rp-staff-table td {
+    padding: 0.5mm 1.5mm;
+    border-bottom: 0.2mm solid #bbb;
+    vertical-align: middle;
+    overflow-wrap: anywhere;
+  }
+
+  .rp-staff-table tr {
+    break-inside: avoid;
+  }
+
+  .rp-staff-table .rp-staff-seat {
+    width: 14mm;
+    text-align: center;
+  }
+
+  .rp-staff-table .rp-staff-guest {
+    width: 58mm;
+    font-weight: 600;
+  }
+
+  .rp-staff [data-diet-badges] {
+    font-size: 9pt;
+  }
+
+  @media print {
+    html,
+    body {
+      background: #fff;
+    }
+
+    .rp-sheet {
+      min-height: calc(var(--rp-h) - 1mm);
+      margin: 0;
+      box-shadow: none;
+      break-after: page;
+    }
+
+    .rp-table-sheet,
+    .rp-place-sheet {
+      height: calc(var(--rp-h) - 1mm);
+    }
+
+    .rp-sheet:last-child {
+      break-after: auto;
+    }
+  }
+</style>
+
+<script>
+  for (const button of document.querySelectorAll("[data-print]")) {
+    button.addEventListener("click", () => {
+      window.print();
+    });
+  }
+</script>

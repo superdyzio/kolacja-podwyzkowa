@@ -38,6 +38,9 @@ import { EventWaitersManager } from "@/components/event-waiters/EventWaitersMana
 import { eventWaiterMessages, getEventWaiters } from "@/lib/event-waiters";
 import GuestDataNote from "@/components/privacy/GuestDataNote.astro";
 import { EXPORT_FORMATS, exportPath, getEventRetention, privacyMessages } from "@/lib/privacy";
+import PrintLinks from "@/components/prints/PrintLinks.astro";
+import PrintState from "@/components/prints/PrintState.astro";
+import { printMessages } from "@/lib/prints/messages";
 
 // The event card (restaurant-events, S-11; US-06, US-09, FR-025): owners and managers of the event's restaurant see
 // what it is, copy, open and replace its client, TV and staff tablet links, edit it, archive or restore it; owners also
@@ -61,6 +64,7 @@ const tmenu = menuMessages(locale);
 const tbrand = brandingMessages(locale);
 const twaiters = eventWaiterMessages(locale);
 const tprivacy = privacyMessages(locale);
+const tprint = printMessages(locale);
 const panel = await findPanelEvent(Astro.locals, Astro.params.id, EVENT_STAFF_ROLES);
 const loaded = panel
   ? await Promise.all([
@@ -116,6 +120,8 @@ const work = loaded
       ] = loaded;
       const quizActive = modules?.modules.find((module) => module.key === "pubQuiz")?.active ?? false;
       return {
+        // room-prints (S-24): the publication state above „Wydruki dla sali”.
+        prints: { publishedAt: board.published?.publishedAt ?? null, upToDate: board.upToDate },
         retention,
         branding,
         waiters,
@@ -185,6 +191,24 @@ const work = loaded
         </section>
       )}
       <ClientWorkCards eventId={card.id} sections={work.sections} summaries={work.summaries} locale={locale} />
+      <section
+        aria-labelledby="event-prints-heading"
+        class="flex flex-col gap-3 rounded-xl border p-4 sm:p-6"
+        data-event-prints
+      >
+        <h2 id="event-prints-heading" class="text-xl font-semibold">
+          {tprint.hubTitle}
+        </h2>
+        <p class="text-sm text-muted-foreground">{tprint.panelIntro}</p>
+        <PrintState
+          publishedAt={work.prints.publishedAt}
+          upToDate={work.prints.upToDate}
+          purgedAt={work.retention?.purgedAt ?? null}
+          seatingHref={`/panel/wydarzenia/${String(card.id)}/rozsadzenie`}
+          locale={locale}
+        />
+        <PrintLinks base={`/panel/wydarzenia/${String(card.id)}/wydruki`} locale={locale} />
+      </section>
       {!panel.support && (
         <EventTemplateActions
           client:load

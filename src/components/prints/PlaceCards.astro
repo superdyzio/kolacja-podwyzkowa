@@ -1,0 +1,70 @@
+---
+import type { Locale } from "@/lib/i18n/locale";
+import { printMessages } from "@/lib/prints/messages";
+import type { PlaceCardFormat } from "@/lib/prints/options";
+import { placeNameSizePt } from "@/lib/prints/place-cards";
+import type { PlaceCardDto, PlaceCardLayoutDto, PrintBrandDto } from "@/types";
+import PrintBrand from "./PrintBrand.astro";
+
+// Place cards („winietki”; room-prints, S-24; FR-038): the guest's name, their table (and room with several) and the
+// restaurant's brand, as many per A4 sheet as the format allows, centred, with dashed cut lines. A folded card is
+// printed twice as tall with a dotted fold line: the upper face upside down, so the name reads from both sides.
+interface Props {
+  sheets: PlaceCardDto[][];
+  layout: PlaceCardLayoutDto;
+  format: PlaceCardFormat;
+  brand: PrintBrandDto | null;
+  locale: Locale;
+}
+
+const { sheets, layout, format, brand, locale } = Astro.props;
+const t = printMessages(locale);
+const sheetStyle = `--rp-w: ${String(layout.pageWidthMm)}mm; --rp-h: ${String(layout.pageHeightMm)}mm;`;
+const stripe = brand?.color ? `border-top-color: ${brand.color};` : undefined;
+const position = (index: number) => {
+  const column = index % layout.columns;
+  const row = Math.floor(index / layout.columns);
+  return [
+    `left: ${String(layout.offsetXMm + column * layout.cardWidthMm)}mm;`,
+    `top: ${String(layout.offsetYMm + row * layout.pieceHeightMm)}mm;`,
+    `width: ${String(layout.cardWidthMm)}mm;`,
+    `height: ${String(layout.pieceHeightMm)}mm;`,
+  ].join(" ");
+};
+const faceStyle = `height: ${String(layout.cardHeightMm)}mm;`;
+const faces = layout.folded ? [true, false] : [false];
+---
+
+{sheets.map((sheet, index) => (
+  <section
+    class:list={["rp-sheet", "rp-place-sheet", `rp-place-sheet--${format}`]}
+    style={sheetStyle}
+    data-print-sheet
+    aria-label={t.sheetLabel(index + 1, sheets.length)}
+  >
+    {sheet.map((card, position_) => (
+      <article
+        class:list={["rp-place-card", { "rp-place-card--folded": layout.folded }]}
+        style={position(position_)}
+        data-place-card
+      >
+        {faces.map((upsideDown) => (
+          <div
+            class:list={["rp-place-face", { "rp-face-upside-down": upsideDown }]}
+            style={`${faceStyle} ${stripe ?? ""}`}
+            aria-hidden={upsideDown ? "true" : undefined}
+          >
+            <PrintBrand brand={brand} locale={locale} variant="card" />
+            <p class="rp-place-name" style={`font-size: ${String(placeNameSizePt(card.name, format))}pt;`}>
+              {card.name}
+            </p>
+            <p class="rp-place-table">
+              {card.table}
+              {card.room !== null && ` · ${card.room}`}
+            </p>
+          </div>
+        ))}
+      </article>
+    ))}
+  </section>
+))}

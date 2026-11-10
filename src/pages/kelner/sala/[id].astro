@@ -4,13 +4,14 @@ import NoAccess from "@/components/NoAccess.astro";
 import { OrderManager } from "@/components/orders/OrderManager";
 import { Button } from "@/components/ui/button";
 import { eventWaiterMessages } from "@/lib/event-waiters/messages";
-import { WAITER_LOGOUT_API, waiterFloorApiBase } from "@/lib/event-waiters/paths";
+import { WAITER_LOGOUT_API, waiterFloorApiBase, waiterFloorPath } from "@/lib/event-waiters/paths";
 import { formatEventDate } from "@/lib/events/dates";
 import { floorMessages } from "@/lib/floor/messages";
 import { staffOfflineMessages, waiterReadoutScope } from "@/lib/offline";
 import { getOrderBoard } from "@/lib/orders";
 import { formatSupportTime } from "@/lib/support/format";
 import { findWaiterFloorEvent } from "@/lib/waiter-api";
+import { printMessages } from "@/lib/prints/messages";
 
 // The per-event waiter's floor (event-waiter-access, S-21b; FR-029, US-08): /kelner/sala/<event id> — the same order
 // page in floor mode as S-21's /panel/obsluga/<id> (the bill, the prep list, the serving plan with the guests, every
@@ -57,6 +58,13 @@ const readout = floor ? waiterReadoutScope(eventId, floor.waiter.waiterId, floor
           data-staff-readout-link
         >
           {staffOfflineMessages(locale).readoutLink}
+        </a>
+        <a
+          href={`${waiterFloorPath(eventId)}/lista-obslugi`}
+          class="self-start py-2 text-sm text-muted-foreground underline-offset-4 hover:underline"
+          data-floor-print-link
+        >
+          {printMessages(locale).floorLink}
         </a>
       </header>
       <OrderManager

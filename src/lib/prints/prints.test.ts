@@ -19,6 +19,7 @@ import {
   printBrand,
   printFormat,
   printPaper,
+  printEmptyReason,
   printQuery,
   STAFF_PAGE_UNITS,
   staffList,
@@ -466,5 +467,20 @@ describe("the print brand", () => {
       printBrand({ restaurant: { ...branding.restaurant, logo: null }, client: { name: null, logo: null } }, "/x"),
     ).toMatchObject({ restaurantLogo: null, clientLogo: null, clientName: null });
     expect(printBrand(null, ".")).toBeNull();
+  });
+});
+
+describe("the empty states", () => {
+  it("names why a print has no sheets", () => {
+    expect(printEmptyReason("tablica", null, null)).toBe("unpublished");
+    expect(printEmptyReason("lista-obslugi", null, "2026-11-10T10:00:00.000Z")).toBe("purged");
+    const empty = published(table("Stół 1", "Sala", []));
+    expect(printEmptyReason("tablica", empty, null)).toBe("nobody");
+    expect(printEmptyReason("winietki", empty, null)).toBe("nobody");
+    expect(printEmptyReason("lista-obslugi", empty, null)).toBe("nobody");
+    expect(printEmptyReason("karty-stolow", empty, null)).toBeNull();
+    expect(printEmptyReason("karty-stolow", published(), null)).toBe("no-tables");
+    const seated = published(table("Stół 1", "Sala", [[1, "Ola"]]));
+    expect(printEmptyReason("tablica", seated, "2026-11-10T10:00:00.000Z")).toBeNull();
   });
 });

@@ -1,0 +1,53 @@
+---
+import { formatDateTime } from "@/lib/events/dates";
+import type { Locale } from "@/lib/i18n/locale";
+import { printMessages } from "@/lib/prints/messages";
+
+// The publication state above the list of room prints (room-prints, S-24): every print shows the latest PUBLISHED
+// seating, so the hub and the event card say which one, whether the arrangement changed since, or that there is none.
+interface Props {
+  publishedAt: string | null;
+  upToDate: boolean;
+  purgedAt?: string | null;
+  seatingHref: string | null;
+  locale: Locale;
+}
+
+const { publishedAt, upToDate, purgedAt = null, seatingHref, locale } = Astro.props;
+const t = printMessages(locale);
+---
+
+{publishedAt === null ? (
+  <p class="rounded-lg border p-3 text-sm" data-print-state={purgedAt === null ? "unpublished" : "purged"}>
+    {purgedAt === null ? t.notPublished : t.purged}
+    {purgedAt === null && seatingHref !== null && (
+      <>
+        {" "}
+        <a href={seatingHref} class="font-medium underline">
+          {t.toSeating}
+        </a>
+      </>
+    )}
+  </p>
+) : (
+  <div class="flex flex-col gap-2" data-print-state={upToDate ? "published" : "changed"}>
+    <p class="text-sm">{t.publishedAt(formatDateTime(publishedAt, locale))}</p>
+    {!upToDate && (
+      <p
+        role="note"
+        class="rounded-lg border border-amber-500/60 bg-amber-50 p-3 text-sm text-amber-900"
+        data-print-unpublished
+      >
+        {t.unpublished}
+        {seatingHref !== null && (
+          <>
+            {" "}
+            <a href={seatingHref} class="font-medium underline">
+              {t.toSeating}
+            </a>
+          </>
+        )}
+      </p>
+    )}
+  </div>
+)}

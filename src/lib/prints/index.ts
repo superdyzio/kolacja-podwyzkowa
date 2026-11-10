@@ -16,3 +16,4 @@ export { fitFontPt } from "./fit";
 export { printBrand } from "./brand";
 export { printMessages } from "./messages";
 export { getRoomPrintSource } from "./service";
+export { PRINT_EMPTY_REASONS, printEmptyReason, type PrintEmptyReason } from "./state";

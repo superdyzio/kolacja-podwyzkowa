@@ -1,0 +1,59 @@
+---
+import type { Locale } from "@/lib/i18n/locale";
+import { printMessages } from "@/lib/prints/messages";
+import type { PaperSize } from "@/lib/prints/options";
+import type { BoardPageDto, PrintBrandDto } from "@/types";
+import PrintBrand from "./PrintBrand.astro";
+
+// „Znajdź swój stolik” (room-prints, S-24; FR-038): fixed sheets of three columns, a letter heading before each
+// letter („(cd.)” at the top of a column that continues one), every guest with the table (and the room when there are
+// several). The A3 poster is the A4 layout scaled by √2 (`--rp-s`), so it paginates the same.
+interface Props {
+  pages: BoardPageDto[];
+  paper: PaperSize;
+  scale: number;
+  brand: PrintBrandDto | null;
+  subtitle: string;
+  locale: Locale;
+}
+
+const { pages, paper, scale, brand, subtitle, locale } = Astro.props;
+const t = printMessages(locale);
+const sheetStyle = `--rp-w: ${String(paper.widthMm)}mm; --rp-h: ${String(paper.heightMm)}mm; --rp-s: ${String(scale)};`;
+---
+
+{pages.map((page, index) => (
+  <section
+    class="rp-sheet rp-board"
+    style={sheetStyle}
+    data-print-sheet
+    aria-label={t.sheetLabel(index + 1, pages.length)}
+  >
+    <PrintBrand brand={brand} locale={locale} variant="sheet" />
+    <h2 class="rp-board-title">{t.boardTitle}</h2>
+    <p class="rp-board-subtitle">{subtitle}</p>
+    <div class="rp-board-columns">
+      {page.columns.map((column) => (
+        <ol class="rp-board-column">
+          {column.map((row) =>
+            row.kind === "letter" ? (
+              <li class="rp-board-letter" aria-hidden="true">
+                {row.letter}
+                {row.continued && <span class="rp-board-continued"> {t.continued}</span>}
+              </li>
+            ) : (
+              <li class="rp-board-guest" style={`--rp-units: ${String(row.units)};`} data-board-guest>
+                <span class="rp-board-name">{row.name}</span>
+                <span class="rp-board-table">
+                  {row.table}
+                  {row.room !== null && <span class="rp-board-room"> · {row.room}</span>}
+                </span>
+              </li>
+            ),
+          )}
+        </ol>
+      ))}
+    </div>
+    {pages.length > 1 && <p class="rp-foot">{t.pageOf(index + 1, pages.length)}</p>}
+  </section>
+))}

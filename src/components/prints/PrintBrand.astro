@@ -1,0 +1,53 @@
+---
+import { brandingMessages } from "@/lib/branding/messages";
+import type { Locale } from "@/lib/i18n/locale";
+import type { PrintBrandDto } from "@/types";
+
+// The brand on a printed sheet (room-prints, S-24; event-branding S-18, white-label): the restaurant's logo (or its
+// name) and the client's logo and/or name — never the platform's name. `sheet` = the row above a board or a staff list
+// page with a rule in the restaurant's colour; `card` = the small line on a table card or a place card. The logo URLs
+// come from the page (relative on the client's prints, none in support mode and on the floors).
+interface Props {
+  brand: PrintBrandDto | null;
+  locale: Locale;
+  variant: "sheet" | "card";
+}
+
+const { brand, locale, variant } = Astro.props;
+const t = brandingMessages(locale);
+const rule = brand?.color ? `border-bottom-color: ${brand.color};` : undefined;
+---
+
+{brand && (
+  <div
+    class:list={["rp-brand", `rp-brand--${variant}`]}
+    style={variant === "sheet" ? rule : undefined}
+    data-print-brand
+  >
+    <span class="rp-brand-side">
+      {brand.restaurantLogo ? (
+        <img
+          src={brand.restaurantLogo}
+          alt={t.logoAlt(brand.restaurantName)}
+          class="rp-brand-logo"
+          data-print-logo="restaurant"
+        />
+      ) : (
+        <span class="rp-brand-name">{brand.restaurantName}</span>
+      )}
+    </span>
+    {(brand.clientLogo !== null || brand.clientName !== null) && (
+      <span class="rp-brand-side rp-brand-client">
+        {brand.clientLogo && (
+          <img
+            src={brand.clientLogo}
+            alt={t.logoAlt(brand.clientName ?? brand.restaurantName)}
+            class="rp-brand-logo"
+            data-print-logo="event"
+          />
+        )}
+        {brand.clientName && <span class="rp-brand-name">{brand.clientName}</span>}
+      </span>
+    )}
+  </div>
+)}

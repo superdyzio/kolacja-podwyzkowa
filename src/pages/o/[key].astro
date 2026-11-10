@@ -24,6 +24,7 @@ import { formatQuizSummary, getQuizBoard } from "@/lib/quiz";
 import { formatRsvpSummary, getRsvpBoard } from "@/lib/rsvp";
 import { formatSeatingSummary, getSeatingBoard, summarizeSeating } from "@/lib/seating";
 import { shellMessages } from "@/lib/shell/messages";
+import { printMessages } from "@/lib/prints/messages";
 import { formatVenueSummary, summarizeVenue } from "@/lib/venue";
 import GuestDataNote from "@/components/privacy/GuestDataNote.astro";
 import { getEventRetention } from "@/lib/privacy/service";
@@ -103,6 +104,8 @@ const view = access
       // client-restaurant-split: the counts only; the provider and the cost are the venue's („Koszty AI”).
       aiTopicsSummary: aiUsage ? formatClientAiTopicSummary(aiUsage, locale) : null,
       readoutPath: `${organizerPath(access.event.organizerKey)}/odczyt`,
+      // room-prints (S-24): the board, table cards, place cards and the staff list.
+      printsPath: `${organizerPath(access.event.organizerKey)}/wydruki`,
       ordersPath: `${organizerPath(access.event.organizerKey)}/zamowienia`,
       ordersSummary: orderItems ? formatOrderSummary(orderTotals(orderItems), locale) : null,
       guessesOn: access.event.modules.guessing,
@@ -120,6 +123,7 @@ const view = access
   : null;
 const tm = modulesMessages(locale);
 const tb = brandingMessages(locale);
+const tp = printMessages(locale);
 ---
 
 {view ? (
@@ -311,6 +315,19 @@ const tb = brandingMessages(locale);
               </div>
               <p class="text-sm text-muted-foreground">{t.ordersText}</p>
               {view.ordersSummary && <p class="text-sm font-medium">{view.ordersSummary}</p>}
+            </a>
+          </li>
+          <li>
+            <a
+              href={view.printsPath}
+              data-prints-card
+              class="flex h-full flex-col gap-2 rounded-xl border p-4 transition-colors hover:bg-accent focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
+            >
+              <div class="flex items-center justify-between gap-2">
+                <h3 class="font-semibold">{tp.hubTitle}</h3>
+                <span class="rounded-full bg-primary px-2 py-0.5 text-xs text-primary-foreground">{t.open}</span>
+              </div>
+              <p class="text-sm text-muted-foreground">{tp.shellCardText}</p>
             </a>
           </li>
           <li>

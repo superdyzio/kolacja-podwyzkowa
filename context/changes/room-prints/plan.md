@@ -270,10 +270,10 @@ None (no migration).
 
 #### Automated
 
-- [x] 1.1 Unit tests pass: `npx vitest run src/lib/prints`
-- [x] 1.2 Integration test passes on the local DB: `npx vitest run tests/integration/room-prints.test.ts`
-- [x] 1.3 Type check passes: `npx astro check`
-- [x] 1.4 Lint passes: `npm run lint`
+- [x] 1.1 Unit tests pass: `npx vitest run src/lib/prints` — acbd401
+- [x] 1.2 Integration test passes on the local DB: `npx vitest run tests/integration/room-prints.test.ts` — acbd401
+- [x] 1.3 Type check passes: `npx astro check` — acbd401
+- [x] 1.4 Lint passes: `npm run lint` — acbd401
 
 #### Manual
 
@@ -283,10 +283,10 @@ None (no migration).
 
 #### Automated
 
-- [ ] 2.1 Type check passes: `npx astro check`
-- [ ] 2.2 Lint passes: `npm run lint`
-- [ ] 2.3 Unit and integration tests pass: `AI_PROVIDER=mock npm test`
-- [ ] 2.4 Build passes: `npm run build`
+- [x] 2.1 Type check passes: `npx astro check`
+- [x] 2.2 Lint passes: `npm run lint`
+- [x] 2.3 Unit and integration tests pass: `AI_PROVIDER=mock npm test`
+- [x] 2.4 Build passes: `npm run build`
 
 #### Manual
 

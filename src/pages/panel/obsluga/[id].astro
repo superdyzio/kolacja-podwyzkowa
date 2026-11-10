@@ -3,10 +3,11 @@ import Layout from "@/layouts/Layout.astro";
 import NoAccess from "@/components/NoAccess.astro";
 import { OrderManager } from "@/components/orders/OrderManager";
 import { formatEventDate } from "@/lib/events/dates";
-import { floorApiBase, floorMessages } from "@/lib/floor";
+import { floorApiBase, floorMessages, floorPath } from "@/lib/floor";
 import { floorReadoutScope, staffOfflineMessages } from "@/lib/offline";
 import { getOrderBoard } from "@/lib/orders";
 import { findFloorEvent } from "@/lib/panel-api";
+import { printMessages } from "@/lib/prints/messages";
 
 // The floor — the waiter's day view (waiter-day-and-refills, S-21; PRD v2 FR-029, US-08): /panel/obsluga/<event id>
 // for a member of the event's restaurant (owner, manager, waiter) while the event runs today (its day until noon of
@@ -48,6 +49,13 @@ const readout = panel ? floorReadoutScope(eventId, panel.staff.accountId, panel.
           data-staff-readout-link
         >
           {staffOfflineMessages(locale).readoutLink}
+        </a>
+        <a
+          href={`${floorPath(eventId)}/lista-obslugi`}
+          class="self-start py-2 text-sm text-muted-foreground underline-offset-4 hover:underline"
+          data-floor-print-link
+        >
+          {printMessages(locale).floorLink}
         </a>
       </header>
       <OrderManager

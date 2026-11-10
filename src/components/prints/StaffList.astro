@@ -1,0 +1,129 @@
+---
+import { DietBadges } from "@/components/diets/DietBadges";
+import { dietMessages } from "@/lib/diets/messages";
+import { isAllergyTag } from "@/lib/diets/rules";
+import type { Locale } from "@/lib/i18n/locale";
+import { printMessages } from "@/lib/prints/messages";
+import { staffRowUnits } from "@/lib/prints/staff-list";
+import type { PrintBrandDto, StaffPageDto } from "@/types";
+import PrintBrand from "./PrintBrand.astro";
+
+// The staff list (room-prints, S-24; FR-038) — health data, for the kitchen and the waiters only: the diet counts,
+// then every published table with its occupied seats in seat order (seat, name, diets and the note; allergies with
+// „!”, never colour alone), then the present guests with a diet but no published seat. Fixed A4 pages; a table split
+// across pages says „(cd.)”. Rows grow when a note is longer than estimated (never cut off).
+interface Props {
+  pages: StaffPageDto[];
+  brand: PrintBrandDto | null;
+  subtitle: string;
+  locale: Locale;
+}
+
+const { pages, brand, subtitle, locale } = Astro.props;
+const t = printMessages(locale);
+const td = dietMessages(locale);
+const sheetStyle = "--rp-w: 210mm; --rp-h: 297mm;";
+// Rows of a table take `height` (a minimum for table rows); blocks take `min-height`, so text never gets cut off.
+const units = (count: number) => `height: calc(var(--rp-unit) * ${String(count)});`;
+const minUnits = (count: number) => `min-height: calc(var(--rp-unit) * ${String(count)});`;
+---
+
+{pages.map((page, index) => (
+  <section
+    class="rp-sheet rp-staff"
+    style={sheetStyle}
+    data-print-sheet
+    aria-label={t.sheetLabel(index + 1, pages.length)}
+  >
+    <PrintBrand brand={brand} locale={locale} variant="sheet" />
+    <div class="rp-staff-head">
+      <h2 class="rp-staff-title">{t.staffTitle}</h2>
+      <p class="rp-staff-subtitle">{subtitle}</p>
+    </div>
+    <p class="rp-staff-intro">{t.staffIntro}</p>
+    {page.blocks.map((block) =>
+      block.kind === "summary" ? (
+        <div class="rp-staff-summary" style={minUnits(2)} data-staff-summary>
+          <span class="rp-staff-summary-title">{t.staffSummary}:</span>
+          {block.counts.length === 0 ? (
+            <span>{t.staffNoDiets}</span>
+          ) : (
+            <>
+              <span>{t.staffWithDiets(block.withDiets)}</span>
+              {block.counts.map((count) => (
+                <span class:list={["rp-staff-count", { "rp-staff-allergy": isAllergyTag(count.tag) }]}>
+                  {isAllergyTag(count.tag) && "! "}
+                  {t.tableCount(td.labels[count.tag], count.count)}
+                </span>
+              ))}
+            </>
+          )}
+        </div>
+      ) : block.kind === "table" ? (
+        <table class="rp-staff-table" data-staff-table>
+          <caption style={minUnits(1)}>
+            <span class="rp-staff-table-name">{block.table.name}</span>
+            {block.table.room !== null && <span> · {block.table.room}</span>}
+            <span> · {t.people(block.table.people)}</span>
+            {block.continued && <span> {t.continued}</span>}
+            {!block.continued &&
+              block.table.counts.map((count) => (
+                <span class:list={["rp-staff-count", { "rp-staff-allergy": isAllergyTag(count.tag) }]}>
+                  {isAllergyTag(count.tag) && "! "}
+                  {t.tableCount(td.labels[count.tag], count.count)}
+                </span>
+              ))}
+          </caption>
+          <thead>
+            <tr style={units(1)}>
+              <th scope="col" class="rp-staff-seat">
+                {t.staffSeat}
+              </th>
+              <th scope="col" class="rp-staff-guest">
+                {t.staffGuest}
+              </th>
+              <th scope="col">{t.staffDiet}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {block.table.seats.map((seat) => (
+              <tr style={units(seat.units)} data-staff-seat>
+                <td class="rp-staff-seat">{seat.seat}</td>
+                <td class="rp-staff-guest">{seat.name}</td>
+                <td>
+                  <DietBadges diets={seat.diets} note={seat.note} locale={locale} />
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      ) : (
+        <table class="rp-staff-table" data-staff-unplaced>
+          <caption style={minUnits(1)}>
+            <span class="rp-staff-table-name">{t.staffUnplaced}</span>
+            {block.continued && <span> {t.continued}</span>}
+          </caption>
+          <thead>
+            <tr style={units(1)}>
+              <th scope="col" class="rp-staff-guest">
+                {t.staffGuest}
+              </th>
+              <th scope="col">{t.staffDiet}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {block.guests.map((guest) => (
+              <tr style={units(staffRowUnits(guest.guestName, guest.diets, guest.note))} data-staff-unplaced-guest>
+                <td class="rp-staff-guest">{guest.guestName}</td>
+                <td>
+                  <DietBadges diets={guest.diets} note={guest.note} locale={locale} />
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      ),
+    )}
+    {pages.length > 1 && <p class="rp-foot">{t.pageOf(index + 1, pages.length)}</p>}
+  </section>
+))}

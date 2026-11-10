@@ -1,0 +1,43 @@
+---
+import NoAccess from "@/components/NoAccess.astro";
+import RoomPrint from "@/components/prints/RoomPrint.astro";
+import Layout from "@/layouts/Layout.astro";
+import { accessFor } from "@/lib/access";
+import { getDb } from "@/lib/db";
+import { getRoomPrintSource, isPrintKind, parsePrintOptions, printMessages } from "@/lib/prints";
+
+// A room print of the client (room-prints, S-24; FR-038): /o/<key>/wydruki/<tablica|karty-stolow|winietki|
+// lista-obslugi>, from the latest published seating with the brand. Its HTML carries NO key: every link is relative
+// (back `../wydruki`, `../rozsadzenie`, the formats and languages `<kind>?…`) and the logos come from the relative
+// `./logo` (/o/<key>/wydruki/logo). A read: the lead rule and the modules never apply. Diets only on the staff list.
+// The middleware has already checked the key; an unknown print → the no-access page (404).
+const locale = Astro.locals.locale;
+const t = printMessages(locale);
+const access = accessFor(Astro.locals, "organizer");
+const kind = Astro.params.kind;
+const db = access ? getDb() : null;
+const source =
+  access && db && isPrintKind(kind)
+    ? await getRoomPrintSource(db, access.event.id, { diets: kind === "lista-obslugi" })
+    : null;
+const options = isPrintKind(kind) ? parsePrintOptions(kind, Astro.url.searchParams) : null;
+if (!source || !options) {
+  Astro.response.status = 404;
+}
+---
+
+{source && options ? (
+  <Layout title={t.pageTitle(t.kinds[options.kind], source.event.name)} languageSwitch={false}>
+    <RoomPrint
+      options={options}
+      source={source}
+      logoBase="."
+      back={{ href: "../wydruki", label: t.backToPrints }}
+      seatingHref="../rozsadzenie"
+      support={null}
+      locale={locale}
+    />
+  </Layout>
+) : (
+  <NoAccess />
+)}

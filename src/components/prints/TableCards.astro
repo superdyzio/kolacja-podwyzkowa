@@ -1,0 +1,81 @@
+---
+import type { Locale } from "@/lib/i18n/locale";
+import { printMessages } from "@/lib/prints/messages";
+import type { TableCardFormat } from "@/lib/prints/options";
+import { tableNameSizePt } from "@/lib/prints/table-cards";
+import type { PrintBrandDto, TableCardDto } from "@/types";
+import PrintBrand from "./PrintBrand.astro";
+
+// Table cards (room-prints, S-24; FR-038): the table's name as large as the face allows, its room when the venue has
+// several, optionally the names seated there. `tent` = one table per A4 sheet folded across the middle (dotted line):
+// the upper face is printed upside down, so after folding the name reads from both sides of the table. `flat` = two
+// tables per A4 sheet, cut across the middle (dashed line).
+interface Props {
+  sheets: TableCardDto[][];
+  format: TableCardFormat;
+  withNames: boolean;
+  brand: PrintBrandDto | null;
+  subtitle: string;
+  locale: Locale;
+}
+
+const { sheets, format, withNames, brand, subtitle, locale } = Astro.props;
+const t = printMessages(locale);
+const sheetStyle = "--rp-w: 210mm; --rp-h: 297mm;";
+const stripe = brand?.color ? `border-top-color: ${brand.color};` : undefined;
+// Names in one, two or three columns by how many sit at the table.
+const columnsFor = (count: number) => (count > 12 ? 3 : count > 5 ? 2 : 1);
+---
+
+{sheets.map((sheet, index) => (
+  <section
+    class:list={["rp-sheet", "rp-table-sheet", `rp-table-sheet--${format}`]}
+    style={sheetStyle}
+    data-print-sheet
+    aria-label={t.sheetLabel(index + 1, sheets.length)}
+  >
+    {format === "tent"
+      ? sheet.map((card) => (
+          <article class="rp-table-tent" data-table-card>
+            {[true, false].map((upsideDown) => (
+              <div
+                class:list={["rp-table-face", { "rp-face-upside-down": upsideDown }]}
+                style={stripe}
+                aria-hidden={upsideDown ? "true" : undefined}
+              >
+                <PrintBrand brand={brand} locale={locale} variant="card" />
+                <p class="rp-table-name" style={`font-size: ${String(tableNameSizePt(card.name, withNames))}pt;`}>
+                  {card.name}
+                </p>
+                {card.room !== null && <p class="rp-table-room">{card.room}</p>}
+                {withNames && card.guests.length > 0 && (
+                  <ul class="rp-table-guests" style={`column-count: ${String(columnsFor(card.guests.length))};`}>
+                    {card.guests.map((guest) => (
+                      <li>{guest}</li>
+                    ))}
+                  </ul>
+                )}
+                <p class="rp-table-event">{subtitle}</p>
+              </div>
+            ))}
+          </article>
+        ))
+      : sheet.map((card) => (
+          <article class="rp-table-face rp-table-flat" style={stripe} data-table-card>
+            <PrintBrand brand={brand} locale={locale} variant="card" />
+            <p class="rp-table-name" style={`font-size: ${String(tableNameSizePt(card.name, withNames))}pt;`}>
+              {card.name}
+            </p>
+            {card.room !== null && <p class="rp-table-room">{card.room}</p>}
+            {withNames && card.guests.length > 0 && (
+              <ul class="rp-table-guests" style={`column-count: ${String(columnsFor(card.guests.length))};`}>
+                {card.guests.map((guest) => (
+                  <li>{guest}</li>
+                ))}
+              </ul>
+            )}
+            <p class="rp-table-event">{subtitle}</p>
+          </article>
+        ))}
+  </section>
+))}

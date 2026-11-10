@@ -1,0 +1,167 @@
+---
+import SupportBanner from "@/components/support/SupportBanner.astro";
+import { LOCALE_LABELS, LOCALES } from "@/lib/i18n";
+import type { Locale } from "@/lib/i18n/locale";
+import { printMessages } from "@/lib/prints/messages";
+import {
+  BOARD_FORMATS,
+  PLACE_CARD_FORMATS,
+  printQuery,
+  TABLE_CARD_FORMATS,
+  type PrintOptions,
+} from "@/lib/prints/options";
+import type { PrintEmptyReason } from "@/lib/prints/state";
+import type { SupportAccessDto } from "@/types";
+
+// The screen-only toolbar of a print page (room-prints, S-24): back, the print's name and the event, the format
+// choice and the PL/EN print language — plain links RELATIVE to the page (`<kind>?…`), so a client's print never
+// echoes its own path with the key and the language links keep the chosen format —, the print button, the hint, and
+// the notes: the published seating's time, changes since the last publish, nothing to print and why.
+interface Props {
+  options: PrintOptions;
+  eventName: string;
+  back: { href: string; label: string };
+  publishedAt: string | null;
+  unpublished: boolean;
+  seatingHref: string | null;
+  empty: PrintEmptyReason | null;
+  support: SupportAccessDto | null;
+  locale: Locale;
+}
+
+const { options, eventName, back, publishedAt, unpublished, seatingHref, empty, support, locale } = Astro.props;
+const t = printMessages(locale);
+const kind = options.kind;
+const href = (next: PrintOptions, extra: Record<string, string> = {}) => `${kind}${printQuery(next, extra)}`;
+
+interface Choice {
+  label: string;
+  href: string;
+  current: boolean;
+}
+const formats: Choice[] =
+  options.kind === "tablica"
+    ? BOARD_FORMATS.map((format) => ({
+        label: t.boardFormats[format],
+        href: href({ ...options, format }),
+        current: format === options.format,
+      }))
+    : options.kind === "karty-stolow"
+      ? TABLE_CARD_FORMATS.map((format) => ({
+          label: t.tableCardFormats[format],
+          href: href({ ...options, format }),
+          current: format === options.format,
+        }))
+      : options.kind === "winietki"
+        ? PLACE_CARD_FORMATS.map((format) => ({
+            label: t.placeCardFormats[format],
+            href: href({ ...options, format }),
+            current: format === options.format,
+          }))
+        : [];
+const names: Choice[] =
+  options.kind === "karty-stolow"
+    ? [false, true].map((on) => ({
+        label: on ? t.namesOn : t.namesOff,
+        href: href({ ...options, names: on }),
+        current: on === options.names,
+      }))
+    : [];
+const languages = LOCALES.map((code) => ({
+  code,
+  label: LOCALE_LABELS[code],
+  href: href(options, { lang: code }),
+  current: code === locale,
+}));
+const emptyText: Record<PrintEmptyReason, string> = {
+  unpublished: t.notPublished,
+  purged: t.purged,
+  nobody: t.nobody,
+  "no-tables": t.noTables,
+};
+const choiceClass =
+  "rounded-md border px-3 py-1.5 text-sm hover:bg-muted aria-[current=true]:border-primary aria-[current=true]:bg-primary aria-[current=true]:text-primary-foreground";
+---
+
+<header class="mx-auto flex w-full max-w-3xl flex-col gap-3 print:hidden" data-print-toolbar>
+  <a href={back.href} class="self-start py-2 text-sm text-muted-foreground underline-offset-4 hover:underline">
+    {back.label}
+  </a>
+  {support && <SupportBanner support={support} locale={locale} />}
+  <h1 class="text-3xl font-bold">{t.kinds[kind]}</h1>
+  <p class="text-lg font-medium">{eventName}</p>
+  <p class="text-sm text-muted-foreground">{t.descriptions[kind]}</p>
+  {formats.length > 0 && (
+    <nav aria-label={t.formatLegend} class="flex flex-wrap items-center gap-2">
+      <span class="text-sm font-medium">{t.formatLegend}:</span>
+      {formats.map((choice) => (
+        <a href={choice.href} aria-current={choice.current ? "true" : undefined} class:list={[choiceClass]}>
+          {choice.label}
+        </a>
+      ))}
+    </nav>
+  )}
+  {names.length > 0 && (
+    <nav aria-label={t.namesLegend} class="flex flex-wrap items-center gap-2">
+      <span class="text-sm font-medium">{t.namesLegend}:</span>
+      {names.map((choice) => (
+        <a href={choice.href} aria-current={choice.current ? "true" : undefined} class:list={[choiceClass]}>
+          {choice.label}
+        </a>
+      ))}
+    </nav>
+  )}
+  <nav aria-label={t.languageLegend} class="flex flex-wrap items-center gap-2" data-print-languages>
+    <span class="text-sm font-medium">{t.languageLegend}:</span>
+    {languages.map((language) => (
+      <a
+        href={language.href}
+        lang={language.code}
+        hreflang={language.code}
+        aria-current={language.current ? "true" : undefined}
+        class:list={[choiceClass]}
+      >
+        {language.label}
+      </a>
+    ))}
+  </nav>
+  {publishedAt !== null && <p class="text-sm">{t.publishedAt(publishedAt)}</p>}
+  {unpublished && (
+    <p
+      role="note"
+      class="rounded-lg border border-amber-500/60 bg-amber-50 p-3 text-sm text-amber-900"
+      data-print-unpublished
+    >
+      {t.unpublished}{" "}
+      {seatingHref !== null && (
+        <a href={seatingHref} class="font-medium underline">
+          {t.toSeating}
+        </a>
+      )}
+    </p>
+  )}
+  {empty !== null ? (
+    <p role="note" class="rounded-lg border p-3 text-sm" data-print-empty={empty}>
+      {emptyText[empty]}
+      {empty === "unpublished" && seatingHref !== null && (
+        <>
+          {" "}
+          <a href={seatingHref} class="font-medium underline">
+            {t.toSeating}
+          </a>
+        </>
+      )}
+    </p>
+  ) : (
+    <>
+      <p class="text-sm text-muted-foreground">{t.printHint}</p>
+      <button
+        type="button"
+        data-print
+        class="h-11 self-start rounded-md bg-primary px-6 text-sm font-medium text-primary-foreground hover:bg-primary/90 focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
+      >
+        {t.print}
+      </button>
+    </>
+  )}
+</header>
