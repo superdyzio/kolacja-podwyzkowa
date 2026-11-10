@@ -23,7 +23,7 @@ Gałąź `overnight/m2` (wypchnięta). `main` nietknięty, bez PR, bez `db push`
 | S-20 tv-room-rotation | FR-034, US-08, NFR-018 | be12b65, e8691ce → 0e80a6f | brak |
 | S-21 waiter-day-and-refills (częściowo) | FR-029, US-08 (FR-023 „na imprezę” — nie) | db3a5db, e3056fc → abdd925 | brak |
 
-Zrobione: 13 elementów (F-02, F-03, S-10..S-21; S-21 bez kelnera „na imprezę”), 12 migracji. Stan na koniec: 126 plików testów / 1267 testów zielonych, 6 pominiętych (benchmarki losowania uruchamiane ręcznie); start nocy: 96 / 1029. Smoke 776 PASS / 0 FAIL, demo OK, lint i astro check bez błędów.
+Zrobione: 14 elementów (F-02, F-03, S-10..S-21; S-21 bez kelnera „na imprezę”), 12 migracji. Stan na koniec: 126 plików testów / 1267 testów zielonych, 6 pominiętych (benchmarki losowania uruchamiane ręcznie); start nocy: 96 / 1029. Smoke 776 PASS / 0 FAIL, demo OK, lint i astro check bez błędów.
 
 ## Co warto wiedzieć (decyzje nocy, pełna lista w `overnight-log.md` → `## Decyzje`)
 
