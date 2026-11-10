@@ -218,17 +218,36 @@ Machine: the run's laptop (Apple Silicon, Node 22.14, vitest), 2026-11-10.
 
 Draw (`DRAW_BENCH=1 npx vitest run src/lib/seating/draw-scale.test.ts`; 150 guests, 34 groups, 2 pinned, 3 absent):
 
-| Venue | History | Times (5 seeds) | Repeats |
-| --- | --- | --- | --- |
-| banquet (5 × 30 rect + 1 × 10 = 160 seats) | 4 earlier draws | 0–1 ms | 0 |
-| many-tables (60 tables, 320 seats) | 4 earlier draws | 1 ms | 0 |
-| max-venue (60 × 30 = 1 800 seats) | 4 earlier draws | 3–6 ms | 0 |
-| banquet, worst case | every pair already together | 1 201 ms (budget) | 137 |
-| many-tables, worst case | every pair already together | 1 202 ms (budget) | 34 |
-| max-venue, worst case | every pair already together | 1 204 ms (budget) | 33 |
+| Venue                                      | History                     | Times (5 seeds)   | Repeats |
+| ------------------------------------------ | --------------------------- | ----------------- | ------- |
+| banquet (5 × 30 rect + 1 × 10 = 160 seats) | 4 earlier draws             | 0–1 ms            | 0       |
+| many-tables (60 tables, 320 seats)         | 4 earlier draws             | 1 ms              | 0       |
+| max-venue (60 × 30 = 1 800 seats)          | 4 earlier draws             | 3–6 ms            | 0       |
+| banquet, worst case                        | every pair already together | 1 201 ms (budget) | 137     |
+| many-tables, worst case                    | every pair already together | 1 202 ms (budget) | 34      |
+| max-venue, worst case                      | every pair already together | 1 204 ms (budget) | 33      |
 
 The search stops at 0 repeats; only when repeats cannot be avoided does it run to `DEFAULT_DRAW_BUDGET_MS` (1 200 ms,
 wall clock, so a slower phone stops at the same time). NFR-011's 3 s leaves ~1.8 s for the two GETs and the POST.
+
+HTTP (production preview, one Node process, local Supabase in Docker):
+
+- Smoke section 35: publish 21–27 ms; TV poll 200 = 10 881 B in 9–18 ms, then 204; guest poll 200 = 12 733 B in
+  12–13 ms (drawing of 60 tables, 150 names; version 22 chars), then 204.
+- `npm run load:local` (1 event, 200 phones + TV, 25 s): publish 12 ms; phone 204 p50 11.9 / p95 30.5 / max 39.9 ms;
+  phone 200 p50 15.3 / p95 38.9 / max 106 ms, 11 657 B; TV 200 9 981 B; 201 of 201 pollers saw the publish, p50 1.3 s,
+  p95 2.5 s, max 2.5 s (target ≤ 5 s); 79.8 req/s × 15.2 ms ≈ 1.2 concurrent instances.
+- `npm run load:local -- --events 3` (603 pollers, all three events publish in the same second): publishes 195–745 ms;
+  phone 204 p50 7.3 / p95 38.6 ms (max 3.2 s), phone 200 p50 19 ms / p95 1.36 s / max 3.5 s; 603 of 603 saw the publish,
+  p50 1.8 s, p95 4.2 s, max 6.3 s; 246 req/s × 76 ms ≈ 19 concurrent. The tail is contention in the single local Node
+  process and Docker (a 204 is ~5 tiny queries and still hit 3.2 s), not per-request work; Lambda scales instances
+  horizontally and shares only Supabase, so NFR-015 is not provable locally — it is the user's post-deploy measurement.
+
+Estimate for Lambda (one request per instance; instances ≈ req/s × mean duration): one event ≈ 80 req/s → 1–2
+instances steady; a publish sends ~200 phones down the 200 path (~16 PostgREST queries each: the version reads are
+repeated by `getGuestState`, plus 4 for `guestDrawing`) ≈ 3 200 queries in 2.5 s per event. Request count binds the
+free tier: 201 pollers × 1 440 polls/h × 3 h ≈ 870 k requests per evening vs 1 M/month. Levers (not done, documented
+in CLAUDE.md „Scale”): pass the version reads into `getGuestState`; cache `guestDrawing` per immutable snapshot id.
 
 ## Progress
 
@@ -238,10 +257,10 @@ wall clock, so a slower phone stops at the same time). NFR-011's 3 s leaves ~1.8
 
 #### Automated
 
-- [x] 1.1 `npx supabase migration up` applies on the current local data; `npx supabase db reset` from zero
-- [x] 1.2 `AI_PROVIDER=mock npm test` passes (unit + DB integration incl. `scale.test.ts`, `draw-scale.test.ts`)
-- [x] 1.3 `DRAW_BENCH=1 npx vitest run src/lib/seating/draw-scale.test.ts` passes and its numbers are logged
-- [x] 1.4 `npm run lint` and `npx astro check` pass
+- [x] 1.1 `npx supabase migration up` applies on the current local data; `npx supabase db reset` from zero — f2c5e5e
+- [x] 1.2 `AI_PROVIDER=mock npm test` passes (unit + DB integration incl. `scale.test.ts`, `draw-scale.test.ts`) — f2c5e5e
+- [x] 1.3 `DRAW_BENCH=1 npx vitest run src/lib/seating/draw-scale.test.ts` passes and its numbers are logged — f2c5e5e
+- [x] 1.4 `npm run lint` and `npx astro check` pass — f2c5e5e
 
 #### Manual
 
@@ -251,10 +270,10 @@ wall clock, so a slower phone stops at the same time). NFR-011's 3 s leaves ~1.8
 
 #### Automated
 
-- [ ] 2.1 `npm run build` passes
-- [ ] 2.2 `npm run smoke` passes against `AI_PROVIDER=mock npm run preview` (section 35 included)
-- [ ] 2.3 `npm run load:local` runs against the preview and every phone + the TV see a publish within 5 s
-- [ ] 2.4 `npm run demo` passes
+- [x] 2.1 `npm run build` passes
+- [x] 2.2 `npm run smoke` passes against `AI_PROVIDER=mock npm run preview` (section 35 included)
+- [x] 2.3 `npm run load:local` runs against the preview and every phone + the TV see a publish within 5 s
+- [x] 2.4 `npm run demo` passes
 
 #### Manual
 

@@ -18,6 +18,7 @@
     "platform:admin": "node --env-file-if-exists=.env scripts/platform-admin.mjs",
     "smoke": "node --env-file-if-exists=.env scripts/smoke.mjs",
     "demo": "node --env-file-if-exists=.env scripts/demo.mjs",
+    "load:local": "node --env-file-if-exists=.env scripts/load-local.mjs",
     "package:lambda": "node scripts/package-lambda.mjs",
     "deploy:aws": "node scripts/deploy-aws.mjs"
   },

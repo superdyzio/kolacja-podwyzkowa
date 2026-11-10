@@ -140,6 +140,9 @@ Dziennik decyzji, zależności i blokerów nocnego przebiegu M-2 (zasady: `overn
 - 2026-11-10 — S-19: telefon dostaje krok powiększenia 8× (`VENUE_ZOOM_STEPS`) dla gęstych sal z 60 stolikami; szkic rozsadzenia `.max(MAX_GUESTS)` zamiast 200.
 - 2026-11-10 — S-19: dowód obciążenia = lokalny `npm run load:local` + szacunek z prawa Little'a w CLAUDE.md; pomiar na Lambdzie zostaje użytkownikowi (Otwarte pytanie 4); duże wydarzenie do oglądania z `npm run load:local -- --keep`, domyślne demo bez zmian.
 - 2026-11-10 — S-19: przegląd planu (szybki, bez subagenta) SOUND; poprawki F1 (drugie opublikowanie musi zmienić snapshot) i F3 (CHECK miejsc = `MAX_GUESTS` w teście integracyjnym).
+- 2026-11-10 — S-19 pomiary: losowanie przy pełnej skali 0–6 ms (najgorszy przypadek = budżet 1,2 s); publikacja 12–27 ms; odpowiedź 200 gościa 12,7 KB, TV 10,9 KB; `load:local` 1 wydarzenie (200 telefonów + TV): wszyscy widzą publikację w ≤ 2,5 s; 3 wydarzenia publikujące w tej samej sekundzie na jednym lokalnym procesie: p95 4,2 s, max 6,3 s (wąskie gardło: jeden proces Node + Docker) — NFR-015 nie da się udowodnić lokalnie, pomiar po wdrożeniu zostaje użytkownikowi.
+- 2026-11-10 — S-19 cięcie (rada doradcy, czas): bez optymalizacji ścieżki 200 gościa (przekazanie odczytów wersji do `getGuestState`, pamięć podręczna `guestDrawing` per snapshot) — opisane w CLAUDE.md „Scale” jako dźwignie, jeśli pomiar na Lambdzie nie zmieści się w 5 s.
+- 2026-11-10 — S-19 smoke: stara kontrola „21 miejsc odrzucone” zmieniona na 31 miejsc („Stolik ma od 2 do 30 miejsc.”); sekcja 35 dodana; 759 PASS.
 
 ## Dodane zależności
 

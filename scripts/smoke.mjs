@@ -10,6 +10,7 @@
 import { Buffer } from "node:buffer";
 import { randomBytes } from "node:crypto";
 import { URL, URLSearchParams } from "node:url";
+import { performance } from "node:perf_hooks";
 import { TextDecoder, TextEncoder } from "node:util";
 import {
   addMembership,
@@ -549,11 +550,11 @@ check(
 );
 const tooManySeats = await request(`${api}/tables`, {
   method: "POST",
-  json: { roomId: gardenId, name: "Taras Smoke", seatCount: 21, shape: "round", x: 0.5, y: 0.5 },
+  json: { roomId: gardenId, name: "Taras Smoke", seatCount: 31, shape: "round", x: 0.5, y: 0.5 },
 });
 check(
-  "21 seats are refused",
-  tooManySeats.status === 400 && errorOf(tooManySeats) === "Stolik ma od 2 do 20 miejsc.",
+  "31 seats are refused (scale-150: 2 to 30)",
+  tooManySeats.status === 400 && errorOf(tooManySeats) === "Stolik ma od 2 do 30 miejsc.",
   `${tooManySeats.status} ${errorOf(tooManySeats)}`,
 );
 const offPlan = await request(`${api}/tables`, {
@@ -8147,5 +8148,125 @@ check(
   restored34.status === 200 && deleted34.status === 200,
   `${restored34.status} ${deleted34.status}`,
 );
+
+// 35. Scale (scale-150, S-19; FR-033, NFR-011). A new event of A (panel) filled through the organizer API to the new
+// limits: 150 guests (the 151st → 400), 3 rooms, 60 tables — 4 rectangular of 30 seats, the rest round of 4 — (a
+// 31-seat table and the 61st table → 400), every guest seated through one draft, published; the TV poll and a guest
+// poll at full size answer 200 with 60 tables and 150 names, then 204 with their own version. The answers' sizes and
+// times are printed (the load estimate in CLAUDE.md is built from `npm run load:local`). The event is deleted.
+const e35 = await staffCall(sessionOwner, eventsApiOf(restaurantA.id), {
+  method: "POST",
+  json: { name: `Skala smoke ${RUN_TAG}`, date: futureDate },
+});
+const e35Id = e35.data?.event?.id ?? 0;
+const e35Key = keyOfPath(e35.data?.event?.links?.organizer);
+const e35Tv = keyOfPath(e35.data?.event?.links?.tv);
+const e35Api = `/api/o/${e35Key}`;
+const names35 = Array.from({ length: 150 }, (_, index) => `Gość skali ${String(index + 1)}`);
+const guests35 = await request(`${e35Api}/guests`, { method: "POST", json: { text: names35.join("\n") } });
+const extraGuest35 = await request(`${e35Api}/guests`, { method: "POST", json: { text: "Gość skali 151" } });
+const rooms35 = [];
+for (const name of ["Sala A", "Sala B", "Sala C"]) {
+  const added = await request(`${e35Api}/rooms`, { method: "POST", json: { name } });
+  rooms35.push(added.data?.rooms?.find((room) => room.name === name)?.id ?? 0);
+}
+const tableStatuses35 = [];
+for (let index = 0; index < 60; index++) {
+  const long = index < 4;
+  const added = await request(`${e35Api}/tables`, {
+    method: "POST",
+    json: {
+      roomId: rooms35[index % 3],
+      name: `T${String(index + 1)}`,
+      seatCount: long ? 30 : 4,
+      shape: long ? "rectangular" : "round",
+      x: Math.round((0.05 + (index % 10) * 0.1) * 1000) / 1000,
+      y: Math.round((0.08 + Math.floor(index / 10) * 0.16) * 1000) / 1000,
+    },
+  });
+  tableStatuses35.push(added.status);
+}
+const tooBig35 = await request(`${e35Api}/tables`, {
+  method: "POST",
+  json: { roomId: rooms35[0], name: "Za duży", seatCount: 31, shape: "round", x: 0.5, y: 0.95 },
+});
+const extraTable35 = await request(`${e35Api}/tables`, {
+  method: "POST",
+  json: { roomId: rooms35[0], name: "T61", seatCount: 4, shape: "round", x: 0.5, y: 0.95 },
+});
+check(
+  "scale: an event takes 150 guests and 60 tables with 30-seat ones; the 151st guest, a 31-seat table and the 61st table → 400",
+  e35.status === 201 &&
+    guests35.status === 201 &&
+    (guests35.data?.guests?.length ?? 0) === 150 &&
+    extraGuest35.status === 400 &&
+    rooms35.every((id) => id > 0) &&
+    tableStatuses35.every((status) => status === 201) &&
+    tooBig35.status === 400 &&
+    extraTable35.status === 400,
+  `${e35.status} ${guests35.status}/${String(guests35.data?.guests?.length)} ${extraGuest35.status} ${tableStatuses35.filter((status) => status !== 201).join(",")} ${tooBig35.status} ${extraTable35.status}`,
+);
+
+const venue35 = await request(`${e35Api}/venue`);
+const seats35 = [];
+const ids35 = (guests35.data?.guests ?? []).map((guest) => guest.id);
+// The 30-seat tables first, so they are full.
+for (const table of [...(venue35.data?.tables ?? [])].sort((a, b) => b.seatCount - a.seatCount)) {
+  for (let seat = 1; seat <= table.seatCount && seats35.length < ids35.length; seat++) {
+    seats35.push({ guestId: ids35[seats35.length], tableId: table.id, seat });
+  }
+}
+const draft35 = await request(`${e35Api}/seating/draft`, { method: "POST", json: { seats: seats35 } });
+const publishStarted35 = performance.now();
+const publish35 = await request(`${e35Api}/seating/publish`, { method: "POST" });
+const publishMs35 = Math.round(performance.now() - publishStarted35);
+const tvStarted35 = performance.now();
+const tv35 = await request(`/api/tv/${e35Tv}/seating`);
+const tvMs35 = Math.round(performance.now() - tvStarted35);
+const tvNames35 = (tv35.data?.tables ?? []).reduce((sum, table) => sum + (table.seats?.length ?? 0), 0);
+const tvSame35 = await request(`/api/tv/${e35Tv}/seating?since=${encodeURIComponent(tv35.data?.version ?? "")}`);
+check(
+  "scale: one draft seats all 150 (30-seat tables full), publish 201; the TV poll answers 200 with 60 tables and 150 names, then 204 with its version",
+  venue35.status === 200 &&
+    (venue35.data?.tables?.length ?? 0) === 60 &&
+    seats35.length === 150 &&
+    draft35.status === 200 &&
+    publish35.status === 201 &&
+    tv35.status === 200 &&
+    (tv35.data?.tables?.length ?? 0) === 60 &&
+    tvNames35 === 150 &&
+    (tv35.data?.tables ?? []).filter((table) => table.seatCount === 30 && table.seats?.length === 30).length === 4 &&
+    tvSame35.status === 204,
+  `${draft35.status} ${publish35.status} (${String(publishMs35)} ms) tv ${tv35.status} ${String(Buffer.byteLength(tv35.body))} B ${String(tvMs35)} ms, ${String(tv35.data?.tables?.length)} tables ${String(tvNames35)} names, again ${tvSame35.status}`,
+);
+
+const links35 = await request(`${e35Api}/guest-links`, { method: "PATCH", json: { enabled: true } });
+const g35 = links35.data?.guests?.[0]?.key ?? "";
+const stateStarted35 = performance.now();
+const state35 = await request(`/api/g/${g35}/state`);
+const stateMs35 = Math.round(performance.now() - stateStarted35);
+const drawingNames35 = (state35.data?.drawing?.tables ?? []).reduce(
+  (sum, table) => sum + (table.seats?.length ?? 0),
+  0,
+);
+const stateSame35 = await request(`/api/g/${g35}/state?since=${encodeURIComponent(state35.data?.version ?? "")}`);
+const stateBytes35 = Buffer.byteLength(state35.body);
+check(
+  "scale: a guest poll at full size answers 200 with the seat, 30 tablemates' table and the whole drawing (60 tables, 150 names) under 100 KB, then 204 with its version",
+  links35.status === 200 &&
+    g35.length === 24 &&
+    state35.status === 200 &&
+    state35.data?.status === "seated" &&
+    (state35.data?.seat?.tablemates?.length ?? 0) === 29 &&
+    (state35.data?.drawing?.tables?.length ?? 0) === 60 &&
+    drawingNames35 === 150 &&
+    stateBytes35 < 100_000 &&
+    (state35.data?.version?.length ?? 99) <= 64 &&
+    stateSame35.status === 204,
+  `${links35.status} ${state35.status} ${String(stateBytes35)} B ${String(stateMs35)} ms, version ${String(state35.data?.version?.length)} chars, ${String(state35.data?.drawing?.tables?.length)} tables ${String(drawingNames35)} names, again ${stateSame35.status}`,
+);
+
+const deleted35 = await staffCall(sessionOwner, eventApi(e35Id), { method: "DELETE" });
+check("scale: the smoke's full-size event is deleted", deleted35.status === 200, String(deleted35.status));
 
 finish();
