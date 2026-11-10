@@ -7614,7 +7614,8 @@ check(
     shellOff33.body.includes("data-event-modules") &&
     !shellOff33.body.includes(`/o/${e33Key}/strzaly`) &&
     pageOff33.body.includes('data-module-off="guessing"') &&
-    guestPage33.body.includes('data-guest-module="guessing"') &&
+    /<div hidden=""[^>]*data-guest-module="guessing"/.test(guestPage33.body) &&
+    !/<div hidden=""[^>]*data-guest-module="questions"/.test(guestPage33.body) &&
     gameBack33.status === 200 &&
     boardBack33.status === 200 &&
     boardBack33.data?.guests?.filter((g) => g.amountGrosze === 150000).length === 1,
