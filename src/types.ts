@@ -1451,3 +1451,107 @@ export interface EventExportOrderLineDto {
   // For whom: a guest (by name) or the middle of a table; null = not assigned (or its guest / table is gone).
   place: { guest: string } | { table: string } | null;
 }
+
+// --- Room prints (room-prints, S-24; FR-038) — view models of the printed sheets: no ids, keys or prices ------------
+
+// The brand on a print: names, the restaurant's colour and the logos' URLs (null without a logo, or where the page
+// loads no image — support mode, the floors).
+export interface PrintBrandDto {
+  restaurantName: string;
+  clientName: string | null;
+  color: string | null;
+  textColor: "#000000" | "#ffffff" | null;
+  restaurantLogo: string | null;
+  clientLogo: string | null;
+}
+
+// What a print page reads (getRoomPrintSource): the event, its brand, the latest PUBLISHED seating (null before the
+// first publish or after the guests' data was deleted), whether the working arrangement still matches it, and — for
+// the staff list only — the diets at the published seats (null for every other print).
+export interface RoomPrintSourceDto {
+  event: { name: string; date: string; purgedAt: string | null };
+  branding: BrandingDto | null;
+  published: PublishedSeatingDto | null;
+  upToDate: boolean;
+  diets: DietBoardDto | null;
+}
+
+// „Znajdź swój stolik”: one published seat (room null while the venue has one room only).
+export interface BoardEntryDto {
+  name: string;
+  table: string;
+  room: string | null;
+}
+
+// A row of a board column: a letter heading or a guest; `units` = rows of the column it takes (long rows wrap).
+export type BoardRowDto =
+  { kind: "letter"; letter: string; continued: boolean } | ({ kind: "guest"; units: number } & BoardEntryDto);
+
+export interface BoardPageDto {
+  columns: BoardRowDto[][];
+}
+
+// A table card: the table's name, its room (null with one room) and the names seated there in seat order.
+export interface TableCardDto {
+  name: string;
+  room: string | null;
+  guests: string[];
+}
+
+// A place card („winietka”): the guest's name and their published table (room null with one room).
+export interface PlaceCardDto {
+  name: string;
+  table: string;
+  room: string | null;
+}
+
+// Where place cards sit on an A4 sheet (mm). folded: the piece is two faces tall with a fold line in the middle.
+export interface PlaceCardLayoutDto {
+  pageWidthMm: number;
+  pageHeightMm: number;
+  cardWidthMm: number;
+  cardHeightMm: number;
+  pieceHeightMm: number;
+  folded: boolean;
+  columns: number;
+  rows: number;
+  perPage: number;
+  offsetXMm: number;
+  offsetYMm: number;
+}
+
+// The staff list: an occupied published seat with the guest's diet (none for a guest without one or absent since).
+export interface StaffSeatDto {
+  seat: number;
+  name: string;
+  diets: DietTag[];
+  note: string | null;
+  units: number;
+}
+
+export interface StaffTableDto {
+  name: string;
+  room: string | null;
+  people: number;
+  counts: DietCountDto[];
+  seats: StaffSeatDto[];
+}
+
+export interface StaffListDto {
+  tables: StaffTableDto[];
+  // Present guests with a diet but no published seat.
+  unplaced: DietGuestDto[];
+  counts: DietCountDto[];
+  // Present guests with a diet or a note.
+  withDiets: number;
+}
+
+// One block of a staff-list page; `continued` = the rest of a block begun on an earlier page.
+export type StaffBlockDto =
+  | { kind: "summary"; counts: DietCountDto[]; withDiets: number }
+  | { kind: "table"; table: StaffTableDto; continued: boolean }
+  | { kind: "unplaced"; guests: DietGuestDto[]; continued: boolean };
+
+export interface StaffPageDto {
+  blocks: StaffBlockDto[];
+}
