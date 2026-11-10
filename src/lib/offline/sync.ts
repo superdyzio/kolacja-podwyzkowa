@@ -7,7 +7,7 @@ import { isGuessBoardData, isPublishedSeating } from "./cache";
 // denial (404 with the private headers the middleware adds) → "gone" (the organizer link no longer opens anything).
 
 export type OfflineReadResult =
-  | { status: "ok"; published: PublishedSeatingDto | null; board: GuessBoardDto }
+  | { status: "ok"; published: PublishedSeatingDto | null; board: GuessBoardDto | null }
   | { status: "offline" }
   | { status: "gone" };
 
@@ -19,6 +19,10 @@ const OFFLINE: OfflineReadResult = { status: "offline" };
 // portal or a proxy answering 404 never wipes the saved state.
 function isDenial(response: Response): boolean {
   return response.status === 404 && (response.headers.get("x-robots-tag") ?? "").includes("noindex");
+}
+
+function isModuleOff(body: unknown): boolean {
+  return typeof body === "object" && body !== null && "code" in body && body.code === "module-off";
 }
 
 async function readBody(response: Response): Promise<unknown> {
@@ -55,13 +59,16 @@ export async function readOfflineState(
   if (isDenial(seatingResponse) || isDenial(guessesResponse)) {
     return { status: "gone" };
   }
-  if (!seatingResponse.ok || !guessesResponse.ok) {
+  if (!seatingResponse.ok || (!guessesResponse.ok && guessesResponse.status !== 409)) {
     return OFFLINE;
   }
   const [seatingBody, board] = await Promise.all([readBody(seatingResponse), readBody(guessesResponse)]);
   const published = publishedOf(seatingBody);
-  if (published === undefined || !isGuessBoardData(board) || signal.aborted) {
+  // event-modules: the guessing game switched off answers 409 `module-off` — the link works, there is just no board
+  // to keep (the saved one stays untouched).
+  const gameOff = guessesResponse.status === 409 && isModuleOff(board);
+  if (published === undefined || (!gameOff && !isGuessBoardData(board)) || signal.aborted) {
     return OFFLINE;
   }
-  return { status: "ok", published, board };
+  return { status: "ok", published, board: gameOff ? null : (board as GuessBoardDto) };
 }

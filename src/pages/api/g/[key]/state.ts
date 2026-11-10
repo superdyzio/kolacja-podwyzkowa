@@ -2,6 +2,7 @@ import type { APIRoute } from "astro";
 import { getGuestState, getGuestStateVersion } from "@/lib/guest-links";
 import { guestApi } from "@/lib/guest-api";
 import { jsonResponse } from "@/lib/http";
+import { guestModulesOf } from "@/lib/modules/rules";
 
 export const prerender = false;
 
@@ -23,9 +24,11 @@ export const GET: APIRoute = async ({ locals, url }) => {
   if (
     since !== null &&
     since.length <= MAX_VERSION_LENGTH &&
-    since === (await getGuestStateVersion(api.db, api.access.event.id, guest))
+    since === (await getGuestStateVersion(api.db, api.access.event.id, guest, guestModulesOf(api.access.event.modules)))
   ) {
     return new Response(null, { status: 204 });
   }
-  return jsonResponse(await getGuestState(api.db, api.access.event.id, guest));
+  return jsonResponse(
+    await getGuestState(api.db, api.access.event.id, guest, guestModulesOf(api.access.event.modules)),
+  );
 };

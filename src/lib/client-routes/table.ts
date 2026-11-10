@@ -10,6 +10,7 @@ import * as guestLinks from "@/pages/api/o/[key]/guest-links";
 import * as guestLinksByIdRevoke from "@/pages/api/o/[key]/guest-links/[id]/revoke";
 import * as guests from "@/pages/api/o/[key]/guests";
 import * as guestsById from "@/pages/api/o/[key]/guests/[id]";
+import * as modules from "@/pages/api/o/[key]/modules";
 import * as orders from "@/pages/api/o/[key]/orders";
 import * as ordersById from "@/pages/api/o/[key]/orders/[id]";
 import * as ordersByIdPieces from "@/pages/api/o/[key]/orders/[id]/pieces";
@@ -57,6 +58,7 @@ export const CLIENT_ROUTE_MODULES: Readonly<Record<ClientRoutePattern, ClientRou
   "guest-links/:id/revoke": guestLinksByIdRevoke,
   guests: guests,
   "guests/:id": guestsById,
+  modules: modules,
   orders: orders,
   "orders/:id": ordersById,
   "orders/:id/pieces": ordersByIdPieces,

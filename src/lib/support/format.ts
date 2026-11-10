@@ -1,5 +1,6 @@
 import { PLATFORM_TIME_ZONE } from "@/lib/events/dates";
 import type { Locale } from "@/lib/i18n/locale";
+import { modulesMessages } from "@/lib/modules/messages";
 import type { SupportLogEntryDto } from "@/types";
 import { supportMessages } from "./messages";
 import { isApiPath, supportArea } from "./rules";
@@ -61,6 +62,12 @@ export function describeSupportEntry(entry: SupportLogEntryDto, locale: Locale =
       const path = entry.path ?? "";
       const what = entry.event ? t.eventArea(entry.event.name) : t.areaLabels[supportArea(path)];
       return t.entryAccess(`${what}${isApiPath(path) ? t.apiSuffix : ""}`);
+    }
+    case "unlock":
+    case "lock": {
+      const module = entry.module ? modulesMessages(locale).names[entry.module] : "—";
+      const event = entry.event?.name ?? "—";
+      return entry.kind === "unlock" ? t.entryUnlock(module, event) : t.entryLock(module, event);
     }
   }
 }

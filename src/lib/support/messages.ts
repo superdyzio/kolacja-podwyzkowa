@@ -45,6 +45,8 @@ export const supportMessages = defineMessages(
     entryEnter: (until: string) => `Wejście w tryb wsparcia (do ${until})`,
     entryAccess: (what: string) => `Otwarte: ${what}`,
     entryExit: "Zakończenie trybu wsparcia",
+    entryUnlock: (module: string, event: string) => `Odblokowanie modułu płatnego „${module}” w wydarzeniu „${event}”`,
+    entryLock: (module: string, event: string) => `Ponowna blokada modułu płatnego „${module}” w wydarzeniu „${event}”`,
     entryReason: (reason: string) => `Powód: „${reason}”`,
     areaLabels: {
       restaurant: "strona restauracji",
@@ -100,6 +102,8 @@ export const supportMessages = defineMessages(
     entryEnter: (until: string) => `Entered support mode (until ${until})`,
     entryAccess: (what: string) => `Opened: ${what}`,
     entryExit: "Left support mode",
+    entryUnlock: (module: string, event: string) => `Unlocked the paid module “${module}” for the event “${event}”`,
+    entryLock: (module: string, event: string) => `Locked the paid module “${module}” again for the event “${event}”`,
     entryReason: (reason: string) => `Reason: “${reason}”`,
     areaLabels: {
       restaurant: "restaurant page",

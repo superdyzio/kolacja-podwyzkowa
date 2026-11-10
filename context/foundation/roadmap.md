@@ -59,7 +59,7 @@ Restauracja, która gościła kolację 2026-11-08, chce tego narzędzia do włas
 | S-14 | client-restaurant-split | lokal przełącza „lokal prowadzi”; klient prowadzi zamówienia i robi reset prób; pełny reset i koszty AI tylko w panelu    | S-11             | FR-026, FR-027, FR-028, US-07                                                                 | done        |
 | S-15 | venue-templates         | menedżer zapisuje salę jako szablon, tworzy z niego wydarzenia i aktualizuje wydarzenie z szablonu                        | S-11             | FR-030, US-06, US-09                                                                          | done        |
 | S-16 | menu-catalog-courses    | menedżer prowadzi katalog menu z kursami i menu wydarzenia; klient zamawia z niego bez zmiany cen; kuchnia widzi kursy    | S-14             | FR-037, FR-027, US-07                                                                         | done |
-| S-17 | event-modules           | lokal oznacza dostępne moduły, klient je włącza, administrator odblokowuje płatne; wyłączony moduł znika wszędzie         | S-14             | FR-031, US-07, NFR-023                                                                        | proposed |
+| S-17 | event-modules           | lokal oznacza dostępne moduły, klient je włącza, administrator odblokowuje płatne; wyłączony moduł znika wszędzie         | S-14             | FR-031, US-07, NFR-023                                                                        | in-progress |
 | S-18 | event-branding          | właściciel ustawia markę lokalu, klient markę wydarzenia; gość, TV, karteczki i panel pokazują je bez nazwy platformy     | S-11             | FR-032                                                                                        | proposed |
 | S-19 | scale-150               | klient prowadzi wydarzenie do 150 gości, stołów do 30 miejsc i ok. 60 stolików w dotychczasowych czasach reakcji          | F-02             | FR-033, US-08, NFR-011, NFR-015                                                               | proposed |
 | S-20 | tv-room-rotation        | TV przy wejściu pokazuje cały lokal i sam przechodzi po salach, gdy imiona byłyby nieczytelne; TV da się przypiąć do sali | S-19             | FR-034, US-08, NFR-018                                                                        | proposed |
@@ -231,7 +231,7 @@ Fundamenty poniżej zakładają, że to istnieje, i NIE budują tego od nowa.
 - **Unknowns:**
   - Które moduły są płatne i ile kosztują (Otwarte pytanie 5). — Owner: user. Block: no (odblokowanie ręczne działa niezależnie od cennika).
 - **Risk:** Wyłączenie modułu nie może zepsuć istniejących danych ani wspólnego odpytywania telefonu gościa. Moduł znika, a jego dane zostają.
-- **Status:** proposed
+- **Status:** in-progress
 
 ### S-18: Marka lokalu i wydarzenia
 

@@ -26,6 +26,7 @@ const entry = (overrides: Partial<SupportLogEntryDto>): SupportLogEntryDto => ({
   method: "GET",
   path: "/panel/restauracje/5",
   event: null,
+  module: null,
   ...overrides,
 });
 

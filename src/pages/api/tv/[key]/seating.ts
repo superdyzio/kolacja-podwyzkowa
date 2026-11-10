@@ -28,9 +28,9 @@ export const GET: APIRoute = async ({ locals, url }) => {
   if (
     since !== null &&
     since.length <= MAX_VERSION_LENGTH &&
-    since === (await getTvScreenVersion(db, access.event.id))
+    since === (await getTvScreenVersion(db, access.event.id, access.event.modules.tvSpotlight))
   ) {
     return new Response(null, { status: 204 });
   }
-  return jsonResponse(await getTvScreen(db, access.event.id));
+  return jsonResponse(await getTvScreen(db, access.event.id, access.event.modules.tvSpotlight));
 };

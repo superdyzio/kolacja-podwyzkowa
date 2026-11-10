@@ -130,8 +130,13 @@ export async function hideTvSpotlight(db: DbClient, eventId: number): Promise<vo
 }
 
 // Everything the TV shows (the TV page and its poll use this one function, so their versions match).
-export async function getTvScreen(db: DbClient, eventId: number): Promise<TvScreenDto> {
-  const [seating, current] = await Promise.all([getTvSeating(db, eventId), newestRow(db, eventId)]);
+// event-modules (S-17): with „Pokaż na TV” off (`spotlightOn` false) the TV shows no spotlight and the token's last part
+// is 0, so the TV drops it on its next poll; the row stays and comes back when the module is on again.
+export async function getTvScreen(db: DbClient, eventId: number, spotlightOn = true): Promise<TvScreenDto> {
+  const [seating, current] = await Promise.all([
+    getTvSeating(db, eventId),
+    spotlightOn ? newestRow(db, eventId) : Promise.resolve(null),
+  ]);
   return {
     ...seating,
     version: tvScreenVersion(seating.version, current?.id ?? null),
@@ -140,7 +145,10 @@ export async function getTvScreen(db: DbClient, eventId: number): Promise<TvScre
 }
 
 // The TV polling token without reading the seating (the 204 path): three tiny queries in parallel.
-export async function getTvScreenVersion(db: DbClient, eventId: number): Promise<string> {
-  const [seatingVersion, spotlightId] = await Promise.all([getSeatingVersion(db, eventId), newestId(db, eventId)]);
+export async function getTvScreenVersion(db: DbClient, eventId: number, spotlightOn = true): Promise<string> {
+  const [seatingVersion, spotlightId] = await Promise.all([
+    getSeatingVersion(db, eventId),
+    spotlightOn ? newestId(db, eventId) : Promise.resolve(null),
+  ]);
   return tvScreenVersion(seatingVersion, spotlightId);
 }

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { GuestGuessDto, GuestSeatDto } from "@/types";
+import { ALL_GUEST_MODULES } from "@/lib/modules/rules";
 import {
   GUEST_UNPUBLISHED_MESSAGE,
   GUEST_UNSEATED_MESSAGE,
@@ -221,6 +222,7 @@ describe("toGuestState", () => {
       guess: OPEN,
       drawing: null,
       orders: [],
+      modules: ALL_GUEST_MODULES,
     });
   });
 
@@ -238,6 +240,7 @@ describe("toGuestState", () => {
       guess: OPEN,
       drawing: null,
       orders: [],
+      modules: ALL_GUEST_MODULES,
     });
   });
 
@@ -268,6 +271,7 @@ describe("toGuestState", () => {
     expect(Object.keys(state).sort()).toEqual([
       "drawing",
       "guess",
+      "modules",
       "name",
       "orders",
       "planVersion",

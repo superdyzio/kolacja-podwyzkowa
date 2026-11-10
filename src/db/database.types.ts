@@ -59,6 +59,9 @@ export interface Database {
           archived_at: string | null;
           // client-restaurant-split: „Lokal prowadzi” — true = staff edit in the panel, the organizer link is view-only.
           venue_leads: boolean;
+          modules_available: string[];
+          modules_enabled: string[];
+          modules_unlocked: string[];
           // venue-templates: true = a restaurant's venue template (never opens through a key, never listed or counted).
           is_template: boolean;
           // menu-catalog-courses: off = free-text orders (v1; every event from before), full = the whole catalog,
@@ -81,6 +84,9 @@ export interface Database {
           expected_guests?: number | null;
           archived_at?: string | null;
           venue_leads?: boolean;
+          modules_available?: string[];
+          modules_enabled?: string[];
+          modules_unlocked?: string[];
           is_template?: boolean;
           menu_mode?: string;
         };
@@ -99,6 +105,9 @@ export interface Database {
           expected_guests?: number | null;
           archived_at?: string | null;
           venue_leads?: boolean;
+          modules_available?: string[];
+          modules_enabled?: string[];
+          modules_unlocked?: string[];
           is_template?: boolean;
           menu_mode?: string;
         };
@@ -1189,6 +1198,7 @@ export interface Database {
           path: string | null;
           event_id: number | null;
           event_name: string | null;
+          module: string | null;
           created_at: string;
         };
         Insert: {
@@ -1205,6 +1215,7 @@ export interface Database {
           path?: string | null;
           event_id?: number | null;
           event_name?: string | null;
+          module?: string | null;
           created_at?: string;
         };
         Update: {
@@ -1221,6 +1232,7 @@ export interface Database {
           path?: string | null;
           event_id?: number | null;
           event_name?: string | null;
+          module?: string | null;
           created_at?: string;
         };
         Relationships: [
@@ -1458,6 +1470,11 @@ export interface Database {
       begin_support_access: {
         Args: { p_session_id: number; p_restaurant_id: number; p_reason: string; p_minutes: number };
         Returns: { grant_id: number; started_at: string; expires_at: string }[];
+      };
+      // event-modules: the administrator's unlock of a paid module inside a live support visit of the session.
+      set_event_module_unlock: {
+        Args: { p_session_id: number; p_event_id: number; p_module: string; p_unlocked: boolean };
+        Returns: string;
       };
       // admin-support-log: the guard's check — a live grant → the access is logged and the restaurant (event) returned.
       record_support_access: {

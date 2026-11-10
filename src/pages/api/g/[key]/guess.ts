@@ -6,6 +6,7 @@ import { guestApi } from "@/lib/guest-api";
 import { countGuests, parseAmount, placeLimit, readPlaceField, submitGuestGuess } from "@/lib/guesses";
 import { guessMessages, placeMessages } from "@/lib/guesses/messages";
 import { jsonError, jsonResponse, readJsonBody } from "@/lib/http";
+import { guestModulesOf } from "@/lib/modules/rules";
 
 export const prerender = false;
 
@@ -55,6 +56,8 @@ export const PUT: APIRoute = async ({ locals, request }) => {
     case "not-found":
       return jsonError(404, noAccessMessages(locals.locale).title);
     case "saved":
-      return jsonResponse(await getGuestState(api.db, api.access.event.id, guest));
+      return jsonResponse(
+        await getGuestState(api.db, api.access.event.id, guest, guestModulesOf(api.access.event.modules)),
+      );
   }
 };

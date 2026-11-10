@@ -4,6 +4,7 @@ import { getGuestState } from "@/lib/guest-links";
 import { guestApi } from "@/lib/guest-api";
 import { jsonError, jsonResponse, readJsonBody } from "@/lib/http";
 import { guestOrderMessages, markGuestPiece, MAX_QUANTITY } from "@/lib/orders";
+import { guestModulesOf } from "@/lib/modules/rules";
 
 export const prerender = false;
 
@@ -41,6 +42,8 @@ export const PUT: APIRoute = async ({ locals, request }) => {
     case "marked-by-organizer":
       return jsonError(409, t.markedByOrganizer);
     case "marked":
-      return jsonResponse(await getGuestState(api.db, api.access.event.id, guest));
+      return jsonResponse(
+        await getGuestState(api.db, api.access.event.id, guest, guestModulesOf(api.access.event.modules)),
+      );
   }
 };

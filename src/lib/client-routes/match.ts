@@ -16,6 +16,7 @@ export const CLIENT_ROUTE_PATTERNS = [
   "guest-links/:id/revoke",
   "guests",
   "guests/:id",
+  "modules",
   "orders",
   "orders/:id",
   "orders/:id/pieces",

@@ -2,6 +2,7 @@ import { generateAccessKey } from "@/lib/access/keys";
 import { getGuestGuess } from "@/lib/guesses/service";
 import { getGuestOrders } from "@/lib/orders/service";
 import { getPublishedVersion, readSnapshotRooms } from "@/lib/seating/service";
+import { ALL_GUEST_MODULES, type GuestModules } from "@/lib/modules/rules";
 import type { DbClient } from "@/lib/supabase-client";
 import { DEFAULT_CHAIR_PITCH, compareTableNames, isTableShape } from "@/lib/venue/rules";
 import type { DrawingTableDto, GuestDrawingDto, GuestLinksDto, GuestSeatDto, GuestStateDto } from "@/types";
@@ -184,6 +185,7 @@ export async function getGuestState(
   db: DbClient,
   eventId: number,
   guest: { id: number; displayName: string },
+  modules: GuestModules = ALL_GUEST_MODULES,
 ): Promise<GuestStateDto> {
   const [published, guess, orders] = await Promise.all([
     getPublishedVersion(db, eventId),
@@ -203,6 +205,7 @@ export async function getGuestState(
     guess,
     drawing,
     orders,
+    modules,
   });
 }
 
@@ -212,11 +215,12 @@ export async function getGuestStateVersion(
   db: DbClient,
   eventId: number,
   guest: { id: number; displayName: string },
+  modules: GuestModules = ALL_GUEST_MODULES,
 ): Promise<string> {
   const [published, guess, orders] = await Promise.all([
     getPublishedVersion(db, eventId),
     getGuestGuess(db, eventId, guest.id),
     getGuestOrders(db, guest.id),
   ]);
-  return guestStateVersion(published.version, guest.displayName, guess, orders);
+  return guestStateVersion(published.version, guest.displayName, guess, orders, modules);
 }

@@ -6,6 +6,7 @@ import { clientRouteHandler } from "@/lib/client-routes/table";
 import { EVENT_STAFF_ROLES } from "@/lib/events";
 import { jsonError } from "@/lib/http";
 import { LEAD_CODES, leadMessages, staffMayWrite } from "@/lib/lead";
+import { MODULE_CODES, moduleForApiPath, modulesMessages } from "@/lib/modules";
 import { denied, panelEventApi } from "@/lib/panel-api";
 
 export const prerender = false;
@@ -34,6 +35,11 @@ const handle: APIRoute = async ({ locals, params, request }) => {
   const access = await getClientAccess(api.db, api.event.restaurantId, api.event.id);
   if (!access) {
     return denied(locals);
+  }
+  // event-modules (S-17): an off module's routes refuse for the staff exactly like for the client's link.
+  const module = moduleForApiPath("organizer", params.path ?? "");
+  if (module && !access.event.modules[module]) {
+    return jsonError(409, modulesMessages(locals.locale).off, { code: MODULE_CODES.off, module });
   }
   if (isMutation(request.method) && !staffMayWrite(access.event.venueLeads)) {
     return jsonError(409, leadMessages(locals.locale).staffPreviewOnly, { code: LEAD_CODES.clientLeads });

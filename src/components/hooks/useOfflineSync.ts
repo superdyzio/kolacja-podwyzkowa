@@ -67,8 +67,11 @@ export function useOfflineSync(apiBase: string) {
         if (result.status === "ok") {
           const savedAt = new Date().toISOString();
           saveOfflineSeating(apiBase, result.published, savedAt);
-          // The guesses page saves every board it confirms; one saved while this read ran is fresher.
-          saveOfflineGuesses(apiBase, result.board, savedAt, startedAtMs);
+          // The guesses page saves every board it confirms; one saved while this read ran is fresher. No board = the
+          // guessing game is switched off (event-modules): the saved one stays.
+          if (result.board) {
+            saveOfflineGuesses(apiBase, result.board, savedAt, startedAtMs);
+          }
           markOffline(false);
         } else if (result.status === "gone") {
           clearOfflineCache(apiBase);

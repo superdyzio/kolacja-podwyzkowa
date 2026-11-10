@@ -108,7 +108,19 @@ describe.skipIf(!hasLocalDb)("guest keys and guest access", () => {
       const access = await resolveAccess(db, "guest", keys[0]);
       expect(access).toEqual({
         role: "guest",
-        event: { id: event.id, name: event.name },
+        // event-modules: a test event has the new-event defaults (AI topics and the guessing game off).
+        event: {
+          id: event.id,
+          name: event.name,
+          modules: {
+            questions: true,
+            aiTopics: false,
+            guessing: false,
+            seatingDraw: true,
+            tvSpotlight: true,
+            pubQuiz: false,
+          },
+        },
         guest: { id: ids[0], displayName: names[0] },
       });
       const serialized = JSON.stringify(access);

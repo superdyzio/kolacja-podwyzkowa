@@ -1,5 +1,6 @@
 import type { StaffSession } from "@/lib/auth/types";
 import type { DbClient } from "@/lib/supabase-client";
+import { isModuleKey } from "@/lib/modules/rules";
 import type { SupportAccessDto, SupportGrantDto, SupportLogDto, SupportLogEntryDto, SupportLogKind } from "@/types";
 import { loggedPath, SUPPORT_LOG_LIMIT, SUPPORT_MINUTES, supportStartPath } from "./rules";
 
@@ -138,14 +139,16 @@ export async function listActiveSupport(db: DbClient, sessionId: number): Promis
 }
 
 function isKind(value: string): value is SupportLogKind {
-  return value === "enter" || value === "access" || value === "exit";
+  return value === "enter" || value === "access" || value === "exit" || value === "unlock" || value === "lock";
 }
 
 // The restaurant's log for its owner: the newest SUPPORT_LOG_LIMIT entries, newest first.
 export async function getSupportLog(db: DbClient, restaurantId: number): Promise<SupportLogDto> {
   const { data, error } = await db
     .from("support_log")
-    .select("id, kind, created_at, admin_email, admin_name, reason, expires_at, method, path, event_id, event_name")
+    .select(
+      "id, kind, created_at, admin_email, admin_name, reason, expires_at, method, path, event_id, event_name, module",
+    )
     .eq("restaurant_id", restaurantId)
     .order("id", { ascending: false })
     .limit(SUPPORT_LOG_LIMIT + 1);
@@ -165,6 +168,7 @@ export async function getSupportLog(db: DbClient, restaurantId: number): Promise
       method: row.method,
       path: row.path,
       event: row.event_id !== null && row.event_name !== null ? { id: row.event_id, name: row.event_name } : null,
+      module: isModuleKey(row.module) ? row.module : null,
     }));
   return { restaurantId, entries, truncated: data.length > SUPPORT_LOG_LIMIT };
 }

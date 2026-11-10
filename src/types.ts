@@ -1,4 +1,5 @@
 import type { Database } from "@/db/database.types";
+import type { GuestModules, ModuleKey } from "@/lib/modules/rules";
 
 // Shared entity types (DB rows and DTOs).
 
@@ -365,6 +366,8 @@ export interface GuestStateDto {
   drawing: GuestDrawingDto | null;
   // guest-delivered: the guest's own order lines, then the lines for the middle of their table (latest snapshot).
   orders: GuestOrderLineDto[];
+  // event-modules: which of the phone's sections are on (questions, AI topics, the guess); in the token's hashed part.
+  modules: GuestModules;
 }
 
 // guest-delivered: an order line as a guest's phone shows it — no price, no ids of people. lineId addresses the line
@@ -922,7 +925,8 @@ export interface SupportGrantDto {
   expiresAt: string;
 }
 
-export type SupportLogKind = "enter" | "access" | "exit";
+// event-modules: "unlock" / "lock" = the administrator unlocked (locked again) a paid module of an event.
+export type SupportLogKind = "enter" | "access" | "exit" | "unlock" | "lock";
 
 // One row of the owner's „Dziennik wejść administratora”: who (snapshot of the admin's e-mail and name), when, and
 // what — the reason and end time of an entry, the method and path of an access (with the event's name), an exit.
@@ -936,6 +940,8 @@ export interface SupportLogEntryDto {
   method: string | null;
   path: string | null;
   event: { id: number; name: string } | null;
+  // event-modules: the module of an unlock / lock entry, else null.
+  module: ModuleKey | null;
 }
 
 // GET /api/panel/restaurants/<id>/support-log (owners): newest first; `truncated` when older entries exist.
@@ -1060,4 +1066,19 @@ export interface OrderMenuItemDto {
 export interface OrderMenuDto {
   active: boolean;
   items: OrderMenuItemDto[];
+}
+
+// event-modules (S-17): one module of an event as the client, the venue and the administrator see it. `active` =
+// available ∧ enabled ∧ (¬paid ∨ unlocked) — what decides the routes, pages, guest phones and the TV.
+export interface EventModuleDto {
+  key: ModuleKey;
+  available: boolean;
+  enabled: boolean;
+  paid: boolean;
+  unlocked: boolean;
+  active: boolean;
+}
+
+export interface EventModulesDto {
+  modules: EventModuleDto[];
 }

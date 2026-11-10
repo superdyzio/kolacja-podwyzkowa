@@ -1,6 +1,6 @@
 import { defineMiddleware } from "astro:middleware";
 import type { APIContext, MiddlewareNext } from "astro";
-import { decideAccess, parseAccessPath } from "@/lib/access";
+import { decideAccess, parseAccessPath, type Access } from "@/lib/access";
 import { noAccessMessages } from "@/lib/access/messages";
 import {
   AUTH_AREA_HEADERS,
@@ -19,6 +19,7 @@ import {
 import { getDb } from "@/lib/db";
 import { LOCALE_PARAM, isLocale, localeCookieName, resolveLocale } from "@/lib/i18n";
 import { clientMayWrite, isOrganizerApiPath, LEAD_CODES, leadMessages } from "@/lib/lead";
+import { keyedApiSubPath, MODULE_CODES, moduleForApiPath, modulesMessages, type ModuleKey } from "@/lib/modules";
 
 // Link-key guard (PRD Access Control). Every path under /o/, /tv/, /g/, /r/ and /api/{o,tv,g,r}/ needs a valid key of the
 // matching role; anything else gets the same 404 "brak dostępu" response, whatever the reason (malformed, unknown or
@@ -94,6 +95,16 @@ async function guardStaffArea(context: APIContext, next: MiddlewareNext, area: A
   return withHeaders(await next(), AUTH_AREA_HEADERS);
 }
 
+// The module an API request of a key route needs when that module is off in the event, else null (event-modules).
+function offModuleOf(pathname: string, access: Access): { role: "organizer" | "guest"; module: ModuleKey } | null {
+  const keyed = keyedApiSubPath(pathname);
+  if (keyed?.role !== access.role) {
+    return null;
+  }
+  const module = moduleForApiPath(keyed.role, keyed.subPath);
+  return module && !access.event.modules[module] ? { role: keyed.role, module } : null;
+}
+
 export const onRequest = defineMiddleware(async (context, next) => {
   context.locals.access = null;
   context.locals.staff = null;
@@ -131,8 +142,22 @@ export const onRequest = defineMiddleware(async (context, next) => {
   switch (decision.kind) {
     case "public":
       return next();
-    case "granted":
+    case "granted": {
       context.locals.access = decision.access;
+      // event-modules (S-17): an off module's API refuses before the route runs — the organizer link with a 409
+      // `module-off` (its islands and the offline copy tell it from a revoked key), a guest with the identical denial
+      // of a wrong key. Before the lead rule: an off module is off whoever leads.
+      const offModule = offModuleOf(pathname, decision.access);
+      if (offModule) {
+        return withPrivateHeaders(
+          offModule.role === "organizer"
+            ? Response.json(
+                { error: modulesMessages(context.locals.locale).off, code: MODULE_CODES.off, module: offModule.module },
+                { status: 409 },
+              )
+            : Response.json({ error: noAccessMessages(context.locals.locale).title }, { status: 404 }),
+        );
+      }
       if (
         decision.access.role === "organizer" &&
         !clientMayWrite(decision.access.event.venueLeads) &&
@@ -147,6 +172,7 @@ export const onRequest = defineMiddleware(async (context, next) => {
         );
       }
       return withPrivateHeaders(await next());
+    }
     case "denied":
       if (decision.isApi) {
         return withPrivateHeaders(

@@ -1,4 +1,5 @@
 import type { Locale } from "@/lib/i18n/locale";
+import { ALL_GUEST_MODULES, guestModulesKey, type GuestModules } from "@/lib/modules/rules";
 import { guestOrdersKey } from "@/lib/orders/pieces";
 import { oppositeSeat, sideNeighbours } from "@/lib/venue/seats";
 import type {
@@ -41,10 +42,12 @@ export function guestStateVersion(
   name: string,
   guess: GuestGuessDto,
   orders: readonly GuestOrderLineDto[],
+  modules: GuestModules = ALL_GUEST_MODULES,
 ): string {
   const amount = guess.amountGrosze ?? "n";
   const place = guess.predictedPlace ?? "n";
-  const live = shortHash(`${name}\u0000${guestOrdersKey(orders)}`);
+  // event-modules: the phone's module flags go into the hashed part (no new part: the token has 2 chars of headroom).
+  const live = shortHash(`${name}\u0000${guestOrdersKey(orders)}\u0000${guestModulesKey(modules)}`);
   return `${seatingVersion}.${live}.${guess.intakeOpen ? "1" : "0"}.${amount}.${place}.${guess.maxPlace}`;
 }
 
@@ -63,6 +66,8 @@ export interface GuestStateInput {
   drawing?: GuestDrawingDto | null;
   // guest-delivered: the guest's own order lines and their table's (getGuestOrders).
   orders: GuestOrderLineDto[];
+  // event-modules: the phone's sections that are on (from the guest access); all on when omitted.
+  modules?: GuestModules;
 }
 
 export function toGuestState({
@@ -74,8 +79,9 @@ export function toGuestState({
   guess,
   drawing = null,
   orders,
+  modules = ALL_GUEST_MODULES,
 }: GuestStateInput): GuestStateDto {
-  const version = guestStateVersion(seatingVersion, name, guess, orders);
+  const version = guestStateVersion(seatingVersion, name, guess, orders, modules);
   const own: GuestGuessDto = {
     intakeOpen: guess.intakeOpen,
     amountGrosze: guess.amountGrosze,
@@ -83,12 +89,22 @@ export function toGuestState({
     maxPlace: guess.maxPlace,
   };
   if (snapshotId === null) {
-    return { version, name, status: "unpublished", seat: null, planVersion, guess: own, drawing: null, orders };
+    return {
+      version,
+      name,
+      status: "unpublished",
+      seat: null,
+      planVersion,
+      guess: own,
+      drawing: null,
+      orders,
+      modules,
+    };
   }
   if (!seat) {
-    return { version, name, status: "unseated", seat: null, planVersion, guess: own, drawing: null, orders };
+    return { version, name, status: "unseated", seat: null, planVersion, guess: own, drawing: null, orders, modules };
   }
-  return { version, name, status: "seated", seat, planVersion, guess: own, drawing, orders };
+  return { version, name, status: "seated", seat, planVersion, guess: own, drawing, orders, modules };
 }
 
 // Everyone else at the guest's table in the same snapshot (rows = that table's snapshot seats, names as published),

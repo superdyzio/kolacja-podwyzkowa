@@ -1,4 +1,5 @@
 import type { OrganizerAccess } from "@/lib/access";
+import { modulesOf } from "@/lib/access/resolve";
 import type { DbClient } from "@/lib/supabase-client";
 
 // The organizer access of an event the panel guard has already opened (client-restaurant-split, S-14): what the
@@ -14,7 +15,9 @@ export async function getClientAccess(
 ): Promise<OrganizerAccess | null> {
   const { data, error } = await db
     .from("event")
-    .select("id, name, organizer_key, tv_key, restaurant_key, venue_leads")
+    .select(
+      "id, name, organizer_key, tv_key, restaurant_key, venue_leads, modules_available, modules_enabled, modules_unlocked",
+    )
     .eq("id", eventId)
     .eq("restaurant_id", restaurantId)
     .eq("is_template", template)
@@ -34,6 +37,7 @@ export async function getClientAccess(
       tvKey: data.tv_key,
       restaurantKey: data.restaurant_key,
       venueLeads: data.venue_leads,
+      modules: modulesOf(data),
     },
   };
 }

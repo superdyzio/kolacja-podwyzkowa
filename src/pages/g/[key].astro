@@ -10,6 +10,7 @@ import { accessFor, guestPath } from "@/lib/access";
 import { getGuestAiQuota } from "@/lib/ai-topics/service";
 import { getDb } from "@/lib/db";
 import { getGuestState, guestPhoneMessages } from "@/lib/guest-links";
+import { guestModulesOf } from "@/lib/modules/rules";
 
 // The guest's phone page (S-05, US-03, FR-013, NFR-003, NFR-008): mobile-first, Polish or English (i18n). The middleware has already
 // checked the key AND the guest-access switch (off, revoked or unknown → the same no-access page); this is the
@@ -36,7 +37,7 @@ const view =
     ? {
         eventName: access.event.name,
         apiBase: `/api${guestPath(Astro.params.key ?? "")}`,
-        initial: await getGuestState(db, access.event.id, access.guest),
+        initial: await getGuestState(db, access.event.id, access.guest, guestModulesOf(access.event.modules)),
         initialQuota: await getGuestAiQuota(db, access.event.id, access.guest.id),
       }
     : null;

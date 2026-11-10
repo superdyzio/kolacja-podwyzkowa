@@ -6,6 +6,16 @@ import { starterQuestionRows } from "@/lib/questions/seed";
 import { createServiceClient, type DbClient } from "@/lib/supabase-client";
 import { createTestEvent, hasLocalDb, localDb, localDbEnv, releaseTestEvent, type TestEvent } from "./helpers";
 
+// event-modules: an event created now has the new-event defaults (AI topics and the guessing game off).
+const NEW_EVENT_MODULES = {
+  questions: true,
+  aiTopics: false,
+  guessing: false,
+  seatingDraw: true,
+  tvSpotlight: true,
+  pubQuiz: false,
+};
+
 describe.skipIf(!hasLocalDb)("access matrix against the local DB", () => {
   let db: DbClient;
   let event: TestEvent;
@@ -37,6 +47,7 @@ describe.skipIf(!hasLocalDb)("access matrix against the local DB", () => {
             tvKey: event.tvKey,
             restaurantKey: event.restaurantKey,
             venueLeads: false,
+            modules: NEW_EVENT_MODULES,
           },
         },
       });
@@ -63,7 +74,7 @@ describe.skipIf(!hasLocalDb)("access matrix against the local DB", () => {
       const decision = await decideAccess(db, `/tv/${event.tvKey}`);
       expect(decision).toEqual({
         kind: "granted",
-        access: { role: "tv", event: { id: event.id, name: event.name } },
+        access: { role: "tv", event: { id: event.id, name: event.name, modules: NEW_EVENT_MODULES } },
       });
       const serialized = JSON.stringify(decision);
       expect(serialized).not.toContain(event.organizerKey);
@@ -86,7 +97,7 @@ describe.skipIf(!hasLocalDb)("access matrix against the local DB", () => {
         const decision = await decideAccess(db, path);
         expect(decision).toEqual({
           kind: "granted",
-          access: { role: "restaurant", event: { id: event.id, name: event.name } },
+          access: { role: "restaurant", event: { id: event.id, name: event.name, modules: NEW_EVENT_MODULES } },
         });
         expect(JSON.stringify(decision)).not.toContain(event.restaurantKey);
       }

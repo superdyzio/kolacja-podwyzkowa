@@ -1,4 +1,5 @@
 import type { DbClient } from "@/lib/supabase-client";
+import { effectiveModules, type EventModules } from "@/lib/modules/rules";
 import { isWellFormedAccessKey } from "./keys";
 import { parseAccessPath, type AccessRole } from "./paths";
 
@@ -18,26 +19,30 @@ export interface OrganizerAccess {
     tvKey: string;
     restaurantKey: string;
     venueLeads: boolean;
+    // event-modules (S-17): which modules work in this event (available ∧ enabled ∧ (free ∨ unlocked)).
+    modules: EventModules;
   };
 }
 
+// event-modules (S-17): every access carries the event's working modules (not a secret: the TV and the phone show
+// or hide sections by them, and the gates refuse an off module's routes).
 export interface TvAccess {
   role: "tv";
-  event: { id: number; name: string };
+  event: { id: number; name: string; modules: EventModules };
 }
 
 // The guest whose personal key is in the path. guest.id is THE identity for every guest action (S-06..S-08): never
 // take a guest id from the request.
 export interface GuestAccess {
   role: "guest";
-  event: { id: number; name: string };
+  event: { id: number; name: string; modules: EventModules };
   guest: { id: number; displayName: string };
 }
 
 // The restaurant's read-only view of the food order (restaurant-orders): the prep list and where to serve, no prices.
 export interface RestaurantAccess {
   role: "restaurant";
-  event: { id: number; name: string };
+  event: { id: number; name: string; modules: EventModules };
 }
 
 export type Access = OrganizerAccess | TvAccess | GuestAccess | RestaurantAccess;
@@ -52,6 +57,18 @@ export class AccessLookupError extends Error {
   }
 }
 
+export function modulesOf(row: {
+  modules_available: string[];
+  modules_enabled: string[];
+  modules_unlocked: string[];
+}): EventModules {
+  return effectiveModules({
+    available: row.modules_available,
+    enabled: row.modules_enabled,
+    unlocked: row.modules_unlocked,
+  });
+}
+
 // Returns null only when no event matches the key. A DB error throws (→ 500), so a misconfigured service key never
 // masquerades as "brak dostępu". A venue template (venue-templates, S-15: an event row with is_template) has keys from
 // the column defaults but never opens: every branch filters it out, so its keys get the identical denial.
@@ -64,7 +81,9 @@ export async function resolveAccess(db: DbClient, role: AccessRole, key: string)
     case "organizer": {
       const { data, error } = await db
         .from("event")
-        .select("id, name, organizer_key, tv_key, restaurant_key, venue_leads")
+        .select(
+          "id, name, organizer_key, tv_key, restaurant_key, venue_leads, modules_available, modules_enabled, modules_unlocked",
+        )
         .eq("organizer_key", key)
         .eq("is_template", false)
         .maybeSingle();
@@ -83,13 +102,14 @@ export async function resolveAccess(db: DbClient, role: AccessRole, key: string)
           tvKey: data.tv_key,
           restaurantKey: data.restaurant_key,
           venueLeads: data.venue_leads,
+          modules: modulesOf(data),
         },
       };
     }
     case "tv": {
       const { data, error } = await db
         .from("event")
-        .select("id, name")
+        .select("id, name, modules_available, modules_enabled, modules_unlocked")
         .eq("tv_key", key)
         .eq("is_template", false)
         .maybeSingle();
@@ -99,12 +119,12 @@ export async function resolveAccess(db: DbClient, role: AccessRole, key: string)
       if (!data) {
         return null;
       }
-      return { role: "tv", event: { id: data.id, name: data.name } };
+      return { role: "tv", event: { id: data.id, name: data.name, modules: modulesOf(data) } };
     }
     case "restaurant": {
       const { data, error } = await db
         .from("event")
-        .select("id, name")
+        .select("id, name, modules_available, modules_enabled, modules_unlocked")
         .eq("restaurant_key", key)
         .eq("is_template", false)
         .maybeSingle();
@@ -114,13 +134,15 @@ export async function resolveAccess(db: DbClient, role: AccessRole, key: string)
       if (!data) {
         return null;
       }
-      return { role: "restaurant", event: { id: data.id, name: data.name } };
+      return { role: "restaurant", event: { id: data.id, name: data.name, modules: modulesOf(data) } };
     }
     case "guest": {
       // One round trip: the guest by key with the event's switch embedded (every guest poll pays this lookup).
       const { data, error } = await db
         .from("guest")
-        .select("id, display_name, event(id, name, guest_access_enabled, is_template)")
+        .select(
+          "id, display_name, event(id, name, guest_access_enabled, is_template, modules_available, modules_enabled, modules_unlocked)",
+        )
         .eq("access_key", key)
         .maybeSingle();
       if (error) {
@@ -132,7 +154,7 @@ export async function resolveAccess(db: DbClient, role: AccessRole, key: string)
       }
       return {
         role: "guest",
-        event: { id: data.event.id, name: data.event.name },
+        event: { id: data.event.id, name: data.event.name, modules: modulesOf(data.event) },
         guest: { id: data.id, displayName: data.display_name },
       };
     }
