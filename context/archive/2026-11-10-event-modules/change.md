@@ -1,10 +1,10 @@
 ---
 change_id: event-modules
 title: Moduły wydarzenia — lokal udostępnia, klient włącza, administrator odblokowuje płatne
-status: implemented
+status: archived
 created: 2026-11-10
 updated: 2026-11-10
-archived_at: null
+archived_at: 2026-11-10T04:16:03Z
 ---
 
 ## Notes
