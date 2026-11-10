@@ -452,9 +452,9 @@ the migrated database.
 
 #### Automated
 
-- [x] 3.1 `npm run smoke` passes against `AI_PROVIDER=mock npm run preview`
-- [x] 3.2 `npm run demo` passes
-- [x] 3.3 `AI_PROVIDER=mock npm test`, `npm run lint`, `npx astro check`, `npm run build` pass
+- [x] 3.1 `npm run smoke` passes against `AI_PROVIDER=mock npm run preview` — 9373537
+- [x] 3.2 `npm run demo` passes — 9373537
+- [x] 3.3 `AI_PROVIDER=mock npm test`, `npm run lint`, `npx astro check`, `npm run build` pass — 9373537
 
 #### Manual
 

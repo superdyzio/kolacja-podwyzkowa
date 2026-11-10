@@ -1,7 +1,7 @@
 ---
 change_id: guest-rsvp-menu
 title: Guest RSVP with a dish choice until a deadline (S-25)
-status: implementing
+status: implemented
 created: 2026-11-10
 updated: 2026-11-10
 archived_at: null
