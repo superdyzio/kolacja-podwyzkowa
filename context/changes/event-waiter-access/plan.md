@@ -350,8 +350,8 @@ and in the waiter areas; old code ignores it).
 
 #### Automated
 
-- [x] 3.1 `npm run build`; `npm run smoke` passes against `AI_PROVIDER=mock npm run preview`; `npm run demo` passes
-- [x] 3.2 `npx supabase db reset` applies every migration from zero; `npm test` still passes afterwards
+- [x] 3.1 `npm run build`; `npm run smoke` passes against `AI_PROVIDER=mock npm run preview`; `npm run demo` passes — fcf4988
+- [x] 3.2 `npx supabase db reset` applies every migration from zero; `npm test` still passes afterwards — fcf4988
 
 #### Manual
 

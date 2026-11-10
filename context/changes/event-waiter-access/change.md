@@ -1,7 +1,7 @@
 ---
 change_id: event-waiter-access
 title: Per-event waiter — one-time link or code for one event's floor (S-21b)
-status: implementing
+status: implemented
 created: 2026-11-10
 updated: 2026-11-10
 archived_at: null
