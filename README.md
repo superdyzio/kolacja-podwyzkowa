@@ -24,14 +24,14 @@ Załóż restaurację i wydarzenie: `npm run event:create -- --restaurant "Pod L
 
 ## Dostęp
 
-| Widok       | Adres         | Uwagi                                            |
-| ----------- | ------------- | ------------------------------------------------ |
-| Organizator | `/o/<klucz>`  | wszystko; link do zakładek, nie udostępniać      |
-| TV          | `/tv/<klucz>` | tylko do odczytu, na urządzeniu przy telewizorze |
-| Gość        | `/g/<klucz>`  | osobisty link/QR (w kolejnych etapach)           |
-| Restauracja | `/r/<klucz>`  | tylko do odczytu: zamówienie i plan, bez cen     |
-| Personel    | `/panel`      | logowanie e-mailem i hasłem na `/logowanie`      |
-| Inne        | —             | strona „Brak dostępu” (HTTP 404), żadnych danych |
+| Widok       | Adres         | Uwagi                                                                                     |
+| ----------- | ------------- | ----------------------------------------------------------------------------------------- |
+| Organizator | `/o/<klucz>`  | praca klienta (goście, sala, rozsadzenie, zamówienia…); link do zakładek, nie udostępniać |
+| TV          | `/tv/<klucz>` | tylko do odczytu, na urządzeniu przy telewizorze                                          |
+| Gość        | `/g/<klucz>`  | osobisty link/QR (w kolejnych etapach)                                                    |
+| Restauracja | `/r/<klucz>`  | tylko do odczytu: zamówienie i plan, bez cen                                              |
+| Personel    | `/panel`      | logowanie e-mailem i hasłem na `/logowanie`                                               |
+| Inne        | —             | strona „Brak dostępu” (HTTP 404), żadnych danych                                          |
 
 ## Konta personelu
 
@@ -86,13 +86,26 @@ Właściciel i menedżer widzą w panelu lokalu `/panel/restauracje/<id>` sekcj�
 
 Link ustawia hasło do całego konta, więc restauracja nie da go osobie, która pracuje też w innej restauracji (właścicielowi da go administrator platformy; menedżera albo kelnera trzeba najpierw usunąć z zespołu jednej z restauracji). Z tego samego powodu nieużyty link od zespołu przestaje działać, gdy konto dołączy do innej restauracji, a osoby, która ma już konto w innej restauracji, ale nie ustawiła hasła, nie da się zaprosić, dopóki go nie ustawi. Kelner „na jedną imprezę” i widok dnia dla kelnerów przyjdą później. Na produkcji ta zmiana wymaga migracji bazy **przed** wdrożeniem kodu (zapraszanie, zmiany ról, usuwanie i „Nowy link” wołają nowe funkcje bazy); migracja tylko dodaje funkcje.
 
+### Kto prowadzi wydarzenie
+
+Wydarzenie przygotowuje klient (organizator) przez swój link `/o/<klucz>`, a personel lokalu (właściciel i menedżer) widzi jego pracę w panelu: karta wydarzenia `/panel/wydarzenia/<id>` ma sekcję „Praca klienta” z kartami gości, sali, rozsadzenia, linków gości, strzałów, pytań i zamówień, a każda prowadzi do podglądu `/panel/wydarzenia/<id>/<sekcja>` — tych samych ekranów co u klienta.
+
+1. Przełącznik „Lokal prowadzi” na karcie wydarzenia (potwierdzenie mówi, kto traci edycję) decyduje, kto zmienia dane. Wyłączony (domyślnie): klient edytuje, a personel ma podgląd tylko do odczytu z paskiem „Wydarzenie prowadzi klient — masz podgląd”. Włączony: personel edytuje w panelu („Lokal prowadzi — edytujesz za klienta”), a strony klienta są tylko do odczytu z paskiem „Wydarzenie prowadzi lokal” (każda próba zmiany kończy się odmową). „Oddaj prowadzenie klientowi” wraca do trybu domyślnego. Obie strony nigdy nie edytują naraz. Linki gości, TV i tabletu działają tak samo w obu trybach.
+2. Ceny są zawsze lokalu: klient widzi ceny przy daniach i napojach, ale ich nie wpisuje. Nowa pozycja bierze cenę ostatniej pozycji o tej samej nazwie (bez względu na wielkość liter), inaczej 0 zł. Personel ustawia ceny w „Cenniku wydarzenia” na podglądzie zamówień w panelu: cena dania albo napoju zmienia się we wszystkich pozycjach o tej nazwie.
+3. Pełny „Reset danych” i „Koszty AI” (zużycie tematów, dostawca, przyczyna ostatniego błędu i szacowany koszt) są tylko na karcie wydarzenia w panelu. Klient ma „Reset prób”: czyści strzały i rozsadzenie (z historią publikacji), a goście, sala, zamówienia, pytania i linki zostają — tak klient przygotowuje się do kolejnej próby.
+4. Link tabletu obsługi (`/r/<klucz>`) jest tylko na karcie wydarzenia w panelu — klient go nie widzi i nie wymienia.
+
+Administrator platformy w trybie wsparcia widzi „Pracę klienta” i podglądy tylko do odczytu, bez linków gości. Na produkcji ta zmiana wymaga migracji bazy **przed** wdrożeniem kodu (każda strona i zapytanie z linku klienta czyta nową kolumnę); migracja tylko dodaje kolumnę z wartością domyślną, więc istniejące wydarzenia zostają prowadzone przez klienta.
+
 ## Języki
 
 Cała aplikacja działa po polsku i po angielsku. Przełącznik **PL / EN** jest w prawym górnym rogu każdej strony (poza TV i karteczkami do druku); wybór zapamiętuje ciasteczko na rok. Domyślnie wszystko jest po polsku, a link restauracji po angielsku — restauracja ma własne ciasteczko, więc wybór organizatora nie zmienia jej tabletu i odwrotnie. Język da się też ustawić linkiem: dopisz `?lang=en` albo `?lang=pl` (np. dla TV: `/tv/<klucz>?lang=en`). Nie tłumaczą się treści z bazy: imiona, nazwy sal, stolików i dań, uwagi oraz pytania (także baza startowa). Tematy AI powstają w języku osoby, która je losuje.
 
 ## Reset danych
 
-Na dole panelu organizatora jest karta „Reset danych”. „Resetuj…” otwiera okno z listą rzeczy do wyczyszczenia, każda z opisem i aktualną liczbą: strzały (z prawidłową kwotą), licznik tematów AI, rozsadzenie z historią publikacji, goście i grupy, plan z salami i stolikami, zamówienia z napojami do rachunku (link restauracji zostaje), pytania (wraca baza startowa) oraz linki gości (nowe linki, dostęp gości wyłączony — wydrukowane karteczki przestają działać). Goście pociągają za sobą strzały, licznik AI i rozsadzenie, a plan — rozsadzenie. Jedno kliknięcie „Resetuj zaznaczone” czyści wszystko naraz (jedna transakcja w bazie). Link organizatora i adres TV się nie zmieniają, więc np. po próbie generalnej wystarczy zresetować wszystko i od nowa wgrać dane (także `npm run demo`).
+Pełny reset jest na karcie wydarzenia w panelu lokalu (`/panel/wydarzenia/<id>`, właściciel i menedżer) w sekcji „Reset danych”. „Resetuj…” otwiera okno z listą rzeczy do wyczyszczenia, każda z opisem i aktualną liczbą: strzały (z prawidłową kwotą), licznik tematów AI, rozsadzenie z historią publikacji, goście i grupy, plan z salami i stolikami, zamówienia z napojami do rachunku (link restauracji zostaje), pytania (wraca baza startowa) oraz linki gości (nowe linki, dostęp gości wyłączony — wydrukowane karteczki przestają działać). Goście pociągają za sobą strzały, licznik AI i rozsadzenie, a plan — rozsadzenie. Jedno kliknięcie „Resetuj zaznaczone” czyści wszystko naraz (jedna transakcja w bazie). Link organizatora i adres TV się nie zmieniają, więc np. po próbie generalnej wystarczy zresetować wszystko i od nowa wgrać dane (także `npm run demo`).
+
+Klient ma na dole swojego panelu `/o/<klucz>` kartę „Reset prób” z tym samym oknem, ale tylko ze strzałami i rozsadzeniem (patrz „Kto prowadzi wydarzenie”).
 
 ## Tematy AI
 
@@ -113,9 +126,9 @@ Domyślnie działa atrapa AI (`AI_PROVIDER=mock` albo brak zmiennej): przykłado
 
    Na AWS: te same zmienne w `.env.aws` (patrz „Wdrożenie na AWS”).
 
-3. Uruchom ponownie podgląd (`npx astro preview stop`, potem `npm run preview`; build nie jest potrzebny, sekrety są czytane przy starcie serwera) i wygeneruj jeden temat na `/o/<klucz>/pytania`. Panel „Temat od AI” pokazuje aktywnego dostawcę, a przy błędzie przyczynę (np. odrzucony klucz).
+3. Uruchom ponownie podgląd (`npx astro preview stop`, potem `npm run preview`; build nie jest potrzebny, sekrety są czytane przy starcie serwera) i wygeneruj jeden temat na `/o/<klucz>/pytania`. Sekcja „Koszty AI” na karcie wydarzenia w panelu lokalu pokazuje aktywnego dostawcę, przy błędzie przyczynę (np. odrzucony klucz) i szacowany koszt; klient widzi tylko licznik tematów.
 
-Bez klucza przy `AI_PROVIDER=anthropic` każda próba od razu się nie udaje, a panel organizatora mówi dlaczego. Klucz jest sekretem serwera i nigdy nie trafia do przeglądarki ani do repozytorium. Testy nigdy nie łączą się z API Anthropic, a `npm run smoke` wymaga atrapy.
+Bez klucza przy `AI_PROVIDER=anthropic` każda próba od razu się nie udaje, a „Koszty AI” w panelu lokalu mówią dlaczego. Klucz jest sekretem serwera i nigdy nie trafia do przeglądarki ani do repozytorium. Testy nigdy nie łączą się z API Anthropic, a `npm run smoke` wymaga atrapy.
 
 ## Plan sali
 
@@ -132,9 +145,9 @@ Na produkcji: przed `npx supabase db push` zrób kopię danych (`npx supabase db
 
 ## Zamówienia i restauracja
 
-Na `/o/<klucz>/zamowienia` organizator prowadzi zamówienie jedzenia: każda pozycja to danie (podpowiedzi z dań już wpisanych, cena podstawia się sama), cena za sztukę, ilość, opcjonalna uwaga dla kuchni i dla kogo — osoba (podanie na jej miejsce), stolik (na środek stołu) albo nieprzypisane. Widać sumę pozycji, łączną kwotę, listę „Do przygotowania” i każdą pozycję z ptaszkiem „Wydane”; wszystko da się poprawić albo usunąć.
+Na `/o/<klucz>/zamowienia` organizator prowadzi zamówienie jedzenia: każda pozycja to danie (podpowiedzi z dań już wpisanych), ilość, opcjonalna uwaga dla kuchni i dla kogo — osoba (podanie na jej miejsce), stolik (na środek stołu) albo nieprzypisane. Widać sumę pozycji, łączną kwotę, listę „Do przygotowania” i każdą pozycję z ptaszkiem „Wydane”; wszystko da się poprawić albo usunąć. Cenę za sztukę klient tylko widzi — ustawia ją lokal w „Cenniku wydarzenia” (patrz „Kto prowadzi wydarzenie”).
 
-Link dla restauracji (`/r/<klucz>`, w panelu i w `npm run links`) działa zawsze, domyślnie jest po angielsku i nie ma cen: lista dań do przygotowania (z uwagami i tym, co jeszcze do wydania), rysunek sali jak na TV oraz, stolik po stoliku, co podać na które miejsce i co na środek stołu. Wydane pozycje są przekreślone. Strona sama odświeża się co 15 s. Miejsca biorą się z **opublikowanego** rozsadzenia: osoba albo stolik spoza opublikowanego planu trafia do „Do ustalenia z organizatorem”. „Wymień link” od razu unieważnia stary link — wyślij restauracji nowy.
+Link dla restauracji (`/r/<klucz>`, w panelu i w `npm run links`) działa zawsze, domyślnie jest po angielsku i nie ma cen: lista dań do przygotowania (z uwagami i tym, co jeszcze do wydania), rysunek sali jak na TV oraz, stolik po stoliku, co podać na które miejsce i co na środek stołu. Wydane pozycje są przekreślone. Strona sama odświeża się co 15 s. Miejsca biorą się z **opublikowanego** rozsadzenia: osoba albo stolik spoza opublikowanego planu trafia do „Do ustalenia z organizatorem”. „Wymień link” na karcie wydarzenia w panelu lokalu od razu unieważnia stary link — przekaż obsłudze nowy.
 
 Na obu stronach (u organizatora i w restauracji) obok list jest plan sali. Kliknięcie dania na liście „Do przygotowania” zapala na planie wszystkie miejsca, gdzie ma trafić — krzesła gości albo środek stołu, z numerami sztuk — i rozwija listę sztuk: każdą sztukę (np. „3 · Dąb · m. 7 · Darek”) można wybrać osobno, wtedy świeci tylko jej miejsce. Kliknięcie pojedynczej pozycji przy stoliku zapala jej miejsce. Nad planem jest podpis słowami („Rosół 3/9 → Stolik Dąb · miejsce 7 · Darek”), wydane sztuki są szare, a „Wyczyść” albo Esc gasi zaznaczenie. Na wąskim ekranie plan jest nad listami i przypina się u góry, dopóki coś jest zaznaczone.
 
@@ -148,7 +161,7 @@ Na produkcji ta zmiana wymaga migracji bazy **przed** wdrożeniem kodu (bez niej
 
 ### Napoje do rachunku
 
-Na dole `/o/<klucz>/zamowienia` jest sekcja „Napoje do rachunku” — tylko dla organizatora, do sprawdzenia rachunku przy rozliczeniu z restauracją. Każdy napój to nazwa (podpowiedzi z napojów już wpisanych, cena podstawia się sama), cena za sztukę i ilość (do 999), bez przypisania do osób; da się go poprawić albo usunąć. Goście, TV i restauracja napojów nie widzą. Karta z sumą na górze strony pokazuje „Rachunek razem” (dania + napoje) oraz osobno „Dania” i „Napoje”. Reset „Zamówienia i napoje” usuwa też napoje.
+Na dole `/o/<klucz>/zamowienia` jest sekcja „Napoje do rachunku” — tylko dla organizatora, do sprawdzenia rachunku przy rozliczeniu z restauracją. Każdy napój to nazwa (podpowiedzi z napojów już wpisanych) i ilość (do 999) — cenę za sztukę ustawia lokal w „Cenniku wydarzenia”, bez przypisania do osób; da się go poprawić albo usunąć. Goście, TV i restauracja napojów nie widzą. Karta z sumą na górze strony pokazuje „Rachunek razem” (dania + napoje) oraz osobno „Dania” i „Napoje”. Reset „Zamówienia i napoje” usuwa też napoje.
 
 Na produkcji ta zmiana wymaga migracji bazy **przed** wdrożeniem kodu (bez niej strona zamówień kończy się błędem 500): kopia danych, `npx supabase db push`, potem `npm run deploy:aws`. Migracja tylko dodaje tabelę i podmienia dwie funkcje resetu; nic z istniejących danych się nie zmienia.
 

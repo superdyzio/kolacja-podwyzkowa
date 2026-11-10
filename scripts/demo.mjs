@@ -10,7 +10,9 @@
 // set fixed local demo passwords over HTTP (logins printed at the end). It also keeps ONE platform admin account
 // admin@demo.stolik with a fixed local password (platform-restaurants: the platform panel's login, printed at the end),
 // who pays the restaurant one logged support visit (admin-support-log: enter with a reason, the restaurant page, the
-// main event's card, exit), so the owner's „Dziennik wejść administratora” is not empty.
+// main event's card, exit), so the owner's „Dziennik wejść administratora” is not empty. client-restaurant-split: the
+// main event stays client-led and its order lines are priced by the owner („Cennik wydarzenia”); the upcoming company
+// Christmas party is switched to „Lokal prowadzi” and gets its first guests through the panel.
 // Every write after that goes through the HTTP API of a running server, so it passes the same validation as the UI.
 // Defaults stay as they are: guest access OFF, guess intake OPEN, no correct amount, only the starter questions.
 // Usage: npm run build && npm run preview, then npm run demo   (BASE_URL, default http://localhost:4321)
@@ -536,6 +538,12 @@ const MORE_EVENTS = [
   { name: "Urodziny Ani (demo)", date: shiftDate(today, -10), expectedGuests: 30, archived: false },
   { name: "Komunia Zosi (demo)", date: shiftDate(today, -60), expectedGuests: null, archived: true },
 ];
+// client-restaurant-split: the company Christmas party is run by the venue („Lokal prowadzi”): the owner flips the
+// switch and adds its first guests through the panel (the dispatcher to the client's API); its client link is
+// view-only. The main event stays client-led (its prices were set by the owner above).
+const VENUE_LED_EVENT = MORE_EVENTS[0].name;
+const VENUE_LED_GUESTS = ["Dyrektor Nowak", "Pani Kowalska", "Pan Wiśniewski", "Ola z księgowości"];
+let venueLedEventId = null;
 for (const { name, date, expectedGuests, archived } of MORE_EVENTS) {
   const created = await step(
     `wydarzenie ${name}`,
@@ -543,6 +551,23 @@ for (const { name, date, expectedGuests, archived } of MORE_EVENTS) {
     { method: "POST", json: { name, date, expectedGuests }, cookie: ownerCookie },
     201,
   );
+  if (name === VENUE_LED_EVENT) {
+    venueLedEventId = created.event.id;
+    const switched = await step(`lokal prowadzi: ${name}`, `/api/panel/events/${String(venueLedEventId)}`, {
+      method: "PATCH",
+      json: { venueLeads: true },
+      cookie: ownerCookie,
+    });
+    if (switched.event.venueLeads !== true) {
+      fail(`„Lokal prowadzi” nie włączył się dla „${name}”.`);
+    }
+    await step(
+      `goście przez panel: ${name}`,
+      `/api/panel/events/${String(venueLedEventId)}/klient/guests`,
+      { method: "POST", json: { text: VENUE_LED_GUESTS.join("\n") }, cookie: ownerCookie },
+      201,
+    );
+  }
   if (archived) {
     await step(`archiwum: ${name}`, `/api/panel/events/${String(created.event.id)}`, {
       method: "PATCH",
@@ -649,6 +674,7 @@ Dane demo gotowe („${RESTAURANT_NAME}” · „${EVENT_NAME}”, id ${String(e
 - wydarzenia lokalu: nadchodzące ${String(eventLists.upcoming.length)}, minione ${String(eventLists.past.length)}, archiwum ${String(eventLists.archived.length)}
 - zespół lokalu: ${String(team.team.members.length)} osoby (właściciel, menedżer, kelner)
 - dziennik wejść administratora: wejście jako wsparcie z powodem, 2 otwarte strony, wyjście (widzi go właściciel na stronie restauracji)
+- ceny zamówienia ustawione przez lokal („Cennik wydarzenia”); „${VENUE_LED_EVENT}”: lokal prowadzi, ${String(VENUE_LED_GUESTS.length)} gości dodanych w panelu
 
 Organizator: ${organizerUrl}
 TV:          ${new URL(`/tv/${event.tvKey}`, BASE_URL).href}
@@ -658,5 +684,7 @@ Panel lokalu: ${new URL("/logowanie", BASE_URL).href} — e-mail ${owner.email},
              e-mail ${TEAM[0].email}, hasło ${MANAGER_PASSWORD} (rola: menedżer)
              e-mail ${TEAM[1].email}, hasło ${WAITER_PASSWORD} (rola: kelner)
 Wydarzenia lokalu: ${new URL(`/panel/restauracje/${String(restaurantId)}`, BASE_URL).href} (po zalogowaniu)
+Praca klienta:   ${new URL(`/panel/wydarzenia/${String(event.id)}`, BASE_URL).href} (prowadzi klient: podgląd)
+                 ${new URL(`/panel/wydarzenia/${String(venueLedEventId)}`, BASE_URL).href} (lokal prowadzi: edycja w panelu)
 Panel platformy: ${new URL("/logowanie", BASE_URL).href} — e-mail ${ADMIN_EMAIL}, hasło ${ADMIN_PASSWORD}
 Linki są sekretne: nie wklejaj ich publicznie.`);

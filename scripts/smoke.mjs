@@ -6392,6 +6392,55 @@ check(
   `${ownerPageWithLog.status} ${managerLog.status} ${waiterLog.status} ${ownerBLog.status} ${noSessionLog.status} ${oddLogIds.join("; ")}`,
 );
 
+// client-restaurant-split (S-14) in support mode: the client's work reads through the dispatcher and the preview pages
+// render without islands; the guests' links (keys) stay closed; every write (dispatcher, prices, reset) is the
+// identical 404; the event page shows „Koszty AI” but no reset, the orders preview no price editor.
+const supportKlient = (path, options) => staffCall(sessionAdmin, `${eventApi(eventA.id)}/klient/${path}`, options);
+const supportClientGuests = await supportKlient("guests");
+const supportClientQuestions = await supportKlient("questions");
+const supportClientLinks = await supportKlient("guest-links");
+const supportPreview = await staffCall(sessionAdmin, `${eventPage(eventA.id)}/goscie`);
+const supportPreviewLinks = await staffCall(sessionAdmin, `${eventPage(eventA.id)}/linki`);
+const supportPreviewOrders = await staffCall(sessionAdmin, `${eventPage(eventA.id)}/zamowienia`);
+const supportPrices = await staffCall(sessionAdmin, `${eventApi(eventA.id)}/prices`);
+const supportAi = await staffCall(sessionAdmin, `${eventApi(eventA.id)}/ai-topics`);
+const supportS14Writes = [];
+for (const [label, path, options] of [
+  ["add guests", `${eventApi(eventA.id)}/klient/guests`, { method: "POST", json: { text: "Wsparcie Gość" } }],
+  ["set a price", `${eventApi(eventA.id)}/prices`, { method: "PUT", json: { kind: "dish", name: "X", price: "1" } }],
+  ["reset", `${eventApi(eventA.id)}/reset`, { method: "POST", json: { parts: ["guesses"] } }],
+  ["switch", eventApi(eventA.id), { method: "PATCH", json: { venueLeads: true } }],
+]) {
+  const res = await staffCall(sessionAdmin, path, options);
+  if (!noAccessJson(res)) supportS14Writes.push(`${label}: ${String(res.status)}`);
+}
+check(
+  "support (S-14): the client's work reads (dispatcher, previews without islands, prices, AI costs), the guests' links stay closed, every write is the identical 404",
+  supportClientGuests.status === 200 &&
+    Array.isArray(supportClientGuests.data?.guests) &&
+    supportClientQuestions.status === 200 &&
+    noAccessJson(supportClientLinks) &&
+    supportPreview.status === 200 &&
+    supportPreview.body.includes('data-client-preview="goscie"') &&
+    supportPreview.body.includes('data-lead-banner="support"') &&
+    // Rendered, not hydrated (the support banner's exit button is the page's only island).
+    supportPreview.body.includes("Dodaj gości") &&
+    !supportPreview.body.includes('component-export="GuestManager"') &&
+    !leaksAKey(supportPreview.body) &&
+    isNoAccessPage(supportPreviewLinks) &&
+    supportPreviewOrders.status === 200 &&
+    !supportPreviewOrders.body.includes("data-price-list") &&
+    !leaksAKey(supportPreviewOrders.body) &&
+    supportPrices.status === 200 &&
+    Array.isArray(supportPrices.data?.rows) &&
+    supportAi.status === 200 &&
+    keysOf(supportAi.data) === "provider,usage" &&
+    eventPageAInSupport.body.includes("data-ai-costs") &&
+    !eventPageAInSupport.body.includes("data-event-reset") &&
+    supportS14Writes.length === 0,
+  `${supportClientGuests.status} ${supportClientLinks.status} ${supportPreview.status} ${supportPreviewLinks.status} ${supportPreviewOrders.status} ${supportPrices.status} ${supportAi.status} ${supportS14Writes.join("; ")}`,
+);
+
 // Support mode belongs to the login session: the admin's second login is outside it.
 const secondAdminLogin = await logIn(staff.admin.email, STAFF_PASSWORD);
 const secondAdmin = sessionOf(secondAdminLogin);
@@ -6407,6 +6456,7 @@ check(
 );
 
 // Exit: Origin required, logged once; afterwards the identical 404 again.
+const logBeforeExit = await readLogA();
 const exitNoOrigin = await endSupportOf(sessionAdmin, restaurantA.id, { noOrigin: true });
 const exitForeign = await endSupportOf(sessionAdmin, restaurantA.id, { extraHeaders: FOREIGN });
 const exitByOwner = await endSupportOf(sessionOwner, restaurantA.id);
@@ -6434,7 +6484,7 @@ check(
     afterExitPage.body === adminUnknownPage.body &&
     logOf(logAfterExit)[0]?.kind === "exit" &&
     logOf(logAfterExit)[0].admin?.email === staff.admin.email &&
-    logOf(logAfterExit).length === oldestFirst.length + 2,
+    logOf(logAfterExit).length === logOf(logBeforeExit).length + 2,
   `${exitNoOrigin.status} ${exitForeign.status} ${exitByOwner.status} ${exitA.status} ${exitA.body.slice(-30)} ${exitAgain.body.slice(-30)} ${afterExitApi.status} ${logOf(logAfterExit).length}`,
 );
 
@@ -6489,6 +6539,230 @@ check(
     noAccessJson(thirdReadsA) &&
     logOf(logAfterLogout).some((entry) => entry.kind === "enter" && entry.reason === SECOND_REASON),
   `${enteredSecond.status} ${secondInSupport.status} ${firstOutside.status} ${loggedOutSecond.status} ${thirdReadsA.status}`,
+);
+
+// 30. Client / venue split (client-restaurant-split, S-14; FR-026..FR-028). The switch „Lokal prowadzi” on event A:
+// while OFF the client edits and the staff preview (dispatcher writes → 409 client-leads); while ON the staff edit
+// through the dispatcher and the client's writes get 409 venue-leads (its reads and pages stay, with the banner);
+// guests keep writing either way. Owners and managers toggle; a waiter, owner B, no session and a foreign Origin are
+// refused. Prices are the venue's whichever side leads. Uses the sessions of 25–29.
+const cardA30 = await staffCall(sessionOwner, eventApi(eventA.id));
+const clientKey = keyOfPath(cardA30.data?.event?.links?.organizer);
+const clientApi = `/api/o/${clientKey}`;
+const klientApi = `${eventApi(eventA.id)}/klient`;
+const leadCode = (res) => res.data?.code;
+check(
+  "split: event A starts client-led (the card says so) with a client link",
+  cardA30.status === 200 && cardA30.data?.event?.venueLeads === false && clientKey.length === 24,
+  `${cardA30.status} ${String(cardA30.data?.event?.venueLeads)}`,
+);
+
+// OFF: the client writes, the staff read through the dispatcher and are refused on writes.
+const S14_GUESTS = ["Ala", "Ola", "Ela"].map((name) => `${name} S14 ${RUN_TAG}`);
+const clientAdded = await request(`${clientApi}/guests`, { method: "POST", json: { text: S14_GUESTS.join("\n") } });
+const staffRead = await staffCall(sessionOwner, `${klientApi}/guests`);
+const clientRead = await request(`${clientApi}/guests`);
+const staffWriteOff = await staffCall(sessionOwner, `${klientApi}/guests`, {
+  method: "POST",
+  json: { text: `Personel S14 ${RUN_TAG}` },
+});
+const staffUnknownSub = await staffCall(sessionOwner, `${klientApi}/nie-ma-takiej`);
+const staffClientOnly = await staffCall(sessionOwner, `${klientApi}/trial-reset`);
+check(
+  "split OFF: the client adds guests; the staff read the same list through the dispatcher; their write → 409 client-leads; unknown and client-only sub-paths → the identical 404",
+  clientAdded.status === 201 &&
+    staffRead.status === 200 &&
+    staffRead.body === clientRead.body &&
+    S14_GUESTS.every((name) => staffRead.body.includes(name)) &&
+    staffWriteOff.status === 409 &&
+    leadCode(staffWriteOff) === "client-leads" &&
+    typeof staffWriteOff.data?.error === "string" &&
+    noAccessJson(staffUnknownSub) &&
+    noAccessJson(staffClientOnly),
+  `${clientAdded.status} ${staffRead.status} ${staffWriteOff.status} ${staffUnknownSub.status} ${staffClientOnly.status}`,
+);
+const previewOff = await staffCall(sessionOwner, `${eventPage(eventA.id)}/goscie`);
+const previewUnknown = await staffCall(sessionOwner, `${eventPage(eventA.id)}/nieznana`);
+const previewWaiter = await staffCall(sessionWaiter, `${eventPage(eventA.id)}/goscie`);
+const eventPage30 = await staffCall(sessionOwner, eventPage(eventA.id));
+check(
+  "split: the event page has the switch, „Praca klienta”, „Koszty AI” and „Reset danych”; the preview is read-only under the staff-preview banner; an unknown section and a waiter → the no-access page",
+  eventPage30.status === 200 &&
+    eventPage30.body.includes("data-client-work") &&
+    eventPage30.body.includes("data-ai-costs") &&
+    eventPage30.body.includes("data-event-reset") &&
+    previewOff.status === 200 &&
+    previewOff.body.includes('data-lead-banner="staff-preview"') &&
+    previewOff.body.includes("data-read-only") &&
+    previewOff.body.includes(" inert") &&
+    previewOff.body.includes(S14_GUESTS[0]) &&
+    isNoAccessPage(previewUnknown) &&
+    isNoAccessPage(previewWaiter),
+  `${eventPage30.status} ${previewOff.status} ${previewUnknown.status} ${previewWaiter.status}`,
+);
+
+// Who may flip the switch.
+const waiterToggle = await staffCall(sessionWaiter, eventApi(eventA.id), {
+  method: "PATCH",
+  json: { venueLeads: true },
+});
+const ownerBToggle = await staffCall(sessionB, eventApi(eventA.id), { method: "PATCH", json: { venueLeads: true } });
+const noSessionToggle = await staffCall(null, eventApi(eventA.id), { method: "PATCH", json: { venueLeads: true } });
+const foreignToggle = await staffCall(sessionOwner, eventApi(eventA.id), {
+  method: "PATCH",
+  json: { venueLeads: true },
+  extraHeaders: FOREIGN,
+});
+const stillOff = await staffCall(sessionOwner, eventApi(eventA.id));
+check(
+  "split: a waiter and owner B → the identical 404, no session → 401, a foreign Origin → 403; the switch stays off",
+  noAccessJson(waiterToggle) &&
+    noAccessJson(ownerBToggle) &&
+    noSessionToggle.status === 401 &&
+    foreignToggle.status === 403 &&
+    stillOff.data?.event?.venueLeads === false,
+  `${waiterToggle.status} ${ownerBToggle.status} ${noSessionToggle.status} ${foreignToggle.status}`,
+);
+const ownerBReads = [];
+for (const path of [
+  `${klientApi}/guests`,
+  `${eventApi(eventA.id)}/reset`,
+  `${eventApi(eventA.id)}/ai-topics`,
+  `${eventApi(eventA.id)}/prices`,
+]) {
+  const res = await staffCall(sessionB, path);
+  if (!noAccessJson(res)) ownerBReads.push(`${path}: ${String(res.status)}`);
+}
+const ownerBPreview = await staffCall(sessionB, `${eventPage(eventA.id)}/goscie`);
+const noSessionKlient = await staffCall(null, `${klientApi}/guests`);
+check(
+  "split: owner B gets the identical 404 on A's dispatcher, reset, AI costs, prices and previews; no session → 401",
+  ownerBReads.length === 0 && isNoAccessPage(ownerBPreview) && noSessionKlient.status === 401,
+  `${ownerBReads.join("; ")} ${ownerBPreview.status} ${noSessionKlient.status}`,
+);
+
+// ON (a manager flips it): the staff edit, the client views; guests keep writing.
+const managerOn = await staffCall(sessionManager, eventApi(eventA.id), { method: "PATCH", json: { venueLeads: true } });
+const staffWriteOn = await staffCall(sessionManager, `${klientApi}/guests`, {
+  method: "POST",
+  json: { text: `Personel S14 ${RUN_TAG}` },
+});
+const clientWriteOn = await request(`${clientApi}/guests`, { method: "POST", json: { text: `Klient S14 ${RUN_TAG}` } });
+const clientTrialOn = await request(`${clientApi}/trial-reset`, { method: "POST", json: { parts: ["seating"] } });
+const clientReadOn = await request(`${clientApi}/guests`);
+const clientPageOn = await request(`/o/${clientKey}/goscie`);
+const clientShellOn = await request(`/o/${clientKey}`);
+const previewOn = await staffCall(sessionManager, `${eventPage(eventA.id)}/goscie`);
+check(
+  "split ON: a manager flips the switch; the staff add a guest through the dispatcher; the client's writes (incl. „Reset prób”) → 409 venue-leads; its reads and pages stay, read-only with the banner",
+  managerOn.status === 200 &&
+    managerOn.data?.event?.venueLeads === true &&
+    staffWriteOn.status === 201 &&
+    staffWriteOn.body.includes(`Personel S14 ${RUN_TAG}`) &&
+    clientWriteOn.status === 409 &&
+    leadCode(clientWriteOn) === "venue-leads" &&
+    clientTrialOn.status === 409 &&
+    leadCode(clientTrialOn) === "venue-leads" &&
+    clientReadOn.status === 200 &&
+    clientReadOn.body.includes(`Personel S14 ${RUN_TAG}`) &&
+    !clientReadOn.body.includes(`Klient S14 ${RUN_TAG}`) &&
+    clientPageOn.status === 200 &&
+    clientPageOn.body.includes('data-lead-banner="client"') &&
+    clientPageOn.body.includes(" inert") &&
+    clientShellOn.status === 200 &&
+    clientShellOn.body.includes('data-lead-banner="client"') &&
+    previewOn.status === 200 &&
+    previewOn.body.includes('data-lead-banner="staff-leads"') &&
+    !previewOn.body.includes("data-read-only"),
+  `${managerOn.status} ${staffWriteOn.status} ${clientWriteOn.status} ${clientTrialOn.status} ${clientPageOn.status} ${previewOn.status}`,
+);
+const staffLinksOn = await staffCall(sessionOwner, `${klientApi}/guest-links`, {
+  method: "PATCH",
+  json: { enabled: true },
+});
+const s14Guest = staffLinksOn.data?.guests?.find((guest) => guest.displayName === S14_GUESTS[0]);
+const guestGuessOn = s14Guest
+  ? await request(`/api/g/${s14Guest.key}/guess`, { method: "PUT", json: { amount: "1500" } })
+  : null;
+check(
+  "split ON: the staff switch guest access on through the dispatcher; a guest still saves a guess (the switch never touches guests)",
+  staffLinksOn.status === 200 && staffLinksOn.data?.enabled === true && guestGuessOn?.status === 200,
+  `${staffLinksOn.status} ${guestGuessOn?.status}`,
+);
+
+// Prices are the venue's whichever side leads: a new dish costs 0, the price set in the panel shows on the client's
+// line and prices the next line of that name.
+const S14_DISH = `Pierogi S14 ${RUN_TAG}`;
+const staffDish = await staffCall(sessionOwner, `${klientApi}/orders`, {
+  method: "POST",
+  json: { name: S14_DISH, quantity: 2 },
+});
+const priceSet = await staffCall(sessionManager, `${eventApi(eventA.id)}/prices`, {
+  method: "PUT",
+  json: { kind: "dish", name: S14_DISH.toUpperCase(), price: "36" },
+});
+const priceBad = await staffCall(sessionOwner, `${eventApi(eventA.id)}/prices`, {
+  method: "PUT",
+  json: { kind: "dish", name: S14_DISH, price: "abc" },
+});
+const priceUnknown = await staffCall(sessionOwner, `${eventApi(eventA.id)}/prices`, {
+  method: "PUT",
+  json: { kind: "drink", name: S14_DISH, price: "1" },
+});
+const priceWaiter = await staffCall(sessionWaiter, `${eventApi(eventA.id)}/prices`, {
+  method: "PUT",
+  json: { kind: "dish", name: S14_DISH, price: "1" },
+});
+const managerOff = await staffCall(sessionManager, eventApi(eventA.id), {
+  method: "PATCH",
+  json: { venueLeads: false },
+});
+const clientDishAgain = await request(`${clientApi}/orders`, { method: "POST", json: { name: S14_DISH, quantity: 1 } });
+const clientDishWithPrice = await request(`${clientApi}/orders`, {
+  method: "POST",
+  json: { name: S14_DISH, quantity: 1, price: "1" },
+});
+const s14Lines = (clientDishAgain.data?.items ?? []).filter((item) => item.name === S14_DISH);
+const priceRow = priceSet.data?.rows?.find((row) => row.name === S14_DISH);
+const pricesPreview = await staffCall(sessionOwner, `${eventPage(eventA.id)}/zamowienia`);
+check(
+  "split prices: a new dish costs 0; the manager prices it in the panel (any letter case) → every line and the next one cost 36,00 zł; a bad price 400, an unknown name 404, a waiter 404; the client cannot send a price (400); the orders preview has „Cennik wydarzenia”",
+  staffDish.status === 201 &&
+    staffDish.data?.items?.find((item) => item.name === S14_DISH)?.unitPriceGrosze === 0 &&
+    priceSet.status === 200 &&
+    priceRow?.priceGrosze === 3600 &&
+    priceRow.kind === "dish" &&
+    priceRow.lines === 1 &&
+    priceBad.status === 400 &&
+    errorOf(priceBad) === "Wpisz kwotę w złotych, np. 1500 albo 1499,99." &&
+    priceUnknown.status === 404 &&
+    noAccessJson(priceWaiter) &&
+    managerOff.status === 200 &&
+    managerOff.data?.event?.venueLeads === false &&
+    clientDishAgain.status === 201 &&
+    s14Lines.length === 2 &&
+    s14Lines.every((item) => item.unitPriceGrosze === 3600) &&
+    clientDishWithPrice.status === 400 &&
+    pricesPreview.status === 200 &&
+    pricesPreview.body.includes("data-price-list") &&
+    pricesPreview.body.includes("Cennik wydarzenia"),
+  `${staffDish.status} ${priceSet.status} ${priceBad.status} ${priceUnknown.status} ${priceWaiter.status} ${clientDishAgain.status} ${clientDishWithPrice.status} ${pricesPreview.status}`,
+);
+
+// OFF again: the client writes; the staff are back to preview.
+const clientWriteOffAgain = await request(`${clientApi}/guests`, {
+  method: "POST",
+  json: { text: `Klient S14 ${RUN_TAG}` },
+});
+const staffWriteOffAgain = await staffCall(sessionOwner, `${klientApi}/guests/${String(s14Guest?.id ?? 0)}`, {
+  method: "DELETE",
+});
+check(
+  "split OFF again: the client adds a guest; a staff delete through the dispatcher → 409 client-leads",
+  clientWriteOffAgain.status === 201 &&
+    staffWriteOffAgain.status === 409 &&
+    leadCode(staffWriteOffAgain) === "client-leads",
+  `${clientWriteOffAgain.status} ${staffWriteOffAgain.status}`,
 );
 
 finish();

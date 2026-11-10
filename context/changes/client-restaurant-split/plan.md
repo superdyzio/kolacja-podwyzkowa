@@ -400,7 +400,7 @@ Additive column, default false: all existing events stay client-led; the old cod
 
 #### Automated
 
-- [x] 4.1 Tests, lint, types, build, smoke
+- [x] 4.1 Tests, lint, types, build, smoke — b68a954
 
 #### Manual
 
@@ -410,9 +410,9 @@ Additive column, default false: all existing events stay client-led; the old cod
 
 #### Automated
 
-- [ ] 5.1 Tests, lint, types, build
-- [ ] 5.2 Smoke twice in a row
-- [ ] 5.3 Demo
+- [x] 5.1 Tests, lint, types, build
+- [x] 5.2 Smoke twice in a row
+- [x] 5.3 Demo
 
 #### Manual
 
