@@ -369,7 +369,7 @@ export const priceMessages = defineMessages(
     notFound: "Ani zamówienie, ani napoje nie mają pozycji o tej nazwie.",
     heading: "Cennik wydarzenia",
     intro:
-      "Ceny dań i napojów tego wydarzenia. Klient widzi je w zamówieniu, ale ich nie zmienia; nowa pozycja dostaje cenę swojej nazwy (nowa nazwa: 0,00 zł do czasu ustalenia ceny tutaj). Zapis zmienia cenę wszystkich pozycji o tej nazwie.",
+      "Ceny dań i napojów tego wydarzenia. Klient widzi je w zamówieniu, ale ich nie zmienia; nowa pozycja dostaje cenę swojej nazwy (nowa nazwa: cenę z menu lokalu, a spoza menu 0,00 zł do czasu ustalenia ceny tutaj). Zapis zmienia cenę wszystkich pozycji o tej nazwie.",
     dishes: "Dania",
     drinks: "Napoje",
     empty: "Nie ma jeszcze pozycji w zamówieniu ani napojów.",
@@ -388,7 +388,7 @@ export const priceMessages = defineMessages(
     notFound: "Neither the order nor the drinks have a line with this name.",
     heading: "Event prices",
     intro:
-      "The prices of this event's dishes and drinks. The client sees them in the order but cannot change them; a new line takes the price of its name (a new name: 0,00 zł until its price is set here). Saving changes the price of every line with that name.",
+      "The prices of this event's dishes and drinks. The client sees them in the order but cannot change them; a new line takes the price of its name (a new name: the restaurant menu's price, off the menu 0,00 zł until its price is set here). Saving changes the price of every line with that name.",
     dishes: "Dishes",
     drinks: "Drinks",
     empty: "No order lines or drinks yet.",
