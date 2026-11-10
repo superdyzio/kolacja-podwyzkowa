@@ -197,8 +197,8 @@ database BEFORE the code.
 
 #### Automated
 
-- [x] 2.1 `npm test` incl. the price snapshot
-- [x] 2.2 `npm run lint`, `npx astro check`, `npm run build`
+- [x] 2.1 `npm test` incl. the price snapshot — 0612a0e
+- [x] 2.2 `npm run lint`, `npx astro check`, `npm run build` — 0612a0e
 
 #### Manual
 
@@ -208,5 +208,5 @@ database BEFORE the code.
 
 #### Automated
 
-- [x] 3.1 `npm run smoke` passes
-- [x] 3.2 `npm run demo` passes
+- [x] 3.1 `npm run smoke` passes — 0812c27
+- [x] 3.2 `npm run demo` passes — 0812c27
