@@ -1,7 +1,7 @@
 ---
 change_id: room-prints
 title: Room prints — find-your-table board, table cards, place cards and the staff list
-status: implementing
+status: implemented
 created: 2026-11-10
 updated: 2026-11-10
 archived_at: null

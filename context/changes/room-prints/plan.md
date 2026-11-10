@@ -297,10 +297,10 @@ None (no migration).
 
 #### Automated
 
-- [x] 3.1 Full suite passes: `AI_PROVIDER=mock npm test`
-- [x] 3.2 Lint, type check and build pass: `npm run lint`, `npx astro check`, `npm run build`
-- [x] 3.3 Smoke passes against `AI_PROVIDER=mock npm run preview`: `npm run smoke`
-- [x] 3.4 Demo passes: `npm run demo`
+- [x] 3.1 Full suite passes: `AI_PROVIDER=mock npm test` — d4458af
+- [x] 3.2 Lint, type check and build pass: `npm run lint`, `npx astro check`, `npm run build` — d4458af
+- [x] 3.3 Smoke passes against `AI_PROVIDER=mock npm run preview`: `npm run smoke` — d4458af
+- [x] 3.4 Demo passes: `npm run demo` — d4458af
 
 #### Manual
 
