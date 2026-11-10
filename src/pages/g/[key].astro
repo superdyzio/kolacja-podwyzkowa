@@ -5,6 +5,7 @@ import { GuestGuessView } from "@/components/guest/GuestGuessView";
 import { GuestModuleGate } from "@/components/guest/GuestModuleGate";
 import { GuestOrderView } from "@/components/guest/GuestOrderView";
 import { GuestQuestionDraw } from "@/components/guest/GuestQuestionDraw";
+import { GuestRsvpView } from "@/components/guest/GuestRsvpView";
 import { GuestSeatView } from "@/components/guest/GuestSeatView";
 import { GuestTopicView } from "@/components/guest/GuestTopicView";
 import Layout from "@/layouts/Layout.astro";
@@ -19,7 +20,8 @@ import { guestModulesOf } from "@/lib/modules/rules";
 // checked the key AND the guest-access switch (off, revoked or unknown → the same no-access page); this is the
 // second, role-specific check. GuestAccess carries no keys, and only this guest's own state reaches the HTML.
 //
-// Structure: <main> holds one <section> per feature, stacked: S-05's seat view, the order (guest-delivered: the island
+// Structure: <main> holds one <section> per feature, stacked: the RSVP while answers are open (guest-rsvp-menu, S-25;
+// the same island renders at the very end, read-only, once they close), S-05's seat view, the order (guest-delivered: the island
 // renders its own <section> and heading, and nothing while the guest has no order lines), S-06's guess, S-07's
 // question draw, then S-08's AI topic. Each section's island lives in src/components/guest/, receives `apiBase` (/api/g/<key>) and
 // talks to routes under src/pages/api/g/[key]/ (which start with guestApi(locals); the guest is access.guest.id, never
@@ -56,6 +58,8 @@ const view =
         <BrandHeader branding={view.branding} base={`${view.apiBase}/branding`} locale={locale} />
         <h1 class="text-sm font-medium tracking-wide text-muted-foreground uppercase">{view.eventName}</h1>
       </header>
+
+      <GuestRsvpView client:load apiBase={view.apiBase} initial={view.initial} locale={locale} placement="open" />
 
       <section aria-labelledby="seat-heading" class="flex flex-col gap-3">
         <h2 id="seat-heading" class="sr-only">
@@ -98,6 +102,8 @@ const view =
           />
         </section>
       </GuestModuleGate>
+
+      <GuestRsvpView client:load apiBase={view.apiBase} initial={view.initial} locale={locale} placement="closed" />
     </main>
   </Layout>
 ) : (

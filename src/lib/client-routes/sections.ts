@@ -2,7 +2,16 @@
 // /panel/wydarzenia/<id>/<section> renders the client's island for that section with the panel's API base. The slugs
 // are the client's own (/o/<key>/<section>), so the islands' links between sections work in both places. Pure.
 
-export const CLIENT_SECTIONS = ["goscie", "sale", "rozsadzenie", "linki", "strzaly", "pytania", "zamowienia"] as const;
+export const CLIENT_SECTIONS = [
+  "goscie",
+  "sale",
+  "rozsadzenie",
+  "linki",
+  "potwierdzenia",
+  "strzaly",
+  "pytania",
+  "zamowienia",
+] as const;
 
 export type ClientSection = (typeof CLIENT_SECTIONS)[number];
 

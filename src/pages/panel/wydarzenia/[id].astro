@@ -24,6 +24,7 @@ import { leadMessages } from "@/lib/lead/messages";
 import { formatOrderSummary, getOrderItems, orderTotals } from "@/lib/orders";
 import { findPanelEvent } from "@/lib/panel-api";
 import { formatQuestionSummary, getQuestionList } from "@/lib/questions";
+import { formatRsvpSummary, getRsvpBoard } from "@/lib/rsvp";
 import { formatSeatingSummary, getSeatingBoard, summarizeSeating } from "@/lib/seating";
 import { supportEventSummary } from "@/lib/support";
 import { EventTemplateActions } from "@/components/templates/EventTemplateActions";
@@ -78,6 +79,8 @@ const loaded = panel
       panel.support
         ? Promise.resolve(null)
         : getEventWaiters(panel.db, panel.event.restaurantId, panel.event.id, new Date()),
+      // guest-rsvp-menu (S-25): the venue's counts on „Potwierdzenia i wybór dania”.
+      getRsvpBoard(panel.db, panel.event.id, new Date()),
     ])
   : null;
 const card = loaded?.[0] ?? null;
@@ -99,6 +102,7 @@ const work = loaded
         modules,
         branding,
         waiters,
+        rsvpBoard,
       ] = loaded;
       return {
         branding,
@@ -118,6 +122,7 @@ const work = loaded
             { enabled: guestAccessEnabled, guestCount: board.guestList.guests.length },
             locale,
           ),
+          potwierdzenia: rsvpBoard ? formatRsvpSummary(rsvpBoard, locale) : null,
           strzaly: formatGuessSummary(guessBoard, locale),
           pytania: formatQuestionSummary(questionList.questions, locale),
           zamowienia: formatOrderSummary(orderTotals(orderItems), locale),

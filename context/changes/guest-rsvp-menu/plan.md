@@ -432,16 +432,16 @@ the migrated database.
 
 #### Automated
 
-- [x] 1.1 `npx supabase migration up` applies on the demo-populated local DB and `npx supabase db reset` from zero
-- [x] 1.2 `AI_PROVIDER=mock npm test` passes (unit + DB integration incl. `guest-rsvp.test.ts`, `match.test.ts`, `guest-links.test.ts`)
-- [x] 1.3 `npm run lint` and `npx astro check` pass
+- [x] 1.1 `npx supabase migration up` applies on the demo-populated local DB and `npx supabase db reset` from zero — 0b0e645
+- [x] 1.2 `AI_PROVIDER=mock npm test` passes (unit + DB integration incl. `guest-rsvp.test.ts`, `match.test.ts`, `guest-links.test.ts`) — 0b0e645
+- [x] 1.3 `npm run lint` and `npx astro check` pass — 0b0e645
 
 ### Phase 2: Guest, client and panel UI
 
 #### Automated
 
-- [ ] 2.1 `npm run lint`, `npx astro check`, `npm run build` pass
-- [ ] 2.2 `AI_PROVIDER=mock npm test` passes (sections list tests, if any, updated)
+- [x] 2.1 `npm run lint`, `npx astro check`, `npm run build` pass
+- [x] 2.2 `AI_PROVIDER=mock npm test` passes (sections list tests, if any, updated)
 
 #### Manual
 

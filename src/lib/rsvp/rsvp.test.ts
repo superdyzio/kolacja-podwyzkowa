@@ -6,6 +6,7 @@ import type { GuestGuessDto, GuestRsvpDto } from "@/types";
 import {
   attendanceOf,
   byOrganizerOf,
+  defaultDeadlineInput,
   formatRsvpSummary,
   MAX_RSVP_OPTIONS,
   parseOptionNames,
@@ -205,6 +206,12 @@ describe("the client's board", () => {
     expect(formatRsvpSummary(rsvpBoard({ ...input, deadline: "2026-11-30T12:00:00Z" }, now), "en")).toBe(
       "closed · coming 0 · not coming 0 · no answer 0",
     );
+  });
+
+  it("suggests the evening before the event as the deadline, across a month and a year", () => {
+    expect(defaultDeadlineInput("2026-12-12")).toBe("2026-12-11T20:00");
+    expect(defaultDeadlineInput("2027-03-01")).toBe("2027-02-28T20:00");
+    expect(defaultDeadlineInput("2027-01-01")).toBe("2026-12-31T20:00");
   });
 
   it("checks the option names: normalised, no repeats in any case, none empty, at most the limit", () => {

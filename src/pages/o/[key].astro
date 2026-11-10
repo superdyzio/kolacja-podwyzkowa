@@ -20,6 +20,7 @@ import { getEventModules, modulesMessages } from "@/lib/modules";
 import { formatOrderSummary, getOrderItems, orderTotals } from "@/lib/orders";
 import { formatGuestSummary, summarizeGuestList } from "@/lib/guests";
 import { formatQuestionSummary, getQuestionList } from "@/lib/questions";
+import { formatRsvpSummary, getRsvpBoard } from "@/lib/rsvp";
 import { formatSeatingSummary, getSeatingBoard, summarizeSeating } from "@/lib/seating";
 import { shellMessages } from "@/lib/shell/messages";
 import { formatVenueSummary, summarizeVenue } from "@/lib/venue";
@@ -36,7 +37,7 @@ const db = access ? getDb() : null;
 // One read of the seating board carries the guest list and the venue too.
 // event-modules (S-17): a switched-off module's card is gone and its data is not read.
 const on = access?.event.modules;
-const [board, guestAccessEnabled, guessBoard, questionList, aiUsage, orderItems, modules, branding] =
+const [board, guestAccessEnabled, guessBoard, questionList, aiUsage, orderItems, modules, branding, rsvpBoard] =
   access && db
     ? await Promise.all([
         getSeatingBoard(db, access.event.id),
@@ -48,8 +49,10 @@ const [board, guestAccessEnabled, guessBoard, questionList, aiUsage, orderItems,
         getEventModules(db, access.event.id),
         // event-branding (S-18): the brand header and „Marka wydarzenia”.
         getEventBranding(db, access.event.id),
+        // guest-rsvp-menu (S-25): the RSVP card's summary.
+        getRsvpBoard(db, access.event.id, new Date()),
       ])
-    : [null, false, null, null, null, null, null, null];
+    : [null, false, null, null, null, null, null, null, null];
 const view = access
   ? {
       name: access.event.name,
@@ -71,6 +74,8 @@ const view = access
       linksSummary: board
         ? formatGuestLinksSummary({ enabled: guestAccessEnabled, guestCount: board.guestList.guests.length }, locale)
         : null,
+      rsvpPath: `${organizerPath(access.event.organizerKey)}/potwierdzenia`,
+      rsvpSummary: rsvpBoard ? formatRsvpSummary(rsvpBoard, locale) : null,
       guessesPath: `${organizerPath(access.event.organizerKey)}/strzaly`,
       guessesSummary: guessBoard ? formatGuessSummary(guessBoard, locale) : null,
       questionsPath: `${organizerPath(access.event.organizerKey)}/pytania`,
@@ -194,6 +199,20 @@ const tb = brandingMessages(locale);
               </div>
               <p class="text-sm text-muted-foreground">{t.linksText}</p>
               {view.linksSummary && <p class="text-sm font-medium">{view.linksSummary}</p>}
+            </a>
+          </li>
+          <li>
+            <a
+              href={view.rsvpPath}
+              data-rsvp-card
+              class="flex h-full flex-col gap-2 rounded-xl border p-4 transition-colors hover:bg-accent focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
+            >
+              <div class="flex items-center justify-between gap-2">
+                <h3 class="font-semibold">{t.rsvpTitle}</h3>
+                <span class="rounded-full bg-primary px-2 py-0.5 text-xs text-primary-foreground">{t.open}</span>
+              </div>
+              <p class="text-sm text-muted-foreground">{t.rsvpText}</p>
+              {view.rsvpSummary && <p class="text-sm font-medium">{view.rsvpSummary}</p>}
             </a>
           </li>
           {view.guessesOn && (

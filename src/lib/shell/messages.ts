@@ -29,6 +29,8 @@ export const shellMessages = defineMessages(
     seatingText: "Losowanie bez powtórek sąsiadów, ręczne poprawki, publikacja na TV i powrót do poprzedniego.",
     linksTitle: "Linki gości i karteczki",
     linksText: "Osobiste linki, kody QR do druku i włącznik dostępu gości.",
+    rsvpTitle: "Potwierdzenia i wybór dania",
+    rsvpText: "Goście potwierdzają obecność i wybierają danie do terminu; zliczenia i odpowiedzi za gości.",
     guessesTitle: "Strzały i ranking",
     guessesText: "Strzały gości, zamknięcie przyjmowania, prawidłowa kwota i ranking od końca.",
     questionsTitle: "Pytania do rozmowy",
@@ -70,6 +72,8 @@ export const shellMessages = defineMessages(
       "A draw without repeated neighbours, manual tweaks, publishing to the TV and going back to the previous one.",
     linksTitle: "Guest links and cards",
     linksText: "Personal links, QR codes to print and the guest access switch.",
+    rsvpTitle: "RSVP and dish choice",
+    rsvpText: "Guests confirm attendance and pick a dish until the deadline; counts and answers for guests.",
     guessesTitle: "Guesses and ranking",
     guessesText:
       "The guests' guesses, closing the intake, the correct amount and the ranking read from the last place.",

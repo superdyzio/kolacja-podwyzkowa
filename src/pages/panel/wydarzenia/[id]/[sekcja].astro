@@ -10,6 +10,7 @@ import { OrderManager } from "@/components/orders/OrderManager";
 import { PriceListEditor } from "@/components/orders/PriceListEditor";
 import ModuleOff from "@/components/modules/ModuleOff.astro";
 import { QuestionManager } from "@/components/questions/QuestionManager";
+import { RsvpManager } from "@/components/rsvp/RsvpManager";
 import { SeatingEditor } from "@/components/seating/SeatingEditor";
 import SupportBanner from "@/components/support/SupportBanner.astro";
 import { VenueEditor } from "@/components/venue/VenueEditor";
@@ -33,6 +34,7 @@ import { getGuestList } from "@/lib/guests";
 import { getOrderBoard, priceList } from "@/lib/orders";
 import { findPanelEvent } from "@/lib/panel-api";
 import { getQuestionList } from "@/lib/questions";
+import { getRsvpBoard } from "@/lib/rsvp";
 import { getNeighbourHistory, getSeatingBoard, getSeatOccupancy } from "@/lib/seating";
 import { shellMessages } from "@/lib/shell/messages";
 import { getTvSpotlight } from "@/lib/tv-spotlight";
@@ -81,6 +83,7 @@ const titles = {
   sale: shell.venueTitle,
   rozsadzenie: shell.seatingTitle,
   linki: shell.linksTitle,
+  potwierdzenia: shell.rsvpTitle,
   strzaly: shell.guessesTitle,
   pytania: shell.questionsTitle,
   zamowienia: shell.ordersTitle,
@@ -97,17 +100,19 @@ const data =
           ? { section, board: await getSeatingBoard(db, eventId), history: await getNeighbourHistory(db, eventId) }
           : section === "linki"
             ? { section, links: await getGuestLinks(db, eventId) }
-            : section === "strzaly"
-              ? { section, board: await getGuessBoard(db, eventId) }
-              : section === "pytania"
-                ? {
-                    section,
-                    list: await getQuestionList(db, eventId),
-                    // The island shows the counts only; the costs are on the event page („Koszty AI”).
-                    ai: clientAiUsage(await getAiTopicUsage(db, eventId, locale)),
-                    tv: await getTvSpotlight(db, eventId),
-                  }
-                : { section, board: await getOrderBoard(db, eventId) }
+            : section === "potwierdzenia"
+              ? { section, rsvp: await getRsvpBoard(db, eventId, new Date()) }
+              : section === "strzaly"
+                ? { section, board: await getGuessBoard(db, eventId) }
+                : section === "pytania"
+                  ? {
+                      section,
+                      list: await getQuestionList(db, eventId),
+                      // The island shows the counts only; the costs are on the event page („Koszty AI”).
+                      ai: clientAiUsage(await getAiTopicUsage(db, eventId, locale)),
+                      tv: await getTvSpotlight(db, eventId),
+                    }
+                  : { section, board: await getOrderBoard(db, eventId) }
     : null;
 const cardsPath = access && !support ? `${organizerPath(access.event.organizerKey)}/karteczki` : "";
 ---
@@ -179,6 +184,13 @@ const cardsPath = access && !support ? `${organizerPath(access.event.organizerKe
             locale={locale}
           />
         )}
+        {data.section === "potwierdzenia" &&
+          data.rsvp &&
+          (hydrate ? (
+            <RsvpManager client:load apiBase={apiBase} initial={data.rsvp} sectionsBase={eventPath} locale={locale} />
+          ) : (
+            <RsvpManager apiBase={apiBase} initial={data.rsvp} sectionsBase={eventPath} locale={locale} />
+          ))}
         {data.section === "strzaly" && !gameOn && <ModuleOff module="guessing" backPath={eventPath} locale={locale} />}
         {data.section === "strzaly" &&
           gameOn &&

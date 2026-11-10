@@ -194,6 +194,13 @@ export function rsvpBoard(input: RsvpBoardInput, now: Date): RsvpBoardDto {
   };
 }
 
+// The deadline field's suggestion while none is set: the evening before the event, 20:00 (Warsaw time, as typed).
+export function defaultDeadlineInput(eventDate: string): string {
+  const [year, month, day] = eventDate.split("-").map(Number);
+  const before = new Date(Date.UTC(year, month - 1, day - 1));
+  return `${before.toISOString().slice(0, 10)}T20:00`;
+}
+
 export type OptionNamesResult = { ok: true; names: string[] } | { ok: false; message: string };
 
 // The client's option names: normalised, none empty, no repeats (any letter case), at most MAX_RSVP_OPTIONS.

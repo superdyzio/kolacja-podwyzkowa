@@ -77,6 +77,10 @@ export const rsvpMessages = defineMessages(
     byOrganizerShort: "wpisane przez organizatora",
     byGuestShort: "odpowiedź gościa",
     saving: "Zapisywanie…",
+    dismiss: "Zamknij",
+    optionsOffMenu: (names: string) => `Poza menu wydarzenia (goście ich nie widzą, zapis je usunie): ${names}.`,
+    optionsLimit: (max: number) => `Najwyżej ${String(max)} dań.`,
+    answeredAt: (when: string) => `· ${when}`,
     // Summary (shell card, panel card).
     summaryOff: "Wyłączone",
     summaryOpen: (when: string) => `do ${when}`,
@@ -153,6 +157,11 @@ export const rsvpMessages = defineMessages(
     byOrganizerShort: "entered by the organizer",
     byGuestShort: "guest's answer",
     saving: "Saving…",
+    dismiss: "Dismiss",
+    optionsOffMenu: (names: string) =>
+      `Not on the event's menu (guests do not see them, saving removes them): ${names}.`,
+    optionsLimit: (max: number) => `At most ${String(max)} dishes.`,
+    answeredAt: (when: string) => `· ${when}`,
     summaryOff: "Off",
     summaryOpen: (when: string) => `until ${when}`,
     summaryClosed: "closed",
