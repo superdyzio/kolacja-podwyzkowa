@@ -315,9 +315,9 @@ lookup and panel page is a 500).
 
 #### Automated
 
-- [x] 3.1 `npm run smoke` against `AI_PROVIDER=mock npm run preview` passes
-- [x] 3.2 `npm run demo` passes and prints the template
-- [x] 3.3 `AI_PROVIDER=mock npm test`, `npm run lint`, `npx astro check`, `npm run build` pass
+- [x] 3.1 `npm run smoke` against `AI_PROVIDER=mock npm run preview` passes — 225ac09
+- [x] 3.2 `npm run demo` passes and prints the template — 225ac09
+- [x] 3.3 `AI_PROVIDER=mock npm test`, `npm run lint`, `npx astro check`, `npm run build` pass — 225ac09
 
 #### Manual
 
