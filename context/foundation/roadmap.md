@@ -56,7 +56,7 @@ Restauracja, która gościła kolację 2026-11-08, chce tego narzędzia do włas
 | S-11 | restaurant-events       | lokal zakłada wydarzenie, przegląda nadchodzące, minione i archiwum, kopiuje i wymienia linki, archiwizuje i usuwa        | S-10             | FR-024, FR-025, US-06, US-09, US-10                                                           | done     |
 | S-12 | restaurant-team         | właściciel i menedżer zapraszają zespół, zmieniają role, usuwają osoby i dają jednorazowy link resetu hasła               | S-10             | FR-023, US-05                                                                                 | done     |
 | S-13 | admin-support-log       | administrator platformy wchodzi w dane lokalu w trybie wsparcia, a właściciel widzi każde wejście w dzienniku             | S-11             | FR-021, US-05, US-10, NFR-012                                                                 | done     |
-| S-14 | client-restaurant-split | lokal przełącza „lokal prowadzi”; klient prowadzi zamówienia i robi reset prób; pełny reset i koszty AI tylko w panelu    | S-11             | FR-026, FR-027, FR-028, US-07                                                                 | proposed |
+| S-14 | client-restaurant-split | lokal przełącza „lokal prowadzi”; klient prowadzi zamówienia i robi reset prób; pełny reset i koszty AI tylko w panelu    | S-11             | FR-026, FR-027, FR-028, US-07                                                                 | planning |
 | S-15 | venue-templates         | menedżer zapisuje salę jako szablon, tworzy z niego wydarzenia i aktualizuje wydarzenie z szablonu                        | S-11             | FR-030, US-06, US-09                                                                          | proposed |
 | S-16 | menu-catalog-courses    | menedżer prowadzi katalog menu z kursami i menu wydarzenia; klient zamawia z niego bez zmiany cen; kuchnia widzi kursy    | S-14             | FR-037, FR-027, US-07                                                                         | proposed |
 | S-17 | event-modules           | lokal oznacza dostępne moduły, klient je włącza, administrator odblokowuje płatne; wyłączony moduł znika wszędzie         | S-14             | FR-031, US-07, NFR-023                                                                        | proposed |
@@ -194,7 +194,7 @@ Fundamenty poniżej zakładają, że to istnieje, i NIE budują tego od nowa.
 - **Unknowns:**
   - Kto ustala ceny pozycji, zanim powstanie katalog menu (S-16): klient wpisuje jak w v1 czy już tylko personel. Docelowo ceny są z cennika lokalu. — Owner: planer S-14. Block: no.
 - **Risk:** `m2-product-notes.md` (S-11) opisuje nieaktualny zakres („zamówienia tylko u lokalu”). Obowiązuje PRD v2 (FR-027, FR-028 i tabela dostępu): zamówienia zostają u klienta. Dwie strony edytujące naraz wyklucza przełącznik.
-- **Status:** proposed
+- **Status:** planning
 
 ### S-15: Szablony sal lokalu
 
