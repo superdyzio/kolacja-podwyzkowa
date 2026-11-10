@@ -749,6 +749,24 @@ await step(`kelner wydaje dokładkę`, `${floorApi}/orders/${String(refill.id)}/
   cookie: waiter.cookie,
 });
 
+// --- 8c. A per-event waiter (event-waiter-access, S-21b): the owner adds „Kuba (na imprezę)” to the main event on
+// its card; the one-time link and the code are printed (not used: opening the link page uses nothing up) ------------
+
+const EVENT_WAITER = "Kuba (na imprezę)";
+const addedWaiter = await step(
+  `kelner na imprezę: ${EVENT_WAITER}`,
+  `/api/panel/events/${String(event.id)}/waiters`,
+  { method: "POST", json: { name: EVENT_WAITER }, cookie: ownerCookie },
+  201,
+);
+const eventWaiter = addedWaiter.issued;
+{
+  const linkPage = await request(eventWaiter.path);
+  if (linkPage.status !== 200 || !linkPage.text.includes("data-waiter-link-page")) {
+    fail(`Link kelnera na imprezę nie otwiera strony wejścia (HTTP ${String(linkPage.status)}).`);
+  }
+}
+
 // --- 9. A support visit of the platform admin (admin-support-log): enter with a reason, two pages, exit -----------
 
 const SUPPORT_REASON = "Pokaz trybu wsparcia: sprawdzenie listy wydarzeń (demo)";
@@ -877,6 +895,8 @@ Panel lokalu: ${new URL("/logowanie", BASE_URL).href} — e-mail ${owner.email},
              e-mail ${TEAM[1].email}, hasło ${WAITER_PASSWORD} (rola: kelner)
 Wydarzenia lokalu: ${new URL(`/panel/restauracje/${String(restaurantId)}`, BASE_URL).href} (po zalogowaniu)
 Obsługa sali:    ${new URL(`/panel/obsluga/${String(event.id)}`, BASE_URL).href} (kelner ${TEAM[1].email} / ${WAITER_PASSWORD}: dziś do południa jutra; dokładka „${REFILL}” dopisana i wydana)
+Kelner na imprezę: ${new URL(eventWaiter.path, BASE_URL).href} („${EVENT_WAITER}”: jednorazowy link)
+                 albo kod ${eventWaiter.code} na ${new URL("/kelner", BASE_URL).href} — pierwsze użycie zużywa oba; sala „${EVENT_NAME}” do południa jutra
 Menu lokalu:     ${new URL(`/panel/restauracje/${String(restaurantId)}/menu`, BASE_URL).href} („Menu wydarzenia” na karcie wydarzenia)
 Praca klienta:   ${new URL(`/panel/wydarzenia/${String(event.id)}`, BASE_URL).href} (prowadzi klient: podgląd)
                  ${new URL(`/panel/wydarzenia/${String(venueLedEventId)}`, BASE_URL).href} (lokal prowadzi: edycja w panelu)

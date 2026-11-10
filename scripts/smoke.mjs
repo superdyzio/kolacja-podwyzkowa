@@ -17,6 +17,7 @@ import {
   createEvent,
   createRestaurant,
   ensureStaffAccount,
+  expireEventWaiter,
   issueStaffLink,
   listEvents,
   listRestaurants,
@@ -8568,6 +8569,542 @@ check(
   "floor: the smoke's floor events are deleted",
   deleted36.every((status) => status === 200),
   deleted36.join(" "),
+);
+
+// 37. The per-event waiter (event-waiter-access, S-21b; FR-023, FR-029, US-08). Events of A created for it (today,
+// tomorrow, two days ago, today but archived) and a template. Owners and managers add a waiter (a name → a one-time
+// link and a code, shown once); a waiter account, owner B, the admin outside support mode, malformed / unknown /
+// template ids → the identical 404; no session 401; foreign Origin 403; support mode lists names without credentials
+// and cannot add or revoke. The link page uses nothing up; the first redeem (link or code) uses up both and sets the
+// `kp-waiter` cookie; through it the S-21 floor of THAT event only. The two doors never cross (waiter cookie → panel,
+// staff session → waiter floor), a code is throttled per waiter, revoke / expiry / logout / deleting the event end the
+// session, archiving closes the floor and restoring opens it again. Events and template deleted.
+const waitersApiOf = (id) => `${eventApi(id)}/waiters`;
+const waiterFloorApiOf = (id) => `/api/kelner/sala/${String(id)}`;
+const waiterFloorPageOf = (id) => `/kelner/sala/${String(id)}`;
+const WAITER_COOKIE_RE = /(?:^|[\s,])kp-waiter=([A-Za-z0-9_-]{43});/;
+const waiterCookieOf = (res) => {
+  const token = WAITER_COOKIE_RE.exec(res.setCookie)?.[1];
+  return token ? `kp-waiter=${token}` : "";
+};
+const waiterCall = (cookie, path, options = {}) => request(path, { ...options, ...(cookie ? { cookie } : {}) });
+const enterFloor = (form, options = {}) => request("/api/kelner/wejscie", { method: "POST", form, ...options });
+const linkTokenOf = (issued) => (typeof issued?.path === "string" ? (issued.path.split("/")[2] ?? "") : "");
+const WAITER_NO_SESSION = "Brak wejścia kelnera na salę. Otwórz link albo wpisz kod od menedżera.";
+const waiterNoSession = (res) => res.status === 401 && res.data?.error === WAITER_NO_SESSION;
+const waiterList = (res) =>
+  Array.isArray(res.data?.waiters)
+    ? res.data.waiters
+    : Array.isArray(res.data?.waiters?.waiters)
+      ? res.data.waiters.waiters
+      : [];
+const addWaiter = (token, eventId, name) => staffCall(token, waitersApiOf(eventId), { method: "POST", json: { name } });
+const makeEvent37 = async (name, date) => {
+  const res = await staffCall(sessionOwner, eventsApiOf(restaurantA.id), {
+    method: "POST",
+    json: { name: `${name} ${RUN_TAG}`, date },
+  });
+  return res.data?.event ?? null;
+};
+const today37 = await makeEvent37("Kelner dziś", today);
+const tomorrow37 = await makeEvent37("Kelner jutro", shiftDate(today, 1));
+const past37 = await makeEvent37("Kelner przedwczoraj", shiftDate(today, -2));
+const archived37 = await makeEvent37("Kelner archiwum", today);
+const archivedPatch37 = await staffCall(sessionOwner, eventApi(archived37?.id ?? 0), {
+  method: "PATCH",
+  json: { archived: true },
+});
+const template37 =
+  (
+    await staffCall(sessionOwner, templatesApiOf(restaurantA.id), {
+      method: "POST",
+      json: { name: `Szablon kelnera ${RUN_TAG}` },
+    })
+  ).data?.template ?? null;
+const t37Id = today37?.id ?? 0;
+const t37Api = `/api/o/${keyOfPath(today37?.links?.organizer)}`;
+const guest37 = await request(`${t37Api}/guests`, { method: "POST", json: { text: `Gość kelnera ${RUN_TAG}` } });
+const guest37Id = guest37.data?.guests?.[0]?.id ?? 0;
+const clientBoard37 = await request(`${t37Api}/orders`);
+const dish37 = clientBoard37.data?.menu?.active ? (clientBoard37.data.menu.items[0]?.name ?? "") : "Zupa kelnera";
+const line37 = await request(`${t37Api}/orders`, {
+  method: "POST",
+  json: { name: dish37, quantity: 2, assignment: { guestId: guest37Id } },
+});
+const line37Id = line37.data?.items?.[0]?.id ?? 0;
+check(
+  "waiters: events of A (today, tomorrow, two days ago, archived today), a template and a line of 2 on today's",
+  [today37, tomorrow37, past37, archived37, template37].every((row) => (row?.id ?? 0) > 0) &&
+    archivedPatch37.status === 200 &&
+    guest37Id > 0 &&
+    line37.status === 201 &&
+    line37Id > 0,
+  `${archivedPatch37.status} ${guest37.status} ${line37.status} ${line37.body.slice(0, 120)}`,
+);
+
+const kuba37 = await addWaiter(sessionOwner, t37Id, `  Kuba   ${RUN_TAG} `);
+const kubaIssued = kuba37.data?.issued ?? null;
+const ola37 = await addWaiter(sessionManager, t37Id, `Ola ${RUN_TAG}`);
+const olaIssued = ola37.data?.issued ?? null;
+const list37 = await staffCall(sessionOwner, waitersApiOf(t37Id));
+const noonAfter37 = [10, 11].map((hour) => Date.parse(`${shiftDate(today, 1)}T${String(hour)}:00:00Z`));
+const CODE_PART = "[2-9A-HJKMNP-Z]{4}";
+check(
+  "waiters: the owner and the manager add a per-event waiter (201: a one-time /kelner/<token> link and an <id>-XXXX-XXXX code, valid until noon after the event, shown once); the list has names, „unused” and the expiry — never a link or a code",
+  kuba37.status === 201 &&
+    ola37.status === 201 &&
+    kubaIssued?.name === `Kuba ${RUN_TAG}` &&
+    /^\/kelner\/[A-Za-z0-9_-]{43}$/.test(kubaIssued?.path ?? "") &&
+    new RegExp(`^${String(kubaIssued?.id)}-${CODE_PART}-${CODE_PART}$`).test(kubaIssued?.code ?? "") &&
+    noonAfter37.includes(Date.parse(kubaIssued?.expiresAt ?? "")) &&
+    list37.status === 200 &&
+    list37.cacheControl.includes("no-store") &&
+    list37.data?.canAdd === true &&
+    waiterList(list37).length === 2 &&
+    waiterList(list37).every((waiter) => waiter.status === "unused") &&
+    !list37.body.includes("/kelner/") &&
+    !list37.body.includes(kubaIssued?.code ?? "-") &&
+    !list37.body.includes(olaIssued?.code ?? "-"),
+  `${kuba37.status} ${ola37.status} ${list37.status} ${kubaIssued?.expiresAt ?? "-"} ${kuba37.body.slice(0, 120)}`,
+);
+
+const denied37 = [];
+const kubaRevokePath = `${waitersApiOf(t37Id)}/${String(kubaIssued?.id ?? 0)}`;
+for (const [name, token, path, options] of [
+  ["a waiter account, list", sessionWaiter, waitersApiOf(t37Id), {}],
+  ["a waiter account, add", sessionWaiter, waitersApiOf(t37Id), { method: "POST", json: { name: "X" } }],
+  ["a waiter account, revoke", sessionWaiter, kubaRevokePath, { method: "DELETE" }],
+  ["owner B, list", sessionB, waitersApiOf(t37Id), {}],
+  ["owner B, add", sessionB, waitersApiOf(t37Id), { method: "POST", json: { name: "X" } }],
+  ["owner B, revoke", sessionB, kubaRevokePath, { method: "DELETE" }],
+  ["the admin outside support mode", sessionAdmin, waitersApiOf(t37Id), {}],
+  ["malformed event id", sessionOwner, waitersApiOf("abc"), {}],
+  ["out-of-int4 event id", sessionOwner, waitersApiOf(99999999999), {}],
+  ["unknown event id", sessionOwner, waitersApiOf(2147483000), {}],
+  ["a template", sessionOwner, waitersApiOf(template37?.id ?? 0), {}],
+  ["a template, add", sessionOwner, waitersApiOf(template37?.id ?? 0), { method: "POST", json: { name: "X" } }],
+  ["malformed waiter id", sessionOwner, `${waitersApiOf(t37Id)}/abc`, { method: "DELETE" }],
+  ["unknown waiter id", sessionOwner, `${waitersApiOf(t37Id)}/2147483000`, { method: "DELETE" }],
+  [
+    "the waiter through another event",
+    sessionOwner,
+    `${waitersApiOf(tomorrow37?.id ?? 0)}/${String(kubaIssued?.id ?? 0)}`,
+    { method: "DELETE" },
+  ],
+]) {
+  const res = await staffCall(token, path, options);
+  if (!noAccessJson(res)) denied37.push(`${name}: ${String(res.status)}`);
+}
+const noSession37 = await request(waitersApiOf(t37Id));
+const foreign37 = await staffCall(sessionOwner, waitersApiOf(t37Id), {
+  method: "POST",
+  json: { name: "X" },
+  extraHeaders: FOREIGN,
+});
+const stillTwo37 = await staffCall(sessionOwner, waitersApiOf(t37Id));
+check(
+  "waiters: a waiter account, owner B, the admin outside support mode, malformed / unknown / template ids and a waiter through another event → the identical 404; no session 401; a foreign Origin 403; nothing changed",
+  denied37.length === 0 &&
+    noSession37.status === 401 &&
+    foreign37.status === 403 &&
+    waiterList(stillTwo37).length === 2,
+  `${denied37.join("; ")} | ${noSession37.status} ${foreign37.status} ${waiterList(stillTwo37).length}`,
+);
+
+const blank37 = await addWaiter(sessionOwner, t37Id, "   ");
+const long37 = await addWaiter(sessionOwner, t37Id, "x".repeat(41));
+const extra37 = await staffCall(sessionOwner, waitersApiOf(t37Id), {
+  method: "POST",
+  json: { name: "Ewa", role: "owner" },
+});
+const tomorrowAdd37 = await addWaiter(sessionOwner, tomorrow37?.id ?? 0, `Jutro ${RUN_TAG}`);
+const pastAdd37 = await addWaiter(sessionOwner, past37?.id ?? 0, "Ewa");
+const archivedAdd37 = await addWaiter(sessionOwner, archived37?.id ?? 0, "Ewa");
+const pastList37 = await staffCall(sessionOwner, waitersApiOf(past37?.id ?? 0));
+check(
+  "waiters: an empty name / 41 characters / an extra field → 400; tomorrow's event 201; an event of two days ago and an archived one → 409 (canAdd false)",
+  blank37.status === 400 &&
+    blank37.data?.error === "Wpisz imię kelnera." &&
+    long37.status === 400 &&
+    extra37.status === 400 &&
+    tomorrowAdd37.status === 201 &&
+    pastAdd37.status === 409 &&
+    archivedAdd37.status === 409 &&
+    pastList37.status === 200 &&
+    pastList37.data?.canAdd === false,
+  `${blank37.status} ${long37.status} ${extra37.status} ${tomorrowAdd37.status} ${pastAdd37.status} ${archivedAdd37.status} ${String(pastList37.data?.canAdd)}`,
+);
+
+const enter37 = await enterSupport(sessionAdmin, restaurantA.id);
+const supportList37 = await staffCall(sessionAdmin, waitersApiOf(t37Id));
+const supportAdd37 = await staffCall(sessionAdmin, waitersApiOf(t37Id), { method: "POST", json: { name: "X" } });
+const supportRevoke37 = await staffCall(sessionAdmin, kubaRevokePath, { method: "DELETE" });
+const supportPage37 = await staffCall(sessionAdmin, eventPage(t37Id));
+const exit37 = await endSupportOf(sessionAdmin, restaurantA.id);
+const ownerPage37 = await staffCall(sessionOwner, eventPage(t37Id));
+check(
+  "waiters: support mode lists names and status (200, no link or code) and cannot add or revoke (404); its event page has no waiters section, the owner's has it",
+  enter37.status === 201 &&
+    supportList37.status === 200 &&
+    waiterList(supportList37).length === 2 &&
+    !supportList37.body.includes("/kelner/") &&
+    noAccessJson(supportAdd37) &&
+    noAccessJson(supportRevoke37) &&
+    supportPage37.status === 200 &&
+    !supportPage37.body.includes("data-event-waiters") &&
+    exit37.status === 200 &&
+    ownerPage37.status === 200 &&
+    ownerPage37.body.includes("data-event-waiters"),
+  `${enter37.status} ${supportList37.status} ${supportAdd37.status} ${supportRevoke37.status} ${supportPage37.status} ${exit37.status} ${ownerPage37.status}`,
+);
+
+const tomorrowIssued = tomorrowAdd37.data?.issued ?? null;
+const linkPage37 = await request(kubaIssued?.path ?? "/kelner/x");
+const linkPageAgain37 = await request(kubaIssued?.path ?? "/kelner/x");
+const linkUnknown37 = await request(`/kelner/${randomBytes(32).toString("base64url")}`);
+const linkMalformed37 = await request("/kelner/abc");
+const linkTomorrow37 = await request(tomorrowIssued?.path ?? "/kelner/y");
+check(
+  "waiters: the link page names the event and the waiter (200, no-store, DENY) and uses nothing up (200 again); unknown, malformed and tomorrow's links → the identical 404 page",
+  linkPage37.status === 200 &&
+    linkPage37.body.includes("data-waiter-link-page") &&
+    linkPage37.body.includes(today37?.name ?? "-") &&
+    linkPage37.body.includes(`Kuba ${RUN_TAG}`) &&
+    linkPage37.cacheControl.includes("no-store") &&
+    linkPage37.frameOptions === "DENY" &&
+    linkPageAgain37.status === 200 &&
+    linkUnknown37.status === 404 &&
+    linkUnknown37.body.includes("data-waiter-link-invalid") &&
+    linkMalformed37.status === 404 &&
+    linkMalformed37.body === linkUnknown37.body &&
+    linkTomorrow37.status === 404 &&
+    linkTomorrow37.body === linkUnknown37.body,
+  `${linkPage37.status} ${linkPageAgain37.status} ${linkUnknown37.status} ${linkMalformed37.status} ${linkTomorrow37.status}`,
+);
+
+const enterKuba = await enterFloor({ link: linkTokenOf(kubaIssued) });
+const kubaCookie = waiterCookieOf(enterKuba);
+const maxAge37 = Number(/Max-Age=(\d+)/.exec(enterKuba.setCookie)?.[1] ?? 0);
+const expiresIn37 = Math.floor((Date.parse(kubaIssued?.expiresAt ?? "") - Date.now()) / 1000);
+const enterKubaAgain = await enterFloor({ link: linkTokenOf(kubaIssued) });
+const kubaCodeUsed = await enterFloor({ kod: kubaIssued?.code ?? "" });
+const linkPageUsed37 = await request(kubaIssued?.path ?? "/kelner/x");
+const listAfterKuba37 = await staffCall(sessionOwner, waitersApiOf(t37Id));
+check(
+  "waiters: redeem by link → 303 to its event's floor with the kp-waiter cookie (HttpOnly, SameSite=Lax, Path=/, Max-Age until noon after the event); the link again and its code → /kelner?blad=niewazny; the used link page → 404; the list says „redeemed”",
+  redirectsTo(enterKuba, waiterFloorPageOf(t37Id)) &&
+    kubaCookie !== "" &&
+    /HttpOnly/i.test(enterKuba.setCookie) &&
+    /SameSite=Lax/i.test(enterKuba.setCookie) &&
+    /Path=\/(;|$)/.test(enterKuba.setCookie) &&
+    (behindTls || !/Secure/i.test(enterKuba.setCookie)) &&
+    Math.abs(maxAge37 - expiresIn37) <= 60 &&
+    redirectsTo(enterKubaAgain, "/kelner?blad=niewazny") &&
+    redirectsTo(kubaCodeUsed, "/kelner?blad=niewazny") &&
+    linkPageUsed37.status === 404 &&
+    waiterList(listAfterKuba37).find((waiter) => waiter.id === kubaIssued?.id)?.status === "redeemed",
+  `${enterKuba.status} ${enterKuba.location} ${enterKuba.setCookie.replace(WAITER_COOKIE_RE, "kp-waiter=<token>;")} ${maxAge37}/${expiresIn37} ${enterKubaAgain.location} ${kubaCodeUsed.location} ${linkPageUsed37.status}`,
+);
+
+const olaTyped = (olaIssued?.code ?? "").toLowerCase().replaceAll("-", "  ");
+const enterOla = await enterFloor({ kod: ` ${olaTyped} ` });
+const olaCookie = waiterCookieOf(enterOla);
+const olaLink37 = await enterFloor({ link: linkTokenOf(olaIssued) });
+const badCode37 = await enterFloor({ kod: "to nie jest kod" });
+const emptyForm37 = await enterFloor({});
+const foreignEnter37 = await enterFloor({ kod: olaIssued?.code ?? "" }, { extraHeaders: FOREIGN });
+check(
+  "waiters: redeem by code typed in lowercase with spaces → 303 to the floor with the cookie; then its link → niewazny; a malformed code and an empty form → niewazny; a foreign Origin → 403",
+  redirectsTo(enterOla, waiterFloorPageOf(t37Id)) &&
+    olaCookie !== "" &&
+    olaCookie !== kubaCookie &&
+    redirectsTo(olaLink37, "/kelner?blad=niewazny") &&
+    redirectsTo(badCode37, "/kelner?blad=niewazny") &&
+    redirectsTo(emptyForm37, "/kelner?blad=niewazny") &&
+    foreignEnter37.status === 403,
+  `${enterOla.status} ${enterOla.location} ${olaLink37.location} ${badCode37.location} ${emptyForm37.location} ${foreignEnter37.status}`,
+);
+
+const entry37 = await request("/kelner");
+const entryError37 = await request("/kelner?blad=niewazny");
+const entryActive37 = await waiterCall(olaCookie, "/kelner");
+const entryEn37 = await request("/kelner?lang=en");
+check(
+  "waiters: the entry page /kelner — the code form (200, DENY), the error text, and with a session „Wróć na salę” to its floor (no redirect)",
+  entry37.status === 200 &&
+    entry37.body.includes('action="/api/kelner/wejscie"') &&
+    entry37.body.includes('name="kod"') &&
+    entry37.frameOptions === "DENY" &&
+    !entry37.body.includes("data-waiter-active") &&
+    !entry37.body.includes("data-waiter-error") &&
+    entryError37.status === 200 &&
+    entryError37.body.includes("data-waiter-error") &&
+    entryActive37.status === 200 &&
+    entryActive37.body.includes(`data-waiter-active="${String(t37Id)}"`) &&
+    entryActive37.body.includes(`href="${waiterFloorPageOf(t37Id)}"`) &&
+    entryEn37.status === 303,
+  `${entry37.status} ${entryError37.status} ${entryActive37.status} ${entryEn37.status}`,
+);
+
+const floorRead37 = await waiterCall(kubaCookie, `${waiterFloorApiOf(t37Id)}/orders`);
+const firstPrice37 = floorRead37.data?.items?.find((item) => item.id === line37Id)?.unitPriceGrosze;
+check(
+  "waiters: through the cookie the waiter reads its event's board — lines with prices, the bill (no-store) — with no keys",
+  floorRead37.status === 200 &&
+    floorRead37.cacheControl.includes("no-store") &&
+    typeof firstPrice37 === "number" &&
+    typeof floorRead37.data?.totals?.totalGrosze === "number" &&
+    typeof floorRead37.data?.drinkTotals?.totalGrosze === "number" &&
+    ![today37?.links?.organizer, today37?.links?.tv, today37?.links?.restaurant].some(
+      (path) => typeof path === "string" && floorRead37.body.includes(keyOfPath(path)),
+    ),
+  `${floorRead37.status} ${floorRead37.body.slice(0, 160)}`,
+);
+
+const refill37 = await waiterCall(kubaCookie, `${waiterFloorApiOf(t37Id)}/orders`, {
+  method: "POST",
+  json: { name: dish37, quantity: 1, assignment: { guestId: guest37Id } },
+});
+const refillPriced37 = await waiterCall(kubaCookie, `${waiterFloorApiOf(t37Id)}/orders`, {
+  method: "POST",
+  json: { name: dish37, quantity: 1, price: "1" },
+});
+const drink37 = await waiterCall(kubaCookie, `${waiterFloorApiOf(t37Id)}/drinks`, {
+  method: "POST",
+  json: { name: "Woda kelnera", quantity: 2 },
+});
+const piece37 = await waiterCall(kubaCookie, `${waiterFloorApiOf(t37Id)}/orders/${String(line37Id)}/pieces`, {
+  method: "PUT",
+  json: { piece: 1, delivered: true },
+});
+const pieceItem37 = piece37.data?.items?.find((item) => item.id === line37Id);
+const wholeLine37 = await waiterCall(kubaCookie, `${waiterFloorApiOf(t37Id)}/orders/${String(line37Id)}`, {
+  method: "PATCH",
+  json: { delivered: true },
+});
+const wholeItem37 = wholeLine37.data?.items?.find((item) => item.id === line37Id);
+const rename37 = await waiterCall(kubaCookie, `${waiterFloorApiOf(t37Id)}/orders/${String(line37Id)}`, {
+  method: "PATCH",
+  json: { name: "Inna nazwa" },
+});
+check(
+  "waiters: the waiter adds a refill (201, the venue's price) and drinks (201), marks a piece (the venue's mark) and the whole line; a body price or a rename → 400",
+  refill37.status === 201 &&
+    (refill37.data?.items?.length ?? 0) === 2 &&
+    refill37.data.items.every((item) => item.unitPriceGrosze === firstPrice37) &&
+    refillPriced37.status === 400 &&
+    drink37.status === 201 &&
+    piece37.status === 200 &&
+    JSON.stringify(pieceItem37?.deliveredPieces) === "[1]" &&
+    pieceItem37?.marks?.[0]?.by === "organizer" &&
+    wholeLine37.status === 200 &&
+    JSON.stringify(wholeItem37?.deliveredPieces) === "[1,2]" &&
+    rename37.status === 400,
+  `${refill37.status} ${refillPriced37.status} ${drink37.status} ${piece37.status} ${wholeLine37.status} ${rename37.status}`,
+);
+
+const floorDenied37 = [];
+for (const [name, path, options] of [
+  ["delete a line", `${waiterFloorApiOf(t37Id)}/orders/${String(line37Id)}`, { method: "DELETE" }],
+  ["guests", `${waiterFloorApiOf(t37Id)}/guests`, {}],
+  ["guest links", `${waiterFloorApiOf(t37Id)}/guest-links`, {}],
+  ["seating", `${waiterFloorApiOf(t37Id)}/seating`, {}],
+  ["reset", `${waiterFloorApiOf(t37Id)}/reset`, {}],
+  ["unknown sub-path", `${waiterFloorApiOf(t37Id)}/nie-ma`, {}],
+  ["no sub-path", waiterFloorApiOf(t37Id), {}],
+  ["another of today's events (event A)", `${waiterFloorApiOf(eventA.id)}/orders`, {}],
+  ["tomorrow's event", `${waiterFloorApiOf(tomorrow37?.id ?? 0)}/orders`, {}],
+  ["event B", `${waiterFloorApiOf(eventB.id)}/orders`, {}],
+  ["event B, a refill", `${waiterFloorApiOf(eventB.id)}/orders`, { method: "POST", json: { name: "X", quantity: 1 } }],
+  ["malformed id", `${waiterFloorApiOf("abc")}/orders`, {}],
+  ["out-of-int4 id", `${waiterFloorApiOf(99999999999)}/orders`, {}],
+  ["unknown id", `${waiterFloorApiOf(2147483000)}/orders`, {}],
+]) {
+  const res = await waiterCall(kubaCookie, path, options);
+  if (!noAccessJson(res)) floorDenied37.push(`${name}: ${String(res.status)}`);
+}
+const floorForeign37 = await waiterCall(kubaCookie, `${waiterFloorApiOf(t37Id)}/orders`, {
+  method: "POST",
+  json: { name: dish37, quantity: 1 },
+  extraHeaders: FOREIGN,
+});
+check(
+  "waiters: deletes, other client routes, other events (A's other one, tomorrow's, B's), malformed / unknown ids → the identical 404; a foreign Origin → 403",
+  floorDenied37.length === 0 && floorForeign37.status === 403,
+  `${floorDenied37.join("; ")} | ${floorForeign37.status}`,
+);
+
+const floorPage37 = await waiterCall(kubaCookie, waiterFloorPageOf(t37Id));
+const floorPageOther37 = await waiterCall(kubaCookie, waiterFloorPageOf(eventA.id));
+check(
+  "waiters: the floor page (200: the event, the waiter's name, the floor island on /api/kelner/sala/<id>, „Wyloguj”; no link into /panel, no keys); another event → the no-access page",
+  floorPage37.status === 200 &&
+    floorPage37.body.includes(`data-waiter-floor="${String(t37Id)}"`) &&
+    floorPage37.body.includes(today37?.name ?? "-") &&
+    floorPage37.body.includes(`Kuba ${RUN_TAG}`) &&
+    floorPage37.body.includes(waiterFloorApiOf(t37Id)) &&
+    floorPage37.body.includes('action="/api/kelner/wyloguj"') &&
+    !floorPage37.body.includes('href="/panel') &&
+    !floorPage37.body.includes(keyOfPath(today37?.links?.organizer)) &&
+    isNoAccessPage(floorPageOther37),
+  `${floorPage37.status} ${floorPageOther37.status}`,
+);
+
+const waiterToPanel37 = await waiterCall(kubaCookie, "/panel");
+const waiterToPanelApi37 = await waiterCall(kubaCookie, "/api/panel/me");
+const waiterToStaffFloor37 = await waiterCall(kubaCookie, `/api/panel/events/${String(t37Id)}/obsluga/orders`);
+const staffToWaiterPage37 = await staffCall(sessionOwner, waiterFloorPageOf(t37Id));
+const staffToWaiterApi37 = await staffCall(sessionOwner, `${waiterFloorApiOf(t37Id)}/orders`);
+const noCookiePage37 = await request(waiterFloorPageOf(t37Id));
+const noCookieApi37 = await request(`${waiterFloorApiOf(t37Id)}/orders`);
+check(
+  "waiters: the doors never cross — the waiter cookie → /panel 303 /logowanie, panel APIs 401; a staff session (and none) → /kelner/sala 303 /kelner, /api/kelner/sala 401",
+  redirectsTo(waiterToPanel37, "/logowanie") &&
+    waiterToPanelApi37.status === 401 &&
+    waiterToStaffFloor37.status === 401 &&
+    redirectsTo(staffToWaiterPage37, "/kelner") &&
+    waiterNoSession(staffToWaiterApi37) &&
+    redirectsTo(noCookiePage37, "/kelner") &&
+    waiterNoSession(noCookieApi37),
+  `${waiterToPanel37.status} ${waiterToPanel37.location} ${waiterToPanelApi37.status} ${waiterToStaffFloor37.status} ${staffToWaiterPage37.status} ${staffToWaiterPage37.location} ${staffToWaiterApi37.status} ${noCookiePage37.status} ${noCookieApi37.status}`,
+);
+
+const thr37 = await addWaiter(sessionOwner, t37Id, `Próba ${RUN_TAG}`);
+const thrIssued = thr37.data?.issued ?? null;
+const thrSecret = (thrIssued?.code ?? "").split("-").slice(1).join("") === "22222222" ? "3333-3333" : "2222-2222";
+const wrong37 = [];
+for (let attempt = 0; attempt < 10; attempt++) {
+  wrong37.push(await enterFloor({ kod: `${String(thrIssued?.id ?? 0)}-${thrSecret}` }));
+}
+const rightThrottled37 = await enterFloor({ kod: thrIssued?.code ?? "" });
+const thrLink37 = await enterFloor({ link: linkTokenOf(thrIssued) });
+const thrCookie = waiterCookieOf(thrLink37);
+check(
+  "waiters: a code is throttled per waiter — after 10 wrong tries (niewazny) the right code → /kelner?blad=limit with Retry-After; the waiter's link still works",
+  thr37.status === 201 &&
+    wrong37.every((res) => redirectsTo(res, "/kelner?blad=niewazny")) &&
+    redirectsTo(rightThrottled37, "/kelner?blad=limit") &&
+    Number(rightThrottled37.retryAfter) > 0 &&
+    redirectsTo(thrLink37, waiterFloorPageOf(t37Id)) &&
+    thrCookie !== "",
+  `${wrong37.map((res) => res.location).join(",")} ${rightThrottled37.location} ${rightThrottled37.retryAfter} ${thrLink37.location}`,
+);
+
+const revokeKuba37 = await staffCall(sessionOwner, kubaRevokePath, { method: "DELETE" });
+const kubaAfterRevoke37 = await waiterCall(kubaCookie, `${waiterFloorApiOf(t37Id)}/orders`);
+const kubaPageAfterRevoke37 = await waiterCall(kubaCookie, waiterFloorPageOf(t37Id));
+check(
+  "waiters: revoke (the owner) → 200 without the waiter; its session → 401 with the cookie cleared, its floor page → 303 /kelner",
+  revokeKuba37.status === 200 &&
+    !waiterList(revokeKuba37).some((waiter) => waiter.id === kubaIssued?.id) &&
+    waiterNoSession(kubaAfterRevoke37) &&
+    /kp-waiter=;/.test(kubaAfterRevoke37.setCookie) &&
+    /Max-Age=0/.test(kubaAfterRevoke37.setCookie) &&
+    redirectsTo(kubaPageAfterRevoke37, "/kelner"),
+  `${revokeKuba37.status} ${kubaAfterRevoke37.status} ${kubaAfterRevoke37.setCookie} ${kubaPageAfterRevoke37.status}`,
+);
+
+const bWaiter37 = await addWaiter(sessionB, eventB.id, `Kelner B ${RUN_TAG}`);
+const bIssued = bWaiter37.data?.issued ?? null;
+const bEnter37 = await enterFloor({ link: linkTokenOf(bIssued) });
+const bCookie = waiterCookieOf(bEnter37);
+const bOwnFloor37 = await waiterCall(bCookie, `${waiterFloorApiOf(eventB.id)}/orders`);
+const bOnA37 = await waiterCall(bCookie, `${waiterFloorApiOf(t37Id)}/orders`);
+const bRevokeViaA37 = await staffCall(sessionOwner, `${waitersApiOf(t37Id)}/${String(bIssued?.id ?? 0)}`, {
+  method: "DELETE",
+});
+const bStill37 = await waiterCall(bCookie, `${waiterFloorApiOf(eventB.id)}/orders`);
+const bRevoke37 = await staffCall(sessionB, `${waitersApiOf(eventB.id)}/${String(bIssued?.id ?? 0)}`, {
+  method: "DELETE",
+});
+const bAfter37 = await waiterCall(bCookie, `${waiterFloorApiOf(eventB.id)}/orders`);
+check(
+  "waiters: isolation — B's waiter works B's floor (200) and gets the identical 404 on A's event; revoking it through A's event → 404 (it still works); owner B revokes it",
+  bWaiter37.status === 201 &&
+    redirectsTo(bEnter37, waiterFloorPageOf(eventB.id)) &&
+    bOwnFloor37.status === 200 &&
+    noAccessJson(bOnA37) &&
+    noAccessJson(bRevokeViaA37) &&
+    bStill37.status === 200 &&
+    bRevoke37.status === 200 &&
+    waiterNoSession(bAfter37),
+  `${bWaiter37.status} ${bEnter37.location} ${bOwnFloor37.status} ${bOnA37.status} ${bRevokeViaA37.status} ${bStill37.status} ${bRevoke37.status} ${bAfter37.status}`,
+);
+
+const expUnused37 = (await addWaiter(sessionOwner, t37Id, `Wygasa ${RUN_TAG}`)).data?.issued ?? null;
+const expUsed37 = (await addWaiter(sessionOwner, t37Id, `Wygasł ${RUN_TAG}`)).data?.issued ?? null;
+const expCookie = waiterCookieOf(await enterFloor({ link: linkTokenOf(expUsed37) }));
+const expBefore37 = await waiterCall(expCookie, `${waiterFloorApiOf(t37Id)}/orders`);
+let expireError37 = "";
+try {
+  await expireEventWaiter(platformEnv, expUnused37?.id ?? 0);
+  await expireEventWaiter(platformEnv, expUsed37?.id ?? 0);
+} catch (error) {
+  expireError37 = error instanceof PlatformError ? error.message : String(error);
+}
+const expLinkPage37 = await request(expUnused37?.path ?? "/kelner/x");
+const expLinkEnter37 = await enterFloor({ link: linkTokenOf(expUnused37) });
+const expCodeEnter37 = await enterFloor({ kod: expUnused37?.code ?? "" });
+const expSession37 = await waiterCall(expCookie, `${waiterFloorApiOf(t37Id)}/orders`);
+const expList37 = waiterList(await staffCall(sessionOwner, waitersApiOf(t37Id)));
+check(
+  "waiters: expiry (moved into the past by the test seam) — the unused link page → 404, its link and code → niewazny, the open session → 401; the list says „expired”",
+  expireError37 === "" &&
+    expBefore37.status === 200 &&
+    expLinkPage37.status === 404 &&
+    redirectsTo(expLinkEnter37, "/kelner?blad=niewazny") &&
+    redirectsTo(expCodeEnter37, "/kelner?blad=niewazny") &&
+    waiterNoSession(expSession37) &&
+    [expUnused37?.id, expUsed37?.id].every((id) => expList37.find((waiter) => waiter.id === id)?.status === "expired"),
+  `${expireError37} ${expBefore37.status} ${expLinkPage37.status} ${expLinkEnter37.location} ${expCodeEnter37.location} ${expSession37.status}`,
+);
+
+const foreignLogout37 = await waiterCall(olaCookie, "/api/kelner/wyloguj", {
+  method: "POST",
+  form: {},
+  extraHeaders: FOREIGN,
+});
+const olaStill37 = await waiterCall(olaCookie, `${waiterFloorApiOf(t37Id)}/orders`);
+const logout37 = await waiterCall(olaCookie, "/api/kelner/wyloguj", { method: "POST", form: {} });
+const olaAfter37 = await waiterCall(olaCookie, `${waiterFloorApiOf(t37Id)}/orders`);
+check(
+  "waiters: logout — a foreign Origin → 403 (the session stays); „Wyloguj” → 303 /kelner?wylogowano=1 clearing the cookie; the session → 401",
+  foreignLogout37.status === 403 &&
+    olaStill37.status === 200 &&
+    redirectsTo(logout37, "/kelner?wylogowano=1") &&
+    /kp-waiter=;/.test(logout37.setCookie) &&
+    waiterNoSession(olaAfter37),
+  `${foreignLogout37.status} ${olaStill37.status} ${logout37.status} ${logout37.location} ${olaAfter37.status}`,
+);
+
+const archive37 = await staffCall(sessionOwner, eventApi(t37Id), { method: "PATCH", json: { archived: true } });
+const thrArchived37 = await waiterCall(thrCookie, `${waiterFloorApiOf(t37Id)}/orders`);
+const thrArchivedPage37 = await waiterCall(thrCookie, waiterFloorPageOf(t37Id));
+const restore37 = await staffCall(sessionOwner, eventApi(t37Id), { method: "PATCH", json: { archived: false } });
+const thrRestored37 = await waiterCall(thrCookie, `${waiterFloorApiOf(t37Id)}/orders`);
+const delete37 = await staffCall(sessionOwner, eventApi(t37Id), { method: "DELETE" });
+const thrDeleted37 = await waiterCall(thrCookie, `${waiterFloorApiOf(t37Id)}/orders`);
+check(
+  "waiters: archiving closes the waiter's floor (the identical 404, the no-access page) and restoring opens it again with the same cookie; deleting the event ends the session (401)",
+  archive37.status === 200 &&
+    noAccessJson(thrArchived37) &&
+    isNoAccessPage(thrArchivedPage37) &&
+    restore37.status === 200 &&
+    thrRestored37.status === 200 &&
+    delete37.status === 200 &&
+    waiterNoSession(thrDeleted37),
+  `${archive37.status} ${thrArchived37.status} ${thrArchivedPage37.status} ${restore37.status} ${thrRestored37.status} ${delete37.status} ${thrDeleted37.status}`,
+);
+
+const cleanup37 = [];
+for (const event of [tomorrow37, past37, archived37]) {
+  cleanup37.push((await staffCall(sessionOwner, eventApi(event?.id ?? 0), { method: "DELETE" })).status);
+}
+cleanup37.push((await staffCall(sessionOwner, templateApi(template37?.id ?? 0), { method: "DELETE" })).status);
+check(
+  "waiters: the section's other events and its template are deleted",
+  cleanup37.every((status) => status === 200),
+  cleanup37.join(" "),
 );
 
 finish();

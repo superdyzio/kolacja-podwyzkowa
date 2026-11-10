@@ -287,6 +287,20 @@ export async function removeMembership(env, restaurantId, accountId) {
   }
 }
 
+// A test seam of the smoke (event-waiter-access, S-21b): moves a per-event waiter's expiry one minute into the past, so
+// its unused link and code and its session stop working exactly as at noon after the event. Local databases only
+// (the smoke refuses any other).
+export async function expireEventWaiter(env, waiterId) {
+  const result = await rest(env, `event_waiter?id=eq.${String(Number(waiterId))}`, {
+    method: "PATCH",
+    body: { expires_at: new Date(Date.now() - 60_000).toISOString() },
+    prefer: "return=representation",
+  });
+  if (!result.ok || !Array.isArray(result.data) || result.data.length !== 1) {
+    throw new PlatformError(`Nie udało się przeterminować kelnera ${String(waiterId)} (${describeFailure(result)}).`);
+  }
+}
+
 // A one-time link for the account (`invite` or `reset`; its older unused links stop working). Returns the link, its
 // expiry and the token (scripts that redeem it over HTTP need it).
 export async function issueStaffLink(env, accountId, kind, baseUrl) {

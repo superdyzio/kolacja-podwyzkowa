@@ -339,8 +339,8 @@ and in the waiter areas; old code ignores it).
 
 #### Automated
 
-- [x] 2.1 `AI_PROVIDER=mock npm test`, `npm run lint`, `npx astro check` pass
-- [x] 2.2 `npm run build` passes
+- [x] 2.1 `AI_PROVIDER=mock npm test`, `npm run lint`, `npx astro check` pass — e1a3ee9
+- [x] 2.2 `npm run build` passes — e1a3ee9
 
 #### Manual
 
@@ -350,8 +350,8 @@ and in the waiter areas; old code ignores it).
 
 #### Automated
 
-- [ ] 3.1 `npm run build`; `npm run smoke` passes against `AI_PROVIDER=mock npm run preview`; `npm run demo` passes
-- [ ] 3.2 `npx supabase db reset` applies every migration from zero; `npm test` still passes afterwards
+- [x] 3.1 `npm run build`; `npm run smoke` passes against `AI_PROVIDER=mock npm run preview`; `npm run demo` passes
+- [x] 3.2 `npx supabase db reset` applies every migration from zero; `npm test` still passes afterwards
 
 #### Manual
 
