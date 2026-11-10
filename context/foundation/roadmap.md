@@ -65,7 +65,7 @@ Restauracja, która gościła kolację 2026-11-08, chce tego narzędzia do włas
 | S-20  | tv-room-rotation        | TV przy wejściu pokazuje cały lokal i sam przechodzi po salach, gdy imiona byłyby nieczytelne; TV da się przypiąć do sali                    | S-19             | FR-034, US-08, NFR-018                                                                        | done     |
 | S-21  | waiter-day-and-refills  | kelner (konto albo dostęp „na imprezę”) widzi dzisiejsze imprezy, oznacza wydane sztuki i dopisuje dokładki                                  | S-12, S-14       | FR-029, FR-023, US-08                                                                         | done     |
 | S-21b | event-waiter-access     | menedżer dodaje kelnera „na imprezę” (imię + jednorazowy link lub kod do końca okna, bez hasła), który pracuje tylko na sali tego wydarzenia | S-21             | FR-023, FR-029, US-08                                                                         | done     |
-| S-22  | guest-map-search        | gość, klient, personel i tablet wyszukują gościa po imieniu, a mapa podświetla jego miejsce                                                  | S-21             | FR-048, US-08                                                                                 | in-progress |
+| S-22  | guest-map-search        | gość, klient, personel i tablet wyszukują gościa po imieniu, a mapa podświetla jego miejsce                                                  | S-21             | FR-048, US-08                                                                                 | done     |
 | S-23  | guest-import-diets      | klient importuje gości z CSV lub wklejki z dietami, a kuchnia i kelnerzy widzą diety przy miejscu i w zliczeniach                            | S-14, S-21       | FR-035, FR-036, US-07, NFR-021                                                                | proposed |
 | S-24  | room-prints             | klient i lokal drukują tablicę „znajdź swój stolik”, karty stołów, winietki w formacie i listę dla obsługi z dietami                         | S-18, S-23       | FR-038                                                                                        | proposed |
 | S-25  | guest-rsvp-menu         | gość potwierdza obecność i wybiera danie do terminu, klient wpisuje za gościa, a klient i lokal widzą zliczenia                              | S-16             | FR-039, US-07                                                                                 | proposed |
@@ -308,7 +308,7 @@ Fundamenty poniżej zakładają, że to istnieje, i NIE budują tego od nowa.
 - **Blockers:** —
 - **Unknowns:** —
 - **Risk:** Gość wyszukuje tylko w opublikowanym rozsadzeniu, które już widzi. Wyszukiwanie nie może ujawnić niczego ponad snapshot.
-- **Status:** in-progress
+- **Status:** done
 
 ### S-23: Import gości i diety
 
@@ -490,3 +490,4 @@ Fundamenty poniżej zakładają, że to istnieje, i NIE budują tego od nowa.
 - **S-21: Kelner ze swoim kontem widzi wydarzenia trwające dziś. Okno obejmuje czas po północy, do południa dnia następnego. Widzi plan z gośćmi, zamówienia z cenami i rachunek, oznacza wydane sztuki i dopisuje zamówienia na sali (dokładki, dodatkowe napoje). Menedżer dodaje kelnera „na imprezę”: imię i jednorazowy link lub kod ważny do końca okna imprezy, bez hasła.** — Archived 2026-11-10 → `context/archive/2026-11-10-waiter-day-and-refills/`. Kelner „na imprezę” wycięty (otwarty, patrz Note w S-21). Lesson: —.
 - **S-20: TV przy wejściu pokazuje cały lokal. Gdy imiona byłyby mniejsze niż cel czytelności, sam przechodzi po salach co kilka sekund. Klient i lokal mogą przypiąć TV do jednej sali.** — Archived 2026-11-10 → `context/archive/2026-11-10-tv-room-rotation/`. Lesson: —.
 - **S-21b: Menedżer (albo właściciel) dodaje kelnera „na imprezę”: imię i jednorazowy link lub krótki kod, ważne do końca okna imprezy (południe dnia następnego), bez hasła i bez konta. Kelner otwiera link albo wpisuje kod i pracuje tylko na sali tego jednego wydarzenia (to samo co kelner z kontem na `/panel/obsluga/<id>`), nigdy w panelu lokalu. Cofnięcie dostępu działa od razu.** — Archived 2026-11-10 → `context/archive/2026-11-10-event-waiter-access/`. Lesson: —.
+- **S-22: Każdy, kto widzi pełną mapę sali na urządzeniu z klawiaturą (gość na telefonie, klient, personel, tablet obsługi), wyszukuje gościa po imieniu, a mapa podświetla jego miejsce. TV tego nie ma.** — Archived 2026-11-10 → `context/archive/2026-11-10-guest-map-search/`. Lesson: —.
