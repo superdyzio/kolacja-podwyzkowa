@@ -782,7 +782,7 @@ export interface OrganizerAiTopicAnswerDto {
 // Organizer reset („Reset danych”). Part ids in canonical order (src/lib/reset/parts.ts has the labels, texts and
 // implications: guests ⇒ guesses, aiUsage, seating; venue ⇒ seating).
 export type ResetPart =
-  "guesses" | "aiUsage" | "seating" | "guests" | "venue" | "orders" | "questions" | "guestLinks" | "quiz";
+  "guesses" | "aiUsage" | "seating" | "guests" | "venue" | "orders" | "questions" | "guestLinks" | "quiz" | "rsvp";
 
 // What a reset would remove (and the flags it would change), read in one query (DB function reset_counts).
 export interface ResetCountsDto {
@@ -808,6 +808,11 @@ export interface ResetCountsDto {
   // pub-quiz: the quiz answers and the questions already asked (the part `quiz` clears both).
   quizAnswers: number;
   quizAsked: number;
+  // rsvp-reset (the PR #4 review's RSVP extras): the guests' RSVP answers, the client's dish options and whether a
+  // deadline is set (the part `rsvp` clears all three; attendance stays).
+  rsvpAnswers: number;
+  rsvpOptions: number;
+  rsvpDeadlineSet: boolean;
 }
 
 // GET /api/o/<key>/reset: fresh counts for the modal; starterQuestions = how many the questions part puts back.

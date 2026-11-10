@@ -4037,8 +4037,20 @@ check(
 // questions.
 const resetApi = `${opsPanel}/reset`;
 const trialResetApi = `${api}/trial-reset`;
-// pub-quiz (S-28) added the part `quiz` (last; implied by `guests`) and its counts `quizAnswers`, `quizAsked`.
-const RESET_PARTS = ["guesses", "aiUsage", "seating", "guests", "venue", "orders", "questions", "guestLinks", "quiz"];
+// pub-quiz (S-28) added the part `quiz` (last; implied by `guests`) and its counts `quizAnswers`, `quizAsked`;
+// rsvp-reset the part `rsvp` (last; implied by `guests`) and `rsvpAnswers`, `rsvpOptions`, `rsvpDeadlineSet`.
+const RESET_PARTS = [
+  "guesses",
+  "aiUsage",
+  "seating",
+  "guests",
+  "venue",
+  "orders",
+  "questions",
+  "guestLinks",
+  "quiz",
+  "rsvp",
+];
 const COUNT_KEYS = [
   "guesses",
   "correctAmountSet",
@@ -4058,6 +4070,9 @@ const COUNT_KEYS = [
   "guestAccessEnabled",
   "quizAnswers",
   "quizAsked",
+  "rsvpAnswers",
+  "rsvpOptions",
+  "rsvpDeadlineSet",
 ]
   .sort()
   .join(",");
@@ -4226,6 +4241,50 @@ check(
   `${aniaBeforeLinksReset.status} ${linksReset.status} ${aniaAfterLinksReset.status}`,
 );
 
+// rsvp-reset (the PR #4 review's RSVP extras): the part `rsvp` alone — the client sets a deadline (A has no menu yet,
+// so no dish options here: tests/integration/reset.test.ts covers them) and answers for two present guests („yes”,
+// „no” = absent); the reset clears the deadline and the answers and keeps every absence (the „no” guest stays absent).
+const rsvpDeadline24 = `${new Date(Date.now() + 2 * 86_400_000).toISOString().slice(0, 10)}T20:00`;
+const present24 = (guestsAfterSubset.data?.guests ?? []).filter((guest) => !guest.isAbsent);
+const rsvpSet24 = await request(`${api}/rsvp`, { method: "PATCH", json: { deadline: rsvpDeadline24 } });
+const rsvpYes24 = await request(`${api}/rsvp/guests/${String(present24[0]?.id ?? 0)}`, {
+  method: "PUT",
+  json: { attending: true, dish: null },
+});
+const rsvpNo24 = await request(`${api}/rsvp/guests/${String(present24[1]?.id ?? 0)}`, {
+  method: "PUT",
+  json: { attending: false, dish: null },
+});
+const rsvpPreview24 = (await request(resetApi, asOps())).data?.counts;
+const absentBefore24 = (await request(`${api}/guests`)).data?.guests?.filter((guest) => guest.isAbsent).length;
+const rsvpReset24 = await request(resetApi, asOps({ method: "POST", json: { parts: ["rsvp"] } }));
+const rsvpBoard24 = await request(`${api}/rsvp`);
+const rsvpCounts24 = (await request(resetApi, asOps())).data?.counts;
+const guestsAfterRsvp24 = await request(`${api}/guests`);
+check(
+  "reset of the RSVP: the deadline and the answers go, every absence stays (the „no” guest is still absent), nothing else changes",
+  present24.length >= 2 &&
+    rsvpSet24.status === 200 &&
+    rsvpYes24.status === 200 &&
+    rsvpNo24.status === 200 &&
+    rsvpPreview24?.rsvpAnswers === 2 &&
+    rsvpPreview24.rsvpOptions === 0 &&
+    rsvpPreview24.rsvpDeadlineSet === true &&
+    rsvpReset24.status === 200 &&
+    JSON.stringify(rsvpReset24.data?.parts) === JSON.stringify(["rsvp"]) &&
+    isSummary(rsvpReset24.data, 1) &&
+    rsvpBoard24.data?.deadline === null &&
+    rsvpBoard24.data.open === false &&
+    rsvpBoard24.data.guests.every((guest) => guest.answeredAt === null) &&
+    rsvpCounts24?.rsvpAnswers === 0 &&
+    rsvpCounts24.rsvpDeadlineSet === false &&
+    sameFlat({ ...rsvpCounts24, rsvpAnswers: 2, rsvpDeadlineSet: true }, rsvpPreview24) &&
+    guestsAfterRsvp24.data?.guests?.filter((guest) => guest.isAbsent).length === absentBefore24 &&
+    guestNamed(guestsAfterRsvp24, present24[1]?.displayName)?.isAbsent === true &&
+    guestNamed(guestsAfterRsvp24, present24[0]?.displayName)?.isAbsent === false,
+  `${rsvpSet24.status} ${rsvpYes24.status} ${rsvpNo24.status} ${JSON.stringify(rsvpPreview24 ?? null).slice(0, 300)} ${rsvpReset24.status} ${rsvpReset24.body.slice(0, 200)}`,
+);
+
 // The client's „Reset prób”: the seating (with every publication) and the guesses go; guests, the venue, orders and
 // questions stay.
 const trialPreview = await request(trialResetApi);
@@ -4325,6 +4384,9 @@ check(
       guestAccessEnabled: false,
       quizAnswers: 0,
       quizAsked: 0,
+      rsvpAnswers: 0,
+      rsvpOptions: 0,
+      rsvpDeadlineSet: false,
     }),
   previewAfterReset.body,
 );

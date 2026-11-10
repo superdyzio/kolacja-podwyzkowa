@@ -89,6 +89,13 @@ export function describeResetCount(
         counts.quizAsked > 0 && t.quizAsked(counts.quizAsked),
       ]);
       break;
+    case "rsvp":
+      items = nonEmpty([
+        counts.rsvpAnswers > 0 && t.rsvpAnswers(counts.rsvpAnswers),
+        counts.rsvpOptions > 0 && t.rsvpOptions(counts.rsvpOptions),
+        counts.rsvpDeadlineSet && t.rsvpDeadlineSet,
+      ]);
+      break;
   }
   return items.length > 0 ? items.join(" · ") : t.nothingToReset;
 }
@@ -157,6 +164,17 @@ function resultLine(part: ResetPart, outcome: ResetOutcome, locale: Locale): str
         locale,
         [before.quizAnswers > 0 && t.quizAnswers(before.quizAnswers)],
         before.quizAsked > 0 ? t.quizTail : undefined,
+      );
+    case "rsvp":
+      return removedLine(
+        part,
+        locale,
+        [
+          before.rsvpAnswers > 0 && t.rsvpAnswers(before.rsvpAnswers),
+          before.rsvpOptions > 0 && t.rsvpOptions(before.rsvpOptions),
+          before.rsvpDeadlineSet && t.rsvpDeadlineAcc,
+        ],
+        before.rsvpDeadlineSet ? t.rsvpTail : undefined,
       );
   }
 }

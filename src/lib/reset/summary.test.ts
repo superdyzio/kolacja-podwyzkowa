@@ -22,6 +22,9 @@ const EMPTY: ResetCountsDto = {
   guestAccessEnabled: false,
   quizAnswers: 0,
   quizAsked: 0,
+  rsvpAnswers: 0,
+  rsvpOptions: 0,
+  rsvpDeadlineSet: false,
 };
 
 const DEMO: ResetCountsDto = {
@@ -43,6 +46,9 @@ const DEMO: ResetCountsDto = {
   guestAccessEnabled: true,
   quizAnswers: 24,
   quizAsked: 3,
+  rsvpAnswers: 35,
+  rsvpOptions: 4,
+  rsvpDeadlineSet: true,
 };
 
 describe("joinPl", () => {
@@ -66,6 +72,7 @@ describe("describeResetCount", () => {
       "95 pytań → zostanie 90 startowych",
       "40 linków · dostęp gości włączony",
       "24 odpowiedzi w quizie · 3 zadane pytania",
+      "35 odpowiedzi · 4 dania do wyboru · termin ustawiony",
     ]);
   });
 
@@ -133,6 +140,7 @@ describe("describeResetResult", () => {
       "Pytania: usunięto 95 pytań, wczytano 90 startowych.",
       "Linki gości: dostęp gości wyłączony.",
       "Pub quiz: usunięto 24 odpowiedzi w quizie; pytania można zadać od nowa.",
+      "Potwierdzenia: usunięto 35 odpowiedzi, 4 dania do wyboru i termin; potwierdzenia wyłączone, nieobecności zostają.",
     ]);
   });
 
@@ -178,6 +186,33 @@ describe("English texts", () => {
     expect(describeResetCount("orders", { ...EMPTY, orders: 3 }, 90, "en")).toBe("3 order lines");
     expect(describeResetCount("questions", EMPTY, 90, "en")).toBe("no questions → 90 starter questions will be loaded");
     expect(describeResetCount("venue", EMPTY, 90, "en")).toBe("nothing to remove");
+    expect(describeResetCount("rsvp", { ...EMPTY, rsvpAnswers: 1, rsvpOptions: 1 }, 90, "en")).toBe(
+      "1 RSVP answer · 1 dish option",
+    );
+  });
+
+  it("counts and summarizes the RSVP part (rsvp-reset) with Polish plurals", () => {
+    expect(describeResetCount("rsvp", { ...EMPTY, rsvpAnswers: 1, rsvpOptions: 1 }, 90)).toBe(
+      "1 odpowiedź · 1 danie do wyboru",
+    );
+    expect(describeResetCount("rsvp", { ...EMPTY, rsvpAnswers: 3, rsvpOptions: 12 }, 90)).toBe(
+      "3 odpowiedzi · 12 dań do wyboru",
+    );
+    expect(describeResetCount("rsvp", { ...EMPTY, rsvpDeadlineSet: true }, 90)).toBe("termin ustawiony");
+    expect(describeResetResult({ parts: ["rsvp"], before: EMPTY, questionsAdded: 0, guestKeysReplaced: 0 })).toEqual([
+      "Potwierdzenia: nie było nic do usunięcia.",
+    ]);
+    expect(
+      describeResetResult(
+        {
+          parts: ["rsvp"],
+          before: { ...EMPTY, rsvpAnswers: 2, rsvpOptions: 3, rsvpDeadlineSet: true },
+          questionsAdded: 0,
+          guestKeysReplaced: 0,
+        },
+        "en",
+      ),
+    ).toEqual(["RSVP: removed 2 RSVP answers, 3 dish options and the deadline; RSVP is off, absences stay."]);
   });
 
   it("summarizes a reset in English", () => {

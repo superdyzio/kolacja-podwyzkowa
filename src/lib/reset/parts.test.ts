@@ -29,6 +29,7 @@ describe("reset parts", () => {
       "Pytania",
       "Linki gości",
       "Pub quiz",
+      "Potwierdzenia",
     ]);
   });
 
@@ -46,8 +47,9 @@ describe("reset parts", () => {
     expect(isResetPart(1)).toBe(false);
   });
 
-  it("implies guesses, AI usage, seating and the quiz for guests, seating for the venue", () => {
-    expect(RESET_IMPLIES.guests).toEqual(["guesses", "aiUsage", "seating", "quiz"]);
+  it("implies guesses, AI usage, seating, the quiz and the RSVP for guests, seating for the venue", () => {
+    expect(RESET_IMPLIES.guests).toEqual(["guesses", "aiUsage", "seating", "quiz", "rsvp"]);
+    expect(RESET_PART_DESCRIPTIONS.rsvp).toContain("Nieobecności na liście gości zostają");
     expect(RESET_IMPLIES.venue).toEqual(["seating"]);
   });
 });
@@ -61,6 +63,7 @@ describe("expandResetParts", () => {
       "guests",
       "guestLinks",
       "quiz",
+      "rsvp",
     ]);
     expect(expandResetParts(["venue"])).toEqual(["seating", "venue"]);
     expect(expandResetParts(["questions", "guesses"])).toEqual(["guesses", "questions"]);
@@ -87,7 +90,7 @@ describe("selection in the modal", () => {
 
   it("leaves a locked part as it is and releases implied parts with their parent", () => {
     const withGuests = toggleResetPart([], "guests");
-    expect(expandResetParts(withGuests)).toEqual(["guesses", "aiUsage", "seating", "guests", "quiz"]);
+    expect(expandResetParts(withGuests)).toEqual(["guesses", "aiUsage", "seating", "guests", "quiz", "rsvp"]);
     expect(toggleResetPart(withGuests, "seating")).toEqual(withGuests);
     expect(expandResetParts(toggleResetPart(withGuests, "guests"))).toEqual([]);
   });

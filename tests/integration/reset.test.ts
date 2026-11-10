@@ -1,9 +1,11 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { saveGuessByOrganizer, setCorrectAmount, setGuessIntakeOpen } from "@/lib/guesses";
 import { setGuestAccess } from "@/lib/guest-links";
-import { createGroup } from "@/lib/guests";
+import { createGroup, getGuestList } from "@/lib/guests";
+import { addMenuItem } from "@/lib/menu/service";
 import { addQuestions, getQuestionList, starterQuestionRows } from "@/lib/questions";
 import { getResetPreview, RESET_PARTS, resetEvent } from "@/lib/reset";
+import { getRsvpBoard, saveRsvpByOrganizer, updateRsvpSettings } from "@/lib/rsvp/service";
 import { publishSeating, seatGuest, setPinned } from "@/lib/seating";
 import type { DbClient } from "@/lib/supabase-client";
 import { savePlanImage } from "@/lib/venue";
@@ -28,10 +30,16 @@ describe.skipIf(!hasLocalDb)("organizer reset", () => {
   let db: DbClient;
   let event: TestEvent;
   let restUrl: string;
+  // rsvp-reset: one catalog item of the suite's restaurant (the event's full menu offers it as the RSVP option).
+  const RSVP_DISH = `Zupa resetu ${testTag()}`;
 
   beforeAll(async () => {
     db = localDb();
     event = await createTestEvent(db);
+    const dish = await addMenuItem(db, event.restaurantId, { name: RSVP_DISH, course: "soup", priceGrosze: 1_500 });
+    if (dish.status !== "added") {
+      throw new Error(dish.status);
+    }
     const env = localDbEnv();
     if (!env) {
       throw new Error("unreachable: suite is skipped without a local DB");
@@ -89,8 +97,8 @@ describe.skipIf(!hasLocalDb)("organizer reset", () => {
   }
 
   // Something in every part: a plan, a room with two tables, six guests (a pair among them), three seated (one
-  // pinned), one published snapshot, two guesses, a correct amount, intake closed, two AI attempts, guest access on
-  // and one extra question.
+  // pinned), one published snapshot, two guesses, a correct amount, intake closed, two AI attempts, guest access on,
+  // one extra question and (rsvp-reset) one dish option, a deadline and two RSVP answers (one „no” = absent).
   const SEEDED: ResetCountsDto = {
     guesses: 2,
     correctAmountSet: true,
@@ -112,6 +120,9 @@ describe.skipIf(!hasLocalDb)("organizer reset", () => {
     // pub-quiz: the quiz part is covered by tests/integration/pub-quiz.test.ts.
     quizAnswers: 0,
     quizAsked: 0,
+    rsvpAnswers: 2,
+    rsvpOptions: 1,
+    rsvpDeadlineSet: true,
   };
 
   async function seed(): Promise<void> {
@@ -162,6 +173,14 @@ describe.skipIf(!hasLocalDb)("organizer reset", () => {
       throw new Error(drinks.error.message);
     }
     expect((await addQuestions(db, event.id, "generyczne", [`Czy reset ${tag} działa?`])).status).toBe("added");
+    const deadline = new Date(Date.now() + 86_400_000).toISOString();
+    expect((await updateRsvpSettings(db, event.id, { options: [RSVP_DISH], deadline }, new Date())).status).toBe(
+      "updated",
+    );
+    // Guest a comes with the soup; guest f (not seated) says „no” and so is absent.
+    const absentGuest = seating.guestIds[5];
+    expect((await saveRsvpByOrganizer(db, event.id, a, true, RSVP_DISH)).status).toBe("saved");
+    expect((await saveRsvpByOrganizer(db, event.id, absentGuest, false, null)).status).toBe("saved");
     expect(await counts()).toEqual(SEEDED);
   }
 
@@ -235,10 +254,10 @@ describe.skipIf(!hasLocalDb)("organizer reset", () => {
       expect(await readGuestKeys(db, await guestIds())).toEqual(keys);
     });
 
-    it("guests take guesses, AI usage, seating and the quiz with them", async () => {
+    it("guests take guesses, AI usage, seating, the quiz and the RSVP with them", async () => {
       await seed();
       const result = await reset(["guests"]);
-      expect(result.parts).toEqual(["guesses", "aiUsage", "seating", "guests", "quiz"]);
+      expect(result.parts).toEqual(["guesses", "aiUsage", "seating", "guests", "quiz", "rsvp"]);
       expect(await counts()).toEqual({
         ...SEEDED,
         guesses: 0,
@@ -251,7 +270,32 @@ describe.skipIf(!hasLocalDb)("organizer reset", () => {
         snapshots: 0,
         guests: 0,
         groups: 0,
+        rsvpAnswers: 0,
+        rsvpOptions: 0,
+        rsvpDeadlineSet: false,
       });
+    });
+
+    it("rsvp: the answers, the dish options and the deadline go; attendance (absences) and everything else stay", async () => {
+      await seed();
+      const absentBefore = (await getGuestList(db, event.id)).guests.filter((guest) => guest.isAbsent).length;
+      expect(absentBefore).toBe(1);
+      const result = await reset(["rsvp"]);
+      expect(result.parts).toEqual(["rsvp"]);
+      expect(result.summary).toEqual([
+        "Potwierdzenia: usunięto 2 odpowiedzi, 1 danie do wyboru i termin; potwierdzenia wyłączone, nieobecności zostają.",
+      ]);
+      expect(await counts()).toEqual({ ...SEEDED, rsvpAnswers: 0, rsvpOptions: 0, rsvpDeadlineSet: false });
+      const board = await getRsvpBoard(db, event.id, new Date());
+      expect(board?.deadline).toBeNull();
+      expect(board?.open).toBe(false);
+      expect(board?.options).toEqual([]);
+      expect(board?.guests.filter((guest) => guest.attending !== null)).toEqual([
+        expect.objectContaining({ attending: false, dish: null, byOrganizer: true, answeredAt: null }),
+      ]);
+      // The absent guest stays absent (now „not coming”, marked by the organizer); nobody else changed.
+      expect((await getGuestList(db, event.id)).guests.filter((guest) => guest.isAbsent).length).toBe(1);
+      expect(board?.counts).toMatchObject({ coming: 0, notComing: 1, noAnswer: 5 });
     });
 
     it("the venue takes the seating with it", async () => {
@@ -345,6 +389,9 @@ describe.skipIf(!hasLocalDb)("organizer reset", () => {
         guestAccessEnabled: false,
         quizAnswers: 0,
         quizAsked: 0,
+        rsvpAnswers: 0,
+        rsvpOptions: 0,
+        rsvpDeadlineSet: false,
       });
       expect(await readEventKeys(db, event.id)).toEqual(keys);
       const published = await publishSeating(db, event.id);

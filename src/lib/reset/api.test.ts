@@ -21,6 +21,9 @@ const COUNTS = {
   guestAccessEnabled: false,
   quizAnswers: 0,
   quizAsked: 0,
+  rsvpAnswers: 0,
+  rsvpOptions: 0,
+  rsvpDeadlineSet: false,
 };
 
 describe("reset request body", () => {

@@ -20,6 +20,7 @@ export const resetMessages = defineMessages(
       questions: "Pytania",
       guestLinks: "Linki gości",
       quiz: "Pub quiz",
+      rsvp: "Potwierdzenia",
     },
     partDescriptions: {
       guesses: "Usuwa wszystkie strzały i prawidłową kwotę, otwiera przyjmowanie strzałów.",
@@ -27,13 +28,14 @@ export const resetMessages = defineMessages(
       seating:
         "Usuwa rozsadzenie (z przypięciami) i wszystkie publikacje: TV nic nie pokazuje, historia sąsiadów zaczyna się od zera.",
       guests:
-        "Usuwa wszystkich gości i grupy, a razem z nimi strzały, licznik tematów AI, rozsadzenie i odpowiedzi w quizie.",
+        "Usuwa wszystkich gości i grupy, a razem z nimi strzały, licznik tematów AI, rozsadzenie, odpowiedzi w quizie i potwierdzenia.",
       venue: "Usuwa plan lokalu, sale i stoliki, a razem z nimi rozsadzenie.",
       orders: "Usuwa wszystkie pozycje zamówienia i napoje do rachunku. Link restauracji zostaje bez zmian.",
       questions: "Usuwa wszystkie pytania i wczytuje od nowa bazę startową.",
       guestLinks:
         "Nowy link dla każdego gościa i wyłączony dostęp gości: wydrukowane karteczki i wysłane linki przestają działać.",
       quiz: "Usuwa odpowiedzi gości, wyniki i przebieg quizu (TV wraca do planu sali). Pytania zostają i można je zadać od nowa.",
+      rsvp: "Usuwa odpowiedzi gości (obecność i wybrane dania), dania do wyboru i termin: potwierdzenia są wyłączone. Nieobecności na liście gości zostają bez zmian.",
     },
     guestLinksWithGuestsNote: "Goście zostaną usunięci, więc zostanie tylko wyłączenie dostępu gości.",
     // Counts (what would go away) and, where Polish needs it, the accusative after „usunięto”.
@@ -77,6 +79,11 @@ export const resetMessages = defineMessages(
     quizAnswers: (n: number) => `${pl(n, "odpowiedź", "odpowiedzi", "odpowiedzi")} w quizie`,
     quizAsked: (n: number) => pl(n, "zadane pytanie", "zadane pytania", "zadanych pytań"),
     quizTail: "pytania można zadać od nowa",
+    rsvpAnswers: (n: number) => pl(n, "odpowiedź", "odpowiedzi", "odpowiedzi"),
+    rsvpOptions: (n: number) => pl(n, "danie do wyboru", "dania do wyboru", "dań do wyboru"),
+    rsvpDeadlineSet: "termin ustawiony",
+    rsvpDeadlineAcc: "termin",
+    rsvpTail: "potwierdzenia wyłączone, nieobecności zostają",
     questionsReset: (label: string, removed: string | null, starter: string) =>
       `${label}: ${removed ? `usunięto ${removed}, ` : ""}wczytano ${starter}.`,
     newGuestLinks: (label: string, guests: string) =>
@@ -115,6 +122,7 @@ export const resetMessages = defineMessages(
       questions: "Questions",
       guestLinks: "Guest links",
       quiz: "Pub quiz",
+      rsvp: "RSVP",
     },
     partDescriptions: {
       guesses: "Deletes every guess and the correct amount, and opens guessing again.",
@@ -122,13 +130,14 @@ export const resetMessages = defineMessages(
       seating:
         "Deletes the seating (with pins) and every publication: the TV shows nothing and the neighbour history starts from zero.",
       guests:
-        "Deletes every guest and group, and with them the guesses, the AI topic counter, the seating and the quiz answers.",
+        "Deletes every guest and group, and with them the guesses, the AI topic counter, the seating, the quiz answers and the RSVP.",
       venue: "Deletes the venue plan, the rooms and the tables, and with them the seating.",
       orders: "Deletes every order line and every drink for the bill. The restaurant link stays the same.",
       questions: "Deletes every question and loads the starter base again.",
       guestLinks:
         "A new link for every guest and guest access turned off: printed cards and links already sent stop working.",
       quiz: "Deletes the guests' answers, the results and the quiz run (the TV goes back to the plan). The questions stay and can be asked again.",
+      rsvp: "Deletes the guests' answers (attendance and chosen dishes), the dish options and the deadline: RSVP is off. Absences on the guest list stay as they are.",
     },
     guestLinksWithGuestsNote: "The guests will be deleted, so only turning guest access off is left.",
     and: "and",
@@ -169,6 +178,11 @@ export const resetMessages = defineMessages(
     quizAnswers: (n: number) => en(n, "quiz answer", "quiz answers"),
     quizAsked: (n: number) => en(n, "asked question", "asked questions"),
     quizTail: "the questions can be asked again",
+    rsvpAnswers: (n: number) => en(n, "RSVP answer", "RSVP answers"),
+    rsvpOptions: (n: number) => en(n, "dish option", "dish options"),
+    rsvpDeadlineSet: "deadline set",
+    rsvpDeadlineAcc: "the deadline",
+    rsvpTail: "RSVP is off, absences stay",
     questionsReset: (label: string, removed: string | null, starter: string) =>
       `${label}: ${removed ? `removed ${removed}, ` : ""}loaded ${starter}.`,
     newGuestLinks: (label: string, guests: string) =>

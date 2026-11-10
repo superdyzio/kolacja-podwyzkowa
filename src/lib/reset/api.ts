@@ -38,6 +38,10 @@ export const ResetCountsSchema = z.strictObject({
   // pub-quiz (S-28).
   quizAnswers: Count,
   quizAsked: Count,
+  // rsvp-reset.
+  rsvpAnswers: Count,
+  rsvpOptions: Count,
+  rsvpDeadlineSet: z.boolean(),
 });
 
 export const ResetEventAnswerSchema = z.strictObject({
