@@ -1,0 +1,21 @@
+---
+import { splitPlaceholders } from "@/lib/legal/placeholders";
+
+// One text of a DRAFT legal document (landing-legal, S-30): every `[…]` placeholder is marked, so nobody mistakes the
+// draft for the final text and the operator finds every field to fill.
+interface Props {
+  text: string;
+}
+
+const segments = splitPlaceholders(Astro.props.text);
+---
+
+{segments.map((segment) =>
+  segment.placeholder ? (
+    <mark class="rounded-sm bg-amber-100 px-0.5 text-amber-950 ring-1 ring-amber-300" data-legal-placeholder>
+      {segment.text}
+    </mark>
+  ) : (
+    segment.text
+  ),
+)}

@@ -1,0 +1,18 @@
+---
+import LegalDocumentPage from "@/components/legal/LegalDocumentPage.astro";
+import Layout from "@/layouts/Layout.astro";
+import { LEGAL_DRAFT_HEADERS, privacyPolicyMessages } from "@/lib/legal";
+
+// The DRAFT privacy policy of the platform (landing-legal, S-30; FR-041, PRD v2 Open Question 6): public, static,
+// PL / EN by the language cookie, marked „Wersja robocza — do przeglądu prawnika” with every open field as a
+// placeholder. The guests' own notice stays on their link (/g/<key>/prywatnosc, white-label) and never links here.
+// Never cached or indexed until the legal review. No DB read.
+const doc = privacyPolicyMessages(Astro.locals.locale);
+for (const [name, value] of Object.entries(LEGAL_DRAFT_HEADERS)) {
+  Astro.response.headers.set(name, value);
+}
+---
+
+<Layout title={doc.pageTitle}>
+  <LegalDocumentPage kind="privacy" doc={doc} />
+</Layout>

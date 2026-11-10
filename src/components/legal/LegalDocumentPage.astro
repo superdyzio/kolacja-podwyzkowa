@@ -1,0 +1,89 @@
+---
+import LegalText from "@/components/legal/LegalText.astro";
+import { PRODUCT_NAME } from "@/lib/i18n/product";
+import { HOME_PATH, LEGAL_DRAFT_DATE, PRIVACY_POLICY_PATH, TERMS_PATH } from "@/lib/legal/paths";
+import type { LegalDocument } from "@/lib/legal/types";
+
+// The body of a DRAFT legal document (landing-legal, S-30; FR-041): the draft banner in the look of the guests' own
+// notice (`data-privacy-draft`, S-26), the as-of date, a table of contents and the numbered sections with their
+// placeholders marked. Static: no island, no data.
+interface Props {
+  kind: "terms" | "privacy";
+  doc: LegalDocument;
+}
+
+const { kind, doc } = Astro.props;
+const otherPath = kind === "terms" ? PRIVACY_POLICY_PATH : TERMS_PATH;
+---
+
+<main class="mx-auto flex max-w-3xl flex-col gap-6 px-4 pt-14 pb-12 sm:px-8" data-legal-document={kind}>
+  <a href={HOME_PATH} class="self-start py-2 text-sm text-muted-foreground underline-offset-4 hover:underline">
+    {doc.backHome}
+  </a>
+  <header class="flex flex-col gap-1">
+    <p class="text-sm font-medium tracking-wide text-muted-foreground uppercase">{PRODUCT_NAME}</p>
+    <h1 class="text-3xl font-bold">{doc.heading}</h1>
+    <p class="text-sm text-muted-foreground">{doc.asOf(LEGAL_DRAFT_DATE)}</p>
+  </header>
+  <div
+    role="note"
+    class="flex flex-col gap-1 rounded-xl border border-amber-400 bg-amber-50 p-4 text-amber-950"
+    data-legal-draft
+  >
+    <p class="font-semibold">{doc.draft}</p>
+    <p class="text-sm">{doc.draftText}</p>
+  </div>
+  <nav aria-labelledby="legal-toc-heading" class="flex flex-col gap-2 rounded-xl border p-4" data-legal-toc>
+    <h2 id="legal-toc-heading" class="font-semibold">
+      {doc.tocLabel}
+    </h2>
+    <ol class="list-decimal pl-5 text-sm">
+      {doc.sections.map((section) => (
+        <li>
+          <a href={`#legal-${section.id}`} class="underline-offset-4 hover:underline">
+            {section.heading}
+          </a>
+        </li>
+      ))}
+    </ol>
+  </nav>
+  {doc.sections.map((section, index) => (
+    <section
+      id={`legal-${section.id}`}
+      aria-labelledby={`legal-${section.id}-heading`}
+      class="flex scroll-mt-4 flex-col gap-2"
+      data-legal-section={section.id}
+    >
+      <h2 id={`legal-${section.id}-heading`} class="text-lg font-semibold">
+        {`${String(index + 1)}. ${section.heading}`}
+      </h2>
+      {section.paragraphs.map((paragraph) => (
+        <p class="text-sm leading-relaxed">
+          <LegalText text={paragraph} />
+        </p>
+      ))}
+      {section.items && (
+        <ul class="flex list-disc flex-col gap-1 pl-5 text-sm leading-relaxed">
+          {section.items.map((item) => (
+            <li>
+              <LegalText text={item} />
+            </li>
+          ))}
+        </ul>
+      )}
+      {section.closing?.map((paragraph) => (
+        <p class="text-sm leading-relaxed">
+          <LegalText text={paragraph} />
+        </p>
+      ))}
+    </section>
+  ))}
+  <footer class="flex flex-wrap gap-x-6 gap-y-2 border-t pt-4 text-sm">
+    <a href={otherPath} class="font-medium underline underline-offset-4" data-legal-other>
+      {doc.otherDocument}
+    </a>
+    <a href={HOME_PATH} class="text-muted-foreground underline underline-offset-4">
+      {doc.backHome}
+    </a>
+  </footer>
+</main>

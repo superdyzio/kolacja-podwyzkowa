@@ -11,6 +11,9 @@ export const DEFAULT_LOCALE: Locale = "pl";
 // The query parameter of the language switch.
 export const LOCALE_PARAM = "lang";
 
+// How long the language cookie keeps the choice: one year (also stated in the privacy policy draft, landing-legal).
+export const LOCALE_COOKIE_MAX_AGE_SECONDS = 60 * 60 * 24 * 365;
+
 const RESTAURANT_PATH = /^\/(api\/)?r(\/|$)/;
 
 export function isLocale(value: unknown): value is Locale {

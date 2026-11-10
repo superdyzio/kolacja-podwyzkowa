@@ -27,7 +27,7 @@ import {
   WAITER_ENTRY_PATH,
   type WaiterArea,
 } from "@/lib/event-waiters";
-import { LOCALE_PARAM, isLocale, localeCookieName, resolveLocale } from "@/lib/i18n";
+import { LOCALE_COOKIE_MAX_AGE_SECONDS, LOCALE_PARAM, isLocale, localeCookieName, resolveLocale } from "@/lib/i18n";
 import { clientMayWrite, isOrganizerApiPath, LEAD_CODES, leadMessages } from "@/lib/lead";
 import { keyedApiSubPath, MODULE_CODES, moduleForApiPath, modulesMessages, type ModuleKey } from "@/lib/modules";
 import { sweepGuestRetention } from "@/lib/privacy/service";
@@ -61,8 +61,6 @@ const PRIVATE_HEADERS: Record<string, string> = {
   "Referrer-Policy": "no-referrer",
   "X-Robots-Tag": "noindex, nofollow",
 };
-
-const LOCALE_COOKIE_MAX_AGE = 60 * 60 * 24 * 365;
 
 function withHeaders(response: Response, extra: Readonly<Record<string, string>>, status = response.status): Response {
   // Rebuilt (some responses have immutable headers); Set-Cookie headers of the route are kept one by one.
@@ -179,7 +177,7 @@ export const onRequest = defineMiddleware(async (context, next) => {
   if (context.request.method === "GET" && !pathname.startsWith("/api/") && isLocale(requested)) {
     context.cookies.set(cookieName, requested, {
       path: "/",
-      maxAge: LOCALE_COOKIE_MAX_AGE,
+      maxAge: LOCALE_COOKIE_MAX_AGE_SECONDS,
       sameSite: "lax",
       httpOnly: true,
       secure: context.url.protocol === "https:",

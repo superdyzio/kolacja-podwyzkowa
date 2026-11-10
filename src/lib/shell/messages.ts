@@ -1,12 +1,9 @@
 import { defineMessages } from "@/lib/i18n/locale";
 
-// Texts of the public pages (home, 500) and the organizer shell (/o/<key>), both languages (i18n). The summary lines
+// Texts of the error page (500) and the organizer shell (/o/<key>), both languages (i18n). The summary lines
 // on the shell cards come from each domain's own format*Summary(…, locale).
 export const shellMessages = defineMessages(
   {
-    noDatabase: "Baza danych nie jest skonfigurowana.",
-    linkOnly: "Dostęp tylko przez link od organizatora.",
-    staffLogin: "Logowanie dla personelu",
     // 500.astro.
     errorTitle: "Błąd",
     errorHeading: "Coś poszło nie tak",
@@ -50,9 +47,6 @@ export const shellMessages = defineMessages(
       "Po próbie generalnej wyczyść rozsadzenie (z historią publikacji) i strzały; goście, sala, zamówienia i pytania zostają. Pełny reset danych prowadzi lokal.",
   },
   {
-    noDatabase: "The database is not configured.",
-    linkOnly: "Access only through a link from the organizer.",
-    staffLogin: "Staff login",
     errorTitle: "Error",
     errorHeading: "Something went wrong",
     errorText: "Try reloading the page in a moment.",

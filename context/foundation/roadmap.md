@@ -73,7 +73,7 @@ Restauracja, która gościła kolację 2026-11-08, chce tego narzędzia do włas
 | S-27  | staff-offline-readout   | tablet obsługi i kelner bez sieci widzą ostatni stan zamówień i rozsadzenia, także po odświeżeniu                                            | S-21             | FR-047, US-08, NFR-017                                                                        | done        |
 | S-28  | pub-quiz                | klient przygotowuje pub quiz i prowadzi go na TV, a goście odpowiadają na telefonach                                                         | S-17             | FR-049                                                                                        | done        |
 | S-29  | demo-restaurant         | administrator platformy przygotowuje restaurację demo na prawdziwym planie i menu z przykładową imprezą firmową                              | S-15, S-16, S-21 | FR-042, US-05, US-06, US-07, US-08, US-09                                                     | done |
-| S-30  | landing-legal           | odwiedzający widzi publiczną stronę produktu z logowaniem oraz szkice regulaminu i polityki prywatności                                      | S-29             | FR-041                                                                                        | proposed |
+| S-30  | landing-legal           | odwiedzający widzi publiczną stronę produktu z logowaniem oraz szkice regulaminu i polityki prywatności                                      | S-29             | FR-041                                                                                        | in-progress |
 
 ## Streams
 
@@ -410,7 +410,7 @@ Fundamenty poniżej zakładają, że to istnieje, i NIE budują tego od nowa.
 - **Unknowns:**
   - Nazwa produktu (Otwarte pytanie 1) i treść dokumentów prawnych (Otwarte pytanie 6). — Owner: user. Block: no.
 - **Risk:** PRD v2 świadomie stawia ten slice na końcu, po demo, bo demo prowadzi użytkownik.
-- **Status:** proposed
+- **Status:** in-progress
 
 ## Backlog Handoff
 
