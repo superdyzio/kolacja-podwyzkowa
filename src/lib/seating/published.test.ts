@@ -109,6 +109,7 @@ describe("toTvSeating", () => {
     expect(tv.tables.map((t) => t.name)).toEqual(["Kominek", "Okno"]);
     expect(tv.tables[1]).toEqual({
       name: "Okno",
+      room: "Sala",
       shape: "round",
       seatCount: 8,
       x: 0.1,

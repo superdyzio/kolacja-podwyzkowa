@@ -137,6 +137,7 @@ export function toTvSeating(snapshot: SeatingSnapshot | null, planVersion: numbe
     .sort((a, b) => compareTableNames(a.name, b.name) || a.snapshotTableId - b.snapshotTableId)
     .map((table): TvTableDto => ({
       name: table.name,
+      room: table.roomName,
       shape: table.shape,
       seatCount: table.seatCount,
       x: table.x,

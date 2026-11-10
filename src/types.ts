@@ -210,6 +210,8 @@ export interface TvSeatDto {
 
 export interface TvTableDto {
   name: string;
+  // The table's room as published (tv-room-rotation: the TV groups tables by room); a name, never an id.
+  room: string;
   shape: TableShape;
   seatCount: number;
   x: number;

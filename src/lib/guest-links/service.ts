@@ -138,7 +138,7 @@ async function guestDrawing(db: DbClient, snapshotId: number): Promise<GuestDraw
     db.from("seating_snapshot").select("chair_pitch").eq("id", snapshotId).maybeSingle(),
     db
       .from("seating_snapshot_table")
-      .select("id, name, shape, seat_count, pos_x, pos_y, rotation")
+      .select("id, name, room_name, shape, seat_count, pos_x, pos_y, rotation")
       .eq("snapshot_id", snapshotId),
     db.from("seating_snapshot_seat").select("snapshot_table_id, seat, guest_name").eq("snapshot_id", snapshotId),
     readSnapshotRooms(db, snapshotId),
@@ -161,6 +161,7 @@ async function guestDrawing(db: DbClient, snapshotId: number): Promise<GuestDraw
           ? [
               {
                 name: table.name,
+                room: table.room_name,
                 shape: table.shape,
                 seatCount: table.seat_count,
                 x: table.pos_x,

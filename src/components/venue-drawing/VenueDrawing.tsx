@@ -6,13 +6,13 @@ import {
   LINE_HEIGHT,
   STAGE_WIDTH,
   chairRadius,
+  contentView,
   estimateTextWidth,
   layoutDrawing,
   padRect,
   pitchUnits,
   roomRect,
   stageHeight,
-  unionRect,
   viewBoxOf,
   type DrawingTableInput,
   type LaidOutTable,
@@ -235,8 +235,11 @@ export function VenueDrawing({
     if (focusIndex >= 0) {
       return padRect(laidOut[focusIndex].bounds, pitch * 0.8);
     }
-    const content = unionRect([...laidOut.map((table) => table.bounds), ...roomRects, ...(showStage ? [stage] : [])]);
-    return padRect(content ?? stage, pitch * 0.6);
+    return contentView(
+      [...laidOut.map((table) => table.bounds), ...roomRects, ...(showStage ? [stage] : [])],
+      pitch,
+      stage,
+    );
   }, [focus, tables, laidOut, roomRects, showStage, aspect, pitch]);
 
   const stroke = Math.max(0.5, pitch * 0.05);
