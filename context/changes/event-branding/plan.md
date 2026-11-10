@@ -254,7 +254,7 @@ Additive: two nullable columns, two new tables. Deploy the migration before the 
 
 #### Automated
 
-- [x] 2.1 `npm run lint`, `npx astro check`, `npm run build` pass
+- [x] 2.1 `npm run lint`, `npx astro check`, `npm run build` pass — 301d55b
 
 #### Manual
 
@@ -264,5 +264,5 @@ Additive: two nullable columns, two new tables. Deploy the migration before the 
 
 #### Automated
 
-- [ ] 3.1 `npm run build` + `AI_PROVIDER=mock npm run preview` + `npm run smoke` all PASS
-- [ ] 3.2 `AI_PROVIDER=mock npm run demo` succeeds
+- [x] 3.1 `npm run build` + `AI_PROVIDER=mock npm run preview` + `npm run smoke` all PASS
+- [x] 3.2 `AI_PROVIDER=mock npm run demo` succeeds

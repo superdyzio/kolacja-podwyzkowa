@@ -7837,4 +7837,315 @@ check(
 const deleted33 = await staffCall(sessionOwner, eventApi(e33Id), { method: "DELETE" });
 check("modules: the smoke's event is deleted", deleted33.status === 200, String(deleted33.status));
 
+// 34. Branding (event-branding, S-18; FR-032). A new event of A (panel). The client names its company and uploads a
+// logo (PNG only through magic bytes: SVG → 415, > 512 KiB → 413, an extra field → 400); the logo comes back with
+// `nosniff` and the same bytes through the client, guest, TV and tablet keys, and an unknown kind is the `logoMissing`
+// 404. Event B's logo never shows through A's keys (and A's restaurant logo never through B's). The owner sets the
+// restaurant's colour (normalised, with its readable text colour), name and logo; the manager reads but cannot write;
+// a waiter, owner B and unknown or malformed ids → the identical 404; no session → 401; a foreign Origin → 403. The
+// lead rule: while „Lokal prowadzi” is on the client's PATCH → 409 venue-leads and the staff write through the
+// dispatcher. The pages carry the brand and never the platform's name; support mode reads only.
+const brandApiOf = (restaurantId) => `/api/panel/restaurants/${String(restaurantId)}/branding`;
+// „Brak logo.” — or „No logo.” on the tablet's area, which defaults to English.
+const LOGO_MISSING = [JSON.stringify({ error: "Brak logo." }), JSON.stringify({ error: "No logo." })];
+const isLogoMissing = (res) => res.status === 404 && LOGO_MISSING.includes(new TextDecoder().decode(res.bytes));
+const e34 = await staffCall(sessionOwner, eventsApiOf(restaurantA.id), {
+  method: "POST",
+  json: { name: `Marka smoke ${RUN_TAG}`, date: futureDate },
+});
+const e34Id = e34.data?.event?.id ?? 0;
+const e34Key = keyOfPath(e34.data?.event?.links?.organizer);
+const e34Tv = keyOfPath(e34.data?.event?.links?.tv);
+const e34Tablet = keyOfPath(e34.data?.event?.links?.restaurant);
+const e34Api = `/api/o/${e34Key}`;
+await request(`${e34Api}/guests`, { method: "POST", json: { text: "Ala Marka" } });
+await request(`${e34Api}/guest-links`, { method: "PATCH", json: { enabled: true } });
+const g34 = (await request(`${e34Api}/guest-links`)).data?.guests?.[0]?.key ?? "";
+const areas34 = [`/api/o/${e34Key}`, `/api/g/${g34}`, `/api/tv/${e34Tv}`, `/api/r/${e34Tablet}`];
+
+const unbranded34 = await request(`${e34Api}/branding`);
+const bLogo34 = await requestBytes(`/api/o/${eventB.organizerKey}/branding/logo`, {
+  method: "PUT",
+  body: TINY_PNG,
+  contentType: "image/png",
+});
+const aNone34 = await Promise.all(areas34.map((base) => requestBytes(`${base}/branding/logo?kind=event`)));
+const bServed34 = await requestBytes(`/api/g/${"A".repeat(24)}/branding/logo?kind=event`);
+check(
+  "branding: a new event starts unbranded (the restaurant's name only); event B's logo never shows through A's client, guest, TV or tablet key (404 „Brak logo.”), an unknown key → the identical no-access 404",
+  e34.status === 201 &&
+    g34.length === 24 &&
+    unbranded34.status === 200 &&
+    unbranded34.data?.client?.name === null &&
+    unbranded34.data?.client?.logo === null &&
+    unbranded34.data?.restaurant?.logo === null &&
+    bLogo34.status === 200 &&
+    aNone34.every(isLogoMissing) &&
+    bServed34.status === 404 &&
+    new TextDecoder().decode(bServed34.bytes) === JSON.stringify({ error: "Brak dostępu" }),
+  `${e34.status} ${g34.length} ${unbranded34.status} ${bLogo34.status} ${aNone34.map((r) => r.status).join(",")} ${bServed34.status}`,
+);
+
+const named34 = await request(`${e34Api}/branding`, { method: "PATCH", json: { name: "  Acme   Smoke " } });
+const tooLong34 = await request(`${e34Api}/branding`, { method: "PATCH", json: { name: "x".repeat(81) } });
+const extra34 = await request(`${e34Api}/branding`, { method: "PATCH", json: { name: "Acme", color: "#000000" } });
+const svg34 = await requestBytes(`${e34Api}/branding/logo`, {
+  method: "PUT",
+  body: new TextEncoder().encode('<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>'),
+  contentType: "image/svg+xml",
+});
+const big34 = await requestBytes(`${e34Api}/branding/logo`, {
+  method: "PUT",
+  body: new Uint8Array(512 * 1024 + 1),
+  contentType: "image/png",
+});
+const logo34 = await requestBytes(`${e34Api}/branding/logo`, {
+  method: "PUT",
+  body: TINY_PNG,
+  contentType: "image/png",
+});
+const served34 = await Promise.all(
+  areas34.map((base) =>
+    requestBytes(`${base}/branding/logo?kind=event&v=${String(logo34.data?.client?.logo?.version)}`),
+  ),
+);
+const oddKind34 = await requestBytes(`/api/g/${g34}/branding/logo?kind=platform`);
+const bOwn34 = await requestBytes(`/api/tv/${eventB.tvKey}/branding/logo?kind=event`);
+check(
+  "branding: the client names its company (normalised), 81 characters and an extra field → 400, SVG → 415, > 512 KiB → 413; the PNG logo comes back through the client, guest, TV and tablet keys with nosniff and the same bytes, an unknown kind → „Brak logo.”, event B still has its own",
+  named34.status === 200 &&
+    named34.data?.client?.name === "Acme Smoke" &&
+    tooLong34.status === 400 &&
+    extra34.status === 400 &&
+    svg34.status === 415 &&
+    big34.status === 413 &&
+    logo34.status === 200 &&
+    logo34.data?.client?.logo?.mimeType === "image/png" &&
+    served34.every(
+      (res) =>
+        res.status === 200 &&
+        res.contentType === "image/png" &&
+        res.nosniff === "nosniff" &&
+        res.cacheControl.includes("no-store") &&
+        sameBytes(res.bytes, TINY_PNG),
+    ) &&
+    isLogoMissing(oddKind34) &&
+    bOwn34.status === 200 &&
+    sameBytes(bOwn34.bytes, TINY_PNG),
+  `${named34.status} ${JSON.stringify(named34.data?.client)} ${tooLong34.status} ${extra34.status} ${svg34.status} ${big34.status} ${logo34.status} ${served34.map((r) => `${String(r.status)}/${r.nosniff}`).join(",")} ${oddKind34.status} ${bOwn34.status}`,
+);
+
+const before34 = await staffCall(sessionOwner, brandApiOf(restaurantA.id));
+const ownerBrand34 = await staffCall(sessionOwner, brandApiOf(restaurantA.id), {
+  method: "PATCH",
+  json: { color: "#1E3A8A", name: `Lokal marki ${RUN_TAG}` },
+});
+const badColor34 = await staffCall(sessionOwner, brandApiOf(restaurantA.id), {
+  method: "PATCH",
+  json: { color: "url(x)" },
+});
+const emptyName34 = await staffCall(sessionOwner, brandApiOf(restaurantA.id), { method: "PATCH", json: { name: " " } });
+const nothing34 = await staffCall(sessionOwner, brandApiOf(restaurantA.id), { method: "PATCH", json: {} });
+const rLogo34 = await requestBytes(`${brandApiOf(restaurantA.id)}/logo`, {
+  method: "PUT",
+  body: TINY_PNG,
+  contentType: "image/png",
+  cookie: asStaff(sessionOwner),
+});
+const rSvg34 = await requestBytes(`${brandApiOf(restaurantA.id)}/logo`, {
+  method: "PUT",
+  body: new TextEncoder().encode("<svg/>"),
+  contentType: "image/png",
+  cookie: asStaff(sessionOwner),
+});
+const rServed34 = await Promise.all(areas34.map((base) => requestBytes(`${base}/branding/logo?kind=restaurant`)));
+const rPanel34 = await requestBytes(`${brandApiOf(restaurantA.id)}/logo`, { cookie: asStaff(sessionOwner) });
+const bRestaurant34 = await requestBytes(`/api/g/${"A".repeat(24)}/branding/logo?kind=restaurant`);
+const bRestaurantKey34 = await requestBytes(`/api/o/${eventB.organizerKey}/branding/logo?kind=restaurant`);
+const guestBrand34 = await request(`${e34Api}/branding`);
+check(
+  "branding: the owner sets the colour (#1E3A8A → #1e3a8a with white text), renames the restaurant and uploads its logo; a bad colour, an empty name, an empty body and SVG bytes are refused; the logo shows through every key of A's event and the panel, never through event B (restaurant B has none)",
+  before34.status === 200 &&
+    ownerBrand34.status === 200 &&
+    ownerBrand34.data?.color === "#1e3a8a" &&
+    ownerBrand34.data?.textColor === "#ffffff" &&
+    ownerBrand34.data?.name === `Lokal marki ${RUN_TAG}` &&
+    badColor34.status === 400 &&
+    emptyName34.status === 400 &&
+    nothing34.status === 400 &&
+    rLogo34.status === 200 &&
+    rLogo34.data?.logo?.mimeType === "image/png" &&
+    rSvg34.status === 415 &&
+    rServed34.every((res) => res.status === 200 && res.nosniff === "nosniff" && sameBytes(res.bytes, TINY_PNG)) &&
+    rPanel34.status === 200 &&
+    rPanel34.nosniff === "nosniff" &&
+    sameBytes(rPanel34.bytes, TINY_PNG) &&
+    bRestaurant34.status === 404 &&
+    isLogoMissing(bRestaurantKey34) &&
+    guestBrand34.data?.restaurant?.color === "#1e3a8a" &&
+    guestBrand34.data?.restaurant?.name === `Lokal marki ${RUN_TAG}`,
+  `${before34.status} ${ownerBrand34.status} ${JSON.stringify(ownerBrand34.data)} ${badColor34.status} ${emptyName34.status} ${nothing34.status} ${rLogo34.status} ${rSvg34.status} ${rServed34.map((r) => r.status).join(",")} ${rPanel34.status} ${bRestaurantKey34.status}`,
+);
+
+const managerRead34 = await staffCall(sessionManager, brandApiOf(restaurantA.id));
+const managerWrite34 = await staffCall(sessionManager, brandApiOf(restaurantA.id), {
+  method: "PATCH",
+  json: { color: "#000000" },
+});
+const managerLogo34 = await requestBytes(`${brandApiOf(restaurantA.id)}/logo`, {
+  method: "PUT",
+  body: TINY_PNG,
+  contentType: "image/png",
+  cookie: asStaff(sessionManager),
+});
+const outsiders34 = [];
+for (const [who, token] of [
+  ["waiter", sessionWaiter],
+  ["owner B", sessionB],
+]) {
+  for (const [path, options] of [
+    [brandApiOf(restaurantA.id), {}],
+    [brandApiOf(restaurantA.id), { method: "PATCH", json: { color: "#000000" } }],
+    [`${brandApiOf(restaurantA.id)}/logo`, {}],
+    [`${brandApiOf(restaurantA.id)}/logo`, { method: "DELETE" }],
+  ]) {
+    const res = await staffCall(token, path, options);
+    if (!noAccessJson(res)) outsiders34.push(`${who} ${options.method ?? "GET"} ${path}: ${String(res.status)}`);
+  }
+}
+for (const path of [brandApiOf(999999999), brandApiOf("abc"), `${brandApiOf(999999999)}/logo`]) {
+  const res = await staffCall(sessionOwner, path);
+  if (!noAccessJson(res)) outsiders34.push(`owner ${path}: ${String(res.status)}`);
+}
+const noSession34 = await request(brandApiOf(restaurantA.id));
+const foreign34 = await staffCall(sessionOwner, brandApiOf(restaurantA.id), {
+  method: "PATCH",
+  json: { color: "#000000" },
+  extraHeaders: FOREIGN,
+});
+const stillBlue34 = await staffCall(sessionOwner, brandApiOf(restaurantA.id));
+check(
+  "branding: the manager reads the restaurant's brand but cannot change it (identical 404); a waiter, owner B and unknown or malformed ids → the identical 404; no session → 401; a foreign Origin → 403; nothing changed",
+  managerRead34.status === 200 &&
+    managerRead34.data?.color === "#1e3a8a" &&
+    noAccessJson(managerWrite34) &&
+    managerLogo34.status === 404 &&
+    managerLogo34.data?.error === "Brak dostępu" &&
+    outsiders34.length === 0 &&
+    noSession34.status === 401 &&
+    foreign34.status === 403 &&
+    stillBlue34.data?.color === "#1e3a8a",
+  `${managerRead34.status} ${managerWrite34.status} ${managerLogo34.status} ${outsiders34.join("; ")} ${noSession34.status} ${foreign34.status}`,
+);
+
+const leadOn34 = await staffCall(sessionOwner, eventApi(e34Id), { method: "PATCH", json: { venueLeads: true } });
+const clientLed34 = await request(`${e34Api}/branding`, { method: "PATCH", json: { name: "Klient" } });
+const clientLogoLed34 = await requestBytes(`${e34Api}/branding/logo`, { method: "DELETE" });
+const staffLed34 = await staffCall(sessionOwner, `${eventApi(e34Id)}/klient/branding`, {
+  method: "PATCH",
+  json: { name: "Firma personelu" },
+});
+const staffLogo34 = await requestBytes(`${eventApi(e34Id)}/klient/branding/logo?kind=event`, {
+  cookie: asStaff(sessionOwner),
+});
+const leadOff34 = await staffCall(sessionOwner, eventApi(e34Id), { method: "PATCH", json: { venueLeads: false } });
+const staffNotLed34 = await staffCall(sessionOwner, `${eventApi(e34Id)}/klient/branding`, {
+  method: "PATCH",
+  json: { name: "Znowu personel" },
+});
+check(
+  "branding: while the venue leads the client's brand writes → 409 venue-leads and the staff write through the dispatcher (and read the logo there); the client leads again → the staff's write 409 client-leads",
+  leadOn34.status === 200 &&
+    clientLed34.status === 409 &&
+    clientLed34.data?.code === "venue-leads" &&
+    clientLogoLed34.status === 409 &&
+    staffLed34.status === 200 &&
+    staffLed34.data?.client?.name === "Firma personelu" &&
+    staffLogo34.status === 200 &&
+    sameBytes(staffLogo34.bytes, TINY_PNG) &&
+    leadOff34.status === 200 &&
+    staffNotLed34.status === 409 &&
+    staffNotLed34.data?.code === "client-leads",
+  `${leadOn34.status} ${clientLed34.status} ${clientLogoLed34.status} ${staffLed34.status} ${staffLogo34.status} ${leadOff34.status} ${staffNotLed34.status}`,
+);
+
+const guestPage34 = await request(`/g/${g34}`);
+const tvPage34 = await request(`/tv/${e34Tv}`);
+const tabletPage34 = await request(`/r/${e34Tablet}`);
+const cards34 = await request(`/o/${e34Key}/karteczki`);
+const shell34 = await request(`/o/${e34Key}`);
+const ownerPage34 = await staffCall(sessionOwner, `/panel/restauracje/${String(restaurantA.id)}`);
+const managerPage34 = await staffCall(sessionManager, `/panel/restauracje/${String(restaurantA.id)}`);
+const eventPage34 = await staffCall(sessionOwner, `/panel/wydarzenia/${String(e34Id)}`);
+const home34 = await request("/");
+const whiteLabel = (res) =>
+  res.status === 200 &&
+  !res.body.includes("Kolacja podwyżkowa") &&
+  !res.body.includes("Raise dinner") &&
+  !res.body.includes("<title>Stolik</title>");
+const pageChecks34 = [
+  ["white-label", [guestPage34, tvPage34, tabletPage34, cards34].every(whiteLabel)],
+  ["guest header", guestPage34.body.includes('data-brand-header="page"')],
+  ["guest colour", guestPage34.body.includes("background-color: #1e3a8a; color: #ffffff;")],
+  ["guest restaurant name", guestPage34.body.includes(`Lokal marki ${RUN_TAG}`)],
+  ["guest client name", guestPage34.body.includes("Firma personelu")],
+  ["guest restaurant logo", guestPage34.body.includes(`/api/g/${g34}/branding/logo?kind=restaurant`)],
+  ["guest client logo", guestPage34.body.includes(`/api/g/${g34}/branding/logo?kind=event`)],
+  ["tv badge", tvPage34.body.includes('data-brand-header="tv"')],
+  ["tv logo", tvPage34.body.includes(`/api/tv/${e34Tv}/branding/logo?kind=restaurant`)],
+  ["tablet header", tabletPage34.body.includes('data-brand-header="page"')],
+  ["tablet logo", tabletPage34.body.includes(`/api/r/${e34Tablet}/branding/logo?kind=event`)],
+  ["cards brand", cards34.body.includes("data-card-brand")],
+  ["cards stripe", cards34.body.includes("border-top: 2.5mm solid #1e3a8a;")],
+  ["cards logo", cards34.body.includes(`/api/o/${e34Key}/branding/logo?kind=event`)],
+  ["shell section", shell34.body.includes("data-event-branding")],
+  ["shell editor", shell34.body.includes("data-event-branding-editor")],
+  ["owner section", ownerPage34.body.includes("data-restaurant-branding")],
+  ["owner editor", ownerPage34.body.includes("data-restaurant-branding-editor")],
+  ["manager read-only", managerPage34.body.includes("data-brand-read-only")],
+  ["manager no editor", !managerPage34.body.includes("data-restaurant-branding-editor")],
+  ["event card section", eventPage34.body.includes("data-event-branding-section")],
+  ["home product name", home34.body.includes("Stolik")],
+];
+check(
+  "branding: the guest's phone, the TV, the tablet and the QR cards show the restaurant's colour, name and logo and the client's name and logo, never the platform's name; the client shell, the owner's (editor) and the manager's (read-only) restaurant page and the event card carry their sections; the home page is the product's",
+  pageChecks34.every(([, ok]) => ok),
+  pageChecks34
+    .filter(([, ok]) => !ok)
+    .map(([name]) => name)
+    .join(", "),
+);
+
+const enter34 = await enterSupport(sessionAdmin, restaurantA.id);
+const adminRead34 = await staffCall(sessionAdmin, brandApiOf(restaurantA.id));
+const adminWrite34 = await staffCall(sessionAdmin, brandApiOf(restaurantA.id), {
+  method: "PATCH",
+  json: { color: "#000000" },
+});
+const adminPage34 = await staffCall(sessionAdmin, `/panel/restauracje/${String(restaurantA.id)}`);
+const exit34 = await endSupportOf(sessionAdmin, restaurantA.id);
+check(
+  "branding: in support mode the admin reads the restaurant's brand (the page read-only, without loading the logo) and cannot change it",
+  enter34.status === 201 &&
+    adminRead34.status === 200 &&
+    adminRead34.data?.color === "#1e3a8a" &&
+    noAccessJson(adminWrite34) &&
+    adminPage34.status === 200 &&
+    adminPage34.body.includes("data-brand-read-only") &&
+    !adminPage34.body.includes("/branding/logo?v=") &&
+    exit34.status === 200,
+  `${enter34.status} ${adminRead34.status} ${adminWrite34.status} ${adminPage34.status} ${exit34.status}`,
+);
+
+const restored34 = await staffCall(sessionOwner, brandApiOf(restaurantA.id), {
+  method: "PATCH",
+  json: { name: before34.data?.name ?? `Restauracja smoke A ${RUN_TAG}` },
+});
+const deleted34 = await staffCall(sessionOwner, eventApi(e34Id), { method: "DELETE" });
+check(
+  "branding: restaurant A gets its name back and the smoke's event is deleted",
+  restored34.status === 200 && deleted34.status === 200,
+  `${restored34.status} ${deleted34.status}`,
+);
+
 finish();

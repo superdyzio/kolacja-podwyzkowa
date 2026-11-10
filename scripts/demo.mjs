@@ -299,10 +299,15 @@ function planPng() {
     }
   }
 
-  const rowLength = 1 + PLAN_WIDTH * 3;
-  const raw = Buffer.alloc(PLAN_HEIGHT * rowLength); // filter byte 0 (none) at the start of every row
-  for (let y = 0; y < PLAN_HEIGHT; y++) {
-    pixels.copy(raw, y * rowLength + 1, y * PLAN_WIDTH * 3, (y + 1) * PLAN_WIDTH * 3);
+  return rgbPng(PLAN_WIDTH, PLAN_HEIGHT, pixels);
+}
+
+// Encodes RGB pixels (3 bytes per pixel, rows top to bottom) as a PNG.
+function rgbPng(width, height, pixels) {
+  const rowLength = 1 + width * 3;
+  const raw = Buffer.alloc(height * rowLength); // filter byte 0 (none) at the start of every row
+  for (let y = 0; y < height; y++) {
+    pixels.copy(raw, y * rowLength + 1, y * width * 3, (y + 1) * width * 3);
   }
   const chunk = (type, data) => {
     const typeAndData = Buffer.concat([Buffer.from(type, "ascii"), data]);
@@ -313,8 +318,8 @@ function planPng() {
     return Buffer.concat([length, typeAndData, crc]);
   };
   const header = Buffer.alloc(13);
-  header.writeUInt32BE(PLAN_WIDTH, 0);
-  header.writeUInt32BE(PLAN_HEIGHT, 4);
+  header.writeUInt32BE(width, 0);
+  header.writeUInt32BE(height, 4);
   header.set([8, 2, 0, 0, 0], 8); // bit depth 8, colour type 2 (RGB), deflate, no filter method, no interlace
   return Buffer.concat([
     Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
@@ -322,6 +327,24 @@ function planPng() {
     chunk("IDAT", deflateSync(raw, { level: 9 })),
     chunk("IEND", Buffer.alloc(0)),
   ]);
+}
+
+// event-branding (S-18): a simple logo — a coloured badge with a ring and a bar, `width` × `height`.
+function logoPng(width, height, background, foreground) {
+  const pixels = Buffer.alloc(width * height * 3);
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const ring = Math.hypot(x - height / 2, y - height / 2);
+      const onRing = ring >= height * 0.28 && ring <= height * 0.4;
+      const onBar = x >= height * 0.95 && x <= width - height * 0.15 && Math.abs(y - height / 2) <= height * 0.12;
+      const [r, g, b] = onRing || onBar ? foreground : background;
+      const offset = (y * width + x) * 3;
+      pixels[offset] = r;
+      pixels[offset + 1] = g;
+      pixels[offset + 2] = b;
+    }
+  }
+  return rgbPng(width, height, pixels);
 }
 
 const fraction = (value, total) => Math.round((value / total) * 10_000) / 10_000;
@@ -746,6 +769,37 @@ if (supportKinds !== "exit,unlock,access,access,enter" || supportLog.entries[4].
   fail(`Dziennik wejść administratora demo ma nieoczekiwane wpisy: ${supportKinds || "brak"}.`);
 }
 
+// --- 9b. Branding (event-branding, S-18): the restaurant's colour and logo (owner), the client's name and logo -------
+
+const BRAND_COLOR = "#7c2d12";
+const CLIENT_BRAND = "Acme Polska sp. z o.o.";
+const restaurantBrand = `/api/panel/restaurants/${String(restaurantId)}/branding`;
+await step("kolor marki lokalu", restaurantBrand, {
+  method: "PATCH",
+  json: { color: BRAND_COLOR },
+  cookie: ownerCookie,
+});
+await step("logo lokalu", `${restaurantBrand}/logo`, {
+  method: "PUT",
+  bytes: logoPng(240, 96, [124, 45, 18], [253, 230, 138]),
+  contentType: "image/png",
+  cookie: ownerCookie,
+});
+await step("nazwa firmy klienta", `${api}/branding`, { method: "PATCH", json: { name: CLIENT_BRAND } });
+const brand = await step("logo firmy klienta", `${api}/branding/logo`, {
+  method: "PUT",
+  bytes: logoPng(200, 80, [30, 58, 138], [255, 255, 255]),
+  contentType: "image/png",
+});
+if (
+  brand.restaurant.color !== BRAND_COLOR ||
+  !brand.restaurant.logo ||
+  brand.client.name !== CLIENT_BRAND ||
+  !brand.client.logo
+) {
+  fail("Marka demo nie została zapisana.");
+}
+
 // --- 10. Summary ------------------------------------------------------------------------------------------------
 
 const seatTotal = venue.tables.reduce((sum, table) => sum + table.seatCount, 0);
@@ -768,6 +822,7 @@ Dane demo gotowe („${RESTAURANT_NAME}” · „${EVENT_NAME}”, id ${String(e
 - moduły: „${EVENT_NAME}” ma wszystkie gry włączone; „${VENUE_LED_EVENT}” — tematy AI odblokowane przez administratora i włączone z grą przez lokal; „Urodziny Ani (demo)” — domyślne (tematy AI i gra wyłączone)
 - menu lokalu: ${String(catalog.items.length)} pozycji w 5 kursach; menu „${EVENT_NAME}” okrojone do ${String(eventMenu.items.filter((item) => item.available).length)} pozycji, zamówienie z niego (ceny i kursy z menu, kuchnia na tablecie po kursach)
 - „${VENUE_LED_EVENT}”: lokal prowadzi, ${String(VENUE_LED_GUESTS.length)} gości dodanych w panelu
+- marka: lokal w kolorze ${BRAND_COLOR} z logo, klient „${CLIENT_BRAND}” z logo (telefony gości, TV, tablet, karteczki, panel)
 - szablon sali „${TEMPLATE_NAME}” (${String(savedTemplate.template.roomCount)} sale, ${String(savedTemplate.template.tableCount)} stolików) i wydarzenie z niego „${TEMPLATE_EVENT}”
 
 Organizator: ${organizerUrl}
