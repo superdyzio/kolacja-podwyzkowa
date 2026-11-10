@@ -10104,7 +10104,8 @@ const deleted40 = await staffCall(sessionOwner, eventApi(e40Id), { method: "DELE
 check("rsvp: the section's event is deleted", deleted40.status === 200, String(deleted40.status));
 
 // 41. Guest data retention, the export and the privacy notice (privacy-retention, S-26; FR-040, US-09, NFR-019). The
-// owner of A reads and sets the term (30 → 7 days), the manager reads it, everyone else gets the identical 404; bad
+// owner of A reads the term, previews a shorter one (retention-preview: a back-dated event R is counted, then
+// deleted) and sets it (30 → 7 days), the manager reads it, everyone else gets the identical 404; bad
 // bodies 400, no session 401, a foreign Origin 403. Event P of A (today, panel) is filled through its client link
 // (guests with diets, a group, a room and a table, a published seating, a guess, an order line with a note for a
 // guest, a person on the TV, guest links on); the manager exports it (JSON and both CSVs as attachments, no-store, no
@@ -10133,6 +10134,80 @@ const download41 = async (token, path) => {
 };
 
 const ownerTerm41 = await staffCall(sessionOwner, retentionApiOf(restaurantA.id));
+
+// retention-preview (the PR #4 review's decision 6): while A's term is still 30 days, event R of A (today, one guest)
+// is moved 10 days back (the seam). The owner's preview of 7 days counts R with its date (nothing before the move);
+// 30 (the current term) and 60 count nothing; 0, 366, 7.5, a word and an empty value → 400 (PL/EN); the manager, A's
+// waiter and owner B → the identical 404; asking purges nothing (R keeps its guest); once R is deleted, 0 again.
+const previewOf41 = (days) => `${retentionApiOf(restaurantA.id)}?days=${days}`;
+const r41 = await staffCall(sessionOwner, eventsApiOf(restaurantA.id), {
+  method: "POST",
+  json: { name: `Retencja R ${RUN_TAG}`, date: today },
+});
+const r41Id = r41.data?.event?.id ?? 0;
+const r41Api = `/api/o/${keyOfPath(r41.data?.event?.links?.organizer)}`;
+const rGuest41 = await request(`${r41Api}/guests`, { method: "POST", json: { text: `Rafał Podgląd ${RUN_TAG}` } });
+const previewBefore41 = await staffCall(sessionOwner, previewOf41("7"));
+let movedR41 = "";
+try {
+  await setEventDate(platformEnv, r41Id, shiftDate(today, -10));
+} catch (error) {
+  movedR41 = error instanceof Error ? error.message : String(error);
+}
+const preview7of41 = await staffCall(sessionOwner, previewOf41("7"));
+const preview30of41 = await staffCall(sessionOwner, previewOf41("30"));
+const preview60of41 = await staffCall(sessionOwner, previewOf41("60"));
+const previewBad41 = [];
+for (const days of ["0", "366", "7.5", "abc", ""]) {
+  const res = await staffCall(sessionOwner, previewOf41(days));
+  if (res.status !== 400 || !String(res.data?.error).startsWith("Podaj liczbę dni od 1 do 365")) {
+    previewBad41.push(`${days}: ${String(res.status)}`);
+  }
+}
+const previewBadEn41 = await request(previewOf41("0"), { cookie: `${asStaff(sessionOwner)}; kp-lang=en` });
+const previewDenied41 = [];
+for (const [name, token] of [
+  ["the manager", sessionManager],
+  ["A's waiter", sessionWaiter],
+  ["owner B", sessionB],
+]) {
+  const res = await staffCall(token, previewOf41("7"));
+  if (!noAccessJson(res)) previewDenied41.push(`${name}: ${String(res.status)}`);
+}
+const rGuestsAfter41 = await request(`${r41Api}/guests`);
+const rDeleted41 = await staffCall(sessionOwner, eventApi(r41Id), { method: "DELETE" });
+const previewAfter41 = await staffCall(sessionOwner, previewOf41("7"));
+const nothingLost41 = (res, days) =>
+  res.status === 200 &&
+  JSON.stringify(res.data) ===
+    JSON.stringify({ restaurantId: restaurantA.id, guestRetentionDays: 30, days, events: 0, latestEventDate: null });
+check(
+  "retention preview: R (one guest) moved 10 days back — the owner's preview of 7 days counts it with its date (none before), 30 and 60 count nothing; 0, 366, 7.5, a word, an empty value → 400 (PL, EN); the manager, A's waiter, owner B → the identical 404; asking purges nothing; R deleted → nothing again",
+  r41.status === 201 &&
+    rGuest41.status === 201 &&
+    nothingLost41(previewBefore41, 7) &&
+    movedR41 === "" &&
+    preview7of41.status === 200 &&
+    JSON.stringify(preview7of41.data) ===
+      JSON.stringify({
+        restaurantId: restaurantA.id,
+        guestRetentionDays: 30,
+        days: 7,
+        events: 1,
+        latestEventDate: shiftDate(today, -10),
+      }) &&
+    nothingLost41(preview30of41, 30) &&
+    nothingLost41(preview60of41, 60) &&
+    previewBad41.length === 0 &&
+    previewBadEn41.status === 400 &&
+    String(previewBadEn41.data?.error).startsWith("Enter a number of days from 1 to 365") &&
+    previewDenied41.length === 0 &&
+    rGuestsAfter41.data?.guests?.length === 1 &&
+    rDeleted41.status === 200 &&
+    nothingLost41(previewAfter41, 7),
+  `${r41.status} ${rGuest41.status} ${previewBefore41.body.slice(0, 160)} ${movedR41} ${preview7of41.status} ${preview7of41.body.slice(0, 160)} ${preview30of41.body.slice(0, 120)} ${previewBad41.join("; ")} ${previewBadEn41.status} ${previewDenied41.join("; ")} ${String(rGuestsAfter41.data?.guests?.length)} ${rDeleted41.status} ${previewAfter41.body.slice(0, 120)}`,
+);
+
 const setTerm41 = await staffCall(sessionOwner, retentionApiOf(restaurantA.id), {
   method: "PATCH",
   json: { guestRetentionDays: 7 },
@@ -10353,6 +10428,7 @@ const supportCsv41 = await staffCall(sessionAdmin, exportApi41(p41Id, "guests-cs
 const logAfter41 = (await readLogA()).data?.entries?.[0];
 const supportCard41 = await staffCall(sessionAdmin, eventPage(p41Id));
 const supportTerm41 = await staffCall(sessionAdmin, retentionApiOf(restaurantA.id));
+const supportPreview41 = await staffCall(sessionAdmin, `${retentionApiOf(restaurantA.id)}?days=3`);
 const supportSetTerm41 = await staffCall(sessionAdmin, retentionApiOf(restaurantA.id), {
   method: "PATCH",
   json: { guestRetentionDays: 9 },
@@ -10361,7 +10437,7 @@ const exit41 = await endSupportOf(sessionAdmin, restaurantA.id);
 const clientExport41 = await request(`${p41Api}/export`);
 const noSessionExport41 = await request(exportApi41(p41Id));
 check(
-  "export: owner B, A's waiter, the admin outside support, unknown and malformed ids → the identical 404; in support mode the export is the identical 404 with no log row (the term reads, logged; its write 404; the card has no export links); P's client key has no export (404); no session 401",
+  "export: owner B, A's waiter, the admin outside support, unknown and malformed ids → the identical 404; in support mode the export is the identical 404 with no log row (the term and its preview read, logged; its write 404; the card has no export links); P's client key has no export (404); no session 401",
   exportDenied41.length === 0 &&
     enter41.status === 201 &&
     logBefore41?.kind === "enter" &&
@@ -10372,6 +10448,8 @@ check(
     supportCard41.body.includes("data-event-privacy") &&
     !supportCard41.body.includes("data-event-export") &&
     supportTerm41.status === 200 &&
+    supportPreview41.status === 200 &&
+    supportPreview41.data?.days === 3 &&
     noAccessJson(supportSetTerm41) &&
     exit41.status === 200 &&
     clientExport41.status === 404 &&
@@ -11862,5 +11940,103 @@ check(
   ),
   whiteLabel45.map((res) => String(res.status)).join(" "),
 );
+
+// 46. The daily guest data clean-up (retention-schedule; the PR #4 review's decision 3). POST /api/jobs/retention is
+// the Lambda Web Adapter's pass-through path for the EventBridge Scheduler's input; the Function URL is public, so
+// without the right RETENTION_TOKEN everything gets the identical 404 with no-store — no body, a wrong token (of the
+// same length and a long one), malformed JSON, another job, an extra field, GET, PUT — and a JSON POST without an Origin
+// reaches the route (the adapter sends no Origin: not Astro's 403 for cross-site forms). With RETENTION_TOKEN set for
+// the server AND this smoke, the right token runs the job: event S of A (one guest) moved 40 days back (past A's 30) is
+// purged by that run (it leaves the expired list without any read of S; the answer has counts only), a second run finds
+// nothing; S is deleted. Without the token the positive part is skipped (printed). The job is global: it purges every
+// expired event of the local database, exactly like the panel's lazy sweep the smoke's page views already run.
+const JOB46 = "/api/jobs/retention";
+const JOB_NAME46 = "guest-data-retention";
+const jobToken46 = process.env.RETENTION_TOKEN ?? "";
+const job46 = (options) => request(JOB46, { noOrigin: true, ...options });
+const wrongToken46 = jobToken46 ? `${jobToken46.slice(0, -1)}${jobToken46.endsWith("A") ? "B" : "A"}` : "A".repeat(64);
+const anyToken46 = jobToken46 || wrongToken46;
+const denied46 = [];
+for (const [name, options] of [
+  ["no body", { method: "POST", extraHeaders: { "Content-Type": "application/json" } }],
+  ["a wrong token", { method: "POST", json: { job: JOB_NAME46, token: wrongToken46 } }],
+  ["a long wrong token", { method: "POST", json: { job: JOB_NAME46, token: "B".repeat(512) } }],
+  ["malformed JSON", { method: "POST", rawBody: "{" }],
+  ["another job", { method: "POST", json: { job: "other", token: anyToken46 } }],
+  ["an extra field", { method: "POST", json: { job: JOB_NAME46, token: anyToken46, extra: 1 } }],
+  ["GET", { method: "GET" }],
+  ["PUT", { method: "PUT", json: { job: JOB_NAME46, token: anyToken46 } }],
+]) {
+  const res = await job46(options);
+  if (!noAccessJson(res) || !res.cacheControl.includes("no-store") || res.robots === "") {
+    denied46.push(`${name}: ${String(res.status)} ${res.body.slice(0, 60)}`);
+  }
+}
+check(
+  "retention job: POST /api/jobs/retention without the right token — no body, a wrong token (same length, long), malformed JSON, another job, an extra field, GET, PUT — is the identical 404 with no-store; a JSON POST without an Origin reaches the route",
+  denied46.length === 0,
+  denied46.join("; "),
+);
+
+if (!jobToken46) {
+  console.log(
+    "SKIP  retention job: the right token runs the clean-up — RETENTION_TOKEN is not set for this smoke (start the preview and the smoke with the same RETENTION_TOKEN to run it)",
+  );
+} else {
+  const s46 = await staffCall(sessionOwner, eventsApiOf(restaurantA.id), {
+    method: "POST",
+    json: { name: `Retencja nocna ${RUN_TAG}`, date: today },
+  });
+  const s46Id = s46.data?.event?.id ?? 0;
+  const s46Api = `/api/o/${keyOfPath(s46.data?.event?.links?.organizer)}`;
+  const sGuest46 = await request(`${s46Api}/guests`, { method: "POST", json: { text: `Nocny Gość ${RUN_TAG}` } });
+  let moved46 = "";
+  let listedBefore46 = [];
+  let listedAfter46 = [];
+  try {
+    await setEventDate(platformEnv, s46Id, shiftDate(today, -40));
+    listedBefore46 = await purgeExpiredGuestData(platformEnv, { restaurantId: restaurantA.id, dryRun: true });
+  } catch (error) {
+    moved46 = error instanceof Error ? error.message : String(error);
+  }
+  const run46 = await job46({ method: "POST", json: { job: JOB_NAME46, token: jobToken46 } });
+  try {
+    listedAfter46 = await purgeExpiredGuestData(platformEnv, { restaurantId: restaurantA.id, dryRun: true });
+  } catch (error) {
+    moved46 = error instanceof Error ? error.message : String(error);
+  }
+  const again46 = await job46({ method: "POST", json: { job: JOB_NAME46, token: jobToken46 } });
+  const sGuestsAfter46 = await request(`${s46Api}/guests`);
+  const sDeleted46 = await staffCall(sessionOwner, eventApi(s46Id), { method: "DELETE" });
+  const RESULT_KEYS46 = "complete,events,groups,guests,notes,skipped,snapshots,spotlight,waiters";
+  const countsOnly46 = (res) =>
+    res.status === 200 &&
+    res.cacheControl.includes("no-store") &&
+    Object.keys(res.data ?? {})
+      .sort()
+      .join(",") === RESULT_KEYS46 &&
+    Object.entries(res.data).every(([key, value]) =>
+      key === "complete" ? typeof value === "boolean" : Number.isInteger(value) && value >= 0,
+    );
+  check(
+    "retention job: the right token runs the clean-up — S of A (one guest, 40 days back) leaves the expired list in that run (≥ 1 event, ≥ 1 guest; counts only, no id or name), a second run purges nothing and is complete; S shows no guest, then is deleted",
+    s46.status === 201 &&
+      sGuest46.status === 201 &&
+      moved46 === "" &&
+      listedBefore46.some((event) => event.id === s46Id) &&
+      countsOnly46(run46) &&
+      run46.data.events >= 1 &&
+      run46.data.guests >= 1 &&
+      run46.data.complete === true &&
+      !run46.body.includes(`Nocny Gość ${RUN_TAG}`) &&
+      !listedAfter46.some((event) => event.id === s46Id) &&
+      countsOnly46(again46) &&
+      again46.data.events === 0 &&
+      again46.data.complete === true &&
+      sGuestsAfter46.data?.guests?.length === 0 &&
+      sDeleted46.status === 200,
+    `${s46.status} ${sGuest46.status} ${moved46} ${JSON.stringify(listedBefore46.map((event) => event.id))} ${run46.status} ${run46.body.slice(0, 200)} ${JSON.stringify(listedAfter46.map((event) => event.id))} ${again46.body.slice(0, 200)} ${String(sGuestsAfter46.data?.guests?.length)} ${sDeleted46.status}`,
+  );
+}
 
 finish();

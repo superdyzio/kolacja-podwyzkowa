@@ -58,6 +58,10 @@ export default defineConfig({
       ANTHROPIC_API_KEY: envField.string({ context: "server", access: "secret", optional: true }),
       // Claude model id; default claude-haiku-5-5.
       AI_MODEL: envField.string({ context: "server", access: "secret", optional: true }),
+      // The daily guest data clean-up's secret (retention-schedule): the EventBridge Scheduler schedule sends it to
+      // POST /api/jobs/retention (through the Lambda Web Adapter's pass-through path). Unset or shorter than 32
+      // characters = the route answers 404 to everyone. Only src/lib/retention-token.ts reads it.
+      RETENTION_TOKEN: envField.string({ context: "server", access: "secret", optional: true }),
     },
   },
 });

@@ -107,7 +107,7 @@ export const privacyPolicyMessages = defineMessages<LegalDocument>(
         closing: [
           "Diety i alergie widzą klient i personel restauracji. Administrator platformy nie widzi ich także podczas zapisanej w dzienniku wizyty wsparcia. Nigdy nie trafiają do innych gości, na ekran TV ani do usług AI.",
           `Restauracja ustawia termin usunięcia danych gości: ${retentionRange} dni po imprezie, domyślnie ${String(DEFAULT_GUEST_RETENTION_DAYS)}. Po terminie usuwamy gości z ich dietami, odpowiedziami, miejscami, strzałami i linkami, grupy, opublikowane rozsadzenia, imiona pokazane na ekranie TV, kelnerów „na imprezę” i notatki zamówień; zostaje rachunek bez imion i uwag.`,
-          "Usuwanie odbywa się przy najbliższym otwarciu wydarzenia lub panelu restauracji albo przez zadanie uruchamiane przez Operatora [harmonogram automatycznego usuwania — do ustalenia]. Kopie zapasowe bazy: [okres przechowywania kopii zapasowych — do potwierdzenia].",
+          "Dane po terminie usuwa automatycznie codzienne zadanie (w nocy, czasu polskiego); najpóźniej są usuwane przy najbliższym otwarciu wydarzenia (otwarcie panelu restauracji też uruchamia to usuwanie). Kopie zapasowe bazy: [okres przechowywania kopii zapasowych — do potwierdzenia].",
           "Przed usunięciem właściciel albo menedżer może wyeksportować dane wydarzenia; eksport nie zawiera linków ani kluczy.",
           "Gość usunięty z listy wcześniej znika od razu także z opublikowanych rozsadzeń i z ekranu TV — bez ponownej publikacji.",
         ],
@@ -272,7 +272,7 @@ export const privacyPolicyMessages = defineMessages<LegalDocument>(
         closing: [
           "Diets and allergies are seen by the client and the restaurant's staff. The platform administrator does not see them, not even during a logged support visit. They never reach other guests, the TV screen or AI services.",
           `The restaurant sets the term after which guests' data is deleted: ${retentionRange} days after the event, by default ${String(DEFAULT_GUEST_RETENTION_DAYS)}. After the term we delete the guests with their diets, replies, seats, guesses and links, the groups, the published seatings, names shown on the TV screen, event waiters and the notes on orders; the bill remains, without names or notes.`,
-          "The deletion happens the next time the event or the restaurant's panel is opened, or through a job the Operator runs [schedule of the automatic deletion — to be decided]. Database backups: [backup retention period — to be confirmed].",
+          "A daily automatic job deletes the data after the term (at night, Polish time); at the latest it is deleted the next time the event is opened (opening the restaurant's panel also starts the deletion). Database backups: [backup retention period — to be confirmed].",
           "Before the deletion the owner or a manager can export the event's data; the export contains no links or keys.",
           "A guest removed from the list earlier also disappears at once from the published seatings and the TV screen — no new publication needed.",
         ],

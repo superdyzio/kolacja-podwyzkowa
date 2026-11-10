@@ -1,5 +1,6 @@
 // Deploys the app to AWS Lambda behind a Function URL with the `aws` CLI. Idempotent and update-in-place: it creates
-// what is missing (IAM role, function, Function URL, its public permissions, log group) and otherwise updates the
+// what is missing (IAM role, function, Function URL, its public permissions, log group — and, when .env.aws has
+// RETENTION_TOKEN, the daily guest data clean-up: an EventBridge Scheduler role and schedule) and otherwise updates the
 // code and the whole configuration. It NEVER deletes anything — a new function or URL would change the address and
 // kill every printed QR card.
 //
@@ -7,8 +8,9 @@
 //         AWS_REGION=eu-central-1 npm run deploy:aws -- --dry-run   (prints the planned aws commands, calls nothing)
 //
 // Config and secrets come from .env.aws (gitignored): SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, AI_PROVIDER (default
-// mock), ANTHROPIC_API_KEY, AI_MODEL. They reach AWS only through a temp JSON file (mode 0600, deleted afterwards);
-// values are never printed. Pure parts (validation, commands, redaction) live in scripts/lib/aws-deploy.mjs.
+// mock), ANTHROPIC_API_KEY, AI_MODEL, RETENTION_TOKEN. They reach AWS only through temp JSON files (mode 0600, deleted
+// afterwards: the function's environment and the schedule's target, whose input carries the token); values are never
+// printed. Pure parts (validation, commands, redaction) live in scripts/lib/aws-deploy.mjs.
 
 import { execFileSync, spawnSync } from "node:child_process";
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -34,6 +36,10 @@ import {
   nextSteps,
   parseEnvFile,
   redact,
+  retentionScheduleTarget,
+  RETENTION_TOKEN_HINT,
+  SCHEDULE_NAME,
+  schedulerCommands,
   validateDeployEnv,
 } from "./lib/aws-deploy.mjs";
 
@@ -114,6 +120,7 @@ console.log("");
 // The env file holds the secrets: removed on every way out (fail() exits the process, so `finally` is not enough).
 const tempDir = mkdtempSync(path.join(tmpdir(), "kolacja-deploy-"));
 const envFile = path.join(tempDir, "env.json");
+const targetFile = path.join(tempDir, "schedule-target.json");
 const removeTempDir = () => rmSync(tempDir, { recursive: true, force: true });
 process.on("exit", removeTempDir);
 for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"]) process.on(signal, () => process.exit(130));
@@ -179,6 +186,48 @@ try {
   if (missing.url) must(commands.addUrlPermission, cliHint);
   if (missing.invoke) must(commands.addInvokePermission, cliHint);
 
+  // The daily guest data clean-up (retention-schedule): only with a token (the app's route answers 404 without one).
+  const functionArn = String((existing ?? must(commands.getFunction)).FunctionArn);
+  const scheduler = schedulerCommands(target, { account: String(identity.Account), functionArn, targetFile });
+  let retention = "missing-token";
+  if (environment.RETENTION_TOKEN) {
+    let schedulerRole = find(scheduler.getSchedulerRole, "NoSuchEntity");
+    if (!schedulerRole) {
+      schedulerRole = must(scheduler.createSchedulerRole);
+      console.log("  utworzono rolę IAM harmonogramu");
+    } else {
+      must(scheduler.updateSchedulerTrust);
+    }
+    must(scheduler.putSchedulerPolicy);
+    writeFileSync(
+      targetFile,
+      JSON.stringify(
+        retentionScheduleTarget({ functionArn, roleArn: schedulerRole.Role.Arn, token: environment.RETENTION_TOKEN }),
+      ),
+      { mode: 0o600 },
+    );
+    const schedule = find(scheduler.getSchedule, "ResourceNotFoundException");
+    // A just-created role takes a few seconds before Scheduler may assume it.
+    for (let attempt = 1; ; attempt++) {
+      const written = run(schedule ? scheduler.updateSchedule : scheduler.createSchedule);
+      if (written.ok) break;
+      const roleNotReady = written.code === "ValidationException" && /role/i.test(written.stderr);
+      if (!roleNotReady || attempt === 12) fail(written.stderr);
+      console.log("  rola harmonogramu jeszcze niegotowa — ponawiam za 5 s");
+      await sleep(5000);
+    }
+    console.log(
+      `  ${schedule ? "zaktualizowano" : "utworzono"} harmonogram ${SCHEDULE_NAME} (codzienne usuwanie danych gości)`,
+    );
+    retention = "scheduled";
+  } else {
+    // Only a hint: without a token the deploy never needs Scheduler (a profile without its permissions still deploys).
+    if (run(scheduler.getSchedule).ok) retention = "inactive-schedule";
+    console.log(
+      `  bez RETENTION_TOKEN: harmonogram usuwania danych gości pominięty (wygeneruj: ${RETENTION_TOKEN_HINT})`,
+    );
+  }
+
   const base = String(url.FunctionUrl).replace(/\/$/, "");
   // Permissions and a cold start take a moment; a static file answers without touching the database.
   let status = 0;
@@ -195,7 +244,7 @@ Gotowe. Adres aplikacji (Function URL — stały przy kolejnych wdrożeniach):
 Sprawdzenie ${base}/favicon.png: ${status === 200 ? "HTTP 200" : `jeszcze nie odpowiada (HTTP ${status}), spróbuj za chwilę`}.
 AI: ${environment.AI_PROVIDER}.
 
-${nextSteps({ base, region, aiProvider: environment.AI_PROVIDER })}`);
+${nextSteps({ base, region, aiProvider: environment.AI_PROVIDER, profile: target.profile, retention })}`);
 } finally {
   removeTempDir();
 }

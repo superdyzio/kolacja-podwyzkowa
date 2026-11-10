@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { isFloorOpen } from "@/lib/floor/rules";
+import { privacyMessages } from "./messages";
 import {
   createSweepThrottle,
   DEFAULT_GUEST_RETENTION_DAYS,
@@ -9,6 +10,7 @@ import {
   MAX_GUEST_RETENTION_DAYS,
   MIN_GUEST_RETENTION_DAYS,
   parseRetentionDays,
+  parseRetentionDaysText,
   RETENTION_EDIT_ROLES,
   RETENTION_VIEW_ROLES,
 } from "./rules";
@@ -32,6 +34,29 @@ describe("retention rules", () => {
     for (const bad of [0, -1, 366, 7.5, "30", null, undefined, Number.NaN, Number.POSITIVE_INFINITY]) {
       expect(parseRetentionDays(bad)).toEqual({ ok: false });
     }
+  });
+
+  it("reads the days of a query parameter: digits in the range only (retention-preview)", () => {
+    expect(parseRetentionDaysText("1")).toEqual({ ok: true, days: 1 });
+    expect(parseRetentionDaysText("007")).toEqual({ ok: true, days: 7 });
+    expect(parseRetentionDaysText("365")).toEqual({ ok: true, days: 365 });
+    for (const bad of ["", "0", "366", "7.5", "-7", " 7", "7 ", "1e2", "0x10", "abc", "12345"]) {
+      expect(parseRetentionDaysText(bad), bad).toEqual({ ok: false });
+    }
+  });
+
+  it("names the count with plural forms in the shortening confirm (PL, EN)", () => {
+    const pl = privacyMessages("pl");
+    const en = privacyMessages("en");
+    expect(pl.confirmShorten(1, "pon., 2.11.2026", 1)).toContain(
+      "do 1 dnia dane gości z 1 wydarzenia (najpóźniejsze: pon., 2.11.2026)",
+    );
+    expect(pl.confirmShorten(3, "x", 7)).toContain("do 7 dni dane gości z 3 wydarzeń");
+    expect(pl.confirmShorten(22, "x", 22)).toContain("do 22 dni dane gości z 22 wydarzeń");
+    expect(en.confirmShorten(1, "Mon, 2 Nov 2026", 1)).toContain(
+      "to 1 day deletes the guests' data of 1 event (the latest on Mon, 2 Nov 2026)",
+    );
+    expect(en.confirmShorten(3, "x", 7)).toContain("to 7 days deletes the guests' data of 3 events");
   });
 
   it("keeps the data through the Nth day after the event", () => {

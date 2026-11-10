@@ -11,8 +11,10 @@ import {
   getEventRetention,
   getRestaurantRetention,
   listExpiredGuestDataEvents,
+  previewRetentionChange,
   purgeEventGuestData,
   purgeExpiredGuestData,
+  runGuestRetentionJob,
   setRestaurantRetention,
 } from "@/lib/privacy";
 import { publishSeating, seatGuest } from "@/lib/seating";
@@ -246,6 +248,102 @@ describe.skipIf(!hasLocalDb)("privacy retention (integration)", () => {
     expect(await dateChangePurgesGuestData(db, 2_000_000_000, "2025-01-01", NOW)).toBeNull();
     // Nothing was purged by asking.
     expect(await count("guest", withGuests)).toBe(1);
+  });
+
+  it("previews what a shorter term would purge at once: only events with guest data the current term keeps (retention-preview)", async () => {
+    const r = await restaurant("podglad", 30);
+    const other = await restaurant("podglad-inny", 30);
+    const recent = await event(r, "niedawne", "2026-11-03"); // + 7 = 2026-11-10: kept under 7 too
+    const older = await event(r, "starsze", "2026-11-01"); // + 7 = 2026-11-08 < today; + 30 kept
+    const oldest = await event(r, "najstarsze", "2026-10-20"); // + 7 past; + 30 = 2026-11-19 kept
+    const empty = await event(r, "bez-gosci", "2026-10-25"); // past 7, but no guest data
+    const pastTerm = await event(r, "po-terminie", "2026-09-01"); // already past 30: not the change's doing
+    const foreign = await event(other, "obce", "2026-10-20"); // another restaurant
+    const template = await createVenueTemplate(db, r, `Szablon podgladu ${tag}`, null);
+    if (template.status !== "created") throw new Error(template.status);
+    {
+      const { error } = await db.from("event").update({ event_date: "2026-10-20" }).eq("id", template.template.id);
+      if (error) throw new Error(error.message);
+    }
+    for (const id of [recent, older, oldest, pastTerm, foreign]) {
+      await addGuest(id, `Podglad ${String(id)}`);
+    }
+    expect(empty).toBeGreaterThan(0);
+
+    expect(await previewRetentionChange(db, r, 7, NOW)).toEqual({
+      restaurantId: r,
+      guestRetentionDays: 30,
+      days: 7,
+      events: 2,
+      latestEventDate: "2026-11-01",
+    });
+    // The edges: + 21 = today keeps `oldest`, + 20 does not; a longer or the same term costs nothing.
+    expect((await previewRetentionChange(db, r, 21, NOW))?.events).toBe(0);
+    expect(await previewRetentionChange(db, r, 20, NOW)).toMatchObject({ events: 1, latestEventDate: "2026-10-20" });
+    for (const days of [30, 60, 365]) {
+      expect(await previewRetentionChange(db, r, days, NOW)).toEqual({
+        restaurantId: r,
+        guestRetentionDays: 30,
+        days,
+        events: 0,
+        latestEventDate: null,
+      });
+    }
+    expect((await previewRetentionChange(db, r, 1, NOW))?.events).toBe(3); // recent too (+ 1 < today)
+    // Purged events have nothing left to lose; an unknown restaurant has no preview. Asking purged nothing.
+    expect(await count("guest", older)).toBe(1);
+    expect((await purgeEventGuestData(db, older, new Date("2026-12-31T12:00:00Z"))).status).toBe("purged");
+    expect((await previewRetentionChange(db, r, 7, NOW))?.events).toBe(1);
+    expect(await previewRetentionChange(db, 2_147_483_000, 7, NOW)).toBeNull();
+    expect(await count("guest", oldest)).toBe(1);
+    expect(await count("guest", pastTerm)).toBe(1);
+  });
+
+  it("runs the daily clean-up over every expired event in batches, counts only, then finds nothing (retention-schedule)", async () => {
+    const r = await restaurant("codzienne", 7);
+    const expired = [
+      await event(r, "stare-1", "2026-10-01"),
+      await event(r, "stare-2", "2026-10-02"),
+      await event(r, "stare-3", "2026-11-02"), // + 7 = 2026-11-09 < today
+    ];
+    const kept = await event(r, "w-terminie", "2026-11-03"); // + 7 = today
+    const template = await createVenueTemplate(db, r, `Szablon codzienny ${tag}`, null);
+    if (template.status !== "created") throw new Error(template.status);
+    {
+      const { error } = await db.from("event").update({ event_date: "2025-01-01" }).eq("id", template.template.id);
+      if (error) throw new Error(error.message);
+    }
+    for (const id of [...expired, kept]) {
+      await addGuest(id, `Codzienny A ${String(id)}`);
+      await addGuest(id, `Codzienny B ${String(id)}`);
+    }
+    // Batches of 2: three events in two batches, then an empty list.
+    const run = await runGuestRetentionJob(db, NOW, { restaurantId: r, batch: 2 });
+    expect(run).toEqual({
+      events: 3,
+      guests: 6,
+      groups: 0,
+      snapshots: 0,
+      spotlight: 0,
+      waiters: 0,
+      notes: 0,
+      skipped: 0,
+      complete: true,
+    });
+    for (const id of expired) {
+      expect(await count("guest", id)).toBe(0);
+    }
+    expect(await count("guest", kept)).toBe(2);
+    expect(await listExpiredGuestDataEvents(db, NOW, { restaurantId: r })).toEqual([]);
+    expect(await runGuestRetentionJob(db, NOW, { restaurantId: r })).toMatchObject({ events: 0, complete: true });
+    // A spent budget purges nothing (the next run goes on).
+    await addGuest(expired[0], "Codzienny pozniej");
+    expect(await runGuestRetentionJob(db, NOW, { restaurantId: r, budgetMs: 0 })).toMatchObject({
+      events: 0,
+      complete: false,
+    });
+    expect(await count("guest", expired[0])).toBe(1);
+    expect(await runGuestRetentionJob(db, NOW, { restaurantId: r })).toMatchObject({ events: 1, guests: 1 });
   });
 
   it("deletes every guest datum of the event and keeps the venue's records", async () => {

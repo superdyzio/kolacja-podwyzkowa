@@ -1,8 +1,9 @@
 // Deletes the guests' data of every event past its restaurant's retention term (privacy-retention, S-26; PRD v2
-// FR-040, NFR-019) — the same DB functions the app runs before serving an expired event and on panel page views.
-// There is no scheduler on the hosting: run this by hand, or schedule it yourself later (a scheduler is the owner's
-// infrastructure decision). Never touches venue templates, events inside their term (the noon window after the event
-// included), staff accounts or the administrator's support log.
+// FR-040, NFR-019) — the same DB functions the app runs before serving an expired event, on panel page views and in
+// the daily clean-up on AWS (retention-schedule: an EventBridge Scheduler schedule of `npm run deploy:aws` → POST
+// /api/jobs/retention). This command is the manual fallback (a local database, or a hosted one with --remote). Never
+// touches venue templates, events inside their term (the noon window after the event included), staff accounts or the
+// administrator's support log.
 //
 // Works against the database of .env (or the SUPABASE_* variables given on the command line) and prints its host
 // first; a non-local database needs --remote, and there the run stops unless this machine's clock agrees with the

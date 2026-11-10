@@ -1,4 +1,12 @@
+import { existsSync } from "node:fs";
+import path from "node:path";
 import { describe, expect, it } from "vitest";
+import {
+  RETENTION_JOB_NAME as APP_JOB_NAME,
+  RETENTION_JOB_PATH as APP_JOB_PATH,
+  MIN_RETENTION_TOKEN_LENGTH as APP_MIN_TOKEN_LENGTH,
+  RetentionJobBody,
+} from "@/lib/privacy/job";
 import {
   ALLOWED_KEYS,
   awsArgs,
@@ -8,10 +16,19 @@ import {
   functionEnvironment,
   isValidRegion,
   layerArn,
+  MIN_RETENTION_TOKEN_LENGTH,
   missingUrlPermissions,
   nextSteps,
   parseEnvFile,
   redact,
+  RETENTION_JOB_NAME,
+  RETENTION_JOB_PATH,
+  retentionCheckCommands,
+  retentionScheduleInput,
+  retentionScheduleTarget,
+  SCHEDULE_NAME,
+  schedulerCommands,
+  SECRET_KEYS,
   validateDeployEnv,
 } from "../../scripts/lib/aws-deploy.mjs";
 
@@ -20,6 +37,7 @@ import {
 const TARGET = { profile: "mikusia", region: "eu-central-1" };
 const SERVICE_KEY = "eyJhbGciOiJIUzI1NiJ9.fake-service-role-payload.fake-signature";
 const ANTHROPIC_KEY = "sk-ant-fake-0123456789abcdef";
+const RETENTION_TOKEN = "0123456789abcdef".repeat(4);
 const ENV_AWS = `# production (fixture)
 SUPABASE_URL=https://abcdefghijklmnop.supabase.co
 SUPABASE_SERVICE_ROLE_KEY="${SERVICE_KEY}"
@@ -99,6 +117,20 @@ describe("validateDeployEnv", () => {
     ]);
   });
 
+  it("takes an optional RETENTION_TOKEN of at least 32 base64 / hex characters (the daily clean-up)", () => {
+    expect(valid({ ...base, RETENTION_TOKEN })).toMatchObject({ RETENTION_TOKEN });
+    expect(valid({ ...base, RETENTION_TOKEN: "Ab0+/=_-".repeat(4) })).toMatchObject({
+      RETENTION_TOKEN: "Ab0+/=_-".repeat(4),
+    });
+    expect(valid({ ...base, RETENTION_TOKEN: "" })).not.toHaveProperty("RETENTION_TOKEN");
+    for (const bad of ["x".repeat(31), `${"x".repeat(32)}!`, `${"x".repeat(16)} ${"x".repeat(16)}`]) {
+      expect(errorsOf({ ...base, RETENTION_TOKEN: bad }), bad).toEqual([
+        "RETENTION_TOKEN: co najmniej 32 znaki (litery, cyfry, + / = _ -) — wygeneruj: openssl rand -hex 32.",
+      ]);
+    }
+    expect(SECRET_KEYS).toContain("RETENTION_TOKEN");
+  });
+
   it("refuses an unknown provider and anthropic without a key", () => {
     expect(errorsOf({ ...base, AI_PROVIDER: "openai" })).toEqual(["AI_PROVIDER musi być jednym z: mock, anthropic."]);
     expect(errorsOf({ ...base, AI_PROVIDER: "anthropic" })).toEqual([
@@ -114,6 +146,7 @@ describe("functionEnvironment", () => {
       AWS_LAMBDA_EXEC_WRAPPER: "/opt/bootstrap",
       PORT: "8080",
       AWS_LWA_READINESS_CHECK_PATH: "/favicon.png",
+      AWS_LWA_PASS_THROUGH_PATH: "/api/jobs/retention",
       SUPABASE_URL: "https://abcdefghijklmnop.supabase.co",
       SUPABASE_SERVICE_ROLE_KEY: SERVICE_KEY,
       AI_PROVIDER: "anthropic",
@@ -222,6 +255,100 @@ describe("awsCommands", () => {
   });
 });
 
+describe("the daily clean-up's schedule", () => {
+  const FUNCTION_ARN = "arn:aws:lambda:eu-central-1:123456789012:function:kolacja-podwyzkowa";
+  const commands = schedulerCommands(TARGET, {
+    account: "123456789012",
+    functionArn: FUNCTION_ARN,
+    targetFile: "/tmp/kolacja-deploy-x/schedule-target.json",
+  });
+  const flag = (args: string[], name: string) => args[args.indexOf(name) + 1];
+
+  it("matches the app: the pass-through path is the route's file, the input is exactly what the route accepts", () => {
+    expect(RETENTION_JOB_PATH).toBe(APP_JOB_PATH);
+    expect(RETENTION_JOB_NAME).toBe(APP_JOB_NAME);
+    expect(MIN_RETENTION_TOKEN_LENGTH).toBe(APP_MIN_TOKEN_LENGTH);
+    expect(existsSync(path.join(process.cwd(), "src/pages", `${RETENTION_JOB_PATH}.ts`))).toBe(true);
+    expect(RetentionJobBody.parse(JSON.parse(retentionScheduleInput(RETENTION_TOKEN)))).toEqual({
+      job: "guest-data-retention",
+      token: RETENTION_TOKEN,
+    });
+  });
+
+  it("gives Scheduler of this account a role that may only invoke this function", () => {
+    expect(JSON.parse(flag(commands.createSchedulerRole, "--assume-role-policy-document"))).toEqual({
+      Version: "2012-10-17",
+      Statement: [
+        {
+          Effect: "Allow",
+          Principal: { Service: "scheduler.amazonaws.com" },
+          Action: "sts:AssumeRole",
+          Condition: { StringEquals: { "aws:SourceAccount": "123456789012" } },
+        },
+      ],
+    });
+    expect(flag(commands.updateSchedulerTrust, "--policy-document")).toBe(
+      flag(commands.createSchedulerRole, "--assume-role-policy-document"),
+    );
+    expect(JSON.parse(flag(commands.putSchedulerPolicy, "--policy-document"))).toEqual({
+      Version: "2012-10-17",
+      Statement: [{ Effect: "Allow", Action: "lambda:InvokeFunction", Resource: FUNCTION_ARN }],
+    });
+    expect(flag(commands.createSchedulerRole, "--role-name")).toBe("kolacja-podwyzkowa-scheduler");
+  });
+
+  it("runs daily at a quiet hour in Polish time, exactly on time, and creates or updates with every field", () => {
+    const create = commands.createSchedule;
+    expect(create.slice(0, 2)).toEqual(["scheduler", "create-schedule"]);
+    expect(flag(create, "--name")).toBe(SCHEDULE_NAME);
+    expect(SCHEDULE_NAME).toBe("kolacja-podwyzkowa-retention");
+    expect(flag(create, "--schedule-expression")).toBe("cron(15 4 * * ? *)");
+    expect(flag(create, "--schedule-expression-timezone")).toBe("Europe/Warsaw");
+    expect(JSON.parse(flag(create, "--flexible-time-window"))).toEqual({ Mode: "OFF" });
+    expect(flag(create, "--state")).toBe("ENABLED");
+    expect(flag(create, "--target")).toBe("file:///tmp/kolacja-deploy-x/schedule-target.json");
+    expect(commands.updateSchedule.slice(0, 2)).toEqual(["scheduler", "update-schedule"]);
+    expect(commands.updateSchedule.slice(2)).toEqual(create.slice(2));
+  });
+
+  it("keeps the token off the command line: the target with the input goes through the temp file", () => {
+    const target = retentionScheduleTarget({ functionArn: FUNCTION_ARN, roleArn: "arn:role", token: RETENTION_TOKEN });
+    expect(target).toEqual({
+      Arn: FUNCTION_ARN,
+      RoleArn: "arn:role",
+      Input: JSON.stringify({ job: "guest-data-retention", token: RETENTION_TOKEN }),
+    });
+    expect(Object.values(commands).flat().join(" ")).not.toContain(RETENTION_TOKEN);
+  });
+
+  it("always passes the profile and the region, and never deletes anything", () => {
+    for (const args of Object.values(commands)) {
+      expect(flag(args, "--profile")).toBe("mikusia");
+      expect(flag(args, "--region")).toBe("eu-central-1");
+    }
+    expect(
+      Object.values(commands)
+        .flat()
+        .filter((arg) => /delete|remove/i.test(arg)),
+    ).toEqual([]);
+  });
+
+  it("checks by hand with the schedule's own input from a private temp directory, never the token itself", () => {
+    const lines = retentionCheckCommands(TARGET);
+    expect(lines[0]).toBe('d="$(mktemp -d)"');
+    expect(lines.join("\n")).toContain(
+      'aws scheduler get-schedule --name kolacja-podwyzkowa-retention --query Target.Input --output text --profile mikusia --region eu-central-1 > "$d/input.json"',
+    );
+    expect(lines.join("\n")).toContain(
+      'aws lambda invoke --function-name kolacja-podwyzkowa --payload "fileb://$d/input.json"',
+    );
+    expect(lines.join("\n")).toContain(
+      "aws logs tail /aws/lambda/kolacja-podwyzkowa --since 15m --filter-pattern Retencja",
+    );
+    expect(lines.join("\n")).not.toMatch(/token/i);
+  });
+});
+
 describe("missingUrlPermissions", () => {
   const urlStatement = {
     Sid: "FunctionURLAllowPublicAccess",
@@ -286,6 +413,26 @@ describe("redaction and the dry-run plan", () => {
     expect(plan).toContain("aws lambda add-permission");
     expect(plan).toContain("--invoked-via-function-url");
     expect(plan).toContain("Profil mikusia, region eu-central-1.");
+    // Without a token the clean-up is skipped, with the way to make one.
+    expect(plan).toContain("7. Codzienne usuwanie danych gości po terminie — POMINIĘTE: brak RETENTION_TOKEN");
+    expect(plan).toContain("openssl rand -hex 32");
+    expect(plan).not.toContain("aws scheduler create-schedule");
+  });
+
+  it("plans the role and the schedule with a token, and never shows the token", () => {
+    const environment = functionEnvironment(valid({ ...parseEnvFile(ENV_AWS).values, RETENTION_TOKEN }));
+    expect(environment.RETENTION_TOKEN).toBe(RETENTION_TOKEN);
+    const plan = dryRunPlan(TARGET, environment).join("\n");
+    expect(plan).not.toContain(RETENTION_TOKEN);
+    expect(plan).toContain("RETENTION_TOKEN");
+    expect(plan).toContain("AWS_LWA_PASS_THROUGH_PATH=/api/jobs/retention");
+    expect(plan).toContain("aws iam create-role --role-name kolacja-podwyzkowa-scheduler");
+    expect(plan).toContain("aws iam put-role-policy --role-name kolacja-podwyzkowa-scheduler");
+    expect(plan).toContain(
+      "aws scheduler create-schedule --name kolacja-podwyzkowa-retention --group-name default --schedule-expression 'cron(15 4 * * ? *)' --schedule-expression-timezone Europe/Warsaw",
+    );
+    expect(plan).toContain("aws scheduler update-schedule --name kolacja-podwyzkowa-retention");
+    expect(redact(`x ${RETENTION_TOKEN} y`, [RETENTION_TOKEN])).toBe("x *** y");
   });
 });
 
@@ -318,5 +465,17 @@ describe("the steps printed after a deploy", () => {
 
   it("leave out the AI step once the provider is already Anthropic", () => {
     expect(nextSteps({ base, region: "eu-central-1", aiProvider: "anthropic" })).not.toContain("AI_PROVIDER=anthropic");
+  });
+
+  it("show the clean-up's manual check once scheduled, else how to switch it on", () => {
+    const scheduled = nextSteps({ base, region: "eu-central-1", aiProvider: "anthropic", retention: "scheduled" });
+    expect(scheduled).toContain("harmonogram kolacja-podwyzkowa-retention (cron(15 4 * * ? *), Europe/Warsaw)");
+    expect(scheduled).toContain("aws lambda invoke --function-name kolacja-podwyzkowa");
+    const missing = nextSteps({ base, region: "eu-central-1", aiProvider: "anthropic", retention: "missing-token" });
+    expect(missing).toContain("RETENTION_TOKEN=<wynik: openssl rand -hex 32>");
+    expect(missing).not.toContain("aws lambda invoke");
+    const inactive = nextSteps({ base, region: "eu-central-1", aiProvider: "mock", retention: "inactive-schedule" });
+    expect(inactive).toContain("UWAGA: harmonogram kolacja-podwyzkowa-retention istnieje, ale bez RETENTION_TOKEN");
+    expect(inactive).toContain("5. AI:");
   });
 });

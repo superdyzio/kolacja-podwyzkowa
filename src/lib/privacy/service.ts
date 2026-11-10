@@ -1,5 +1,11 @@
 import type { DbClient } from "@/lib/supabase-client";
-import type { EventRetentionDto, PurgeResultDto, PurgeStatus, RetentionSettingsDto } from "@/types";
+import type {
+  EventRetentionDto,
+  PurgeResultDto,
+  PurgeStatus,
+  RetentionPreviewDto,
+  RetentionSettingsDto,
+} from "@/types";
 import {
   createSweepThrottle,
   guestDataDeleteAfter,
@@ -15,11 +21,15 @@ import {
 // transaction); the function decides by itself whether the event may lose its guests' data (never a venue template,
 // never inside its term), so a wrong id can never purge a live event.
 //
-// Who calls the purge (no scheduler exists — that is the user's later decision):
+// Who calls the purge:
+// - the daily clean-up on AWS (retention-schedule): an EventBridge Scheduler schedule → POST /api/jobs/retention →
+//   runGuestRetentionJob (job.ts; every expired event, in batches within a time budget);
 // - the guards, BEFORE serving anything of an event past its term: resolveAccess (every link key) and
 //   findEventMembership / findPanelEvent's support branch (every panel event route and page) → enforceGuestRetention;
 // - the middleware on panel page views → sweepGuestRetention (throttled; idle events past their term);
 // - the CLI `npm run retention` (scripts/retention.mjs, the same two functions over PostgREST).
+// The guards are the guarantee (nothing expired is ever served); the schedule makes sure a dormant venue's data goes
+// too; the sweep and the CLI are fallbacks.
 // No other service purges: reads like getEventCard stay pure.
 
 function fail(action: string, message: string): never {
@@ -183,6 +193,38 @@ export async function setRestaurantRetention(
     fail("zapisać czasu przechowywania danych gości", error.message);
   }
   return data.length > 0 ? "updated" : "not-found";
+}
+
+// retention-preview (the PR #4 review's decision 6): what changing the restaurant's term to `days` would delete at once
+// — the events (no templates) still holding guest data that `days` puts past their term while the current term keeps
+// them (DB retention_change_preview, the purge's own rule). null = unknown restaurant. Reads only.
+export async function previewRetentionChange(
+  db: DbClient,
+  restaurantId: number,
+  days: number,
+  now: Date,
+): Promise<RetentionPreviewDto | null> {
+  const settings = await getRestaurantRetention(db, restaurantId);
+  if (!settings) {
+    return null;
+  }
+  const { data, error } = await db.rpc("retention_change_preview", {
+    p_restaurant_id: restaurantId,
+    p_days: days,
+    p_now: now.toISOString(),
+  });
+  if (error) {
+    fail("sprawdzić skutków nowego terminu", error.message);
+  }
+  const row = data[0] as { events: number; latest_event_date: string | null } | undefined;
+  const events = row?.events ?? 0;
+  return {
+    restaurantId,
+    guestRetentionDays: settings.guestRetentionDays,
+    days,
+    events,
+    latestEventDate: events > 0 ? (row?.latest_event_date ?? null) : null,
+  };
 }
 
 // One event's term as its pages show it (null = unknown id or a venue template).

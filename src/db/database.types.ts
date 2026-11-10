@@ -1637,6 +1637,11 @@ export interface Database {
         Args: { p_now: string; p_restaurant_id: number | null; p_limit: number };
         Returns: { event_id: number }[];
       };
+      // retention-preview: events with guest data a shorter term would purge at once (one row; the date null when 0).
+      retention_change_preview: {
+        Args: { p_restaurant_id: number; p_days: number; p_now: string };
+        Returns: { events: number; latest_event_date: string | null }[];
+      };
       // privacy-retention: true for exactly one caller per interval (the lazy sweep's claim).
       claim_retention_sweep: {
         Args: { p_now: string; p_interval_seconds: number };

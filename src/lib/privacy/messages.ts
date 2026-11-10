@@ -1,4 +1,5 @@
 import { defineMessages } from "@/lib/i18n/locale";
+import { pluralEn, pluralPl } from "@/lib/i18n/plural";
 
 // Texts of guest data retention, the event export and the guests' privacy notice (privacy-retention, S-26), both
 // languages (i18n). Pure. The notice names the restaurant (the controller) and only „the system provider” (the
@@ -9,7 +10,7 @@ export const privacyMessages = defineMessages(
     // The restaurant page: „Prywatność danych gości”.
     retentionHeading: "Prywatność danych gości",
     retentionIntro:
-      "Dane gości wydarzeń (imiona, diety i alergie, odpowiedzi na zaproszenie, miejsca, strzały, uwagi do zamówień) znikają automatycznie po tylu dniach od dnia wydarzenia. Zostaje rachunek lokalu — bez imion i uwag.",
+      "Dane gości wydarzeń (imiona, diety i alergie, odpowiedzi na zaproszenie, miejsca, strzały, uwagi do zamówień) są przechowywane tyle dni od dnia wydarzenia. Potem usuwa je automatycznie codzienne sprzątanie danych, a najpóźniej dzieje się to przy następnym otwarciu wydarzenia. Zostaje rachunek lokalu — bez imion i uwag.",
     daysLabel: "Usuwaj dane gości po (dniach od wydarzenia)",
     daysUnit: "dni",
     save: "Zapisz",
@@ -19,6 +20,10 @@ export const privacyMessages = defineMessages(
     current: (days: number) => `Teraz: ${String(days)} ${days === 1 ? "dzień" : "dni"} po wydarzeniu.`,
     readOnly: (days: number) =>
       `Dane gości są usuwane ${String(days)} ${days === 1 ? "dzień" : "dni"} po wydarzeniu. Zmienia to właściciel lokalu.`,
+    // retention-preview: before a shorter term is saved (only when it would delete something at once).
+    checking: "Sprawdzanie…",
+    confirmShorten: (events: number, latest: string, days: number) =>
+      `Po skróceniu terminu do ${String(days)} ${pluralPl(days, "dnia", "dni", "dni")} dane gości z ${String(events)} ${pluralPl(events, "wydarzenia", "wydarzeń", "wydarzeń")} (najpóźniejsze: ${latest}) zostaną od razu i bezpowrotnie usunięte. Dane, które chcesz zachować, pobierz najpierw w „Dane gości i eksport” na karcie wydarzenia. Zapisać nowy termin?`,
     // The event card: „Dane gości i eksport”.
     eventHeading: "Dane gości i eksport",
     deleteAfter: (date: string, days: number) =>
@@ -37,7 +42,7 @@ export const privacyMessages = defineMessages(
   {
     retentionHeading: "Guests' data privacy",
     retentionIntro:
-      "The guests' data of events (names, diets and allergies, invitation answers, seats, guesses, order notes) disappears automatically this many days after the day of the event. The venue's bill stays — without names or notes.",
+      "The guests' data of events (names, diets and allergies, invitation answers, seats, guesses, order notes) is kept for this many days after the day of the event. After that a daily automatic clean-up deletes it — at the latest, it goes the next time the event is opened. The venue's bill stays — without names or notes.",
     daysLabel: "Delete guests' data after (days after the event)",
     daysUnit: "days",
     save: "Save",
@@ -47,6 +52,9 @@ export const privacyMessages = defineMessages(
     current: (days: number) => `Now: ${String(days)} ${days === 1 ? "day" : "days"} after the event.`,
     readOnly: (days: number) =>
       `Guests' data is deleted ${String(days)} ${days === 1 ? "day" : "days"} after the event. The venue's owner changes this.`,
+    checking: "Checking…",
+    confirmShorten: (events: number, latest: string, days: number) =>
+      `Shortening the term to ${String(days)} ${pluralEn(days, "day", "days")} deletes the guests' data of ${String(events)} ${pluralEn(events, "event", "events")} (the latest on ${latest}) at once and for good. Download what you want to keep from “Guests' data and export” on the event's card first. Save the new term?`,
     eventHeading: "Guests' data and export",
     deleteAfter: (date: string, days: number) =>
       `Guests' data will be deleted after ${date} (${String(days)} ${days === 1 ? "day" : "days"} after the event).`,
@@ -185,7 +193,7 @@ export const privacyNoticeMessages = defineMessages(
       "Twoich danych nie przekazujemy żadnej sztucznej inteligencji. Tematy rozmów generowane przez AI powstają bez imion i danych gości.",
     retentionHeading: "Jak długo",
     retentionText: (days: number, date: string) =>
-      `Dane gości tego wydarzenia są usuwane automatycznie ${String(days)} ${days === 1 ? "dzień" : "dni"} po wydarzeniu — po ${date}. Zostaje tylko rachunek lokalu bez imion i uwag.`,
+      `Dane gości tego wydarzenia są przechowywane ${String(days)} ${days === 1 ? "dzień" : "dni"} po wydarzeniu — do ${date}. Potem usuwa je automatycznie codzienne sprzątanie danych, a najpóźniej dzieje się to przy następnym otwarciu wydarzenia. Zostaje tylko rachunek lokalu bez imion i uwag.`,
     rightsHeading: "Twoje prawa",
     rightsText:
       "Możesz poprosić lokal o dostęp do swoich danych, ich poprawienie, usunięcie przed tym terminem lub ograniczenie przetwarzania. Możesz też wnieść skargę do Prezesa Urzędu Ochrony Danych Osobowych.",
@@ -228,7 +236,7 @@ export const privacyNoticeMessages = defineMessages(
       "Your data is not passed to any artificial intelligence. Conversation topics generated by AI are made without any guest's name or data.",
     retentionHeading: "How long",
     retentionText: (days: number, date: string) =>
-      `The guests' data of this event is deleted automatically ${String(days)} ${days === 1 ? "day" : "days"} after the event — after ${date}. Only the venue's bill remains, without names or notes.`,
+      `The guests' data of this event is kept for ${String(days)} ${days === 1 ? "day" : "days"} after the event — until ${date}. After that a daily automatic clean-up deletes it — at the latest, it goes the next time the event is opened. Only the venue's bill remains, without names or notes.`,
     rightsHeading: "Your rights",
     rightsText:
       "You can ask the venue for access to your data, to correct it, to delete it before that date or to restrict its processing. You can also lodge a complaint with the data protection authority (in Poland: the President of the Personal Data Protection Office, UODO).",

@@ -245,9 +245,10 @@ Aplikacja działa jako jedna funkcja AWS Lambda (arm64, Node.js 24, 1024 MB, 30 
    AI_PROVIDER=mock
    # ANTHROPIC_API_KEY=<klucz>          # wymagany przy AI_PROVIDER=anthropic
    # AI_MODEL=claude-haiku-5-5          # opcjonalnie
+   RETENTION_TOKEN=<wynik: openssl rand -hex 32>   # codzienne usuwanie danych gości po terminie (zalecane)
    ```
 
-   Skrypt przyjmuje tylko te nazwy i odmawia lokalnego albo nie-https `SUPABASE_URL`.
+   Skrypt przyjmuje tylko te nazwy i odmawia lokalnego albo nie-https `SUPABASE_URL` oraz `RETENTION_TOKEN` krótszego niż 32 znaki. Token wygeneruj raz (`openssl rand -hex 32`) i trzymaj tylko w `.env.aws`.
 
 ### Wdrożenie
 
@@ -256,17 +257,41 @@ AWS_REGION=eu-central-1 npm run deploy:aws -- --dry-run   # sam plan komend aws,
 AWS_REGION=eu-central-1 npm run deploy:aws
 ```
 
-`AWS_REGION` jest wymagany (bez wartości domyślnej). Skrypt buduje paczkę (`npm run package:lambda`), a potem tworzy brakujące albo aktualizuje istniejące: rolę IAM `kolacja-podwyzkowa-lambda` (tylko logi), funkcję `kolacja-podwyzkowa`, Function URL z publicznym dostępem i grupę logów `/aws/lambda/kolacja-podwyzkowa` (7 dni). Niczego nie usuwa, więc adres się nie zmienia i wydrukowane karteczki QR działają po każdym kolejnym wdrożeniu. Sekrety idą do AWS przez plik tymczasowy (0600, usuwany) i nie są wypisywane. Na końcu skrypt podaje adres i sprawdza, czy odpowiada.
+`AWS_REGION` jest wymagany (bez wartości domyślnej). Skrypt buduje paczkę (`npm run package:lambda`), a potem tworzy brakujące albo aktualizuje istniejące: rolę IAM `kolacja-podwyzkowa-lambda` (tylko logi), funkcję `kolacja-podwyzkowa`, Function URL z publicznym dostępem i grupę logów `/aws/lambda/kolacja-podwyzkowa` (7 dni), a gdy w `.env.aws` jest `RETENTION_TOKEN` — także rolę `kolacja-podwyzkowa-scheduler` i harmonogram `kolacja-podwyzkowa-retention` (niżej, „Codzienne usuwanie danych gości”). Niczego nie usuwa, więc adres się nie zmienia i wydrukowane karteczki QR działają po każdym kolejnym wdrożeniu. Sekrety idą do AWS przez plik tymczasowy (0600, usuwany) i nie są wypisywane. Na końcu skrypt podaje adres i sprawdza, czy odpowiada.
 
 ### Pierwsze uruchomienie
 
-Baza produkcyjna trzyma wszystkie restauracje platformy: nie usuwaj w niej niczego poleceniami SQL (SQL Editor) — `public.event` to wydarzenia wszystkich restauracji, a z wydarzeniem kaskadowo znikają jego goście, linki i reszta danych. Wydarzenie usuwa się w panelu, dane gości po terminie `npm run retention -- --remote`. `npm run smoke`, `npm run demo` i `npm run load:local` odmawiają nielokalnej bazy.
+Baza produkcyjna trzyma wszystkie restauracje platformy: nie usuwaj w niej niczego poleceniami SQL (SQL Editor) — `public.event` to wydarzenia wszystkich restauracji, a z wydarzeniem kaskadowo znikają jego goście, linki i reszta danych. Wydarzenie usuwa się w panelu; dane gości po terminie usuwa codzienny harmonogram (niżej), a ręcznie `npm run retention -- --remote`. `npm run smoke`, `npm run demo` i `npm run load:local` odmawiają nielokalnej bazy.
 
 1. Pierwsze wdrożenie na `AI_PROVIDER=mock` (pusta baza po `npx supabase db push`).
 2. Pierwszy administrator platformy: `BASE_URL=https://<id>.lambda-url.<region>.on.aws SUPABASE_URL=<z .env.aws> SUPABASE_SERVICE_ROLE_KEY=<z .env.aws> npm run platform:admin -- <twój e-mail> --remote` (zmienne z wiersza poleceń mają pierwszeństwo przed `.env`). Skrypt wypisuje host bazy (sprawdź, że to projekt platformy, nie archiwum kolacji) i link `https://…/haslo/<token>`; otwórz go, ustaw hasło i zaloguj się na `/logowanie`. Link jest sekretny i działa raz.
 3. Sprawdzenie ręczne (smoke działa tylko lokalnie): w `/panel/platforma` „Nowa restauracja” z Twoim e-mailem jako właściciela (restauracja testowa; konto z hasłem nie dostaje zaproszenia, restauracja jest od razu w `/panel`). Na jej stronie „Nowe wydarzenie”, na karcie wydarzenia otwórz linki klienta, TV i tabletu; po dodaniu gościa i włączeniu linków gości na `/o/<klucz>/linki` także jego link (linki i karteczki są `https://`). Potem „Usuń trwale” na karcie wydarzenia (znika z danymi gości i linkami) i „Wyłącz” restaurację testową na liście platformy (restauracji nie da się usunąć).
 4. AI: w `.env.aws` ustaw `AI_PROVIDER=anthropic` i `ANTHROPIC_API_KEY` (z limitem wydatków w konsoli Anthropic) i wdroż ponownie tą samą komendą.
 5. Restauracje: „Nowa restauracja” w `/panel/platforma` z e-mailem właściciela; jednorazowy link zaproszenia przekazujesz mu sam (aplikacja nie wysyła e-maili). Właściciel zakłada wydarzenia w swoim panelu („Nowe wydarzenie”) i zaprasza zespół; linki gości i karteczki drukuje się z adresu produkcyjnego.
+
+### Codzienne usuwanie danych gości
+
+Restauracja ustawia, ile dni po wydarzeniu przechowywać dane gości (domyślnie 30). Po tym terminie aplikacja usuwa je przed każdym otwarciem wydarzenia, ale wydarzenia, których nikt już nie otwiera, czyści dopiero codzienne zadanie: harmonogram EventBridge Scheduler `kolacja-podwyzkowa-retention` uruchamia funkcję codziennie o 4:15 czasu polskiego (`cron(15 4 * * ? *)`, strefa `Europe/Warsaw`, bez okna elastycznego). Wysyła jej `{"job":"guest-data-retention","token":"<RETENTION_TOKEN>"}`; Lambda Web Adapter przekazuje takie zdarzenie jako `POST` z treścią JSON na ścieżkę z `AWS_LWA_PASS_THROUGH_PATH` (`npm run deploy:aws` ustawia ją na `/api/jobs/retention`), a aplikacja usuwa dane gości wszystkich wydarzeń po terminie (do 20 s na przebieg; resztę bierze kolejna noc) i odpowiada samymi liczbami. Function URL jest publiczny, więc bez właściwego tokenu ta ścieżka odpowiada 404 jak każdy zły link. Harmonogram jest bezpłatny (darmowy próg EventBridge Scheduler to 14 mln wywołań miesięcznie, tu jedno dziennie); rola `kolacja-podwyzkowa-scheduler` może tylko wywołać tę jedną funkcję. Token jest zapisany w funkcji i w celu harmonogramu (widzą go osoby z dostępem do konta AWS); nowy token = zmiana w `.env.aws` i ponowne wdrożenie (podmienia oba naraz).
+
+Po pierwszym wdrożeniu z tokenem (i po każdej zmianie tokenu) sprawdź raz ręcznie (profil i region jak przy wdrożeniu; `npm run deploy:aws` wypisuje te komendy na końcu):
+
+```bash
+# 1. Harmonogram istnieje i jest włączony:
+aws scheduler get-schedule --name kolacja-podwyzkowa-retention --profile mikusia --region eu-central-1 \
+  --query '{State:State,Expression:ScheduleExpression,TimeZone:ScheduleExpressionTimezone}'
+# 2. Jedno wywołanie z wejściem samego harmonogramu (token trafia tylko do prywatnego katalogu tymczasowego):
+d="$(mktemp -d)"
+aws scheduler get-schedule --name kolacja-podwyzkowa-retention --query Target.Input --output text --profile mikusia --region eu-central-1 > "$d/input.json"
+aws lambda invoke --function-name kolacja-podwyzkowa --payload "fileb://$d/input.json" --profile mikusia --region eu-central-1 "$d/output.json"
+cat "$d/output.json"; rm -r "$d"
+# 3. Linia w logach:
+aws logs tail /aws/lambda/kolacja-podwyzkowa --since 15m --filter-pattern Retencja --profile mikusia --region eu-central-1
+```
+
+- Poprawnie: `get-schedule` pokazuje `ENABLED`, `cron(15 4 * * ? *)`, `Europe/Warsaw`; odpowiedź funkcji to liczby, np. `{"events":0,"guests":0,…,"skipped":0,"complete":true}` (bez imion i identyfikatorów); w logach jest linia „Retencja danych gości (codzienne sprzątanie): wydarzenia …”. Kolejne noce: ta sama linia w logach około 4:15.
+- `{"error":"Brak dostępu"}`: funkcja nie ma tego samego tokenu co harmonogram (albo token jest za krótki) — sprawdź `RETENTION_TOKEN` w `.env.aws` i wdroż ponownie.
+- `Cross-site POST form submissions are forbidden`: adapter wysłał zdarzenie bez nagłówka `Content-Type: application/json` (założenie z dokumentacji Lambda Web Adapter, którego nie dało się sprawdzić bez AWS) — wtedy harmonogram nie działa i potrzebna jest zmiana w kodzie; dane gości dalej usuwa otwarcie wydarzenia, panel i `npm run retention -- --remote`.
+- Bez `RETENTION_TOKEN` wdrożenie pomija harmonogram (i wypisuje, jak wygenerować token); harmonogram z wcześniejszego wdrożenia zostaje, ale aplikacja mu odmawia.
 
 ### Koszty i limity
 

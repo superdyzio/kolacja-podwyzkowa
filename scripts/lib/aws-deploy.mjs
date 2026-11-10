@@ -31,11 +31,27 @@ export const ENV_FILE = ".env.aws";
 export const URL_PERMISSION_SID = "FunctionURLAllowPublicAccess";
 export const INVOKE_PERMISSION_SID = "FunctionURLInvokeAllowPublicAccess";
 
+// The daily guest data clean-up (retention-schedule, the PR #4 review's decision 3): an EventBridge Scheduler schedule
+// invokes the function every night with { job, token }; the Lambda Web Adapter forwards a non-HTTP event as a POST
+// (JSON body) to AWS_LWA_PASS_THROUGH_PATH — set explicitly here to the app's route (src/pages/api/jobs/retention.ts;
+// RETENTION_JOB_PATH and RETENTION_JOB_NAME mirror src/lib/privacy/job.ts, the tests compare them). Scheduler is free
+// at this volume. Created only when .env.aws has RETENTION_TOKEN (the route answers 404 to anything else).
+export const RETENTION_JOB_PATH = "/api/jobs/retention";
+export const RETENTION_JOB_NAME = "guest-data-retention";
+export const MIN_RETENTION_TOKEN_LENGTH = 32;
+export const SCHEDULE_NAME = `${FUNCTION_NAME}-retention`;
+// 04:15 Polish time, every day: nobody is at a party, and an event's data goes the first night after its last day.
+export const SCHEDULE_EXPRESSION = "cron(15 4 * * ? *)";
+export const SCHEDULE_TIMEZONE = "Europe/Warsaw";
+export const SCHEDULER_ROLE_NAME = `${FUNCTION_NAME}-scheduler`;
+export const SCHEDULER_POLICY_NAME = `invoke-${FUNCTION_NAME}`;
+export const RETENTION_TOKEN_HINT = "openssl rand -hex 32";
+
 const REQUIRED_KEYS = ["SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY"];
-const OPTIONAL_KEYS = ["AI_PROVIDER", "ANTHROPIC_API_KEY", "AI_MODEL"];
+const OPTIONAL_KEYS = ["AI_PROVIDER", "ANTHROPIC_API_KEY", "AI_MODEL", "RETENTION_TOKEN"];
 export const ALLOWED_KEYS = [...REQUIRED_KEYS, ...OPTIONAL_KEYS];
 // Values that are never printed (redact() replaces them in anything shown).
-export const SECRET_KEYS = ["SUPABASE_SERVICE_ROLE_KEY", "ANTHROPIC_API_KEY"];
+export const SECRET_KEYS = ["SUPABASE_SERVICE_ROLE_KEY", "ANTHROPIC_API_KEY", "RETENTION_TOKEN"];
 const AI_PROVIDERS = ["mock", "anthropic"];
 const LOCAL_HOSTNAMES = new Set(["localhost", "127.0.0.1", "0.0.0.0", "[::1]", "::1", "host.docker.internal"]);
 
@@ -140,6 +156,15 @@ export function validateDeployEnv(values) {
   } else if (provider === "anthropic" && !present.ANTHROPIC_API_KEY) {
     errors.push("AI_PROVIDER=anthropic wymaga ANTHROPIC_API_KEY.");
   }
+  if (
+    present.RETENTION_TOKEN &&
+    (present.RETENTION_TOKEN.length < MIN_RETENTION_TOKEN_LENGTH ||
+      !/^[A-Za-z0-9+/=_-]+$/.test(present.RETENTION_TOKEN))
+  ) {
+    errors.push(
+      `RETENTION_TOKEN: co najmniej ${String(MIN_RETENTION_TOKEN_LENGTH)} znaki (litery, cyfry, + / = _ -) — wygeneruj: ${RETENTION_TOKEN_HINT}.`,
+    );
+  }
   if (errors.length > 0) return { ok: false, errors };
   return { ok: true, variables: { ...present, AI_PROVIDER: provider } };
 }
@@ -154,6 +179,8 @@ export function functionEnvironment(appVariables) {
     AWS_LAMBDA_EXEC_WRAPPER: "/opt/bootstrap",
     PORT: APP_PORT,
     AWS_LWA_READINESS_CHECK_PATH: READINESS_CHECK_PATH,
+    // Where the adapter POSTs non-HTTP events (the schedule's): the clean-up route, not the adapter's default /events.
+    AWS_LWA_PASS_THROUGH_PATH: RETENTION_JOB_PATH,
     ...appVariables,
   };
 }
@@ -295,6 +322,114 @@ export function awsCommands(target, { zipPath, envFile, roleArn }) {
 }
 
 /**
+ * The trust policy of the scheduler's role: only EventBridge Scheduler of this account may assume it.
+ * @param {string} account
+ * @returns {string}
+ */
+export function schedulerTrustPolicy(account) {
+  return JSON.stringify({
+    Version: "2012-10-17",
+    Statement: [
+      {
+        Effect: "Allow",
+        Principal: { Service: "scheduler.amazonaws.com" },
+        Action: "sts:AssumeRole",
+        Condition: { StringEquals: { "aws:SourceAccount": account } },
+      },
+    ],
+  });
+}
+
+/**
+ * The scheduler role's only permission: invoking this one function.
+ * @param {string} functionArn
+ * @returns {string}
+ */
+export function schedulerInvokePolicy(functionArn) {
+  return JSON.stringify({
+    Version: "2012-10-17",
+    Statement: [{ Effect: "Allow", Action: "lambda:InvokeFunction", Resource: functionArn }],
+  });
+}
+
+/**
+ * The schedule's input: exactly the body the app's route accepts.
+ * @param {string} token
+ * @returns {string}
+ */
+export function retentionScheduleInput(token) {
+  return JSON.stringify({ job: RETENTION_JOB_NAME, token });
+}
+
+/**
+ * The schedule's target (written to a 0600 temp file, never on the command line: the input holds the token).
+ * @param {{ functionArn: string, roleArn: string, token: string }} options
+ */
+export function retentionScheduleTarget({ functionArn, roleArn, token }) {
+  return { Arn: functionArn, RoleArn: roleArn, Input: retentionScheduleInput(token) };
+}
+
+/**
+ * The `aws` calls of the daily clean-up: the scheduler's role (trust + inline invoke policy) and the schedule
+ * (create, or update with every field — update-schedule replaces the whole definition).
+ * @param {AwsTarget} target
+ * @param {{ account: string, functionArn: string, targetFile: string }} options
+ */
+export function schedulerCommands(target, { account, functionArn, targetFile }) {
+  const aws = (/** @type {string[]} */ ...args) => awsArgs(target, args);
+  const role = ["--role-name", SCHEDULER_ROLE_NAME];
+  const schedule = [
+    "--name",
+    SCHEDULE_NAME,
+    "--group-name",
+    "default",
+    "--schedule-expression",
+    SCHEDULE_EXPRESSION,
+    "--schedule-expression-timezone",
+    SCHEDULE_TIMEZONE,
+    "--flexible-time-window",
+    JSON.stringify({ Mode: "OFF" }),
+    "--state",
+    "ENABLED",
+    "--description",
+    "Kolacja podwyzkowa: daily guest data retention run",
+    "--target",
+    `file://${targetFile}`,
+  ];
+  return {
+    getSchedulerRole: aws("iam", "get-role", ...role),
+    createSchedulerRole: aws(
+      "iam",
+      "create-role",
+      ...role,
+      "--description",
+      "Kolacja podwyzkowa: EventBridge Scheduler invokes the function for the daily retention run",
+      "--assume-role-policy-document",
+      schedulerTrustPolicy(account),
+    ),
+    updateSchedulerTrust: aws(
+      "iam",
+      "update-assume-role-policy",
+      ...role,
+      "--policy-document",
+      schedulerTrustPolicy(account),
+    ),
+    putSchedulerPolicy: aws(
+      "iam",
+      "put-role-policy",
+      ...role,
+      "--policy-name",
+      SCHEDULER_POLICY_NAME,
+      "--policy-document",
+      schedulerInvokePolicy(functionArn),
+    ),
+    getSchedule: aws("scheduler", "get-schedule", "--name", SCHEDULE_NAME, "--group-name", "default"),
+    createSchedule: aws("scheduler", "create-schedule", ...schedule),
+    updateSchedule: aws("scheduler", "update-schedule", ...schedule),
+  };
+}
+
+/**
  * Which public Function URL statements the resource policy lacks (since October 2025 a public URL needs both
  * lambda:InvokeFunctionUrl with FunctionUrlAuthType NONE and lambda:InvokeFunction via the function URL).
  * @param {string | null} policyJson the `Policy` string of `get-policy`, null when the function has no policy
@@ -385,7 +520,62 @@ export function dryRunPlan(target, environment) {
     show(commands.getPolicy),
     show(commands.addUrlPermission),
     show(commands.addInvokePermission),
+    ...retentionPlan(target, environment, show),
     "Nic nie jest usuwane (nowa funkcja albo nowy URL zmieniłyby adres i unieważniły wydrukowane karteczki).",
+  ];
+}
+
+/**
+ * Step 7 of the dry-run plan: the daily clean-up's role and schedule, or why it is skipped.
+ * @param {AwsTarget} target
+ * @param {Record<string, string>} environment
+ * @param {(args: string[]) => string} show
+ * @returns {string[]}
+ */
+function retentionPlan(target, environment, show) {
+  if (!environment.RETENTION_TOKEN) {
+    return [
+      `7. Codzienne usuwanie danych gości po terminie — POMINIĘTE: brak RETENTION_TOKEN w ${ENV_FILE}`,
+      `   (wygeneruj: ${RETENTION_TOKEN_HINT}; bez niego dane usuwa dopiero otwarcie wydarzenia albo panelu). Gdy harmonogram`,
+      "   już istnieje, zostaje bez zmian, a aplikacja odpowiada mu 404:",
+      show(schedulerCommands(target, { account: "<konto>", functionArn: "", targetFile: "" }).getSchedule),
+    ];
+  }
+  const commands = schedulerCommands(target, {
+    account: "<konto>",
+    functionArn: `arn:aws:lambda:${target.region}:<konto>:function:${FUNCTION_NAME}`,
+    targetFile: "<plik tymczasowy 0600 z celem harmonogramu i tokenem>",
+  });
+  return [
+    `7. Codzienne usuwanie danych gości po terminie (${SCHEDULE_EXPRESSION}, ${SCHEDULE_TIMEZONE}, AWS_LWA_PASS_THROUGH_PATH=${RETENTION_JOB_PATH}):`,
+    `   rola ${SCHEDULER_ROLE_NAME} — gdy brak, utworzenie, inaczej aktualizacja zaufania; zawsze polityka wywołania tej funkcji:`,
+    show(commands.getSchedulerRole),
+    show(commands.createSchedulerRole),
+    show(commands.updateSchedulerTrust),
+    show(commands.putSchedulerPolicy),
+    `   harmonogram ${SCHEDULE_NAME} — gdy brak, utworzenie, inaczej pełna aktualizacja (ponawiane, dopóki nowa rola nie jest gotowa):`,
+    show(commands.getSchedule),
+    show(commands.createSchedule),
+    show(commands.updateSchedule),
+  ];
+}
+
+/**
+ * The manual check of the daily clean-up (README „Wdrożenie na AWS” → „Codzienne usuwanie danych gości”): the schedule's
+ * own input goes to a fresh temp directory only this user reads (the token never reaches the command line, the shell
+ * history or the repository), one
+ * synchronous invocation, the answer and the log line.
+ * @param {AwsTarget} target
+ * @returns {string[]}
+ */
+export function retentionCheckCommands(target) {
+  const flags = `--profile ${target.profile} --region ${target.region}`;
+  return [
+    'd="$(mktemp -d)"',
+    `aws scheduler get-schedule --name ${SCHEDULE_NAME} --query Target.Input --output text ${flags} > "$d/input.json"`,
+    `aws lambda invoke --function-name ${FUNCTION_NAME} --payload "fileb://$d/input.json" ${flags} "$d/output.json"`,
+    'cat "$d/output.json"; rm -r "$d"',
+    `aws logs tail ${LOG_GROUP} --since 15m --filter-pattern Retencja ${flags}`,
   ];
 }
 
@@ -393,10 +583,13 @@ export function dryRunPlan(target, environment) {
  * What to do after a deploy, printed at the end of `npm run deploy:aws` (README „Wdrożenie na AWS” → „Pierwsze
  * uruchomienie”). The hosted database holds every restaurant of the platform: never print a SQL statement for it, never
  * the smoke (it refuses anything but a local database) and never a way to start an event that no longer exists.
- * @param {{ base: string, region: string, aiProvider: string }} options base = the Function URL without a trailing slash
+ * `retention`: "scheduled" (the schedule was created or updated), "missing-token" (no token, no schedule) or
+ * "inactive-schedule" (no token, but a schedule from an earlier deploy exists — the app answers it 404).
+ * @param {{ base: string, region: string, aiProvider: string, profile?: string,
+ *   retention?: "scheduled" | "missing-token" | "inactive-schedule" }} options base = the Function URL without a trailing slash
  * @returns {string}
  */
-export function nextSteps({ base, region, aiProvider }) {
+export function nextSteps({ base, region, aiProvider, profile = DEFAULT_PROFILE, retention = "scheduled" }) {
   const lines = [
     "Dalej (README, „Wdrożenie na AWS” → „Pierwsze uruchomienie”):",
     `  1. Pierwszy administrator platformy (raz; zmienne z ${ENV_FILE}, skrypt najpierw wypisuje host bazy):`,
@@ -406,9 +599,23 @@ export function nextSteps({ base, region, aiProvider }) {
     "     wydarzenie testowe usuwasz w panelu („Usuń trwale” na jego karcie), nigdy poleceniem SQL.",
     `  3. Restauracje z właścicielami zakładasz w ${base}/panel/platforma („Nowa restauracja”), wydarzenia właściciel w swoim panelu.`,
   ];
+  if (retention === "scheduled") {
+    lines.push(
+      `  4. Codzienne usuwanie danych gości po terminie: harmonogram ${SCHEDULE_NAME} (${SCHEDULE_EXPRESSION}, ${SCHEDULE_TIMEZONE}).`,
+      "     Sprawdź raz ręcznie (wynik: liczby w JSON, w logach linia „Retencja danych gości”; README „Codzienne usuwanie”):",
+      ...retentionCheckCommands({ profile, region }).map((line) => `       ${line}`),
+    );
+  } else {
+    lines.push(
+      retention === "inactive-schedule"
+        ? `  4. UWAGA: harmonogram ${SCHEDULE_NAME} istnieje, ale bez RETENTION_TOKEN aplikacja mu odmawia (404) i nic nie usuwa:`
+        : "  4. Bez codziennego usuwania danych gości po terminie (dane usuwa dopiero otwarcie wydarzenia albo panelu):",
+      `     dodaj do ${ENV_FILE} RETENTION_TOKEN=<wynik: ${RETENTION_TOKEN_HINT}> i wdroż ponownie: AWS_REGION=${region} npm run deploy:aws`,
+    );
+  }
   if (aiProvider !== "anthropic") {
     lines.push(
-      `  4. AI: w ${ENV_FILE} AI_PROVIDER=anthropic i ANTHROPIC_API_KEY, potem znowu AWS_REGION=${region} npm run deploy:aws`,
+      `  5. AI: w ${ENV_FILE} AI_PROVIDER=anthropic i ANTHROPIC_API_KEY, potem znowu AWS_REGION=${region} npm run deploy:aws`,
     );
   }
   return lines.join("\n");

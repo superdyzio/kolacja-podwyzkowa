@@ -36,6 +36,11 @@ export function parseRetentionDays(value: unknown): RetentionDaysResult {
   return { ok: true, days: value };
 }
 
+// The same number written in a query parameter (`?days=7`; retention-preview): digits only, then the range.
+export function parseRetentionDaysText(text: string): RetentionDaysResult {
+  return /^\d{1,4}$/.test(text) ? parseRetentionDays(Number(text)) : { ok: false };
+}
+
 // The last day ("YYYY-MM-DD", Europe/Warsaw) the guests' data of an event dated `eventDate` is kept.
 export function guestDataDeleteAfter(eventDate: string, retentionDays: number): string {
   return addDays(eventDate, retentionDays);

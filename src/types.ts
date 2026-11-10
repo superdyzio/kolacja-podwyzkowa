@@ -1390,6 +1390,32 @@ export interface RetentionSettingsDto {
   maxDays: number;
 }
 
+// GET /api/panel/restaurants/<id>/retention?days=<n> (owners; retention-preview): what a new term would cost at once —
+// the events (no templates) still holding guest data that the term `days` puts past their term while the current term
+// keeps them, and the latest such event's date ("YYYY-MM-DD"; null when `events` is 0). Counts only, no ids or names.
+export interface RetentionPreviewDto {
+  restaurantId: number;
+  guestRetentionDays: number;
+  days: number;
+  events: number;
+  latestEventDate: string | null;
+}
+
+// The daily clean-up's answer (POST /api/jobs/retention, retention-schedule; also its CloudWatch line): how many events
+// lost their guests' data in this run and what went, how many listed events had nothing to purge after all, and whether
+// nothing was left when it stopped (false = the time budget ran out; the next run goes on). Counts only.
+export interface RetentionJobResultDto {
+  events: number;
+  guests: number;
+  groups: number;
+  snapshots: number;
+  spotlight: number;
+  waiters: number;
+  notes: number;
+  skipped: number;
+  complete: boolean;
+}
+
 // One event's retention as its pages show it: the last day the guests' data is kept ("YYYY-MM-DD", Europe/Warsaw)
 // and when it was deleted (null = not yet).
 export interface EventRetentionDto {
