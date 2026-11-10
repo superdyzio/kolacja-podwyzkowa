@@ -1,0 +1,24 @@
+{
+  "planSize": [1600, 900],
+  "rooms": [
+    { "name": "Sala Główna", "outline": { "x": 0.025, "y": 0.0444, "width": 0.6, "height": 0.9111 } },
+    { "name": "Sala Kominkowa", "outline": { "x": 0.65, "y": 0.0444, "width": 0.325, "height": 0.4333 } },
+    { "name": "Ogród zimowy", "outline": { "x": 0.65, "y": 0.5222, "width": 0.325, "height": 0.4333 } }
+  ],
+  "tables": [
+    { "room": "Sala Główna", "name": "Dąb", "shape": "round", "seats": 8, "x": 0.125, "y": 0.2 },
+    { "room": "Sala Główna", "name": "Lipa", "shape": "round", "seats": 8, "x": 0.325, "y": 0.2 },
+    { "room": "Sala Główna", "name": "Jesion", "shape": "round", "seats": 8, "x": 0.525, "y": 0.2 },
+    { "room": "Sala Główna", "name": "Buk", "shape": "round", "seats": 8, "x": 0.125, "y": 0.4889 },
+    { "room": "Sala Główna", "name": "Grab", "shape": "round", "seats": 8, "x": 0.325, "y": 0.4889 },
+    { "room": "Sala Główna", "name": "Klon", "shape": "round", "seats": 8, "x": 0.525, "y": 0.4889 },
+    { "room": "Sala Główna", "name": "Długi stół", "shape": "rectangular", "seats": 12, "x": 0.325, "y": 0.7889 },
+    { "room": "Sala Kominkowa", "name": "Kominek", "shape": "round", "seats": 8, "x": 0.7313, "y": 0.2611 },
+    { "room": "Sala Kominkowa", "name": "Okno", "shape": "rectangular", "seats": 6, "x": 0.8938, "y": 0.1556 },
+    { "room": "Sala Kominkowa", "name": "Regał", "shape": "rectangular", "seats": 6, "x": 0.8938, "y": 0.3667 },
+    { "room": "Ogród zimowy", "name": "Palma", "shape": "round", "seats": 6, "x": 0.725, "y": 0.6667 },
+    { "room": "Ogród zimowy", "name": "Paproć", "shape": "round", "seats": 4, "x": 0.725, "y": 0.8667 },
+    { "room": "Ogród zimowy", "name": "Fontanna", "shape": "rectangular", "seats": 4, "x": 0.8938, "y": 0.6556 },
+    { "room": "Ogród zimowy", "name": "Storczyk", "shape": "rectangular", "seats": 4, "x": 0.8938, "y": 0.8556 }
+  ]
+}
