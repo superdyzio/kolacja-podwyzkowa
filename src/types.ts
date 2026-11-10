@@ -570,6 +570,21 @@ export interface RsvpBoardDto {
   guests: RsvpGuestDto[];
 }
 
+// „Przenieś wybory do zamówień” (the PR #4 review's RSVP extras): GET /api/o/<key>/rsvp/orders = what a move would do
+// now (`added` = lines it would add), POST = what it did. `skipped` = coming guests with a dish who already have a line
+// of it; `notOnMenu` = chosen dishes the event's active menu no longer offers (a POST then adds nothing, 400).
+export interface RsvpOrdersSummaryDto {
+  added: number;
+  skipped: number;
+  notOnMenu: string[];
+}
+
+// POST /api/o/<key>/rsvp/orders: the summary and the whole order board after the move.
+export interface RsvpOrdersAnswerDto {
+  summary: RsvpOrdersSummaryDto;
+  board: OrderBoardDto;
+}
+
 // guest-delivered: an order line as a guest's phone shows it — no price, no ids of people. lineId addresses the line
 // when marking a piece (the server checks it is the guest's own line or one of their table's). Every piece 1 …
 // quantity, with who marked it from the guest's point of view (null = not delivered yet).

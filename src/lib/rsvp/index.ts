@@ -2,5 +2,7 @@
 // (rules.ts, messages.ts) directly.
 export * from "./api";
 export * from "./messages";
+export * from "./orders";
+export * from "./orders-service";
 export * from "./rules";
 export * from "./service";

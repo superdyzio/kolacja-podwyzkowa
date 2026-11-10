@@ -31,6 +31,7 @@ import * as rooms from "@/pages/api/o/[key]/rooms";
 import * as roomsById from "@/pages/api/o/[key]/rooms/[id]";
 import * as rsvp from "@/pages/api/o/[key]/rsvp";
 import * as rsvpGuestsById from "@/pages/api/o/[key]/rsvp/guests/[id]";
+import * as rsvpOrders from "@/pages/api/o/[key]/rsvp/orders";
 import * as seating from "@/pages/api/o/[key]/seating";
 import * as seatingDraft from "@/pages/api/o/[key]/seating/draft";
 import * as seatingGuestsById from "@/pages/api/o/[key]/seating/guests/[id]";
@@ -88,6 +89,7 @@ export const CLIENT_ROUTE_MODULES: Readonly<Record<ClientRoutePattern, ClientRou
   "rooms/:id": roomsById,
   rsvp: rsvp,
   "rsvp/guests/:id": rsvpGuestsById,
+  "rsvp/orders": rsvpOrders,
   seating: seating,
   "seating/draft": seatingDraft,
   "seating/guests/:id": seatingGuestsById,

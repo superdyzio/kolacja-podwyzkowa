@@ -10077,26 +10077,77 @@ check(
   `${tabletAfter40.status} ${JSON.stringify(tabletAfter40.data?.rsvp ?? null)}`,
 );
 
+// „Przenieś wybory do zamówień” (the PR #4 review's RSVP extras): Ania (Schabowy) and Celina (Pierogi, entered by the
+// client) are coming with a dish, Bartek is not. The preview writes nothing; the move adds one line per guest at their
+// own seat with the menu's spelling, course and price (no body); again → 200 and nothing added.
+const menuPrice40 = (board, name) => board?.menu?.items?.find((item) => item.name === name)?.priceGrosze;
+const lineOf40 = (board, name) => board?.items?.find((item) => item.guestId === idOf40(name));
+const movePreview40 = await request(`${e40Api}/rsvp/orders`);
+const ordersBefore40 = await request(`${e40Api}/orders`);
+const moved40 = await request(`${e40Api}/rsvp/orders`, { method: "POST" });
+const movedAgain40 = await request(`${e40Api}/rsvp/orders`, { method: "POST" });
+const movePage40 = await request(`/o/${e40Organizer}/potwierdzenia`);
+const movePageEn40 = await request(`/o/${e40Organizer}/potwierdzenia`, { cookie: "kp-lang=en" });
+const aniaLine40 = lineOf40(moved40.data?.board, ANIA40);
+const celinaLine40 = lineOf40(moved40.data?.board, CELINA40);
+check(
+  "rsvp: „Przenieś wybory do zamówień” — the preview (2 to add, nothing written), the move → 201 with one line per coming guest with a dish at their seat (menu spelling, course, price, quantity 1), again → 200 with nothing added (2 skipped); the page shows the card (PL/EN)",
+  movePreview40.status === 200 &&
+    JSON.stringify(movePreview40.data) === JSON.stringify({ added: 2, skipped: 0, notOnMenu: [] }) &&
+    ordersBefore40.status === 200 &&
+    ordersBefore40.data?.items?.length === 0 &&
+    moved40.status === 201 &&
+    JSON.stringify(moved40.data?.summary) === JSON.stringify({ added: 2, skipped: 0, notOnMenu: [] }) &&
+    moved40.data?.board?.items?.length === 2 &&
+    aniaLine40?.name === "Schabowy" &&
+    aniaLine40?.course === "main" &&
+    aniaLine40?.quantity === 1 &&
+    aniaLine40?.note === null &&
+    aniaLine40?.tableId === null &&
+    typeof menuPrice40(moved40.data?.board, "Schabowy") === "number" &&
+    aniaLine40?.unitPriceGrosze === menuPrice40(moved40.data?.board, "Schabowy") &&
+    celinaLine40?.name === "Pierogi" &&
+    celinaLine40?.unitPriceGrosze === menuPrice40(moved40.data?.board, "Pierogi") &&
+    !moved40.data?.board?.items?.some((item) => item.guestId === idOf40(BARTEK40)) &&
+    movedAgain40.status === 200 &&
+    JSON.stringify(movedAgain40.data?.summary) === JSON.stringify({ added: 0, skipped: 2, notOnMenu: [] }) &&
+    movedAgain40.data?.board?.items?.length === 2 &&
+    movePage40.status === 200 &&
+    movePage40.body.includes("data-rsvp-move") &&
+    movePage40.body.includes("Przenieś wybory do zamówień") &&
+    movePageEn40.body.includes("Move choices to orders"),
+  `${movePreview40.status} ${movePreview40.body.slice(0, 120)} ${moved40.status} ${JSON.stringify(moved40.data?.summary ?? null)} ${JSON.stringify(aniaLine40 ?? null).slice(0, 200)} ${movedAgain40.status} ${movePage40.status}`,
+);
+
 const leadOn40 = await staffCall(sessionOwner, eventApi(e40Id), { method: "PATCH", json: { venueLeads: true } });
 const clientOn40 = await proxy40(BARTEK40, { attending: null, dish: null });
 const clientSettingsOn40 = await settings40({ deadline: null });
 const staffOn40 = await proxy40(BARTEK40, { attending: null, dish: null }, e40Klient, sessionManager);
+const clientMoveOn40 = await request(`${e40Api}/rsvp/orders`, { method: "POST" });
+const staffMoveOn40 = await staffCall(sessionManager, `${e40Klient}/rsvp/orders`, { method: "POST" });
 const leadOff40 = await staffCall(sessionOwner, eventApi(e40Id), { method: "PATCH", json: { venueLeads: false } });
 const staffOff40 = await proxy40(BARTEK40, { attending: false, dish: null }, e40Klient, sessionManager);
+const staffMoveOff40 = await staffCall(sessionManager, `${e40Klient}/rsvp/orders`, { method: "POST" });
 const listAfterLead40 = await request(`${e40Api}/guests`);
 check(
-  "rsvp: while the venue leads the client's answer and settings → 409 venue-leads and the staff answer through the dispatcher („no answer” → present again); when the client leads again the staff → 409 client-leads",
+  "rsvp: while the venue leads the client's answer, settings and move → 409 venue-leads and the staff answer and move through the dispatcher („no answer” → present again; the move adds nothing new); when the client leads again the staff → 409 client-leads",
   leadOn40.status === 200 &&
     clientOn40.status === 409 &&
     leadCode(clientOn40) === "venue-leads" &&
     clientSettingsOn40.status === 409 &&
     staffOn40.status === 200 &&
     countsOf40(staffOn40) === "2/0/1" &&
+    clientMoveOn40.status === 409 &&
+    leadCode(clientMoveOn40) === "venue-leads" &&
+    staffMoveOn40.status === 200 &&
+    JSON.stringify(staffMoveOn40.data?.summary) === JSON.stringify({ added: 0, skipped: 2, notOnMenu: [] }) &&
     leadOff40.status === 200 &&
     staffOff40.status === 409 &&
     leadCode(staffOff40) === "client-leads" &&
+    staffMoveOff40.status === 409 &&
+    leadCode(staffMoveOff40) === "client-leads" &&
     guestNamed(listAfterLead40, BARTEK40)?.isAbsent === false,
-  `${leadOn40.status} ${clientOn40.status} ${clientSettingsOn40.status} ${staffOn40.status} ${leadOff40.status} ${staffOff40.status}`,
+  `${leadOn40.status} ${clientOn40.status} ${clientSettingsOn40.status} ${staffOn40.status} ${clientMoveOn40.status} ${staffMoveOn40.status} ${leadOff40.status} ${staffOff40.status} ${staffMoveOff40.status}`,
 );
 
 const NO40 = { attending: false, dish: null };

@@ -1,4 +1,5 @@
 import { defineMessages } from "@/lib/i18n/locale";
+import { pluralEn, pluralPl } from "@/lib/i18n/plural";
 
 // Texts of the guests' RSVP (guest-rsvp-menu, S-25; FR-039): the guest's phone section, the client's page (also the
 // panel's preview), the shell / panel card summary and the API messages, both languages (i18n). Dish and guest names
@@ -87,6 +88,25 @@ export const rsvpMessages = defineMessages(
     summaryClosed: "zamknięte",
     summaryCounts: (coming: number, notComing: number, noAnswer: number) =>
       `przyjdzie ${String(coming)} · nie przyjdzie ${String(notComing)} · bez odpowiedzi ${String(noAnswer)}`,
+    // „Przenieś wybory do zamówień” (the PR #4 review's RSVP extras).
+    moveHeading: "Wybory gości w zamówieniu",
+    moveIntro:
+      "Każdy gość, który przyjdzie i wybrał danie, dostaje jedną pozycję zamówienia z tym daniem przy swoim miejscu (cenę ustala lokal). Kto ma już to danie w zamówieniu, zostaje pominięty, więc po nowych odpowiedziach można przenieść ponownie.",
+    moveButton: "Przenieś wybory do zamówień",
+    moveChecking: "Sprawdzam…",
+    confirmMove: (added: number, skipped: number) =>
+      `Dodać do zamówienia ${String(added)} ${pluralPl(added, "pozycję", "pozycje", "pozycji")} (po jednej dla każdego gościa z wybranym daniem)?` +
+      (skipped > 0 ? ` Pominięci (danie już jest w zamówieniu): ${String(skipped)}.` : ""),
+    moved: (added: number, skipped: number) =>
+      `Dodano do zamówienia ${String(added)} ${pluralPl(added, "pozycję", "pozycje", "pozycji")}.` +
+      (skipped > 0 ? ` Pominięto: ${String(skipped)} (danie już było w zamówieniu).` : ""),
+    moveNothing: (skipped: number): string =>
+      skipped > 0
+        ? "Nie ma nic do przeniesienia: wybory gości są już w zamówieniu."
+        : "Nie ma nic do przeniesienia: nikt z przychodzących nie wybrał jeszcze dania.",
+    moveNotOnMenu: (names: string) =>
+      `Tych dań nie ma w menu wydarzenia: ${names}. Zmień wybór tych gości albo poproś lokal o menu i spróbuj ponownie — nic nie zostało dodane.`,
+    ordersLink: "Przejdź do zamówień",
   },
   {
     guestHeading: "Confirm your attendance",
@@ -167,5 +187,23 @@ export const rsvpMessages = defineMessages(
     summaryClosed: "closed",
     summaryCounts: (coming: number, notComing: number, noAnswer: number) =>
       `coming ${String(coming)} · not coming ${String(notComing)} · no answer ${String(noAnswer)}`,
+    moveHeading: "Guests' choices in the order",
+    moveIntro:
+      "Every guest who is coming and chose a dish gets one order line with that dish at their seat (the venue sets the price). Guests who already have that dish in the order are skipped, so you can move again after new answers.",
+    moveButton: "Move choices to orders",
+    moveChecking: "Checking…",
+    confirmMove: (added: number, skipped: number) =>
+      `Add ${String(added)} ${pluralEn(added, "line", "lines")} to the order (one for each guest with a chosen dish)?` +
+      (skipped > 0 ? ` Skipped (the dish is already in the order): ${String(skipped)}.` : ""),
+    moved: (added: number, skipped: number) =>
+      `Added ${String(added)} ${pluralEn(added, "line", "lines")} to the order.` +
+      (skipped > 0 ? ` Skipped: ${String(skipped)} (the dish was already in the order).` : ""),
+    moveNothing: (skipped: number): string =>
+      skipped > 0
+        ? "Nothing to move: the guests' choices are already in the order."
+        : "Nothing to move: nobody coming has chosen a dish yet.",
+    moveNotOnMenu: (names: string) =>
+      `These dishes are not on the event's menu: ${names}. Change those guests' dish or ask the venue about the menu and try again — nothing was added.`,
+    ordersLink: "Go to orders",
   },
 );

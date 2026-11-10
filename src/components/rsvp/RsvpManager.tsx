@@ -1,5 +1,6 @@
 import { useState, type SubmitEvent } from "react";
 import { useRsvpBoard } from "@/components/hooks/useRsvpBoard";
+import { useRsvpOrdersMove } from "@/components/hooks/useRsvpOrdersMove";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { formatDateTime, instantToLocalInput } from "@/lib/events/dates";
@@ -20,9 +21,10 @@ interface Props {
 }
 
 // The client's RSVP page (guest-rsvp-menu, S-25; FR-039, US-07), also the panel's preview: the deadline (set, close
-// now, turn off), the dishes guests pick from (among what the event's menu offers), the counts and every guest's
-// answer, editable at any time (also after the deadline). Every change replaces the whole board; the board is re-read
-// while guests answer from their phones.
+// now, turn off), the dishes guests pick from (among what the event's menu offers), the counts, „Przenieś wybory do
+// zamówień” (the PR #4 review's RSVP extras: one order line per coming guest with a dish, after a preview and a
+// confirm) and every guest's answer, editable at any time (also after the deadline). Every change replaces the whole
+// board; the board is re-read while guests answer from their phones.
 export function RsvpManager({ apiBase, initial, sectionsBase, locale }: Props) {
   const t = rsvpMessages(locale);
   const { board, pending, failure, send, dismissFailure } = useRsvpBoard(apiBase, initial, locale);
@@ -41,6 +43,9 @@ export function RsvpManager({ apiBase, initial, sectionsBase, locale }: Props) {
       <DeadlineCard board={board} pending={pending} send={send} sectionsBase={sectionsBase} locale={locale} />
       <OptionsCard board={board} pending={pending} send={send} locale={locale} />
       <CountsCard board={board} locale={locale} />
+      {board.counts.dishes.length > 0 && (
+        <MoveToOrdersCard apiBase={apiBase} sectionsBase={sectionsBase} busy={pending} locale={locale} />
+      )}
       <AnswersCard board={board} pending={pending} send={send} locale={locale} />
     </div>
   );
@@ -278,6 +283,62 @@ function CountsCard({ board, locale }: { board: RsvpBoardDto; locale: Locale }) 
           </ul>
         </div>
       )}
+    </section>
+  );
+}
+
+function MoveToOrdersCard({
+  apiBase,
+  sectionsBase,
+  busy,
+  locale,
+}: {
+  apiBase: string;
+  sectionsBase: string;
+  // Another change of the board is being saved: one action at a time.
+  busy: boolean;
+  locale: Locale;
+}) {
+  const t = rsvpMessages(locale);
+  const { pending, notice, failure, move } = useRsvpOrdersMove(apiBase, locale);
+  return (
+    <section
+      aria-labelledby="rsvp-move-heading"
+      className="flex flex-col gap-3 rounded-xl border p-4 sm:p-6"
+      data-rsvp-move
+    >
+      <h2 id="rsvp-move-heading" className="text-xl font-semibold">
+        {t.moveHeading}
+      </h2>
+      <p className="text-muted-foreground text-sm">{t.moveIntro}</p>
+      <Button
+        type="button"
+        variant="outline"
+        className="self-start"
+        disabled={busy || pending}
+        onClick={() => {
+          void move();
+        }}
+      >
+        {pending ? t.moveChecking : t.moveButton}
+      </Button>
+      <div aria-live="polite">
+        {notice && (
+          <p className="text-sm" data-rsvp-move-result>
+            {notice.text}{" "}
+            {notice.moved && (
+              <a className="font-medium underline underline-offset-4" href={`${sectionsBase}/zamowienia`}>
+                {t.ordersLink}
+              </a>
+            )}
+          </p>
+        )}
+        {failure && (
+          <p role="alert" className="text-destructive text-sm">
+            {failure.message}
+          </p>
+        )}
+      </div>
     </section>
   );
 }

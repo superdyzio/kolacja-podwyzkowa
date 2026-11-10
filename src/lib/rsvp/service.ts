@@ -85,38 +85,20 @@ export async function saveRsvpByOrganizer(
   return result.status === "closed" ? { status: "not-found" } : result;
 }
 
-// The client's (and the staff's) whole view: the deadline, the options (and whether the menu still offers them), what
-// may be chosen, the counts and every guest's answer. Null for an unknown event or a template.
-export async function getRsvpBoard(db: DbClient, eventId: number, now: Date): Promise<RsvpBoardDto | null> {
-  const [event, options, guests, answers, available] = await Promise.all([
-    db
-      .from("event")
-      .select("rsvp_deadline, event_date, guest_access_enabled")
-      .eq("id", eventId)
-      .eq("is_template", false)
-      .maybeSingle(),
-    db.from("event_rsvp_option").select("menu_item(name, course)").eq("event_id", eventId),
+// Every guest of the event with their answer (two reads): what the board, its counts and the move to the orders work on.
+export async function readRsvpGuestSources(db: DbClient, eventId: number): Promise<RsvpGuestSource[]> {
+  const [guests, answers] = await Promise.all([
     db.from("guest").select("id, display_name, is_absent").eq("event_id", eventId),
     db.from("guest_rsvp").select("guest_id, answered_by, answered_at, menu_item(name, course)").eq("event_id", eventId),
-    getAvailableMenu(db, eventId),
   ]);
-  if (event.error) {
-    fail("odczytać potwierdzeń", event.error.message);
-  }
-  if (options.error) {
-    fail("odczytać dań do wyboru", options.error.message);
-  }
   if (guests.error) {
     fail("odczytać gości", guests.error.message);
   }
   if (answers.error) {
     fail("odczytać odpowiedzi gości", answers.error.message);
   }
-  if (!event.data) {
-    return null;
-  }
   const answerOf = new Map(answers.data.map((row) => [row.guest_id, row]));
-  const sources: RsvpGuestSource[] = guests.data.map((guest) => {
+  return guests.data.map((guest) => {
     const row = answerOf.get(guest.id);
     return {
       id: guest.id,
@@ -125,6 +107,31 @@ export async function getRsvpBoard(db: DbClient, eventId: number, now: Date): Pr
       answer: row ? { answeredBy: row.answered_by, answeredAt: row.answered_at, dish: dishOf(row.menu_item) } : null,
     };
   });
+}
+
+// The client's (and the staff's) whole view: the deadline, the options (and whether the menu still offers them), what
+// may be chosen, the counts and every guest's answer. Null for an unknown event or a template.
+export async function getRsvpBoard(db: DbClient, eventId: number, now: Date): Promise<RsvpBoardDto | null> {
+  const [event, options, sources, available] = await Promise.all([
+    db
+      .from("event")
+      .select("rsvp_deadline, event_date, guest_access_enabled")
+      .eq("id", eventId)
+      .eq("is_template", false)
+      .maybeSingle(),
+    db.from("event_rsvp_option").select("menu_item(name, course)").eq("event_id", eventId),
+    readRsvpGuestSources(db, eventId),
+    getAvailableMenu(db, eventId),
+  ]);
+  if (event.error) {
+    fail("odczytać potwierdzeń", event.error.message);
+  }
+  if (options.error) {
+    fail("odczytać dań do wyboru", options.error.message);
+  }
+  if (!event.data) {
+    return null;
+  }
   return rsvpBoard(
     {
       deadline: event.data.rsvp_deadline,
