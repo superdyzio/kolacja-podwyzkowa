@@ -1,4 +1,5 @@
 import type { StaffRole } from "@/lib/auth/types";
+import type { EventCardDto, SupportEventSummaryDto } from "@/types";
 
 // Rules of the platform admin's support access (admin-support-log, S-13; FR-021, US-05, US-10, NFR-012). Pure: routes,
 // pages and islands share them (no DB, no node:crypto, no astro:*).
@@ -23,6 +24,13 @@ export const SUPPORT_ROLE: StaffRole = "owner";
 // The panel path where support mode starts for a restaurant.
 export function supportStartPath(restaurantId: number): string {
   return `/panel/restauracje/${String(restaurantId)}`;
+}
+
+// The event card as support mode shows it: the links (keys) are dropped — the client link writes the event's data with
+// no session and no log, and outlives any time box.
+export function supportEventSummary(card: EventCardDto): SupportEventSummaryDto {
+  const { links: _links, ...summary } = card;
+  return summary;
 }
 
 const READ_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);

@@ -11,7 +11,8 @@ import {
 } from "@/lib/events";
 import { jsonError, jsonResponse, readJsonBody } from "@/lib/http";
 import { denied, panelEventApi } from "@/lib/panel-api";
-import type { EventCardAnswerDto } from "@/types";
+import { supportEventSummary } from "@/lib/support";
+import type { EventCardAnswerDto, SupportEventAnswerDto } from "@/types";
 
 export const prerender = false;
 
@@ -19,7 +20,9 @@ export const prerender = false;
 // GET → its card with the three link paths; PATCH { name?, date?, expectedGuests?, archived? } (at least one) → the
 // card. DELETE → the event with everything in it, OWNERS only → { deleted, restaurantId }. A waiter (their access to
 // events comes with S-21), a manager deleting, another restaurant's event, an unknown or malformed id all get the
-// same 404 as a wrong link key.
+// same 404 as a wrong link key. The platform administrator in support mode (admin-support-log, S-13) gets the GET
+// WITHOUT the links ({ event, support }: link keys never reach support mode) and never a PATCH or DELETE (the guard
+// admits reads only).
 
 async function cardAnswer(api: Awaited<ReturnType<typeof panelEventApi>>, locals: App.Locals): Promise<Response> {
   if (api instanceof Response) {
@@ -34,7 +37,16 @@ async function cardAnswer(api: Awaited<ReturnType<typeof panelEventApi>>, locals
 }
 
 export const GET: APIRoute = async ({ locals, params }) => {
-  return cardAnswer(await panelEventApi(locals, params.id, EVENT_STAFF_ROLES), locals);
+  const api = await panelEventApi(locals, params.id, EVENT_STAFF_ROLES);
+  if (api instanceof Response || !api.support) {
+    return cardAnswer(api, locals);
+  }
+  const card = await getEventCard(api.db, api.event.restaurantId, api.event.id, new Date());
+  if (!card) {
+    return denied(locals);
+  }
+  const answer: SupportEventAnswerDto = { event: supportEventSummary(card), support: api.support };
+  return jsonResponse(answer);
 };
 
 export const PATCH: APIRoute = async ({ request, locals, params }) => {

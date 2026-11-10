@@ -6,22 +6,37 @@ import { ownerInputProblem, platformMessages } from "@/lib/platform/messages";
 import { parseOwnerInput } from "@/lib/platform/rules";
 import { formatRestaurantCounters } from "@/lib/platform/summary";
 import { cn } from "@/lib/utils";
-import type { OwnerResultDto, PlatformRestaurantDto, StaffLinkDto } from "@/types";
+import type { OwnerResultDto, PlatformRestaurantDto, StaffLinkDto, SupportGrantDto } from "@/types";
 import { OwnerFields } from "./OwnerFields";
 import { OwnerResult } from "./OwnerResult";
 import { StaffLinkCard } from "./StaffLinkCard";
+import { SupportEntry } from "./SupportEntry";
 
 interface Props {
   restaurant: PlatformRestaurantDto;
+  // This login's live support session in the restaurant (admin-support-log, S-13), else null.
+  support: SupportGrantDto | null;
   pending: boolean;
   send: (request: PlatformRequest) => Promise<PlatformAnswer | null>;
+  onEnterSupport: (restaurantId: number, reason: string) => Promise<boolean>;
+  onEndSupport: (restaurantId: number) => Promise<void>;
   origin: string;
   locale: Locale;
 }
 
 // One restaurant in the platform list (platform-restaurants, S-10): status, counters, owners with their account state
-// and „Nowy link”, „Dodaj właściciela”, „Wyłącz” / „Włącz”. Counters only — never the restaurant's events or guests.
-export function PlatformRestaurantCard({ restaurant, pending, send, origin, locale }: Props) {
+// and „Nowy link”, „Dodaj właściciela”, „Wyłącz” / „Włącz”. Counters only — the restaurant's events and team open
+// only through „Wejdź jako wsparcie” (admin-support-log, S-13: read-only, with a reason, logged for the owner).
+export function PlatformRestaurantCard({
+  restaurant,
+  support,
+  pending,
+  send,
+  onEnterSupport,
+  onEndSupport,
+  origin,
+  locale,
+}: Props) {
   const t = platformMessages(locale);
   const id = useId();
   const [ownerLink, setOwnerLink] = useState<{ accountId: number; link: StaffLinkDto } | null>(null);
@@ -167,6 +182,15 @@ export function PlatformRestaurantCard({ restaurant, pending, send, origin, loca
           </div>
         )}
       </details>
+
+      <SupportEntry
+        restaurant={restaurant}
+        grant={support}
+        pending={pending}
+        onEnter={(reason) => onEnterSupport(restaurant.id, reason)}
+        onEnd={() => onEndSupport(restaurant.id)}
+        locale={locale}
+      />
 
       <div>
         <Button

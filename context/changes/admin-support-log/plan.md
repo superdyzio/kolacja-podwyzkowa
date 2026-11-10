@@ -355,20 +355,20 @@ Additive (two tables, three functions, triggers); no existing row or function ch
 
 #### Automated
 
-- [x] 1.1 Migration applies from zero and on the current local data
-- [x] 1.2 Unit and integration tests pass
-- [x] 1.3 Type check passes
-- [x] 1.4 Lint passes
+- [x] 1.1 Migration applies from zero and on the current local data — 1273eae
+- [x] 1.2 Unit and integration tests pass — 1273eae
+- [x] 1.3 Type check passes — 1273eae
+- [x] 1.4 Lint passes — 1273eae
 
 ### Phase 2: Guards, routes, pages and islands
 
 #### Automated
 
-- [ ] 2.1 Type check passes
-- [ ] 2.2 Lint passes
-- [ ] 2.3 Tests pass
-- [ ] 2.4 Build passes
-- [ ] 2.5 The existing smoke (sections 1–28) still passes
+- [x] 2.1 Type check passes
+- [x] 2.2 Lint passes
+- [x] 2.3 Tests pass
+- [x] 2.4 Build passes
+- [x] 2.5 The existing smoke (sections 1–28) still passes
 
 #### Manual
 

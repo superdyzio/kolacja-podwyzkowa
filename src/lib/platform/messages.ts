@@ -10,7 +10,7 @@ export const platformMessages = defineMessages(
     pageTitle: `Panel platformy — ${PRODUCT_NAME}`,
     heading: "Panel platformy",
     intro:
-      "Zakładaj restauracje i przekazuj ich właścicielom jednorazowe linki. Aplikacja nie wysyła e-maili: link przekazujesz sam. Danych restauracji (wydarzeń, gości) stąd nie widać.",
+      "Zakładaj restauracje i przekazuj ich właścicielom jednorazowe linki. Aplikacja nie wysyła e-maili: link przekazujesz sam. Dane restauracji (wydarzenia, zespół) otwierasz tylko przez „Wejdź jako wsparcie”: do podglądu, z powodem, a każde wejście widzi właściciel w dzienniku.",
     backToPanel: "← Wróć do panelu",
     // New restaurant
     newHeading: "Nowa restauracja",
@@ -71,7 +71,7 @@ export const platformMessages = defineMessages(
     pageTitle: `Platform panel — ${PRODUCT_NAME}`,
     heading: "Platform panel",
     intro:
-      "Create restaurants and hand their owners one-time links. The app sends no e-mail: you pass the link on yourself. A restaurant's data (events, guests) is not visible from here.",
+      "Create restaurants and hand their owners one-time links. The app sends no e-mail: you pass the link on yourself. A restaurant's data (events, team) opens only through “Enter as support”: view only, with a reason, and the owner sees every entry in a log.",
     backToPanel: "← Back to the panel",
     newHeading: "New restaurant",
     nameLabel: "Restaurant name",

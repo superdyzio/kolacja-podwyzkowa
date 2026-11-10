@@ -2,13 +2,18 @@
 import Layout from "@/layouts/Layout.astro";
 import NoAccess from "@/components/NoAccess.astro";
 import { EventCard } from "@/components/events/EventCard";
+import SupportBanner from "@/components/support/SupportBanner.astro";
+import SupportEventSummary from "@/components/support/SupportEventSummary.astro";
 import { EVENT_STAFF_ROLES, eventPanelMessages, getEventCard } from "@/lib/events";
 import { findPanelEvent } from "@/lib/panel-api";
+import { supportEventSummary } from "@/lib/support";
 
 // The event card (restaurant-events, S-11; US-06, US-09, FR-025): owners and managers of the event's restaurant see
 // what it is, copy, open and replace its client, TV and staff tablet links, edit it, archive or restore it; owners also
 // delete it. Through the central lookup: a waiter (S-21 brings their day view), another restaurant's event, a
-// disabled restaurant and an unknown or malformed id all get the same no-access page (404).
+// disabled restaurant and an unknown or malformed id all get the same no-access page (404). The platform administrator
+// in support mode (admin-support-log, S-13; logged for the owner with the event's name) gets the banner and a
+// read-only summary WITHOUT the links (keys never reach support mode).
 const locale = Astro.locals.locale;
 const t = eventPanelMessages(locale);
 const panel = await findPanelEvent(Astro.locals, Astro.params.id, EVENT_STAFF_ROLES);
@@ -27,7 +32,14 @@ if (!panel || !card) {
       >
         {t.backTo(card.restaurantName)}
       </a>
-      <EventCard client:load initial={card} role={panel.role} origin={Astro.url.origin} locale={locale} />
+      {panel.support ? (
+        <>
+          <SupportBanner support={panel.support} locale={locale} />
+          <SupportEventSummary event={supportEventSummary(card)} locale={locale} />
+        </>
+      ) : (
+        <EventCard client:load initial={card} role={panel.role} origin={Astro.url.origin} locale={locale} />
+      )}
     </main>
   </Layout>
 ) : (

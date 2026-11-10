@@ -17,6 +17,7 @@ export {
   SUPPORT_REASON_MIN,
   SUPPORT_ROLE,
   supportArea,
+  supportEventSummary,
   supportStartPath,
   type SupportArea,
   type SupportReasonProblem,

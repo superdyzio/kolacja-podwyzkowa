@@ -12,6 +12,7 @@ import {
   SUPPORT_PATH_MAX,
   SUPPORT_ROLE,
   supportArea,
+  supportEventSummary,
   supportStartPath,
 } from "./rules";
 
@@ -58,6 +59,25 @@ describe("support rules", () => {
     // 300 emoji are 600 UTF-16 units but 300 code points, like Postgres char_length().
     expect(parseSupportReason("🎉".repeat(300)).ok).toBe(true);
     expect(parseSupportReason("🎉".repeat(301))).toEqual({ ok: false, problem: "long" });
+  });
+
+  it("drops the links (keys) from the event card", () => {
+    const summary = supportEventSummary({
+      id: 9,
+      name: "Wigilia",
+      date: "2026-12-20",
+      expectedGuests: 40,
+      archived: false,
+      timing: "upcoming",
+      restaurantId: 5,
+      restaurantName: "Pod Lipą",
+      archivedAt: null,
+      guestCount: 12,
+      links: { organizer: "/o/AAAA", tv: "/tv/BBBB", restaurant: "/r/CCCC" },
+    });
+    expect(summary).not.toHaveProperty("links");
+    expect(JSON.stringify(summary)).not.toMatch(/\/(o|tv|r)\//);
+    expect(summary).toMatchObject({ id: 9, name: "Wigilia", guestCount: 12, restaurantName: "Pod Lipą" });
   });
 
   it("cuts a logged path to the column's limit by code points", () => {

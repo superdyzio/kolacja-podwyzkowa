@@ -31,6 +31,7 @@ export const supportMessages = defineMessages(
     backToPlatform: "← Panel platformy",
     // Read-only views
     teamReadOnly: "Podgląd zespołu w trybie wsparcia (bez zmian).",
+    emptyUpcoming: "Brak nadchodzących wydarzeń.",
     eventReadOnly: "Podgląd wydarzenia w trybie wsparcia (bez zmian).",
     eventLinksHidden:
       "Linki wydarzenia (dla klienta, TV i tabletu obsługi) widzi tylko personel lokalu: tryb wsparcia ich nie pokazuje.",
@@ -44,7 +45,7 @@ export const supportMessages = defineMessages(
     entryEnter: (until: string) => `Wejście w tryb wsparcia (do ${until})`,
     entryAccess: (what: string) => `Otwarte: ${what}`,
     entryExit: "Zakończenie trybu wsparcia",
-    entryReason: "Powód",
+    entryReason: (reason: string) => `Powód: „${reason}”`,
     areaLabels: {
       restaurant: "strona restauracji",
       events: "lista wydarzeń",
@@ -85,6 +86,7 @@ export const supportMessages = defineMessages(
     backToPlatform: "← Platform panel",
     // Read-only views
     teamReadOnly: "Team in support mode (view only).",
+    emptyUpcoming: "No upcoming events.",
     eventReadOnly: "Event in support mode (view only).",
     eventLinksHidden:
       "The event's links (for the client, the TV and the staff tablet) are for the restaurant's staff only: support mode does not show them.",
@@ -98,7 +100,7 @@ export const supportMessages = defineMessages(
     entryEnter: (until: string) => `Entered support mode (until ${until})`,
     entryAccess: (what: string) => `Opened: ${what}`,
     entryExit: "Left support mode",
-    entryReason: "Reason",
+    entryReason: (reason: string) => `Reason: “${reason}”`,
     areaLabels: {
       restaurant: "restaurant page",
       events: "event lists",

@@ -9,15 +9,25 @@ import {
 import { STAFF_ROLES, type StaffRole, type StaffSession } from "@/lib/auth/types";
 import { getDb } from "@/lib/db";
 import { httpMessages, jsonError, parseId } from "@/lib/http";
+import { isReadMethod, SUPPORT_ROLE } from "@/lib/support/rules";
+import { recordSupportAccess, type SupportTarget } from "@/lib/support/service";
 import type { DbClient } from "@/lib/supabase-client";
+import type { SupportAccessDto } from "@/types";
 
 // The central guard of staff API routes (staff-accounts, F-03) — the analog of organizerApi for /api/panel/…. The
 // middleware has already required a session; this re-checks it and returns the DB client. Routes that carry a
 // restaurant or event id start with panelRestaurantApi / panelEventApi: a malformed id, an unknown id, a restaurant
-// the person is not a member of and a role outside `roles` all get the SAME 404 as a wrong link key (NFR-012). No
-// bypass for the platform admin: support access to a restaurant's data comes with its access log (S-13). A restaurant
-// switched off by the platform administrator (platform-restaurants) opens to nobody: findRestaurantMembership returns
-// null for it. Platform-only routes start with panelPlatformApi.
+// the person is not a member of and a role outside `roles` all get the SAME 404 as a wrong link key (NFR-012). A
+// restaurant switched off by the platform administrator (platform-restaurants) opens to none of its staff:
+// findRestaurantMembership returns null for it. Platform-only routes start with panelPlatformApi.
+//
+// The ONE exception (admin-support-log, S-13; FR-021, NFR-012): a platform administrator without a membership who has
+// entered support mode for the restaurant („Wejdź jako wsparcie”, with a reason, 60 minutes, bound to the login
+// session) reads it as its owner would — READ-ONLY (only GET/HEAD/OPTIONS, only on routes that admit the owner role).
+// The check and the owner's log row are one database call (recordSupportAccess): no row, no data; a failed write
+// throws (500), never a pass. The result then carries `support` (the banner's data) and `role: "owner"` (the view's
+// role); pages render read-only and routes keep link keys out when `support` is set. Members are decided by their
+// membership alone (no extra query, no log row), and so is everybody else: the same null / 404 as before.
 
 const MAX_INT4 = 2_147_483_647;
 
@@ -25,6 +35,11 @@ export interface PanelApi {
   staff: StaffSession;
   db: DbClient;
 }
+
+// What a page or route opened: the restaurant (or the event) with the role it is seen with, and `support` when the
+// platform administrator reads it in support mode (null for members).
+export type PanelRestaurant = PanelApi & RestaurantMembership & { support: SupportAccessDto | null };
+export type PanelEvent = PanelApi & EventMembership & { support: SupportAccessDto | null };
 
 export function panelApi(locals: App.Locals): PanelApi | Response {
   if (!locals.staff) {
@@ -58,30 +73,56 @@ export function panelPlatformApi(locals: App.Locals): PanelApi | Response {
   return api.staff.isPlatformAdmin ? api : denied(locals);
 }
 
+// The platform administrator's support access (see the header): only for an admin, on a read, on a route that admits
+// the owner's role — checked BEFORE the database call, so a refused request never writes a log row. The call itself
+// logs the access and returns the restaurant (and the event), or null when this login has no live support mode there.
+async function supportAccess(
+  locals: App.Locals,
+  staff: StaffSession,
+  db: DbClient,
+  target: SupportTarget,
+  roles: readonly StaffRole[],
+) {
+  const request = locals.staffRequest;
+  if (!staff.isPlatformAdmin || !request || !isReadMethod(request.method) || !roles.includes(SUPPORT_ROLE)) {
+    return null;
+  }
+  return recordSupportAccess(db, staff.sessionId, target, request);
+}
+
 // The restaurant of a panel page or route, or null: no session, no database, a malformed, unknown or foreign id, a
-// restaurant switched off by the platform administrator and a role outside `roles` all give null.
+// restaurant switched off by the platform administrator and a role outside `roles` all give null — except the
+// platform administrator's logged, read-only support access (see the header).
 export async function findPanelRestaurant(
   locals: App.Locals,
   idParam: string | undefined,
   roles: readonly StaffRole[] = STAFF_ROLES,
-): Promise<(PanelApi & RestaurantMembership) | null> {
+): Promise<PanelRestaurant | null> {
   const db = getDb();
-  if (!locals.staff || !db) {
+  const staff = locals.staff;
+  if (!staff || !db) {
     return null;
   }
   const id = parseIntId(idParam);
-  const membership = id === null ? null : await findRestaurantMembership(db, locals.staff.accountId, id);
-  if (!membership || !roles.includes(membership.role)) {
+  if (id === null) {
     return null;
   }
-  return { staff: locals.staff, db, ...membership };
+  const membership = await findRestaurantMembership(db, staff.accountId, id);
+  if (membership) {
+    return roles.includes(membership.role) ? { staff, db, ...membership, support: null } : null;
+  }
+  const support = await supportAccess(locals, staff, db, { restaurantId: id }, roles);
+  if (!support) {
+    return null;
+  }
+  return { staff, db, restaurant: support.restaurant, role: SUPPORT_ROLE, support: support.support };
 }
 
 export async function panelRestaurantApi(
   locals: App.Locals,
   idParam: string | undefined,
   roles: readonly StaffRole[] = STAFF_ROLES,
-): Promise<(PanelApi & RestaurantMembership) | Response> {
+): Promise<PanelRestaurant | Response> {
   const api = panelApi(locals);
   if (api instanceof Response) {
     return api;
@@ -90,29 +131,45 @@ export async function panelRestaurantApi(
 }
 
 // The event of a panel page or route with the person's role in its restaurant, or null — decided exactly like
-// findPanelRestaurant (restaurant-events, S-11: the event card page and the event routes share it).
+// findPanelRestaurant (restaurant-events, S-11: the event card page and the event routes share it), the platform
+// administrator's support access included (the log row then names the event).
 export async function findPanelEvent(
   locals: App.Locals,
   idParam: string | undefined,
   roles: readonly StaffRole[] = STAFF_ROLES,
-): Promise<(PanelApi & EventMembership) | null> {
+): Promise<PanelEvent | null> {
   const db = getDb();
-  if (!locals.staff || !db) {
+  const staff = locals.staff;
+  if (!staff || !db) {
     return null;
   }
   const id = parseIntId(idParam);
-  const membership = id === null ? null : await findEventMembership(db, locals.staff.accountId, id);
-  if (!membership || !roles.includes(membership.role)) {
+  if (id === null) {
     return null;
   }
-  return { staff: locals.staff, db, ...membership };
+  const membership = await findEventMembership(db, staff.accountId, id);
+  if (membership) {
+    return roles.includes(membership.role) ? { staff, db, ...membership, support: null } : null;
+  }
+  const support = await supportAccess(locals, staff, db, { eventId: id }, roles);
+  if (!support?.event) {
+    return null;
+  }
+  return {
+    staff,
+    db,
+    restaurant: support.restaurant,
+    role: SUPPORT_ROLE,
+    event: support.event,
+    support: support.support,
+  };
 }
 
 export async function panelEventApi(
   locals: App.Locals,
   idParam: string | undefined,
   roles: readonly StaffRole[] = STAFF_ROLES,
-): Promise<(PanelApi & EventMembership) | Response> {
+): Promise<PanelEvent | Response> {
   const api = panelApi(locals);
   if (api instanceof Response) {
     return api;

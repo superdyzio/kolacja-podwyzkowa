@@ -1,0 +1,46 @@
+---
+import { eventPanelMessages, formatEventDate } from "@/lib/events";
+import type { Locale } from "@/lib/i18n";
+import { supportMessages } from "@/lib/support";
+import type { SupportEventSummaryDto } from "@/types";
+
+// The event card in the platform administrator's support mode (admin-support-log, S-13): what it is, read-only, and
+// WITHOUT its client, TV and staff tablet links — the client link writes the event's data with no session and no log.
+interface Props {
+  event: SupportEventSummaryDto;
+  locale: Locale;
+}
+
+const { event, locale } = Astro.props;
+const t = eventPanelMessages(locale);
+const ts = supportMessages(locale);
+---
+
+<div class="flex flex-col gap-6" data-support-event={event.id}>
+  <header class="flex flex-col gap-2">
+    <h1 class="text-3xl font-bold break-words">{event.name}</h1>
+    <p>
+      <span
+        class:list={[
+          "rounded-full border px-2 py-0.5 text-sm",
+          !event.archived && event.timing === "today" && "bg-primary text-primary-foreground",
+        ]}
+        data-event-status={event.archived ? "archived" : event.timing}
+      >
+        {event.archived ? t.archivedBadge : t.timingLabels[event.timing]}
+      </span>
+    </p>
+    <dl class="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-sm">
+      <dt class="text-muted-foreground">{t.dateField}</dt>
+      <dd>{formatEventDate(event.date, locale)}</dd>
+      <dt class="text-muted-foreground">{t.expectedField}</dt>
+      <dd>{event.expectedGuests === null ? t.expectedUnknown : String(event.expectedGuests)}</dd>
+      <dt class="text-muted-foreground">{t.guestListField}</dt>
+      <dd>{event.guestCount}</dd>
+    </dl>
+  </header>
+  <section class="flex flex-col gap-1 rounded-xl border border-dashed p-4 sm:p-6">
+    <p class="font-medium">{ts.eventReadOnly}</p>
+    <p class="text-sm text-muted-foreground">{ts.eventLinksHidden}</p>
+  </section>
+</div>

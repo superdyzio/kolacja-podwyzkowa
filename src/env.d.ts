@@ -7,5 +7,9 @@ declare namespace App {
     // Set by src/middleware.ts in the staff areas (staff-accounts): the logged-in person, else null (and everywhere
     // outside those areas).
     staff: import("@/lib/auth/types").StaffSession | null;
+    // Set by src/middleware.ts in the staff areas (admin-support-log): the request's method (upper-case) and path, so
+    // the central panel guards can admit the platform admin's support access only on reads and log what was opened.
+    // Null everywhere else.
+    staffRequest: { method: string; path: string } | null;
   }
 }

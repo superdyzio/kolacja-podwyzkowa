@@ -2,22 +2,26 @@ import { usePlatformRestaurants } from "@/components/hooks/usePlatformRestaurant
 import { Button } from "@/components/ui/button";
 import type { Locale } from "@/lib/i18n";
 import { platformMessages } from "@/lib/platform/messages";
-import type { PlatformRestaurantDto } from "@/types";
+import type { PlatformRestaurantDto, SupportGrantDto } from "@/types";
 import { NewRestaurantForm } from "./NewRestaurantForm";
 import { PlatformRestaurantCard } from "./PlatformRestaurantCard";
 
 interface Props {
   initial: PlatformRestaurantDto[];
+  // This login's live support sessions (admin-support-log, S-13).
+  initialSupport: SupportGrantDto[];
   // This request's origin: one-time links are built from it (https behind the Lambda proxy).
   origin: string;
   locale: Locale;
 }
 
 // The platform administrator's page island (platform-restaurants, S-10): „Nowa restauracja” and every restaurant
-// with its counters, owners, links and switch. Every answer replaces the whole list.
-export function PlatformRestaurantsManager({ initial, origin, locale }: Props) {
+// with its counters, owners, links and switch, and „Wejdź jako wsparcie” (admin-support-log, S-13). Every answer
+// replaces the whole list.
+export function PlatformRestaurantsManager({ initial, initialSupport, origin, locale }: Props) {
   const t = platformMessages(locale);
-  const { restaurants, pending, failure, send, dismissFailure } = usePlatformRestaurants(initial, locale);
+  const { restaurants, active, pending, failure, send, dismissFailure, enterSupport, endSupport } =
+    usePlatformRestaurants(initial, initialSupport, locale);
 
   return (
     <div className="flex flex-col gap-6">
@@ -48,8 +52,11 @@ export function PlatformRestaurantsManager({ initial, origin, locale }: Props) {
               <PlatformRestaurantCard
                 key={restaurant.id}
                 restaurant={restaurant}
+                support={active.find((entry) => entry.restaurantId === restaurant.id) ?? null}
                 pending={pending}
                 send={send}
+                onEnterSupport={enterSupport}
+                onEndSupport={endSupport}
                 origin={origin}
                 locale={locale}
               />

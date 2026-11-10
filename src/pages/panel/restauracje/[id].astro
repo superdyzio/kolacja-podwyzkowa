@@ -7,19 +7,28 @@ import { canManageEvents, eventPanelMessages, formatEventDate, listRestaurantEve
 import { findPanelRestaurant } from "@/lib/panel-api";
 import { restaurantPanelMessages } from "@/lib/restaurants";
 import { TeamManager } from "@/components/team/TeamManager";
+import SupportBanner from "@/components/support/SupportBanner.astro";
+import SupportLogSection from "@/components/support/SupportLogSection.astro";
+import SupportTeamList from "@/components/support/SupportTeamList.astro";
+import { getSupportLog, SUPPORT_LOG_ROLES, supportMessages } from "@/lib/support";
 import { canManageTeam, getTeam, teamMessages } from "@/lib/team";
 
 // The restaurant panel (platform-restaurants, S-10; restaurant-events, S-11; restaurant-team, S-12): the restaurant,
 // the person's role, its events and (owners and managers) the team. Owners and managers create an event („Nowe
 // wydarzenie” → its card), browse the tabs „Nadchodzące / Minione / Archiwum” (?lista=nadchodzace|minione|archiwum,
 // anything else = upcoming) and manage the team within their scope (island TeamManager: invitations, roles, removal,
-// one-time links); waiters get a note until their day view (S-21) and no team. Through the central lookup: a foreign,
-// unknown, malformed or disabled restaurant gets the no-access page (404), the same for every reason.
+// one-time links); waiters get a note until their day view (S-21) and no team. Owners also see the „Dziennik wejść
+// administratora” (admin-support-log, S-13). Through the central lookup: a foreign, unknown, malformed or disabled
+// restaurant gets the no-access page (404), the same for every reason — except the platform administrator in support
+// mode (logged for the owner), who sees what the owner sees, read-only: the banner instead of the role, no „Nowe
+// wydarzenie”, the team as a plain list, the log.
 const locale = Astro.locals.locale;
 const t = restaurantPanelMessages(locale);
 const te = eventPanelMessages(locale);
 const roles = authMessages(locale).roleLabels;
 const panel = await findPanelRestaurant(Astro.locals, Astro.params.id);
+const support = panel?.support ?? null;
+const ts = supportMessages(locale);
 const tt = teamMessages(locale);
 const team =
   panel && canManageTeam(panel.role)
@@ -36,8 +45,10 @@ const tabs = lists
       { key: "archived", slug: "archiwum", label: te.tabArchived(lists.archived.length), empty: te.emptyArchived },
     ] as const)
   : [];
+const log = panel && SUPPORT_LOG_ROLES.includes(panel.role) ? await getSupportLog(panel.db, panel.restaurant.id) : null;
 const shown = lists ? lists[tab] : [];
-const emptyText = tabs.find((candidate) => candidate.key === tab)?.empty ?? "";
+const emptyText =
+  support && tab === "upcoming" ? ts.emptyUpcoming : (tabs.find((candidate) => candidate.key === tab)?.empty ?? "");
 if (!panel) {
   Astro.response.status = 404;
 }
@@ -47,16 +58,23 @@ if (!panel) {
   <Layout title={t.pageTitle(panel.restaurant.name)}>
     <main class="mx-auto flex max-w-3xl flex-col gap-6 p-4 sm:p-8">
       <header class="flex flex-col gap-2">
-        <a href="/panel" class="self-start py-2 text-sm text-muted-foreground underline-offset-4 hover:underline">
-          {t.backToPanel}
+        <a
+          href={support ? "/panel/platforma" : "/panel"}
+          class="self-start py-2 text-sm text-muted-foreground underline-offset-4 hover:underline"
+        >
+          {support ? ts.backToPlatform : t.backToPanel}
         </a>
         <h1 class="text-3xl font-bold">{panel.restaurant.name}</h1>
-        <p>
-          {t.yourRole}: <span class="rounded-full border px-2 py-0.5 text-sm">{roles[panel.role]}</span>
-        </p>
+        {!support && (
+          <p>
+            {t.yourRole}: <span class="rounded-full border px-2 py-0.5 text-sm">{roles[panel.role]}</span>
+          </p>
+        )}
       </header>
 
-      {manages && <NewEventForm client:load restaurantId={panel.restaurant.id} locale={locale} />}
+      {support && <SupportBanner support={support} locale={locale} />}
+
+      {manages && !support && <NewEventForm client:load restaurantId={panel.restaurant.id} locale={locale} />}
 
       <section aria-labelledby="events-heading" class="flex flex-col gap-3 rounded-xl border p-4 sm:p-6">
         <h2 id="events-heading" class="text-xl font-semibold">
@@ -123,15 +141,21 @@ if (!panel) {
           <h2 id="team-heading" class="text-xl font-semibold">
             {tt.heading}
           </h2>
-          <TeamManager
-            client:load
-            restaurantId={panel.restaurant.id}
-            initial={team}
-            origin={Astro.url.origin}
-            locale={locale}
-          />
+          {support ? (
+            <SupportTeamList team={team} locale={locale} />
+          ) : (
+            <TeamManager
+              client:load
+              restaurantId={panel.restaurant.id}
+              initial={team}
+              origin={Astro.url.origin}
+              locale={locale}
+            />
+          )}
         </section>
       )}
+
+      {log && <SupportLogSection log={log} locale={locale} />}
     </main>
   </Layout>
 ) : (

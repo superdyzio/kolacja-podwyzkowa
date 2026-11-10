@@ -29,7 +29,8 @@ import { LOCALE_PARAM, isLocale, localeCookieName, resolveLocale } from "@/lib/i
 // Staff areas (staff-accounts, F-03; src/lib/auth/paths.ts): every mutation under /api/panel/ and /api/auth/ must carry
 // a same-origin Origin header (else 403, before any DB read); the session cookie sets `locals.staff`; /panel/ without a
 // session → 303 to the login page, /api/panel/ without one → 401 with one fixed body (whatever the cookie was). The
-// login page with a session → 303 to the panel.
+// login page with a session → 303 to the panel. `locals.staffRequest` (method, path) lets the central panel guards
+// admit the platform admin's support access only on reads and log what was opened (admin-support-log, S-13).
 
 const PRIVATE_HEADERS: Record<string, string> = {
   "Cache-Control": "no-store",
@@ -60,6 +61,8 @@ async function guardStaffArea(context: APIContext, next: MiddlewareNext, area: A
     return withHeaders(Response.json({ error: t.forbiddenOrigin }, { status: 403 }), AUTH_AREA_HEADERS);
   }
 
+  locals.staffRequest = { method: request.method.toUpperCase(), path: url.pathname };
+
   const cookieHeader = request.headers.get("cookie");
   const token = readSessionToken(cookieHeader);
   const db = getDb();
@@ -89,6 +92,7 @@ async function guardStaffArea(context: APIContext, next: MiddlewareNext, area: A
 export const onRequest = defineMiddleware(async (context, next) => {
   context.locals.access = null;
   context.locals.staff = null;
+  context.locals.staffRequest = null;
 
   const { pathname } = context.url;
   const cookieName = localeCookieName(pathname);
