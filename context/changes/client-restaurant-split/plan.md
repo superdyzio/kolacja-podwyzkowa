@@ -389,8 +389,8 @@ Additive column, default false: all existing events stay client-led; the old cod
 
 #### Automated
 
-- [x] 3.1 Tests, lint, types, build
-- [x] 3.2 Smoke green
+- [x] 3.1 Tests, lint, types, build — 656ad8c
+- [x] 3.2 Smoke green — 656ad8c
 
 #### Manual
 
@@ -400,7 +400,7 @@ Additive column, default false: all existing events stay client-led; the old cod
 
 #### Automated
 
-- [ ] 4.1 Tests, lint, types, build, smoke
+- [x] 4.1 Tests, lint, types, build, smoke
 
 #### Manual
 

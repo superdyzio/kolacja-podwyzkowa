@@ -1,4 +1,5 @@
 import { defineMessages } from "@/lib/i18n/locale";
+import { pluralEn, pluralPl } from "@/lib/i18n/plural";
 
 // Texts of the restaurant's page (restaurant-orders), both languages (i18n). The restaurant starts in English.
 export const restaurantMessages = defineMessages(
@@ -117,7 +118,7 @@ export const orderMessages = defineMessages(
     backToPanel: "← Panel organizatora",
     heading: "Zamówienia i restauracja",
     intro:
-      "Co kto zamówił, za ile i co już wydano. Obsługa lokalu widzi na tablecie listę do przygotowania i gdzie co podać, bez cen.",
+      "Co kto zamówił, za ile (ceny ustala lokal) i co już wydano. Obsługa lokalu widzi na tablecie listę do przygotowania i gdzie co podać, bez cen.",
     // OrderManager.
     total: "Razem",
     close: "Zamknij",
@@ -146,7 +147,6 @@ export const orderMessages = defineMessages(
     editFormLabel: (name: string) => `Zmień pozycję: ${name}`,
     newFormLabel: "Nowa pozycja zamówienia",
     unitPrice: "Cena za sztukę",
-    pricePlaceholder: "np. 49,90",
     forWhom: "Dla kogo",
     unassignedOption: "Nieprzypisane",
     guestGroup: "Osoba (podanie na jej miejsce)",
@@ -190,7 +190,7 @@ export const orderMessages = defineMessages(
     backToPanel: "← Organizer panel",
     heading: "Orders and restaurant",
     intro:
-      "Who ordered what, for how much and what has been served. The venue's staff see on their tablet what to prepare and where to serve it, without prices.",
+      "Who ordered what, for how much (the venue sets the prices) and what has been served. The venue's staff see on their tablet what to prepare and where to serve it, without prices.",
     total: "Total",
     close: "Close",
     addHeading: "Add a line",
@@ -217,7 +217,6 @@ export const orderMessages = defineMessages(
     editFormLabel: (name: string) => `Edit line: ${name}`,
     newFormLabel: "New order line",
     unitPrice: "Price per item",
-    pricePlaceholder: "e.g. 49,90",
     forWhom: "For whom",
     unassignedOption: "Unassigned",
     guestGroup: "Person (served at their seat)",
@@ -311,11 +310,10 @@ export const drinkMessages = defineMessages(
     // DrinkPanel.
     heading: "Napoje do rachunku",
     intro:
-      "Tylko dla Ciebie — do sprawdzenia rachunku przy rozliczeniu z restauracją. Goście ani restauracja ich nie widzą. Wpisz nazwę, cenę za sztukę i ilość; suma wchodzi do „Rachunek razem”.",
+      "Tylko dla Ciebie — do sprawdzenia rachunku przy rozliczeniu z restauracją. Goście ani obsługa ich nie widzą. Wpisz nazwę i ilość; cenę ustala lokal, a suma wchodzi do „Rachunek razem”.",
     name: "Napój",
     namePlaceholder: "np. Piwo 0,5 l",
     unitPrice: "Cena za sztukę",
-    pricePlaceholder: "np. 14",
     quantity: "Ilość",
     newFormLabel: "Nowy napój",
     editFormLabel: (name: string) => `Zmień napój: ${name}`,
@@ -340,11 +338,10 @@ export const drinkMessages = defineMessages(
     billParts: (dishes: string, drinks: string) => `Dishes: ${dishes} · Drinks: ${drinks}`,
     heading: "Drinks for the bill",
     intro:
-      "Only for you — to check the bill when settling up with the restaurant. Guests and the restaurant never see them. Enter the name, the price per item and the quantity; the sum goes into “Bill total”.",
+      "Only for you — to check the bill when settling up with the restaurant. Guests and the staff never see them. Enter the name and the quantity; the venue sets the price, and the sum goes into “Bill total”.",
     name: "Drink",
     namePlaceholder: "e.g. Beer 0.5 l",
     unitPrice: "Price per item",
-    pricePlaceholder: "e.g. 14",
     quantity: "Quantity",
     newFormLabel: "New drink",
     editFormLabel: (name: string) => `Edit drink: ${name}`,
@@ -359,5 +356,48 @@ export const drinkMessages = defineMessages(
     empty: "No drinks yet.",
     listLabel: "Drinks on the bill",
     total: "Drinks total",
+  },
+);
+
+// Prices (client-restaurant-split, FR-027): the client's forms show the venue's price read-only; staff set prices in
+// „Cennik wydarzenia” on the panel's orders page (PriceListEditor) and PUT /api/panel/events/<id>/prices.
+export const priceMessages = defineMessages(
+  {
+    fromList: (price: string) => `${price} — z cennika lokalu`,
+    byVenue: "Cenę ustali lokal (do tego czasu 0,00 zł).",
+    readOnlyHint: "Cenę ustala lokal.",
+    notFound: "Ani zamówienie, ani napoje nie mają pozycji o tej nazwie.",
+    heading: "Cennik wydarzenia",
+    intro:
+      "Ceny dań i napojów tego wydarzenia. Klient widzi je w zamówieniu, ale ich nie zmienia; nowa pozycja dostaje cenę swojej nazwy (nowa nazwa: 0,00 zł do czasu ustalenia ceny tutaj). Zapis zmienia cenę wszystkich pozycji o tej nazwie.",
+    dishes: "Dania",
+    drinks: "Napoje",
+    empty: "Nie ma jeszcze pozycji w zamówieniu ani napojów.",
+    lines: (n: number) => `${String(n)} ${pluralPl(n, "pozycja", "pozycje", "pozycji")}`,
+    mixed: "różne ceny — zapis ustawi jedną",
+    unset: "cena do ustalenia",
+    priceLabel: (name: string) => `Cena za sztukę: ${name}`,
+    save: "Zapisz",
+    saving: "Zapisuję…",
+    saved: (name: string, price: string) => `Zapisano: ${name} — ${price}.`,
+  },
+  {
+    fromList: (price: string) => `${price} — from the venue's prices`,
+    byVenue: "The venue sets the price (until then 0,00 zł).",
+    readOnlyHint: "The venue sets the price.",
+    notFound: "Neither the order nor the drinks have a line with this name.",
+    heading: "Event prices",
+    intro:
+      "The prices of this event's dishes and drinks. The client sees them in the order but cannot change them; a new line takes the price of its name (a new name: 0,00 zł until its price is set here). Saving changes the price of every line with that name.",
+    dishes: "Dishes",
+    drinks: "Drinks",
+    empty: "No order lines or drinks yet.",
+    lines: (n: number) => `${String(n)} ${pluralEn(n, "line", "lines")}`,
+    mixed: "different prices — saving sets one",
+    unset: "price to be set",
+    priceLabel: (name: string) => `Price per item: ${name}`,
+    save: "Save",
+    saving: "Saving…",
+    saved: (name: string, price: string) => `Saved: ${name} — ${price}.`,
   },
 );

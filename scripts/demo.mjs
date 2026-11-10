@@ -491,7 +491,9 @@ for (const [name, amount, place] of GUESSES) {
 
 // --- 6. Food order -----------------------------------------------------------------------------------------------
 
-let orderBoard;
+// client-restaurant-split (FR-027): the client adds lines without prices; the owner sets each dish's price in
+// „Cennik wydarzenia” (PUT /api/panel/events/<id>/prices), which prices every line of that name.
+const priced = new Set();
 for (const [name, price, quantity, note, target] of ORDERS) {
   const assignment =
     target === null
@@ -499,13 +501,22 @@ for (const [name, price, quantity, note, target] of ORDERS) {
       : typeof target === "string"
         ? { guestId: idOf(target) }
         : { tableId: tableByName.get(target.table).id };
-  orderBoard = await step(
+  await step(
     `zamówienie ${name}`,
     `${api}/orders`,
-    { method: "POST", json: { name, price, quantity, note, assignment } },
+    { method: "POST", json: { name, quantity, note, assignment } },
     201,
   );
+  if (!priced.has(name.toLowerCase())) {
+    priced.add(name.toLowerCase());
+    await step(`cena ${name}`, `/api/panel/events/${String(event.id)}/prices`, {
+      method: "PUT",
+      json: { kind: "dish", name, price },
+      cookie: ownerCookie,
+    });
+  }
 }
+let orderBoard = await step("zamówienie z cenami", `${api}/orders`);
 const firstLine = orderBoard.items[0];
 orderBoard = await step(`wydane: ${firstLine.name}`, `${api}/orders/${firstLine.id}`, {
   method: "PATCH",

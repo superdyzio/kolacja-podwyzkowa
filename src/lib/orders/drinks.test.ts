@@ -53,24 +53,20 @@ describe("drink rules (bill-drinks)", () => {
   });
 
   it("turns request bodies into inputs, with the form's messages", () => {
-    expect(toDrinkInput({ name: " Piwo ", price: "14,50 zł", quantity: 6 })).toEqual({
+    // No price in the body since client-restaurant-split: the route adds the venue's price of the name.
+    expect(toDrinkInput({ name: " Piwo ", quantity: 6 })).toEqual({
       ok: true,
-      value: { name: "Piwo", quantity: 6, unitPriceGrosze: 1_450 },
+      value: { name: "Piwo", quantity: 6 },
     });
-    expect(toDrinkInput({ name: "Piwo", price: "abc", quantity: 1 })).toEqual({
-      ok: false,
-      message: "Wpisz kwotę w złotych, np. 1500 albo 1499,99.",
-    });
-    expect(toDrinkInput({ name: "Piwo", price: "14", quantity: 1000 }, "en")).toEqual({
+    expect(toDrinkInput({ name: "Piwo", quantity: 1000 }, "en")).toEqual({
       ok: false,
       message: "The quantity is a number from 1 to 999.",
     });
-    expect(toDrinkInput({ name: "", price: "14", quantity: 1 })).toEqual({
+    expect(toDrinkInput({ name: "", quantity: 1 })).toEqual({
       ok: false,
       message: "Wpisz nazwę napoju.",
     });
     expect(toDrinkPatch({ quantity: 3 })).toEqual({ ok: true, value: { quantity: 3 } });
-    expect(toDrinkPatch({ price: "0" })).toEqual({ ok: true, value: { unitPriceGrosze: 0 } });
   });
 
   it("sums up the dishes under the bill without repeating their amount", () => {

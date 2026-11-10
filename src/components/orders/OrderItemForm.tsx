@@ -1,9 +1,9 @@
 import { useId, useState, type SubmitEvent } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { formatAmountInput } from "@/lib/guesses/amount";
+import { formatAmount } from "@/lib/guesses/amount";
 import type { Locale } from "@/lib/i18n";
-import { orderMessages } from "@/lib/orders/messages";
+import { orderMessages, priceMessages } from "@/lib/orders/messages";
 import {
   dishKey,
   findDish,
@@ -12,19 +12,18 @@ import {
   MIN_QUANTITY,
   parseDishName,
   parseNote,
-  parseUnitPrice,
   quantityMessage,
   type DishSuggestion,
 } from "@/lib/orders/rules";
 import { cn } from "@/lib/utils";
 import type { OrderGuestOptionDto, OrderItemDto, OrderTableOptionDto } from "@/types";
 
-// The body the order API takes (restaurant-orders): texts as typed, the price as typed; the server checks again.
+// The body the order API takes (restaurant-orders): texts as typed; the server checks again. No price since
+// client-restaurant-split (FR-027): a line takes the venue's price of its name.
 export interface OrderItemFormValues {
   name: string;
   note: string;
   quantity: number;
-  price: string;
   assignment: { guestId: number } | { tableId: number } | null;
 }
 
@@ -76,9 +75,10 @@ function tableLabel(table: OrderTableOptionDto, locale: Locale): string {
   return `${table.name} (${table.room})${table.published ? "" : orderMessages(locale).tableUnpublished}`;
 }
 
-// One order line in a form: the dish (suggesting the dishes already on the order, the price of the newest one filled
-// in while the price field is untouched), price, quantity, note and who it is for. Checked here before sending, so
-// a typo never costs a request. Keeps its own draft, so a board refresh never overwrites what is being typed.
+// One order line in a form: the dish (suggesting the dishes already on the order), quantity, note and who it is for,
+// with the price read-only — the venue's price of that dish (the newest line's), or „Cenę ustali lokal” for a new dish
+// (client-restaurant-split, FR-027). Checked here before sending, so a typo never costs a request. Keeps its own
+// draft, so a board refresh never overwrites what is being typed.
 export function OrderItemForm({
   item,
   guests,
@@ -91,32 +91,25 @@ export function OrderItemForm({
   onCancel,
 }: Props) {
   const t = orderMessages(locale);
+  const prices = priceMessages(locale);
   const formId = useId();
   const [name, setName] = useState(item?.name ?? "");
-  const [price, setPrice] = useState(item ? formatAmountInput(item.unitPriceGrosze) : "");
-  const [priceTouched, setPriceTouched] = useState(item !== null);
   const [quantity, setQuantity] = useState(String(item?.quantity ?? 1));
   const [note, setNote] = useState(item?.note ?? "");
   const [assignment, setAssignment] = useState(assignmentValue(item));
   const [problem, setProblem] = useState<string | null>(null);
 
-  function changeName(value: string) {
-    setName(value);
-    // While the price was not typed, it follows the dish: a known dish fills it in, anything else empties it (so
-    // typing on past „Pierogi” to „Pierogi z mięsem” never keeps the pierogi's price).
-    if (!priceTouched) {
-      const dish = findDish(dishes, value);
-      setPrice(dish ? formatAmountInput(dish.unitPriceGrosze) : "");
-    }
-  }
+  // What the server will charge: the line's own price while its dish keeps its name, else the dish's price.
+  const ownPrice = item !== null && dishKey(name) === dishKey(item.name) ? item.unitPriceGrosze : null;
+  const knownPrice = ownPrice ?? findDish(dishes, name)?.unitPriceGrosze ?? null;
+  const priceText = knownPrice === null ? prices.byVenue : prices.fromList(formatAmount(knownPrice));
 
   async function submit(event: SubmitEvent<HTMLFormElement>) {
     event.preventDefault();
     const parsedName = parseDishName(name, locale);
-    const parsedPrice = parseUnitPrice(price, locale);
     const parsedNote = parseNote(note, locale);
     const parsedQuantity = Number(quantity);
-    for (const result of [parsedName, parsedPrice, parsedNote]) {
+    for (const result of [parsedName, parsedNote]) {
       if (!result.ok) {
         setProblem(result.message);
         return;
@@ -134,14 +127,11 @@ export function OrderItemForm({
       name: known?.name ?? name,
       note,
       quantity: parsedQuantity,
-      price,
       assignment: toAssignment(assignment),
     });
     if (saved && item === null) {
       // Ready for the next line for the same person or table.
       setName("");
-      setPrice("");
-      setPriceTouched(false);
       setQuantity("1");
       setNote("");
     }
@@ -164,7 +154,7 @@ export function OrderItemForm({
           autoComplete="off"
           value={name}
           onChange={(event) => {
-            changeName(event.target.value);
+            setName(event.target.value);
           }}
           className="h-10"
         />
@@ -175,29 +165,10 @@ export function OrderItemForm({
         </datalist>
       </div>
       <div className="flex flex-col gap-1 sm:col-span-2">
-        <label htmlFor={`${formId}-price`} className="text-sm font-medium">
-          {t.unitPrice}
-        </label>
-        <div className="relative">
-          <Input
-            id={`${formId}-price`}
-            inputMode="decimal"
-            autoComplete="off"
-            placeholder={t.pricePlaceholder}
-            value={price}
-            onChange={(event) => {
-              setPrice(event.target.value);
-              setPriceTouched(true);
-            }}
-            className="h-10 pr-9"
-          />
-          <span
-            aria-hidden="true"
-            className="text-muted-foreground pointer-events-none absolute inset-y-0 right-3 flex items-center text-sm"
-          >
-            zł
-          </span>
-        </div>
+        <span className="text-sm font-medium">{t.unitPrice}</span>
+        <p aria-live="polite" className="flex min-h-10 items-center text-sm" data-price>
+          {priceText}
+        </p>
       </div>
       <div className="flex flex-col gap-1">
         <label htmlFor={`${formId}-quantity`} className="text-sm font-medium">

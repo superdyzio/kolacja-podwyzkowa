@@ -7,6 +7,7 @@ import { GuestManager } from "@/components/guests/GuestManager";
 import LeadBanner from "@/components/lead/LeadBanner.astro";
 import ReadOnlyFrame from "@/components/lead/ReadOnlyFrame.astro";
 import { OrderManager } from "@/components/orders/OrderManager";
+import { PriceListEditor } from "@/components/orders/PriceListEditor";
 import { QuestionManager } from "@/components/questions/QuestionManager";
 import { SeatingEditor } from "@/components/seating/SeatingEditor";
 import SupportBanner from "@/components/support/SupportBanner.astro";
@@ -20,6 +21,7 @@ import {
   isClientSection,
   KEY_SECTIONS,
   panelClientApiBase,
+  panelEventApiBase,
   panelEventPath,
   previewMode,
 } from "@/lib/client-routes/sections";
@@ -27,7 +29,7 @@ import { EVENT_STAFF_ROLES } from "@/lib/events";
 import { getGuestLinks } from "@/lib/guest-links";
 import { getGuessBoard } from "@/lib/guesses";
 import { getGuestList } from "@/lib/guests";
-import { getOrderBoard } from "@/lib/orders";
+import { getOrderBoard, priceList } from "@/lib/orders";
 import { findPanelEvent } from "@/lib/panel-api";
 import { getQuestionList } from "@/lib/questions";
 import { getNeighbourHistory, getSeatingBoard, getSeatOccupancy } from "@/lib/seating";
@@ -202,6 +204,17 @@ const cardsPath = access && !support ? `${organizerPath(access.event.organizerKe
             <OrderManager apiBase={apiBase} initial={data.board} locale={locale} />
           ))}
       </ReadOnlyFrame>
+      {
+        // „Cennik wydarzenia” (FR-027): prices are always the venue's, whoever leads; members only (not support mode).
+        data.section === "zamowienia" && hydrate && (
+          <PriceListEditor
+            client:load
+            apiBase={panelEventApiBase(eventId)}
+            initial={priceList(data.board.items, data.board.drinks)}
+            locale={locale}
+          />
+        )
+      }
     </main>
   </Layout>
 ) : (

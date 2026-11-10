@@ -717,6 +717,23 @@ export interface DrinkTotalsDto {
   totalGrosze: number;
 }
 
+// client-restaurant-split (FR-027): the venue's prices of an event — one row per dish or drink name (any letter
+// case), with the price of its newest line; `mixed` when the lines of that name have different prices (data from
+// before the split). GET|PUT /api/panel/events/<id>/prices.
+export type PriceKind = "dish" | "drink";
+
+export interface PriceListRowDto {
+  kind: PriceKind;
+  name: string;
+  priceGrosze: number;
+  mixed: boolean;
+  lines: number;
+}
+
+export interface PriceListDto {
+  rows: PriceListRowDto[];
+}
+
 // GET /api/o/<key>/orders and every mutation's answer.
 export interface OrderBoardDto {
   items: OrderItemDto[];

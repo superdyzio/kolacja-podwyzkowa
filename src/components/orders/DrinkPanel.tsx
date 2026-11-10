@@ -2,7 +2,7 @@ import { useId, useMemo, useState, type SubmitEvent } from "react";
 import type { OrderRequest } from "@/components/hooks/useOrderBoard";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { formatAmount, formatAmountInput } from "@/lib/guesses/amount";
+import { formatAmount } from "@/lib/guesses/amount";
 import type { Locale } from "@/lib/i18n";
 import {
   drinkQuantityMessage,
@@ -11,14 +11,14 @@ import {
   MIN_DRINK_QUANTITY,
   parseDrinkName,
 } from "@/lib/orders/drinks";
-import { drinkMessages } from "@/lib/orders/messages";
-import { dishKey, dishSuggestions, findDish, parseUnitPrice, type DishSuggestion } from "@/lib/orders/rules";
+import { drinkMessages, priceMessages } from "@/lib/orders/messages";
+import { dishKey, dishSuggestions, findDish, type DishSuggestion } from "@/lib/orders/rules";
 import type { DrinkItemDto, DrinkTotalsDto } from "@/types";
 
-// The body the drinks API takes (bill-drinks): the name and the price as typed; the server checks again.
+// The body the drinks API takes (bill-drinks): the name as typed and the quantity; the server checks again. No price
+// since client-restaurant-split (FR-027): a drink takes the venue's price of its name.
 interface DrinkFormValues {
   name: string;
-  price: string;
   quantity: number;
 }
 
@@ -33,36 +33,29 @@ interface FormProps {
   onCancel?: () => void;
 }
 
-// One drink line in a form: name (suggesting the drinks already entered, the newest price filled in while the price
-// field is untouched), price per item and quantity. Checked here before sending; keeps its own draft, so a board
-// refresh never overwrites what is being typed.
+// One drink line in a form: name (suggesting the drinks already entered) and quantity, with the venue's price per
+// item read-only (client-restaurant-split). Checked here before sending; keeps its own draft, so a board refresh never
+// overwrites what is being typed.
 function DrinkForm({ drink, suggestions, pending, locale, onSubmit, onCancel }: FormProps) {
   const t = drinkMessages(locale);
   const formId = useId();
+  const prices = priceMessages(locale);
   const [name, setName] = useState(drink?.name ?? "");
-  const [price, setPrice] = useState(drink ? formatAmountInput(drink.unitPriceGrosze) : "");
-  const [priceTouched, setPriceTouched] = useState(drink !== null);
   const [quantity, setQuantity] = useState(String(drink?.quantity ?? 1));
   const [problem, setProblem] = useState<string | null>(null);
 
-  function changeName(value: string) {
-    setName(value);
-    if (!priceTouched) {
-      const known = findDish(suggestions, value);
-      setPrice(known ? formatAmountInput(known.unitPriceGrosze) : "");
-    }
-  }
+  // What the server will charge: the line's own price while it keeps its name, else the drink's price.
+  const ownPrice = drink !== null && dishKey(name) === dishKey(drink.name) ? drink.unitPriceGrosze : null;
+  const knownPrice = ownPrice ?? findDish(suggestions, name)?.unitPriceGrosze ?? null;
+  const priceText = knownPrice === null ? prices.byVenue : prices.fromList(formatAmount(knownPrice));
 
   async function submit(event: SubmitEvent<HTMLFormElement>) {
     event.preventDefault();
     const parsedName = parseDrinkName(name, locale);
-    const parsedPrice = parseUnitPrice(price, locale);
     const parsedQuantity = Number(quantity);
-    for (const result of [parsedName, parsedPrice]) {
-      if (!result.ok) {
-        setProblem(result.message);
-        return;
-      }
+    if (!parsedName.ok) {
+      setProblem(parsedName.message);
+      return;
     }
     if (!isValidDrinkQuantity(parsedQuantity)) {
       setProblem(drinkQuantityMessage(locale));
@@ -71,11 +64,9 @@ function DrinkForm({ drink, suggestions, pending, locale, onSubmit, onCancel }: 
     setProblem(null);
     // A drink already on the list keeps its spelling — except when an edit only changes its own spelling.
     const known = drink !== null && dishKey(name) === dishKey(drink.name) ? null : findDish(suggestions, name);
-    const saved = await onSubmit({ name: known?.name ?? name, price, quantity: parsedQuantity });
+    const saved = await onSubmit({ name: known?.name ?? name, quantity: parsedQuantity });
     if (saved && drink === null) {
       setName("");
-      setPrice("");
-      setPriceTouched(false);
       setQuantity("1");
     }
   }
@@ -98,7 +89,7 @@ function DrinkForm({ drink, suggestions, pending, locale, onSubmit, onCancel }: 
           placeholder={t.namePlaceholder}
           value={name}
           onChange={(event) => {
-            changeName(event.target.value);
+            setName(event.target.value);
           }}
           className="h-10"
         />
@@ -109,29 +100,10 @@ function DrinkForm({ drink, suggestions, pending, locale, onSubmit, onCancel }: 
         </datalist>
       </div>
       <div className="flex flex-col gap-1 sm:col-span-2">
-        <label htmlFor={`${formId}-price`} className="text-sm font-medium">
-          {t.unitPrice}
-        </label>
-        <div className="relative">
-          <Input
-            id={`${formId}-price`}
-            inputMode="decimal"
-            autoComplete="off"
-            placeholder={t.pricePlaceholder}
-            value={price}
-            onChange={(event) => {
-              setPrice(event.target.value);
-              setPriceTouched(true);
-            }}
-            className="h-10 pr-9"
-          />
-          <span
-            aria-hidden="true"
-            className="text-muted-foreground pointer-events-none absolute inset-y-0 right-3 flex items-center text-sm"
-          >
-            zł
-          </span>
-        </div>
+        <span className="text-sm font-medium">{t.unitPrice}</span>
+        <p aria-live="polite" className="flex min-h-10 items-center text-sm" data-price>
+          {priceText}
+        </p>
       </div>
       <div className="flex flex-col gap-1">
         <label htmlFor={`${formId}-quantity`} className="text-sm font-medium">

@@ -1,6 +1,8 @@
 import { z } from "astro/zod";
 
 // Request bodies of the organizer order API (restaurant-orders). Strict: any extra key is 400 „Nieprawidłowe dane.”.
+// client-restaurant-split (FR-027): no body carries a price any more — a line takes the price of its name in the event
+// (prices.ts), and the venue sets prices with SetPriceBody in the panel.
 // Texts are checked by the rules (rules.ts) afterwards, so their messages (in the request's language) reach the form; the caps here only
 // keep absurd bodies out.
 
@@ -13,7 +15,6 @@ export const AddOrderItemBody = z.strictObject({
   name: z.string().max(400),
   note: z.string().max(600).nullable().optional(),
   quantity: z.number(),
-  price: z.string().max(40),
   assignment: OrderAssignment.optional(),
 });
 
@@ -22,7 +23,6 @@ export const UpdateOrderItemBody = z
     name: z.string().max(400).optional(),
     note: z.string().max(600).nullable().optional(),
     quantity: z.number().optional(),
-    price: z.string().max(40).optional(),
     assignment: OrderAssignment.optional(),
     delivered: z.boolean().optional(),
   })
@@ -30,17 +30,22 @@ export const UpdateOrderItemBody = z
 
 export type OrderAssignmentInput = z.infer<typeof OrderAssignment>;
 
-// bill-drinks: a drink line of the bill (organizer only): name, price as typed, quantity.
+// bill-drinks: a drink line of the bill (organizer only): name and quantity.
 export const AddDrinkBody = z.strictObject({
   name: z.string().max(400),
   quantity: z.number(),
-  price: z.string().max(40),
 });
 
 export const UpdateDrinkBody = z
   .strictObject({
     name: z.string().max(400).optional(),
     quantity: z.number().optional(),
-    price: z.string().max(40).optional(),
   })
   .refine((body) => Object.keys(body).length > 0);
+
+// PUT /api/panel/events/<id>/prices: the venue's price of every line of one dish or drink name, as typed.
+export const SetPriceBody = z.strictObject({
+  kind: z.enum(["dish", "drink"]),
+  name: z.string().max(400),
+  price: z.string().max(40),
+});

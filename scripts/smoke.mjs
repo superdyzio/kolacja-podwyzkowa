@@ -3092,17 +3092,38 @@ check(
 );
 
 const addLine = (json) => request(ordersApi, { method: "POST", json });
-const schabowy = await addLine({
+// client-restaurant-split (FR-027): the client never sends a price — a new name costs 0 until the venue sets it in
+// „Cennik wydarzenia” (PUT /api/panel/events/<id>/prices, the ops owner here). addPricedLine adds the line on the client
+// link, sets its name's price in the panel and answers the client's fresh board with the add's status.
+const setPrice = (name, price, kind = "dish") =>
+  request(`${opsPanel}/prices`, asOps({ method: "PUT", json: { kind, name, price } }));
+const addPricedLine = async ({ price, ...json }) => {
+  const added = await addLine(json);
+  if (added.status !== 201) return added;
+  const priced = await setPrice(json.name, price);
+  if (priced.status !== 200) return priced;
+  return { ...(await request(ordersApi)), status: added.status };
+};
+const unpricedSchabowy = await addLine({ name: "Schabowy Smoke", quantity: 1 });
+const unpricedId = unpricedSchabowy.data?.items?.find((item) => item.name === "Schabowy Smoke")?.id;
+check(
+  "orders: a dish the venue has not priced yet costs 0",
+  unpricedSchabowy.status === 201 &&
+    unpricedSchabowy.data.items.find((item) => item.id === unpricedId)?.unitPriceGrosze === 0,
+  unpricedSchabowy.body.slice(0, 200),
+);
+await request(`${ordersApi}/${String(unpricedId)}`, { method: "DELETE" });
+const schabowy = await addPricedLine({
   name: "  Schabowy   Smoke ",
   price: "49,90 zł",
   quantity: 1,
   note: "bez cebuli",
   assignment: { guestId: seatedGuest?.id },
 });
-await addLine({ name: "Żurek Smoke", price: "24", quantity: 2, assignment: { guestId: seatedGuest?.id } });
-await addLine({ name: "Woda Smoke", price: "18", quantity: 2, assignment: { tableId: publishedTable?.id } });
-await addLine({ name: "Pierogi Smoke", price: "36", quantity: 1, assignment: { guestId: unseatedGuest?.id } });
-const tortLine = await addLine({ name: "Tort Smoke", price: "350", quantity: 1, assignment: null });
+await addPricedLine({ name: "Żurek Smoke", price: "24", quantity: 2, assignment: { guestId: seatedGuest?.id } });
+await addPricedLine({ name: "Woda Smoke", price: "18", quantity: 2, assignment: { tableId: publishedTable?.id } });
+await addPricedLine({ name: "Pierogi Smoke", price: "36", quantity: 1, assignment: { guestId: unseatedGuest?.id } });
+const tortLine = await addPricedLine({ name: "Tort Smoke", price: "350", quantity: 1, assignment: null });
 const seatedTable = tortLine.data?.placement?.tables?.find((table) => table.name === seatedGuest?.seat?.table);
 check(
   "orders: lines are added with normalized names and grosze, totals and placement by the published seating",
@@ -3132,19 +3153,24 @@ check(
 );
 
 for (const [label, json, status, message] of [
-  ["a zero quantity", { name: "X", price: "1", quantity: 0 }, 400, "Ilość to liczba od 1 do 99."],
-  ["a bad price", { name: "X", price: "abc", quantity: 1 }, 400, "Wpisz kwotę w złotych, np. 1500 albo 1499,99."],
-  ["no dish name", { name: "  ", price: "1", quantity: 1 }, 400, "Wpisz nazwę dania."],
+  ["a zero quantity", { name: "X", quantity: 0 }, 400, "Ilość to liczba od 1 do 99."],
   [
-    "a guest and a table at once",
-    { name: "X", price: "1", quantity: 1, assignment: { guestId: 1, tableId: 1 } },
+    "a price (the venue's, client-restaurant-split)",
+    { name: "X", price: "1", quantity: 1 },
     400,
     "Nieprawidłowe dane.",
   ],
-  ["an extra key", { name: "X", price: "1", quantity: 1, priceGrosze: 100 }, 400, "Nieprawidłowe dane."],
+  ["no dish name", { name: "  ", quantity: 1 }, 400, "Wpisz nazwę dania."],
+  [
+    "a guest and a table at once",
+    { name: "X", quantity: 1, assignment: { guestId: 1, tableId: 1 } },
+    400,
+    "Nieprawidłowe dane.",
+  ],
+  ["an extra key", { name: "X", quantity: 1, priceGrosze: 100 }, 400, "Nieprawidłowe dane."],
   [
     "a guest that does not exist",
-    { name: "X", price: "1", quantity: 1, assignment: { guestId: 2_000_000_000 } },
+    { name: "X", quantity: 1, assignment: { guestId: 2_000_000_000 } },
     409,
     "Nie ma już takiego gościa albo stolika.",
   ],
@@ -3252,14 +3278,18 @@ check(
     restaurantTicked.data.prep.find((line) => line.name === "Schabowy Smoke")?.toServe === 0,
   `${ticked.status} ${restaurantTicked.status}`,
 );
-const moved = await request(`${ordersApi}/${schabowyId}`, {
+const movedOnly = await request(`${ordersApi}/${schabowyId}`, {
   method: "PATCH",
-  json: { assignment: { tableId: publishedTable?.id }, price: "52", quantity: 2 },
+  json: { assignment: { tableId: publishedTable?.id }, quantity: 2 },
 });
+const repriced = await setPrice("schabowy smoke", "52");
+const moved = await request(ordersApi);
 const movedLine = moved.data?.items?.find((item) => item.id === schabowyId);
 check(
-  "orders: a line is moved to a table and repriced, keeping its tick on the first piece (the new one is to serve)",
-  moved.status === 200 &&
+  "orders: a line is moved to a table and repriced by the venue, keeping its tick on the first piece (the new one is to serve)",
+  movedOnly.status === 200 &&
+    repriced.status === 200 &&
+    moved.status === 200 &&
     movedLine?.guestId === null &&
     movedLine.tableId === publishedTable?.id &&
     movedLine.unitPriceGrosze === 5200 &&
@@ -3476,7 +3506,15 @@ check(
 const drinksApi = `${api}/drinks`;
 const DRINK = "Piwo Drinksmoke";
 const addDrink = (json) => request(drinksApi, { method: "POST", json });
-const drinkAdded = await addDrink({ name: `  ${DRINK}  `, price: "14,50 zł", quantity: 12 });
+// Priced like the dishes: the client adds the drink, the venue sets its name's price in the panel.
+const addPricedDrink = async ({ price, ...json }) => {
+  const added = await addDrink(json);
+  if (added.status !== 201) return added;
+  const priced = await setPrice(json.name, price, "drink");
+  if (priced.status !== 200) return priced;
+  return { ...(await request(ordersApi)), status: added.status };
+};
+const drinkAdded = await addPricedDrink({ name: `  ${DRINK}  `, price: "14,50 zł", quantity: 12 });
 const drinkId = drinkAdded.data?.drinks?.find((drink) => drink.name === DRINK)?.id;
 check(
   "drinks: a drink joins the organizer's board, its sum apart from the dishes'",
@@ -3492,7 +3530,7 @@ check(
     !drinkAdded.data.prep.some((line) => line.name === DRINK),
   drinkAdded.body.slice(0, 300),
 );
-const wineAdded = await addDrink({ name: "Wino Drinksmoke", price: "120", quantity: 1 });
+const wineAdded = await addPricedDrink({ name: "Wino Drinksmoke", price: "120", quantity: 1 });
 const wineId = wineAdded.data?.drinks?.find((drink) => drink.name === "Wino Drinksmoke")?.id;
 const drinkChanged = await request(`${drinksApi}/${drinkId}`, { method: "PATCH", json: { quantity: 15 } });
 check(
@@ -3505,31 +3543,17 @@ check(
   drinkChanged.body.slice(0, 300),
 );
 for (const [label, method, path, json, status, message] of [
-  ["no name", "POST", drinksApi, { name: " ", price: "1", quantity: 1 }, 400, "Wpisz nazwę napoju."],
+  ["no name", "POST", drinksApi, { name: " ", quantity: 1 }, 400, "Wpisz nazwę napoju."],
+  ["a quantity above 999", "POST", drinksApi, { name: "X", quantity: 1000 }, 400, "Ilość to liczba od 1 do 999."],
   [
-    "a quantity above 999",
+    "a price (the venue's, client-restaurant-split)",
     "POST",
     drinksApi,
-    { name: "X", price: "1", quantity: 1000 },
-    400,
-    "Ilość to liczba od 1 do 999.",
-  ],
-  [
-    "a bad price",
-    "POST",
-    drinksApi,
-    { name: "X", price: "abc", quantity: 1 },
-    400,
-    "Wpisz kwotę w złotych, np. 1500 albo 1499,99.",
-  ],
-  [
-    "an assignment",
-    "POST",
-    drinksApi,
-    { name: "X", price: "1", quantity: 1, assignment: null },
+    { name: "X", price: "1", quantity: 1 },
     400,
     "Nieprawidłowe dane.",
   ],
+  ["an assignment", "POST", drinksApi, { name: "X", quantity: 1, assignment: null }, 400, "Nieprawidłowe dane."],
   ["an empty change", "PATCH", `${drinksApi}/${drinkId}`, {}, 400, "Nieprawidłowe dane."],
   ["an unknown drink", "PATCH", `${drinksApi}/2000000000`, { quantity: 1 }, 404, "Nie znaleziono napoju."],
 ]) {
@@ -3545,7 +3569,7 @@ for (const [method, path] of [
 ]) {
   const res = await request(path, {
     method,
-    json: method === "DELETE" ? undefined : { name: "X", price: "1", quantity: 1 },
+    json: method === "DELETE" ? undefined : { name: "X", quantity: 1 },
   });
   check(
     `drinks: other keys are refused (${method} ${path.replace(tvKey, "<tv>").replace(restaurantKey, "<restaurant>").replace(seatedKey, "<guest>")})`,
@@ -3665,10 +3689,10 @@ const bQuestion = await request(`${bApi}/questions`, {
 const bQuestionId = bQuestion.data?.questions?.find((question) => question.text === B_QUESTION)?.id;
 const bOrder = await request(`${bApi}/orders`, {
   method: "POST",
-  json: { name: B_DISH, price: "10", quantity: 2, assignment: { guestId: b1 } },
+  json: { name: B_DISH, quantity: 2, assignment: { guestId: b1 } },
 });
 const bLineId = bOrder.data?.items?.find((item) => item.name === B_DISH)?.id;
-const bDrink = await request(`${bApi}/drinks`, { method: "POST", json: { name: B_DRINK, price: "5", quantity: 3 } });
+const bDrink = await request(`${bApi}/drinks`, { method: "POST", json: { name: B_DRINK, quantity: 3 } });
 const bDrinkId = bDrink.data?.drinks?.find((drink) => drink.name === B_DRINK)?.id;
 const bLinks = await request(`${bApi}/guest-links`, { method: "PATCH", json: { enabled: true } });
 const bGuestKey = linkOf(bLinks, b1)?.key;
@@ -3772,14 +3796,14 @@ const foreignWrites = [
     "order a dish for B's guest",
     "POST",
     () => "orders",
-    (id) => ({ name: "Obce danie", price: "1", quantity: 1, assignment: { guestId: id } }),
+    (id) => ({ name: "Obce danie", quantity: 1, assignment: { guestId: id } }),
     b1,
   ],
   [
     "order a dish for B's table",
     "POST",
     () => "orders",
-    (id) => ({ name: "Obce danie", price: "1", quantity: 1, assignment: { tableId: id } }),
+    (id) => ({ name: "Obce danie", quantity: 1, assignment: { tableId: id } }),
     bTableId,
   ],
   ["give A's dish to B's guest", "PATCH", () => `orders/${aLineId}`, (id) => ({ assignment: { guestId: id } }), b1],
@@ -3801,6 +3825,17 @@ for (const [label, method, pathOf, bodyOf, foreignId] of foreignWrites) {
     foreign.status >= 400 && foreign.status === unknown.status && foreign.body === unknown.body,
     `${foreign.status} ${unknown.status} ${foreign.body.slice(0, 120)}`,
   );
+}
+
+// The panel side: A's owner cannot price, reset or read the AI costs of B's event (the identical 404).
+for (const [method, path, json] of [
+  ["PUT", "prices", { kind: "dish", name: B_DISH, price: "1" }],
+  ["GET", "prices", undefined],
+  ["POST", "reset", { parts: ["guesses"] }],
+  ["GET", "ai-topics", undefined],
+]) {
+  const res = await request(`/api/panel/events/${String(eventB.id)}/${path}`, asOps({ method, json }));
+  check(`isolation: A's owner gets the identical 404 on B's ${method} ${path}`, noAccessJson(res), String(res.status));
 }
 
 // A draft with B's guest (at A's table) and A's guest at B's table: the same 409 and problems as ids that do not exist.
