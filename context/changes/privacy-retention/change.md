@@ -1,7 +1,7 @@
 ---
 change_id: privacy-retention
 title: Guest data retention, event export and the guest privacy notice (S-26)
-status: implementing
+status: implemented
 created: 2026-11-10
 updated: 2026-11-10
 archived_at: null
