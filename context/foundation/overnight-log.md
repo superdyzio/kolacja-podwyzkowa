@@ -6,6 +6,7 @@ Dziennik decyzji, zależności i blokerów nocnego przebiegu M-2 (zasady: `overn
 
 - Start: 2026-11-09 21:28 CET (polecenie użytkownika: „no to lecisz z tym wszystkim”). Ostatni nowy element może ruszyć do 2026-11-10 04:28, a po przedłużeniu przez użytkownika („możesz pracować do 8:00”) do 06:45. Raport ma być gotowy przed 08:00.
 - Koniec: 2026-11-10 ok. 07:10 CET — ostatni element (S-20) ruszył 06:42; raport: `overnight-report.md`.
+- Przebieg 2 — start: 2026-11-10 08:19 CET (użytkownik: „masz robotę dalej jakby co? cały dzień i kolejną noc możesz robić”). Ostatni nowy element może ruszyć do 2026-11-11 06:45, raport przed 08:00.
 - Gałąź: `overnight/m2` z `plan/m2-saas`.
 - Środowisko: lokalny Supabase działa (baza, REST, gateway); `.env` → `127.0.0.1`; CLI podlinkowany do starego projektu (tylko polecenia lokalne); `.env` ma `AI_PROVIDER=anthropic`, więc serwery idą z `AI_PROVIDER=mock`.
 
@@ -158,6 +159,9 @@ Dziennik decyzji, zależności i blokerów nocnego przebiegu M-2 (zasady: `overn
 - 2026-11-10 — S-20 linki per sala: organizator (`/o/<klucz>`) i karta wydarzenia w panelu (`EventCardDto.rooms`, wycinane w trybie wsparcia razem z linkami) — doradca radził wyciąć kartę panelu, ale czas pozwolił ją zrobić.
 - 2026-11-10 — S-20 uwaga: sala demo (39 gości, 3 sale) przy 16:9 już się obraca — przy regule „najmniejsza czcionka” TV wydarzenia 1 też by się obracał; do oceny przez użytkownika (stała `TV_READABLE_FRACTION`).
 - 2026-11-10 — S-20 /10x-archive: ostrzeżenia „2 ręczne pozycje Progress (0 automatycznych)” i „brak impl-review” — wybrana rekomendowana opcja „Continue archiving”; zmiana w `context/archive/2026-11-10-tv-room-rotation/`, S-20 `done`. Ręczne: 1.3 (gęsty lokal obraca się na prawdziwym TV, rzadki pokazuje całość), 2.4 (linki sal kopiują się i otwierają przypięty TV). Wynik: testy 126 plików / 1267 (+ 6 pominiętych), lint i `astro check` czyste, build, smoke 776 PASS, demo OK.
+- 2026-11-10 — Przebieg 2: kolejność kelner „na imprezę” (nowy Change ID `event-waiter-access`, wiersz S-21b w roadmapie; S-21 zostaje zarchiwizowany) → S-22 → S-23 → S-25 → S-26 → S-27 → S-28 → S-24 (po S-23) → S-29 → S-30 (po S-29).
+- 2026-11-10 — Kelner „na imprezę” zrobiony po «masz robotę dalej» bez osobnej sesji z użytkownikiem: PRD v2 FR-023 must-have, zatwierdzona architektura „linki bez logowania jak w v1”; projekt z CLAUDE.md („The floor”) bez rozszerzeń (osobna tabela, hash linku/kodu z `created_by`, ważność do południa Europe/Warsaw dnia po imprezie, ciasteczko tylko dla sali JEDNEGO wydarzenia, nigdy `/panel`, cofnięcie = usunięcie wiersza, kod z limitem prób jak logowanie).
+- 2026-11-10 — Przebieg 2: zamknięcie kamienia M-2 (`/10x-roadmap`) zostaje użytkownikowi, nawet gdy wszystkie elementy będą `done`.
 
 ## Dodane zależności
 

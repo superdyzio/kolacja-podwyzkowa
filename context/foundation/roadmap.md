@@ -64,6 +64,7 @@ Restauracja, która gościła kolację 2026-11-08, chce tego narzędzia do włas
 | S-19 | scale-150               | klient prowadzi wydarzenie do 150 gości, stołów do 30 miejsc i ok. 60 stolików w dotychczasowych czasach reakcji          | F-02             | FR-033, US-08, NFR-011, NFR-015                                                               | done     |
 | S-20 | tv-room-rotation        | TV przy wejściu pokazuje cały lokal i sam przechodzi po salach, gdy imiona byłyby nieczytelne; TV da się przypiąć do sali | S-19             | FR-034, US-08, NFR-018                                                                        | done |
 | S-21 | waiter-day-and-refills  | kelner (konto albo dostęp „na imprezę”) widzi dzisiejsze imprezy, oznacza wydane sztuki i dopisuje dokładki               | S-12, S-14       | FR-029, FR-023, US-08                                                                         | done |
+| S-21b | event-waiter-access    | menedżer dodaje kelnera „na imprezę” (imię + jednorazowy link lub kod do końca okna, bez hasła), który pracuje tylko na sali tego wydarzenia | S-21             | FR-023, FR-029, US-08                                                                         | proposed |
 | S-22 | guest-map-search        | gość, klient, personel i tablet wyszukują gościa po imieniu, a mapa podświetla jego miejsce                               | S-21             | FR-048, US-08                                                                                 | proposed |
 | S-23 | guest-import-diets      | klient importuje gości z CSV lub wklejki z dietami, a kuchnia i kelnerzy widzą diety przy miejscu i w zliczeniach         | S-14, S-21       | FR-035, FR-036, US-07, NFR-021                                                                | proposed |
 | S-24 | room-prints             | klient i lokal drukują tablicę „znajdź swój stolik”, karty stołów, winietki w formacie i listę dla obsługi z dietami      | S-18, S-23       | FR-038                                                                                        | proposed |
@@ -284,6 +285,19 @@ Fundamenty poniżej zakładają, że to istnieje, i NIE budują tego od nowa.
 - **Note:** kelner „na imprezę” (część FR-023: imię + jednorazowy link lub kod do końca okna, bez hasła) wycięty 2026-11-10 z waiter-day-and-refills (czas) — otwarty, do osobnej zmiany; projekt w CLAUDE.md („The floor”) i `overnight-log.md` („Decyzje”).
 - **Status:** done
 
+### S-21b: Kelner „na imprezę”
+
+- **Outcome:** Menedżer (albo właściciel) dodaje kelnera „na imprezę”: imię i jednorazowy link lub krótki kod, ważne do końca okna imprezy (południe dnia następnego), bez hasła i bez konta. Kelner otwiera link albo wpisuje kod i pracuje tylko na sali tego jednego wydarzenia (to samo co kelner z kontem na `/panel/obsluga/<id>`), nigdy w panelu lokalu. Cofnięcie dostępu działa od razu.
+- **Change ID:** event-waiter-access
+- **PRD refs:** FR-023, FR-029, US-08
+- **Prerequisites:** S-21
+- **Parallel with:** S-22
+- **Blockers:** —
+- **Unknowns:** —
+- **Risk:** Drugi sposób wejścia personelu, bez hasła. Projekt w CLAUDE.md („The floor”): osobna tabela (nigdy `restaurant_member`), link i kod tylko jako hash z `created_by`, wygasanie samo, ciasteczko tylko dla sali jednego wydarzenia, kod z limitem prób jak logowanie.
+- **Note:** wydzielony 2026-11-10 z S-21 (waiter-day-and-refills), które zostaje zarchiwizowane.
+- **Status:** proposed
+
 ### S-22: Wyszukiwanie gościa na mapie sali
 
 - **Outcome:** Każdy, kto widzi pełną mapę sali na urządzeniu z klawiaturą (gość na telefonie, klient, personel, tablet obsługi), wyszukuje gościa po imieniu, a mapa podświetla jego miejsce. TV tego nie ma.
@@ -416,6 +430,7 @@ Fundamenty poniżej zakładają, że to istnieje, i NIE budują tego od nowa.
 | S-19       | scale-150               | Skala do 150 gości, 30 miejsc, 60 stolików                       | no                    | po F-02                                         |
 | S-20       | tv-room-rotation        | TV z rotacją sal i przypięciem do sali                           | no                    | po S-19                                         |
 | S-21       | waiter-day-and-refills  | Kelner w dniu imprezy, kelner „na imprezę”, dokładki             | no                    | po S-12, S-14                                   |
+| S-21b      | event-waiter-access     | Kelner „na imprezę”: jednorazowy link lub kod bez hasła          | no                    | po S-21                                         |
 | S-22       | guest-map-search        | Wyszukiwanie gościa na mapie sali                                | no                    | po S-21                                         |
 | S-23       | guest-import-diets      | Import gości z CSV/wklejki i diety                               | no                    | po S-14, S-21                                   |
 | S-24       | room-prints             | Wydruki dla sali: tablica, karty stołów, winietki, lista obsługi | no                    | po S-18, S-23                                   |

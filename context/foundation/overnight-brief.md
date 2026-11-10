@@ -78,7 +78,8 @@ Subject: `[<model>] <message>`, gdzie `<model>` to model, który faktycznie prac
 
 ## Czas
 
-- Nie zaczynaj nowego elementu po 06:45 (2026-11-10). Raport poranny jest gotowy przed 08:00. Okno przedłużył użytkownik 2026-11-09: „możesz pracować do 8:00”.
+- Przebieg 1 (noc 2026-11-09/10): nowe elementy do 06:45, raport przed 08:00 (zakończony, `overnight-report.md`).
+- Przebieg 2 (dzień 2026-11-10 i noc 2026-11-10/11, użytkownik 2026-11-10 08:19: „masz robotę dalej jakby co? cały dzień i kolejną noc możesz robić”): nie zaczynaj nowego elementu po 06:45 (2026-11-11). Raport dopisany do `overnight-report.md` jako część „Przebieg 2” przed 08:00 (2026-11-11). Zasady tego pliku obowiązują bez zmian.
 - Element, który po 2 próbach naprawy nie jest zielony, traktuj według sekcji „Blokery”.
 - Prawie wszystko zależy od F-02. Jeśli F-02 nie przejdzie, noc kończy się raportem, a gałąź zostaje na ostatnim zielonym commicie.
 
