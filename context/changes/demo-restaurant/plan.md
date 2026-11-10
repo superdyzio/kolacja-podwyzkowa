@@ -227,9 +227,9 @@ None. Existing local databases keep the per-run demo restaurants of earlier vers
 
 #### Automated
 
-- [x] 1.1 Unit tests pass: `npx vitest run tests/scripts/demo-data.test.ts`
-- [x] 1.2 Linting passes: `npm run lint`
-- [x] 1.3 Type checking passes: `npx astro check`
+- [x] 1.1 Unit tests pass: `npx vitest run tests/scripts/demo-data.test.ts` — 98315a0
+- [x] 1.2 Linting passes: `npm run lint` — 98315a0
+- [x] 1.3 Type checking passes: `npx astro check` — 98315a0
 
 #### Manual
 
@@ -239,12 +239,12 @@ None. Existing local databases keep the per-run demo restaurants of earlier vers
 
 #### Automated
 
-- [ ] 2.1 Linting passes: `npm run lint`
-- [ ] 2.2 Build passes: `npm run build`
-- [ ] 2.3 `npm run demo` succeeds against `AI_PROVIDER=mock npm run preview` on the local database
-- [ ] 2.4 A second `npm run demo` succeeds and converges (same restaurant, five demo events, template and menu kept)
-- [ ] 2.5 `npm run demo -- --reset` rebuilds the template and the menu and succeeds
-- [ ] 2.6 Smoke passes: `npm run smoke`
+- [x] 2.1 Linting passes: `npm run lint`
+- [x] 2.2 Build passes: `npm run build`
+- [x] 2.3 `npm run demo` succeeds against `AI_PROVIDER=mock npm run preview` on the local database
+- [x] 2.4 A second `npm run demo` succeeds and converges (same restaurant, five demo events, template and menu kept)
+- [x] 2.5 `npm run demo -- --reset` rebuilds the template and the menu and succeeds
+- [x] 2.6 Smoke passes: `npm run smoke`
 
 #### Manual
 

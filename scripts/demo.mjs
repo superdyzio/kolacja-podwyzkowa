@@ -1,156 +1,93 @@
-// Fills the LOCAL app with demo data for the manual checks: 40 fictional guests, a generated venue plan, 3 rooms,
-// 7 tables (45 seats), groups of 4, 2 and 2, one absent and one pinned guest, a published seating, 30 guesses
-// (a tie and the absent guest's guess among them, 10 missing, 12 with a place prediction) and a food order (lines for guests, for tables, one
-// unassigned, one delivered). Every run creates a NEW restaurant „Restauracja demo” with a new event „Kolacja
-// podwyżkowa (demo)” in the LOCAL database (like `npm run event:create`; refused for any other SUPABASE_URL), so other
-// events are never touched, and its owner's staff account (staff-accounts: an invitation link redeemed over HTTP with
-// a fixed local demo password, printed at the end with the panel login). Through the panel API that owner then adds
-// three more events of the restaurant (restaurant-events): an upcoming, a past and an archived one, so the restaurant
-// page shows every tab filled, and invites a manager and a waiter into the restaurant's team (restaurant-team), who
-// set fixed local demo passwords over HTTP (logins printed at the end). It also keeps ONE platform admin account
-// admin@demo.stolik with a fixed local password (platform-restaurants: the platform panel's login, printed at the end),
-// who pays the restaurant one logged support visit (admin-support-log: enter with a reason, the restaurant page, the
-// main event's card, exit), so the owner's „Dziennik wejść administratora” is not empty. client-restaurant-split: the
-// main event stays client-led; the upcoming company Christmas party is switched to „Lokal prowadzi” and gets its first
-// guests through the panel. menu-catalog-courses: the owner fills the restaurant's menu (all five courses) and gives
-// the main event a reduced menu, from which the client's order lines take their price and course. guest-rsvp-menu:
-// the main event collects RSVPs with a dish choice until tomorrow noon (3 guests on their links, 10 entered by the
-// client, the absent guest's „no”).
-// Every write after that goes through the HTTP API of a running server, so it passes the same validation as the UI.
-// Defaults stay as they are: guest access OFF, guess intake OPEN, no correct amount, only the starter questions.
-// Usage: npm run build && npm run preview, then npm run demo   (BASE_URL, default http://localhost:4321)
-// Zero dependencies.
+// Prepares the LOCAL app's demo restaurant (demo-restaurant, S-29; PRD v2 FR-042) for walking flow 1–7 live
+// (docs/scenariusz-pokazu.md). ONE stable „Restauracja demo”, found by its owner wlasciciel@demo.stolik, prepared through
+// the HTTP API of a running server in the PRD's order, like people would in the app:
+//   1. the platform admin (admin@demo.stolik — the only account written straight to the database) creates the
+//      restaurant with its owner's invitation (or finds it and switches it on again);
+//   2. the owner sets the demo password and brings the team: a manager and a waiter (fixed e-mails and passwords),
+//      and sets the restaurant's guest data term (30 days) and brand (colour, logo);
+//   3. the manager enters the restaurant's menu and the venue template „Cały lokal (szablon demo)” (plan, rooms with
+//      outlines, tables) — from scripts/demo-data/ (menu.csv, sala.json, a generated plan) or the files given with
+//      --menu / --venue / --plan;
+//   4. the manager creates the events from the template: the sample company party „Impreza firmowa Acme (demo)” today
+//      with 80 guests, „Wigilia firmowa (demo)” (+32 days, run by the venue), „Rocznica firmy (demo)” (+20),
+//      „Urodziny Ani (demo)” (−10) and „Komunia Zosi (demo)” (−60, archived, its guests' data purged);
+//   5–6. the client prepares the party on its link (30 guests pasted, 50 imported from a CSV with diets, groups, an
+//      absent and a pinned guest, a published seating, 30 guesses, 9 order lines from the menu, RSVPs with a dish
+//      choice), the waiter works the floor (a refill), a per-event waiter is added; the readouts and prints are
+//      checked;
+//   then the admin's logged support visit unlocks the paid modules (AI topics, pub quiz), the client runs two pub quiz
+//   questions, brands the party, and the exports are checked.
+// Every run REFRESHES it: the owner deletes every event (and every other template) and the events are created again
+// from the template. The template and the menu are KEPT when they exist (a real plan arranged or a real menu typed in
+// the app survives) and rebuilt only with --plan / --venue / --menu / --reset. A real venue too small for the 79
+// present guests stops the demo with a message before anything is deleted.
+// Local database only (refused for any other SUPABASE_URL); no hosted mode: fixed demo passwords must never exist on a
+// public platform (the scenario describes preparing a hosted demo by hand).
+// Usage: AI_PROVIDER=mock npm run build && AI_PROVIDER=mock npm run preview, then
+//   npm run demo -- [--name "<restaurant name>"] [--plan <image>] [--venue <json>] [--menu <csv>] [--reset]
+// (BASE_URL, default http://localhost:4321). Zero dependencies; the pure parts live in scripts/lib/demo-data.mjs.
 
-import { Buffer } from "node:buffer";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+import { TextDecoder } from "node:util";
 import { URL, URLSearchParams } from "node:url";
-import { crc32, deflateSync } from "node:zlib";
 import {
-  addMembership,
-  createEvent,
-  createRestaurant,
-  ensureStaffAccount,
-  issueStaffLink,
-  PlatformError,
-  readDbEnv,
-} from "./lib/platform.mjs";
+  DemoDataError,
+  MAX_PLAN_BYTES,
+  logoPng,
+  normalizeText,
+  parseDemoArgs,
+  parseMenuCsv,
+  parseVenue,
+  pickMenuItem,
+  planPng,
+  seatGuests,
+  sniffImageType,
+} from "./lib/demo-data.mjs";
+import {
+  ABSENT,
+  DIET_LABELS,
+  GROUPS,
+  GUEST_DIETS,
+  GUESTS,
+  IMPORTED_GUESTS,
+  PASTED_GUESTS,
+  PATCHED_DIETS,
+  PINNED,
+} from "./lib/demo-guests.mjs";
+import { ensureStaffAccount, issueStaffLink, PlatformError, readDbEnv } from "./lib/platform.mjs";
 
 const BASE_URL = process.env.BASE_URL ?? "http://localhost:4321";
 const RESTAURANT_NAME = "Restauracja demo";
-const EVENT_NAME = "Kolacja podwyżkowa (demo)";
-// The demo owner's password (local demo data only; the account's e-mail carries the restaurant id).
-const OWNER_PASSWORD = "demo-wlasciciel-1";
-// The demo platform admin (local demo data only): one account for every run, its password set again when needed.
-const ADMIN_EMAIL = "admin@demo.stolik";
-const ADMIN_PASSWORD = "demo-admin-1";
-// The demo manager and waiter (restaurant-team; local demo data only; e-mails carry the restaurant id).
-const MANAGER_PASSWORD = "demo-menedzer-1";
-const WAITER_PASSWORD = "demo-kelner-1";
+const TEMPLATE_NAME = "Cały lokal (szablon demo)";
+const SCENARIO = "docs/scenariusz-pokazu.md";
 
-// --- Demo data -------------------------------------------------------------------------------------------------
+// The demo accounts (local demo data only; fixed e-mails and passwords, so every run and the scenario name the same).
+const ADMIN = { email: "admin@demo.stolik", name: "Administrator demo", password: "demo-admin-1" };
+const OWNER = { email: "wlasciciel@demo.stolik", name: "Właściciel demo", password: "demo-wlasciciel-1" };
+const MANAGER = { email: "menedzer@demo.stolik", name: "Menedżer demo", role: "manager", password: "demo-menedzer-1" };
+const WAITER = { email: "kelner@demo.stolik", name: "Kelner demo", role: "waiter", password: "demo-kelner-1" };
 
-// "Ania" is the only name containing "ania" (the offline readout check searches for her).
-const GUESTS = [
-  "Ania",
-  "Bartek",
-  "Kasia",
-  "Tomek",
-  "Magda",
-  "Piotrek",
-  "Ola",
-  "Kuba",
-  "Ewa",
-  "Marcin",
-  "Zosia",
-  "Michał",
-  "Basia",
-  "Grzesiek",
-  "Agnieszka",
-  "Paweł",
-  "Joasia",
-  "Krzysiek",
-  "Monika",
-  "Łukasz",
-  "Dorota",
-  "Wojtek",
-  "Natalia",
-  "Adam",
-  "Iwona",
-  "Rafał",
-  "Marta",
-  "Szymon",
-  "Ela",
-  "Darek",
-  "Justyna",
-  "Maciek",
-  "Karolina",
-  "Jacek",
-  "Gosia Kowalska",
-  "Gosia Wiśniewska",
-  "Staszek „Szef”",
-  "Pani Halinka",
-  "Igor z IT",
-  "Weronika",
+// The events made from the template every run: days from today, the expected guest count.
+const MAIN_EVENT = "Impreza firmowa Acme (demo)";
+const VENUE_LED_EVENT = "Wigilia firmowa (demo)";
+const TEMPLATE_EVENT = "Rocznica firmy (demo)";
+const PAST_EVENT = "Urodziny Ani (demo)";
+const PURGED_EVENT = "Komunia Zosi (demo)";
+const EVENTS = [
+  { name: MAIN_EVENT, days: 0, expectedGuests: 80 },
+  { name: VENUE_LED_EVENT, days: 32, expectedGuests: 80 },
+  { name: TEMPLATE_EVENT, days: 20, expectedGuests: 60 },
+  { name: PAST_EVENT, days: -10, expectedGuests: 30 },
+  { name: PURGED_EVENT, days: -60, expectedGuests: null },
 ];
-const ABSENT = "Weronika";
-const PINNED = "Pani Halinka";
-// guest-import-diets (S-23): the last ten guests come from a spreadsheet's CSV with their diets — [the diet column as
-// typed, the notes, the tags it must become]; Bartek and Kasia get theirs per guest („Dieta”). The tablet's counts
-// (present guests only, so not the absent Weronika) must match.
-const IMPORTED_GUESTS = GUESTS.slice(-10);
-const GUEST_DIETS = new Map([
-  ["Justyna", ["wegetariańska", "", ["vegetarian"]]],
-  ["Maciek", ["bez glutenu", "celiakia — osobna deska", ["gluten-free"]]],
-  ["Karolina", ["wegańska, bez laktozy", "", ["vegan", "lactose-free"]]],
-  ["Gosia Kowalska", ["alergia na orzechy", "także orzeszki ziemne", ["nut-allergy"]]],
-  ["Staszek „Szef”", ["Halal", "", ["halal"]]],
-  ["Pani Halinka", ["bez wieprzowiny", "", ["no-pork"]]],
-  ["Igor z IT", ["", "bez cebuli", []]],
-  ["Weronika", ["wege", "", ["vegetarian"]]],
-  ["Bartek", ["", "", ["seafood-allergy"]]],
-  ["Kasia", ["", "bez mleka krowiego", ["lactose-free"]]],
-]);
-const PATCHED_DIETS = ["Bartek", "Kasia"];
-// The tags in the app's order with their Polish labels (src/lib/diets/messages.ts).
-const DIET_LABELS = {
-  vegetarian: "wegetariańska",
-  vegan: "wegańska",
-  "gluten-free": "bez glutenu",
-  "lactose-free": "bez laktozy",
-  "nut-allergy": "alergia na orzechy",
-  "seafood-allergy": "alergia na ryby i owoce morza",
-  halal: "halal",
-  "no-pork": "bez wieprzowiny",
-};
+// client-restaurant-split: the venue-led party's first guests, added by the owner through the panel.
+const VENUE_LED_GUESTS = ["Dyrektor Nowak", "Pani Kowalska", "Pan Wiśniewski", "Ola z księgowości"];
 
-// Plan image size in pixels; rooms and tables are drawn on it and the pins are the table centres as fractions.
-const PLAN_WIDTH = 1600;
-const PLAN_HEIGHT = 900;
-const ROOMS = [
-  { name: "Sala Główna", box: [40, 40, 820, 860], fill: [219, 232, 245], border: [96, 125, 160] },
-  { name: "Sala Kominkowa", box: [860, 40, 1560, 430], fill: [246, 227, 207], border: [170, 120, 80] },
-  { name: "Ogród zimowy", box: [860, 470, 1560, 860], fill: [220, 239, 217], border: [95, 145, 95] },
-];
-// Round tables: `size` = radius; rectangular: [width, height]. Seats: 8 + 8 + 10 + 6 + 5 + 4 + 4 = 45.
-const TABLES = [
-  { room: "Sala Główna", name: "Dąb", shape: "round", seatCount: 8, at: [230, 240], size: 75 },
-  { room: "Sala Główna", name: "Lipa", shape: "round", seatCount: 8, at: [630, 240], size: 75 },
-  { room: "Sala Główna", name: "Długi stół", shape: "rectangular", seatCount: 10, at: [430, 640], size: [440, 110] },
-  { room: "Sala Kominkowa", name: "Kominek", shape: "round", seatCount: 6, at: [1040, 235], size: 65 },
-  { room: "Sala Kominkowa", name: "Okno", shape: "rectangular", seatCount: 5, at: [1370, 235], size: [260, 90] },
-  { room: "Ogród zimowy", name: "Palma", shape: "round", seatCount: 4, at: [1040, 665], size: 50 },
-  { room: "Ogród zimowy", name: "Fontanna", shape: "rectangular", seatCount: 4, at: [1370, 665], size: [200, 80] },
-];
-// Inseparable groups on consecutive seats (round: an arc; rectangular: one side, seats 1..ceil(n/2) are side A).
-const GROUPS = [
-  { members: ["Magda", "Piotrek", "Zosia", "Grzesiek"], table: "Długi stół", seats: [1, 2, 3, 4] },
-  { members: ["Kasia", "Tomek"], table: "Dąb", seats: [1, 2] },
-  { members: ["Gosia Kowalska", "Igor z IT"], table: "Kominek", seats: [1, 2] },
-];
 // Guesses entered by the organizer, typed in the formats guests use, some with a place prediction (guess-place).
-// Bartek and Marta tie exactly (same amount in two spellings); the absent guest has a guess. The 10 guests not listed
-// here are "missing". With the correct amount 1500 the ranking shows the podium (Ania, Monika, Maciek) and the hits:
-// Ania 1, Maciek 3, Gosia Kowalska 4 and Natalia 5 (a tie at 4 spans 4–5), Paweł 7, Marta 12 (a tie at 10 spans
-// 10–12).
+// Bartek and Marta tie exactly (same amount in two spellings); the absent guest has a guess. With the correct amount
+// 1500 the ranking shows the podium (Ania, Monika, Maciek) and the hits: Ania 1, Maciek 3, Gosia Kowalska 4 and
+// Natalia 5 (a tie at 4 spans 4–5), Paweł 7, Marta 12 (a tie at 10 spans 10–12).
 const GUESSES = [
   ["Ania", "1500", "1"],
   ["Bartek", "1 250"],
@@ -183,45 +120,62 @@ const GUESSES = [
   ["Pani Halinka", "1850", "15"],
   ["Weronika", "1 999"],
 ];
-// Food order lines: [dish, price as typed, quantity, note, for whom]. `for` is a guest name, `{ table }` or null
-// (unassigned). The first line is marked delivered after it is added.
+// Order lines chosen from the event's menu, whatever the real menu holds: [courses (the first one that has dishes),
+// which dish of that course (modulo), quantity, note, for whom]. `for` is a guest, `{ group: i }` (the table of
+// GROUPS[i], „na środek stołu”) or null (unassigned). The first line is marked delivered.
 const ORDERS = [
-  ["Rosół z makaronem", "18,00", 1, null, "Ania"],
-  ["Schabowy z ziemniakami", "42,00", 1, null, "Bartek"],
-  ["Schabowy z ziemniakami", "42,00", 1, "bez kapusty", "Kasia"],
-  ["Pierogi ruskie", "32,50", 1, null, "Tomek"],
-  ["Sałatka z kozim serem", "36,00", 1, "bez orzechów", "Magda"],
-  ["Pierogi ruskie", "32,50", 1, null, "Pani Halinka"],
-  ["Deska serów", "79,00", 1, null, { table: "Dąb" }],
-  ["Dzbanek kompotu", "24,00", 2, null, { table: "Długi stół" }],
-  ["Tort czekoladowy", "180,00", 1, "na deser, ze świeczką", null],
+  [["soup", "starter"], 0, 1, null, "Ania"],
+  [["main"], 1, 1, null, "Bartek"],
+  [["main"], 1, 1, "bez kapusty", "Kasia"],
+  [["main"], 0, 1, null, "Tomek"],
+  [["starter", "soup"], 1, 1, "bez orzechów", "Magda"],
+  [["main"], 0, 1, null, PINNED],
+  [["starter", "dessert"], 0, 1, null, { group: 1 }],
+  [["drinks"], 0, 2, null, { group: 0 }],
+  [["dessert", "main"], 1, 1, "na deser, ze świeczką", null],
 ];
+// guest-rsvp-menu (S-25): three guests answer on their links, the client enters ten more and the absent guest's „no”.
+const RSVP_BY_GUESTS = ["Ania", "Bartek", "Kasia"];
+const RSVP_BY_CLIENT = ["Tomek", "Magda", "Piotrek", "Ola", "Kuba", "Ewa", "Marcin", "Zosia", "Michał", "Basia"];
+// pub-quiz (S-28): three questions, two asked; who answers what (option index) per asked question.
+const QUIZ = [
+  { text: "W którym roku Polska wstąpiła do Unii Europejskiej?", options: ["1999", "2004", "2007"], correct: 1 },
+  { text: "Nad jaką rzeką leży Gdańsk?", options: ["Motława", "Warta", "Odra", "Wisłok"], correct: 0 },
+  { text: "Ile minut trwa mecz piłki nożnej bez doliczonego czasu?", options: ["80", "90", "100"], correct: 1 },
+];
+const QUIZ_ANSWERS = [
+  { Ania: 1, Bartek: 1, Kasia: 1, Tomek: 0 },
+  { Ania: 0, Bartek: 0, Kasia: 2, Tomek: 3 },
+];
+const QUIZ_RESULTS = [
+  ["Ania", 1, 2],
+  ["Bartek", 1, 2],
+  ["Kasia", 3, 1],
+  ["Tomek", 4, 0],
+];
+const SUPPORT_REASON = "Pokaz trybu wsparcia: przygotowanie restauracji demo";
+const BRAND_COLOR = "#7c2d12";
+const CLIENT_BRAND = "Acme Polska sp. z o.o.";
+const RETENTION_DAYS = 30;
+const EVENT_WAITER = "Kuba (na imprezę)";
 
-// menu-catalog-courses (S-16): the demo restaurant's menu — every course, every dish of ORDERS at its price; the
-// main event gets a REDUCED menu (the items marked true), so the client picks from those and the kitchen list on the
-// tablet is grouped by course.
-const MENU = [
-  ["Tatar wołowy", "starter", "48,00", false],
-  ["Sałatka z kozim serem", "starter", "36,00", true],
-  ["Deska serów", "starter", "79,00", true],
-  ["Rosół z makaronem", "soup", "18,00", true],
-  ["Żurek staropolski", "soup", "22,00", false],
-  ["Schabowy z ziemniakami", "main", "42,00", true],
-  ["Pierogi ruskie", "main", "32,50", true],
-  ["Polędwica z dzika", "main", "89,00", false],
-  ["Tort czekoladowy", "dessert", "180,00", true],
-  ["Sernik baskijski", "dessert", "24,00", true],
-  ["Dzbanek kompotu", "drinks", "24,00", true],
-  ["Lemoniada", "drinks", "14,00", true],
-  ["Woda gazowana 0,7 l", "drinks", "16,00", false],
-];
+const HELP = `Restauracja demo do pokazu (scenariusz: ${SCENARIO}).
+
+Użycie (najpierw AI_PROVIDER=mock npm run build i AI_PROVIDER=mock npm run preview):
+  npm run demo -- [opcje]
+
+Opcje:
+  --name "<nazwa>"  nazwa restauracji demo (domyślnie „${RESTAURANT_NAME}”; zmienia też istniejącą)
+  --plan <obraz>    plan lokalu (PNG, JPEG lub WebP, do 4 MB) zamiast wygenerowanego; buduje szablon od nowa
+  --venue <json>    sale i stoliki zamiast scripts/demo-data/sala.json; buduje szablon od nowa
+  --menu <csv>      menu lokalu zamiast scripts/demo-data/menu.csv (Nazwa;Kurs;Cena;W menu imprezy); buduje menu od nowa
+  --reset           buduje od nowa szablon i menu z plików
+  --help            ta pomoc
+
+Każde uruchomienie odświeża wydarzenia restauracji demo; szablon „${TEMPLATE_NAME}” i menu lokalu
+zostają, jeśli istnieją (np. poprawione w aplikacji). Tylko lokalna baza.`;
 
 // --- Helpers ---------------------------------------------------------------------------------------------------
-
-// 1850 → "18,50" (the price format of MENU and ORDERS).
-function formatGrosze(grosze) {
-  return `${String(Math.floor(grosze / 100))},${String(grosze % 100).padStart(2, "0")}`;
-}
 
 function fail(message) {
   console.error(message);
@@ -260,6 +214,7 @@ async function request(path, { method = "GET", json, form, bytes, contentType, c
     status: response.status,
     location: response.headers.get("location") ?? "",
     setCookie: response.headers.get("set-cookie") ?? "",
+    headers: response.headers,
     text,
     data,
   };
@@ -274,7 +229,8 @@ async function step(name, path, options, expected = 200) {
     fail(
       `Krok „${name}” nie powiódł się (HTTP ${res.status}): ${detail}${problems}` +
         (dataWritten
-          ? "\nDane demo tego wydarzenia są niekompletne. Uruchom npm run demo ponownie: utworzy nowe wydarzenie."
+          ? "\nRestauracja demo jest przygotowana tylko częściowo. Uruchom npm run demo ponownie: odświeży wydarzenia" +
+            " (z --reset, jeśli przerwała się budowa szablonu albo menu)."
           : ""),
     );
   }
@@ -282,242 +238,480 @@ async function step(name, path, options, expected = 200) {
   return res.data;
 }
 
-// A plain RGB PNG (8 bits per channel, no interlace): rooms as framed rectangles, tables as filled shapes.
-function planPng() {
-  const pixels = Buffer.alloc(PLAN_WIDTH * PLAN_HEIGHT * 3);
-  const paint = (x, y, [r, g, b]) => {
-    const offset = (y * PLAN_WIDTH + x) * 3;
-    pixels[offset] = r;
-    pixels[offset + 1] = g;
-    pixels[offset + 2] = b;
-  };
-  const fillRect = (x0, y0, x1, y1, color) => {
-    for (let y = Math.max(0, y0); y < Math.min(PLAN_HEIGHT, y1); y++) {
-      for (let x = Math.max(0, x0); x < Math.min(PLAN_WIDTH, x1); x++) {
-        paint(x, y, color);
-      }
-    }
-  };
-  const fillCircle = (cx, cy, radius, color) => {
-    for (let y = cy - radius; y <= cy + radius; y++) {
-      for (let x = cx - radius; x <= cx + radius; x++) {
-        if ((x - cx) ** 2 + (y - cy) ** 2 <= radius ** 2) {
-          paint(x, y, color);
-        }
-      }
-    }
-  };
-
-  fillRect(0, 0, PLAN_WIDTH, PLAN_HEIGHT, [247, 245, 240]);
-  for (const room of ROOMS) {
-    const [x0, y0, x1, y1] = room.box;
-    fillRect(x0, y0, x1, y1, room.border);
-    fillRect(x0 + 8, y0 + 8, x1 - 8, y1 - 8, room.fill);
+const SESSION_COOKIE = /(?:^|[\s,])kp-session=([A-Za-z0-9_-]{43});/;
+// The session cookie of an answer that logged the person in (303 to /panel), else null.
+function panelCookieOf(res) {
+  const token = SESSION_COOKIE.exec(res.setCookie)?.[1];
+  return res.status === 303 && new URL(res.location, BASE_URL).pathname === "/panel" && token
+    ? `kp-session=${token}`
+    : null;
+}
+// Sets the password through a one-time link (`/haslo/<token>`), like a person in the browser; the answer logs them in.
+async function redeem(path, password) {
+  const token = /^\/haslo\/([A-Za-z0-9_-]{43})$/.exec(path ?? "")?.[1];
+  if (!token) {
+    return null;
   }
-  const edge = [120, 92, 62];
-  const wood = [196, 164, 122];
-  for (const table of TABLES) {
-    const [cx, cy] = table.at;
-    if (table.shape === "round") {
-      fillCircle(cx, cy, table.size, edge);
-      fillCircle(cx, cy, table.size - 5, wood);
-    } else {
-      const [width, height] = table.size;
-      const [x0, y0] = [cx - width / 2, cy - height / 2];
-      fillRect(x0, y0, x0 + width, y0 + height, edge);
-      fillRect(x0 + 5, y0 + 5, x0 + width - 5, y0 + height - 5, wood);
-    }
+  return panelCookieOf(
+    await request("/api/auth/password-link", { method: "POST", form: { token, password, repeat: password } }),
+  );
+}
+async function login(email, password) {
+  return panelCookieOf(await request("/api/auth/login", { method: "POST", form: { email, password } }));
+}
+// A demo account's session: its fresh one-time link when there is one, else its demo password, else a new link from
+// `issueLink` (the admin's „Nowy link” for the owner, the owner's for the team) that sets the demo password again —
+// an account whose password someone changed comes back through the app, never through the database.
+async function sessionFor(account, link, issueLink, hint = "") {
+  const viaLink = link ? await redeem(link, account.password) : null;
+  if (viaLink) {
+    return viaLink;
   }
-
-  return rgbPng(PLAN_WIDTH, PLAN_HEIGHT, pixels);
+  const viaLogin = await login(account.email, account.password);
+  if (viaLogin) {
+    return viaLogin;
+  }
+  const viaNewLink = await redeem(await issueLink(), account.password);
+  if (!viaNewLink) {
+    fail(`Nie udało się zalogować konta demo ${account.email} (ani hasłem demo, ani nowym linkiem)${hint}.`);
+  }
+  return viaNewLink;
 }
 
-// Encodes RGB pixels (3 bytes per pixel, rows top to bottom) as a PNG.
-function rgbPng(width, height, pixels) {
-  const rowLength = 1 + width * 3;
-  const raw = Buffer.alloc(height * rowLength); // filter byte 0 (none) at the start of every row
-  for (let y = 0; y < height; y++) {
-    pixels.copy(raw, y * rowLength + 1, y * width * 3, (y + 1) * width * 3);
+const shiftDate = (date, days) => {
+  const [year, month, day] = date.split("-").map(Number);
+  return new Date(Date.UTC(year, month - 1, day + days)).toISOString().slice(0, 10);
+};
+const href = (path) => new URL(path, BASE_URL).href;
+const sameName = (a, b) => normalizeText(a).toLocaleLowerCase("pl") === normalizeText(b).toLocaleLowerCase("pl");
+
+// A file named on the command line: relative to where `npm run demo` was started (npm runs scripts in the package).
+const argPath = (path) => resolve(process.env.INIT_CWD ?? process.cwd(), path);
+// UTF-8, else Windows-1250 (a Polish Excel's CSV).
+function readText(path) {
+  const bytes = readFileSync(path);
+  try {
+    return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+  } catch {
+    return new TextDecoder("windows-1250").decode(bytes);
   }
-  const chunk = (type, data) => {
-    const typeAndData = Buffer.concat([Buffer.from(type, "ascii"), data]);
-    const length = Buffer.alloc(4);
-    length.writeUInt32BE(data.length);
-    const crc = Buffer.alloc(4);
-    crc.writeUInt32BE(crc32(typeAndData));
-    return Buffer.concat([length, typeAndData, crc]);
-  };
-  const header = Buffer.alloc(13);
-  header.writeUInt32BE(width, 0);
-  header.writeUInt32BE(height, 4);
-  header.set([8, 2, 0, 0, 0], 8); // bit depth 8, colour type 2 (RGB), deflate, no filter method, no interlace
-  return Buffer.concat([
-    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
-    chunk("IHDR", header),
-    chunk("IDAT", deflateSync(raw, { level: 9 })),
-    chunk("IEND", Buffer.alloc(0)),
-  ]);
 }
 
-// event-branding (S-18): a simple logo — a coloured badge with a ring and a bar, `width` × `height`.
-function logoPng(width, height, background, foreground) {
-  const pixels = Buffer.alloc(width * height * 3);
-  for (let y = 0; y < height; y++) {
-    for (let x = 0; x < width; x++) {
-      const ring = Math.hypot(x - height / 2, y - height / 2);
-      const onRing = ring >= height * 0.28 && ring <= height * 0.4;
-      const onBar = x >= height * 0.95 && x <= width - height * 0.15 && Math.abs(y - height / 2) <= height * 0.12;
-      const [r, g, b] = onRing || onBar ? foreground : background;
-      const offset = (y * width + x) * 3;
-      pixels[offset] = r;
-      pixels[offset + 1] = g;
-      pixels[offset + 2] = b;
-    }
+// --- 0. Options and data files (nothing is written before they are read and checked) ----------------------------
+
+let options;
+let venueFile;
+let menuFile;
+let planBytes;
+let planType;
+try {
+  options = parseDemoArgs(process.argv.slice(2));
+  if (options.help) {
+    console.log(HELP);
+    process.exit(0);
   }
-  return rgbPng(width, height, pixels);
+  const venuePath = options.venue ? argPath(options.venue) : new URL("./demo-data/sala.json", import.meta.url);
+  const menuPath = options.menu ? argPath(options.menu) : new URL("./demo-data/menu.csv", import.meta.url);
+  let venueJson;
+  try {
+    venueJson = JSON.parse(readText(venuePath));
+  } catch (error) {
+    throw new DemoDataError(`Plik sali ${String(venuePath)} nie jest poprawnym JSON-em (${error.message}).`);
+  }
+  venueFile = parseVenue(venueJson);
+  menuFile = parseMenuCsv(readText(menuPath));
+  planBytes = options.plan ? readFileSync(argPath(options.plan)) : planPng(venueFile);
+  planType = sniffImageType(planBytes);
+  if (planType === null) {
+    throw new DemoDataError(`Plan ${options.plan ?? ""} nie jest obrazem PNG, JPEG ani WebP.`);
+  }
+  if (planBytes.length > MAX_PLAN_BYTES) {
+    throw new DemoDataError(`Plan ma ${String(planBytes.length)} B, a aplikacja przyjmuje najwyżej 4 MB.`);
+  }
+} catch (error) {
+  fail(
+    error instanceof DemoDataError
+      ? error.message
+      : `Nie udało się odczytać plików demo: ${error instanceof Error ? error.message : String(error)}`,
+  );
 }
+const presentGuests = GUESTS.filter((name) => name !== ABSENT).length;
 
-const fraction = (value, total) => Math.round((value / total) * 10_000) / 10_000;
-
-// --- 1. A new restaurant and event in the local database; the running server must know its key ------------------
+// --- 1. The platform admin (the ONE account written to the database) creates or finds the restaurant ----------------
 
 let env;
-let restaurantId;
-let event;
-let owner;
-let admin;
+let adminAccount;
 try {
   env = readDbEnv({ requireLocal: true });
-  const restaurant = await createRestaurant(env, RESTAURANT_NAME);
-  restaurantId = restaurant.id;
-  // pub-quiz (S-28): every module on, but only AI topics unlocked — the platform admin unlocks the pub quiz in step 9.
-  event = await createEvent(env, restaurant.id, EVENT_NAME, { allModules: true, unlocked: ["aiTopics"] });
-  console.log(
-    `Baza ${env.host}: restauracja „${restaurant.name}” (id ${String(restaurant.id)}), wydarzenie „${event.name}” (id ${String(event.id)}).`,
-  );
-  // The restaurant's owner (staff-accounts): an account without a password and an invitation link, redeemed below.
-  const account = await ensureStaffAccount(env, {
-    email: `wlasciciel-${String(restaurant.id)}@demo.stolik`,
-    displayName: "Właściciel demo",
-  });
-  await addMembership(env, restaurant.id, account.id, "owner");
-  const invite = await issueStaffLink(env, account.id, "invite", BASE_URL);
-  owner = { email: account.email, token: invite.token };
-  // The platform admin (platform-restaurants): created once; a new account gets an invitation, redeemed below.
-  const adminAccount = await ensureStaffAccount(env, {
-    email: ADMIN_EMAIL,
-    displayName: "Administrator demo",
-    isPlatformAdmin: true,
-  });
-  admin = {
-    id: adminAccount.id,
-    email: adminAccount.email,
-    token: adminAccount.hasPassword ? null : (await issueStaffLink(env, adminAccount.id, "invite", BASE_URL)).token,
-  };
+  console.log(`Baza ${env.host}, serwer ${BASE_URL}.`);
+  adminAccount = await ensureStaffAccount(env, { email: ADMIN.email, displayName: ADMIN.name, isPlatformAdmin: true });
 } catch (error) {
   fail(error instanceof PlatformError ? error.message : String(error));
 }
-
-const api = `/api/o/${event.organizerKey}`;
-const existingGuests = await request(`${api}/guests`);
-if (existingGuests.status === 404) {
-  fail(
-    "Serwer nie zna klucza organizatora nowego wydarzenia — serwer i .env wskazują różne bazy?\n" +
-      `Wydarzenie id ${String(event.id)} zostało w bazie z .env puste.`,
-  );
-}
-await step("baza startowa pytań", `${api}/questions/starter`, { method: "POST" });
-
-// The owner sets the password from the invitation link, like a person in the browser (the answer logs them in).
-const ownerRedeem = await request("/api/auth/password-link", {
-  method: "POST",
-  form: { token: owner.token, password: OWNER_PASSWORD, repeat: OWNER_PASSWORD },
-});
-if (ownerRedeem.status !== 303 || !/\/panel$/.test(new URL(ownerRedeem.location, BASE_URL).pathname)) {
-  fail(`Nie udało się ustawić hasła właściciela demo (HTTP ${ownerRedeem.status} → ${ownerRedeem.location || "-"}).`);
-}
-// The redeem logs the owner in: their session drives the panel API below (restaurant-events).
-const ownerSession = /(?:^|[\s,])kp-session=([A-Za-z0-9_-]{43});/.exec(ownerRedeem.setCookie)?.[1];
-if (!ownerSession) {
-  fail("Ustawienie hasła właściciela demo nie zalogowało go (brak ciasteczka sesji).");
-}
-const ownerCookie = `kp-session=${ownerSession}`;
-
-// The platform admin: a new account sets the password from its invitation; an existing one logs in with the demo
-// password, and only when that fails (changed by hand) a password-reset link sets it again.
-const toPanel = (res) => res.status === 303 && new URL(res.location, BASE_URL).pathname === "/panel";
-const setAdminPassword = (token) =>
-  request("/api/auth/password-link", {
-    method: "POST",
-    form: { token, password: ADMIN_PASSWORD, repeat: ADMIN_PASSWORD },
-  });
-// The session cookie of an answer that logged the person in (303 to /panel), else null.
-const panelCookieOf = (res) => {
-  const token = /(?:^|[\s,])kp-session=([A-Za-z0-9_-]{43});/.exec(res.setCookie)?.[1];
-  return toPanel(res) && token ? `kp-session=${token}` : null;
-};
-let adminCookie = admin.token
-  ? panelCookieOf(await setAdminPassword(admin.token))
-  : panelCookieOf(
-      await request("/api/auth/login", { method: "POST", form: { email: admin.email, password: ADMIN_PASSWORD } }),
-    );
-if (!adminCookie) {
+const adminLink = async (kind) => {
   try {
-    const reset = await issueStaffLink(env, admin.id, "reset", BASE_URL);
-    adminCookie = panelCookieOf(await setAdminPassword(reset.token));
+    return `/haslo/${(await issueStaffLink(env, adminAccount.id, kind, BASE_URL)).token}`;
   } catch (error) {
     fail(error instanceof PlatformError ? error.message : String(error));
   }
-}
-if (!adminCookie) {
-  fail(`Nie udało się ustawić hasła administratora demo (${ADMIN_EMAIL}).`);
-}
+};
+const adminCookie = await sessionFor(
+  ADMIN,
+  adminAccount.hasPassword ? null : await adminLink("invite"),
+  () => adminLink("reset"),
+  " — serwer i .env wskazują różne bazy?",
+);
 
-// --- 2. Venue: plan image, rooms, tables with pins ----------------------------------------------------------------
-
-const png = planPng();
-await step("wgranie planu", `${api}/plan`, { method: "PUT", bytes: png, contentType: "image/png" });
-
-const roomIds = new Map();
-for (const room of ROOMS) {
-  const venue = await step(`sala ${room.name}`, `${api}/rooms`, { method: "POST", json: { name: room.name } }, 201);
-  roomIds.set(room.name, venue.rooms.find((candidate) => candidate.name === room.name).id);
-}
-
-let venue;
-for (const table of TABLES) {
-  venue = await step(
-    `stolik ${table.name}`,
-    `${api}/tables`,
+const PLATFORM_API = "/api/panel/platform/restaurants";
+const platform = await step("lista restauracji platformy", PLATFORM_API, { cookie: adminCookie });
+let restaurant =
+  platform.restaurants
+    .filter((candidate) => candidate.owners.some((person) => person.email === OWNER.email))
+    .sort((a, b) => a.id - b.id)[0] ?? null;
+let ownerLink = null;
+const restaurantCreated = restaurant === null;
+if (restaurantCreated) {
+  const created = await step(
+    "nowa restauracja demo (administrator)",
+    PLATFORM_API,
     {
       method: "POST",
-      json: {
-        roomId: roomIds.get(table.room),
-        name: table.name,
-        seatCount: table.seatCount,
-        shape: table.shape,
-        x: fraction(table.at[0], PLAN_WIDTH),
-        y: fraction(table.at[1], PLAN_HEIGHT),
-      },
+      json: { name: options.name ?? RESTAURANT_NAME, ownerEmail: OWNER.email, ownerName: OWNER.name },
+      cookie: adminCookie,
     },
     201,
   );
+  restaurant = created.restaurants.find((candidate) => candidate.id === created.restaurantId);
+  ownerLink = created.owner.link?.path ?? null;
 }
-const tableByName = new Map(venue.tables.map((table) => [table.name, table]));
+const restaurantId = restaurant.id;
+const restaurantPath = `/panel/restauracje/${String(restaurantId)}`;
+if (restaurant.disabled) {
+  await step("włączenie restauracji demo (administrator)", `${PLATFORM_API}/${String(restaurantId)}`, {
+    method: "PATCH",
+    json: { disabled: false },
+    cookie: adminCookie,
+  });
+}
+const ownerAccountId = restaurant.owners.find((person) => person.email === OWNER.email).accountId;
 
-// --- 3. Guests, groups, the absent guest --------------------------------------------------------------------------
+// --- 2. The owner sets the password and brings the team; the restaurant's settings --------------------------------
 
+const ownerCookie = await sessionFor(OWNER, ownerLink, async () => {
+  const answer = await step(
+    "nowy link właściciela (administrator)",
+    `${PLATFORM_API}/${String(restaurantId)}/owners/${String(ownerAccountId)}/link`,
+    { method: "POST", cookie: adminCookie },
+  );
+  return answer.link.path;
+});
+
+const restaurantApi = `/api/panel/restaurants/${String(restaurantId)}`;
+let restaurantName = restaurant.name;
+if (options.name !== null && options.name !== restaurant.name) {
+  const renamed = await step(`nazwa restauracji „${options.name}”`, `${restaurantApi}/branding`, {
+    method: "PATCH",
+    json: { name: options.name },
+    cookie: ownerCookie,
+  });
+  restaurantName = renamed.name;
+}
+
+const teamApi = `${restaurantApi}/team`;
+let team = (await step("zespół lokalu", teamApi, { cookie: ownerCookie })).team;
+for (const person of [MANAGER, WAITER]) {
+  let member = team.members.find((candidate) => candidate.email === person.email);
+  let link = null;
+  if (!member) {
+    const answer = await step(
+      `zaproszenie ${person.email}`,
+      teamApi,
+      { method: "POST", json: { email: person.email, name: person.name, role: person.role }, cookie: ownerCookie },
+      201,
+    );
+    team = answer.team;
+    link = answer.invited.link?.path ?? null;
+    member = team.members.find((candidate) => candidate.email === person.email);
+  } else if (member.role !== person.role) {
+    team = (
+      await step(`rola ${person.email}`, `${teamApi}/${String(member.accountId)}`, {
+        method: "PATCH",
+        json: { role: person.role },
+        cookie: ownerCookie,
+      })
+    ).team;
+  }
+  const accountId = member.accountId;
+  person.cookie = await sessionFor(person, link, async () => {
+    const answer = await step(`nowy link ${person.email} (właściciel)`, `${teamApi}/${String(accountId)}/link`, {
+      method: "POST",
+      cookie: ownerCookie,
+    });
+    return answer.link.path;
+  });
+}
+team = (await step("zespół lokalu po zaproszeniach", teamApi, { cookie: ownerCookie })).team;
+for (const [person, role] of [
+  [OWNER, "owner"],
+  [MANAGER, "manager"],
+  [WAITER, "waiter"],
+]) {
+  const member = team.members.find((candidate) => candidate.email === person.email);
+  if (member?.role !== role || !member.hasPassword) {
+    fail(`Zespół lokalu demo: ${person.email} nie ma roli ${role} albo hasła.`);
+  }
+}
+const managerCookie = MANAGER.cookie;
+const waiterCookie = WAITER.cookie;
+
+// Settings a stable restaurant may have drifted on, set BEFORE the events: the guest data term (a shorter one would
+// purge „Urodziny Ani (demo)”) and the brand (colour and logo on every guest, TV and tablet page).
+const retention = await step(`retencja danych gości: ${String(RETENTION_DAYS)} dni`, `${restaurantApi}/retention`, {
+  method: "PATCH",
+  json: { guestRetentionDays: RETENTION_DAYS },
+  cookie: ownerCookie,
+});
+if (retention.guestRetentionDays !== RETENTION_DAYS) {
+  fail(`Retencja danych gości lokalu demo nie jest ${String(RETENTION_DAYS)} dni.`);
+}
+await step("kolor marki lokalu", `${restaurantApi}/branding`, {
+  method: "PATCH",
+  json: { color: BRAND_COLOR },
+  cookie: ownerCookie,
+});
+await step("logo lokalu", `${restaurantApi}/branding/logo`, {
+  method: "PUT",
+  bytes: logoPng(240, 96, [124, 45, 18], [253, 230, 138]),
+  contentType: "image/png",
+  cookie: ownerCookie,
+});
+
+// --- Refresh: the template is kept unless rebuilt (checked BEFORE anything is deleted), every event goes -------------
+
+const eventsApi = `${restaurantApi}/events`;
+const templatesApi = `${restaurantApi}/templates`;
+const rebuildTemplate = options.reset || options.plan !== null || options.venue !== null;
+const { templates: oldTemplates } = await step("szablony lokalu", templatesApi, { cookie: ownerCookie });
+let template = rebuildTemplate
+  ? null
+  : (oldTemplates.filter((candidate) => candidate.name === TEMPLATE_NAME).sort((a, b) => a.id - b.id)[0] ?? null);
+const fileSeats = venueFile.tables.reduce((sum, table) => sum + table.seats, 0);
+if (template && template.seatCount < presentGuests) {
+  fail(
+    `Szablon „${TEMPLATE_NAME}” ma ${String(template.seatCount)} miejsc, a obecnych gości demo jest ${String(presentGuests)}: ` +
+      "dodaj stoliki w edytorze szablonu albo uruchom npm run demo -- --venue <plik> (lub --reset).",
+  );
+}
+if (!template && fileSeats < presentGuests) {
+  fail(
+    `Plik sali ma ${String(fileSeats)} miejsc, a obecnych gości demo jest ${String(presentGuests)}: dodaj stoliki w pliku (wydarzenia, szablon i menu bez zmian).`,
+  );
+}
+const oldEvents = await step("lista wydarzeń lokalu", eventsApi, { cookie: ownerCookie });
+const today = oldEvents.today;
+for (const old of [...oldEvents.upcoming, ...oldEvents.past, ...oldEvents.archived]) {
+  await step(`usunięcie wydarzenia „${old.name}” (właściciel)`, `/api/panel/events/${String(old.id)}`, {
+    method: "DELETE",
+    cookie: ownerCookie,
+  });
+}
+for (const old of oldTemplates.filter((candidate) => candidate.id !== template?.id)) {
+  await step(`usunięcie szablonu „${old.name}”`, `/api/panel/templates/${String(old.id)}`, {
+    method: "DELETE",
+    cookie: ownerCookie,
+  });
+}
+
+// --- 3. The manager: the restaurant's menu and the venue template --------------------------------------------------
+
+const menuApi = `${restaurantApi}/menu`;
+let catalog = await step("menu lokalu", menuApi, { cookie: managerCookie });
+const rebuildMenu = options.reset || options.menu !== null || catalog.items.length === 0;
+if (rebuildMenu) {
+  for (const item of catalog.items) {
+    catalog = await step(`usunięcie z menu: ${item.name}`, `${menuApi}/${String(item.id)}`, {
+      method: "DELETE",
+      cookie: managerCookie,
+    });
+  }
+  for (const entry of menuFile) {
+    catalog = await step(
+      `menu: ${entry.name}`,
+      menuApi,
+      { method: "POST", json: { name: entry.name, course: entry.course, price: entry.price }, cookie: managerCookie },
+      201,
+    );
+  }
+}
+
+if (!template) {
+  // Built under a working name and renamed at the end, so a template left half-built by a failed run is never kept.
+  const created = await step(
+    "nowy szablon sali (menedżer)",
+    templatesApi,
+    { method: "POST", json: { name: `${TEMPLATE_NAME} — w budowie` }, cookie: managerCookie },
+    201,
+  );
+  const sala = `/api/panel/templates/${String(created.template.id)}/sala`;
+  await step("plan lokalu w szablonie", `${sala}/plan`, {
+    method: "PUT",
+    bytes: planBytes,
+    contentType: planType,
+    cookie: managerCookie,
+  });
+  const roomIds = new Map();
+  for (const room of venueFile.rooms) {
+    const venue = await step(
+      `sala ${room.name}`,
+      `${sala}/rooms`,
+      { method: "POST", json: { name: room.name }, cookie: managerCookie },
+      201,
+    );
+    const roomId = venue.rooms.find((candidate) => sameName(candidate.name, room.name)).id;
+    roomIds.set(room.name, roomId);
+    if (room.outline) {
+      await step(`kontur sali ${room.name}`, `${sala}/rooms/${String(roomId)}`, {
+        method: "PATCH",
+        json: { outline: room.outline },
+        cookie: managerCookie,
+      });
+    }
+  }
+  for (const table of venueFile.tables) {
+    await step(
+      `stolik ${table.name}`,
+      `${sala}/tables`,
+      {
+        method: "POST",
+        json: {
+          roomId: roomIds.get(table.room),
+          name: table.name,
+          seatCount: table.seats,
+          shape: table.shape,
+          x: table.x,
+          y: table.y,
+          rotation: table.rotation,
+        },
+        cookie: managerCookie,
+      },
+      201,
+    );
+  }
+  template = (
+    await step("nazwa szablonu", `/api/panel/templates/${String(created.template.id)}`, {
+      method: "PATCH",
+      json: { name: TEMPLATE_NAME },
+      cookie: managerCookie,
+    })
+  ).template;
+  if (template.tableCount !== venueFile.tables.length || template.seatCount !== fileSeats || !template.hasPlan) {
+    fail(`Szablon „${TEMPLATE_NAME}” nie ma sali z pliku (${JSON.stringify(template)}).`);
+  }
+}
+const templateId = template.id;
+
+// --- 4. The manager creates the events from the template ----------------------------------------------------------
+
+const events = new Map();
+for (const { name, days, expectedGuests } of EVENTS) {
+  const created = await step(
+    `wydarzenie z szablonu „${name}” (menedżer)`,
+    eventsApi,
+    {
+      method: "POST",
+      json: { name, date: shiftDate(today, days), expectedGuests, templateId },
+      cookie: managerCookie,
+    },
+    201,
+  );
+  events.set(name, created.event);
+}
+const main = events.get(MAIN_EVENT);
+const mainId = String(main.id);
+const venueLedId = String(events.get(VENUE_LED_EVENT).id);
+const purgedId = String(events.get(PURGED_EVENT).id);
+const organizerKey = main.links.organizer.replace(/^\/o\//, "");
+const tvKey = main.links.tv.replace(/^\/tv\//, "");
+const restaurantKey = main.links.restaurant.replace(/^\/r\//, "");
+const api = `/api/o/${organizerKey}`;
+const organizerUrl = href(main.links.organizer);
+
+// Every event has the template's room (its own copy; template changes never touch it).
+{
+  const copied = await step(
+    `sala „${TEMPLATE_EVENT}” z szablonu`,
+    `/api/panel/events/${String(events.get(TEMPLATE_EVENT).id)}/klient/venue`,
+    {
+      cookie: managerCookie,
+    },
+  );
+  if (copied.tables.length !== template.tableCount || copied.rooms.length !== template.roomCount) {
+    fail(`Wydarzenie „${TEMPLATE_EVENT}” nie dostało sali z szablonu „${TEMPLATE_NAME}”.`);
+  }
+}
+// client-restaurant-split: the venue runs the company Christmas party („Lokal prowadzi”) and adds its first guests
+// through the panel; its client link is view-only. The main party stays client-led.
+const switched = await step(`lokal prowadzi: ${VENUE_LED_EVENT}`, `/api/panel/events/${venueLedId}`, {
+  method: "PATCH",
+  json: { venueLeads: true },
+  cookie: ownerCookie,
+});
+if (switched.event.venueLeads !== true) {
+  fail(`„Lokal prowadzi” nie włączył się dla „${VENUE_LED_EVENT}”.`);
+}
 await step(
-  "lista gości",
-  `${api}/guests`,
-  { method: "POST", json: { text: GUESTS.filter((name) => !IMPORTED_GUESTS.includes(name)).join("\n") } },
+  `goście przez panel: ${VENUE_LED_EVENT}`,
+  `/api/panel/events/${venueLedId}/klient/guests`,
+  { method: "POST", json: { text: VENUE_LED_GUESTS.join("\n") }, cookie: ownerCookie },
   201,
 );
-// guest-import-diets (S-23): the rest from a CSV as a Polish spreadsheet saves it (UTF-8 with a BOM, `;`, a header,
-// quoted cells where needed): the preview first (nothing saved), then the import, all at once.
+// Flow 7: after the party the event goes to the archive; 60 days ago is past the 30-day term, so the panel's guard
+// purges its guests' data before serving it.
+await step(`archiwum: ${PURGED_EVENT}`, `/api/panel/events/${purgedId}`, {
+  method: "PATCH",
+  json: { archived: true },
+  cookie: ownerCookie,
+});
+const eventLists = await step("listy wydarzeń lokalu", eventsApi, { cookie: ownerCookie });
+{
+  const listed = [...eventLists.upcoming, ...eventLists.past, ...eventLists.archived].map((entry) => entry.name).sort();
+  if (
+    JSON.stringify(listed) !== JSON.stringify(EVENTS.map((entry) => entry.name).sort()) ||
+    eventLists.archived.length !== 1 ||
+    eventLists.past.length !== 1
+  ) {
+    fail(`Lista wydarzeń lokalu demo to nie pięć wydarzeń demo: ${listed.join(", ")}.`);
+  }
+}
+
+// menu-catalog-courses (S-16): the main party's menu is the file's „w menu imprezy” dishes that the catalog has (a
+// menu typed in the app: all of it).
+const reducedIds = catalog.items
+  .filter((item) => menuFile.some((entry) => entry.inEvent && sameName(entry.name, item.name)))
+  .map((item) => item.id);
+const eventMenu = await step(`menu imprezy „${MAIN_EVENT}”`, `/api/panel/events/${mainId}/menu`, {
+  method: "PUT",
+  json: reducedIds.length > 0 ? { mode: "reduced", itemIds: reducedIds } : { mode: "full" },
+  cookie: managerCookie,
+});
+
+// --- 5. The client prepares the party on its link: guests, diets, groups, seating -------------------------------
+
+await step("gra w zgadywanie: włączenie (klient)", `${api}/modules`, {
+  method: "PUT",
+  json: { module: "guessing", enabled: true },
+});
+await step(
+  "lista gości (wklejona)",
+  `${api}/guests`,
+  { method: "POST", json: { text: PASTED_GUESTS.join("\n") } },
+  201,
+);
+// guest-import-diets (S-23): the rest from the company's spreadsheet as a Polish Excel saves it (UTF-8 with a BOM, `;`,
+// a header, quoted cells where needed): the preview first (nothing saved), then the import, all at once.
 const csvCell = (text) => (/[;"\r\n]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text);
 const importCsv =
-  "\uFEFFImię;Dieta;Uwagi\r\n" +
+  "﻿Imię;Dieta;Uwagi\r\n" +
   IMPORTED_GUESTS.map((name) => {
     const [diet, note] = GUEST_DIETS.get(name) ?? ["", ""];
     return [name, diet, note].map(csvCell).join(";");
@@ -537,27 +731,28 @@ const imported = await step(
   201,
 );
 const guestId = new Map(imported.guests.map((guest) => [guest.displayName, guest.id]));
-const missingNames = GUESTS.filter((name) => !guestId.has(name));
-if (missingNames.length > 0) {
-  fail(`Po wklejeniu i imporcie brakuje gości: ${missingNames.join(", ")}.`);
+{
+  const missing = GUESTS.filter((name) => !guestId.has(name));
+  if (missing.length > 0 || imported.guests.length !== GUESTS.length) {
+    fail(`Po wklejeniu i imporcie lista gości się nie zgadza (brakuje: ${missing.join(", ") || "-"}).`);
+  }
+  const wrongDiets = IMPORTED_GUESTS.filter((name) => {
+    const guest = imported.guests.find((candidate) => candidate.displayName === name);
+    const [, note, tags] = GUEST_DIETS.get(name) ?? ["", "", []];
+    return JSON.stringify(guest?.diets) !== JSON.stringify(tags) || (guest?.dietNote ?? "") !== note;
+  });
+  if (wrongDiets.length > 0) {
+    fail(`Import nie zapisał diet: ${wrongDiets.join(", ")}.`);
+  }
 }
 const idOf = (name) => guestId.get(name);
-const wrongDiets = IMPORTED_GUESTS.filter((name) => {
-  const guest = imported.guests.find((candidate) => candidate.displayName === name);
-  const [, note, tags] = GUEST_DIETS.get(name) ?? ["", "", []];
-  return JSON.stringify(guest?.diets) !== JSON.stringify(tags) || (guest?.dietNote ?? "") !== note;
-});
-if (wrongDiets.length > 0) {
-  fail(`Import nie zapisał diet: ${wrongDiets.join(", ")}.`);
-}
 for (const name of PATCHED_DIETS) {
   const [, note, tags] = GUEST_DIETS.get(name);
-  await step(`dieta ${name}`, `${api}/guests/${idOf(name)}`, {
+  await step(`dieta ${name}`, `${api}/guests/${String(idOf(name))}`, {
     method: "PATCH",
     json: { diets: tags, dietNote: note === "" ? null : note },
   });
 }
-
 for (const group of GROUPS) {
   await step(
     `grupa ${group.members.join(" + ")}`,
@@ -566,45 +761,34 @@ for (const group of GROUPS) {
     201,
   );
 }
-await step(`nieobecność ${ABSENT}`, `${api}/guests/${idOf(ABSENT)}`, { method: "PATCH", json: { isAbsent: true } });
+await step(`nieobecność ${ABSENT}`, `${api}/guests/${String(idOf(ABSENT))}`, {
+  method: "PATCH",
+  json: { isAbsent: true },
+});
 
-// --- 4. Seating: a whole draft (groups on their seats, the other present guests spread out), pin, publish ---------
-
-const seats = [];
-const taken = new Map(TABLES.map((table) => [table.name, new Set()]));
-const take = (name, tableName, seat) => {
-  seats.push({ guestId: idOf(name), tableId: tableByName.get(tableName).id, seat });
-  taken.get(tableName).add(seat);
-};
-for (const group of GROUPS) {
-  group.members.forEach((name, index) => {
-    take(name, group.table, group.seats[index]);
-  });
+// A whole draft on the event's tables (whatever the template holds: groups on consecutive seats of one side, the
+// other present guests spread out), the pinned guest, the publish.
+const venue = await step("sala imprezy", `${api}/venue`);
+let draft;
+try {
+  draft = seatGuests({ tables: venue.tables, guests: GUESTS, groups: GROUPS, absent: [ABSENT] });
+} catch (error) {
+  fail(error instanceof DemoDataError ? error.message : String(error));
 }
-const grouped = new Set(GROUPS.flatMap((group) => group.members));
-// Each single goes to the table with the most free seats (first in TABLES on a tie), at its lowest free seat.
-for (const name of GUESTS.filter((candidate) => candidate !== ABSENT && !grouped.has(candidate))) {
-  const free = (table) => table.seatCount - taken.get(table.name).size;
-  const table = TABLES.reduce((best, candidate) => (free(candidate) > free(best) ? candidate : best));
-  if (free(table) === 0) {
-    fail("Za mało miejsc przy stolikach dla obecnych gości.");
-  }
-  let seat = 1;
-  while (taken.get(table.name).has(seat)) {
-    seat++;
-  }
-  take(name, table.name, seat);
-}
-
-await step("zapis rozsadzenia", `${api}/seating/draft`, { method: "POST", json: { seats } });
-await step(`przypięcie ${PINNED}`, `${api}/seating/guests/${idOf(PINNED)}`, {
+await step("zapis rozsadzenia", `${api}/seating/draft`, {
+  method: "POST",
+  json: { seats: draft.map((seat) => ({ guestId: idOf(seat.name), tableId: seat.tableId, seat: seat.seat })) },
+});
+await step(`przypięcie ${PINNED}`, `${api}/seating/guests/${String(idOf(PINNED))}`, {
   method: "PATCH",
   json: { pinned: true },
 });
 const board = await step("publikacja na TV", `${api}/seating/publish`, { method: "POST" }, 201);
+const tableOfGroup = (index) => draft.find((seat) => seat.name === GROUPS[index].members[0]).tableId;
+const tableName = (id) => venue.tables.find((table) => table.id === id)?.name ?? "?";
 
 // guest-import-diets (S-23): the kitchen's tablet counts the present guests' diets and shows each at its seat.
-const tabletView = await step("tablet: diety i alergie", `/api/r/${event.restaurantKey}/orders`);
+const tabletView = await step("tablet: diety i alergie", `/api/r/${restaurantKey}/orders`);
 const expectedDietCounts = Object.keys(DIET_LABELS)
   .map((tag) => ({
     tag,
@@ -619,175 +803,61 @@ if (
 }
 const dietSummary = expectedDietCounts.map((entry) => `${DIET_LABELS[entry.tag]} ${String(entry.count)}`).join(", ");
 
-// --- 5. Guesses by organizer proxy ----------------------------------------------------------------------------
-
+// Guesses by organizer proxy.
 let guessBoard;
 for (const [name, amount, place] of GUESSES) {
-  guessBoard = await step(`strzał ${name}`, `${api}/guesses/${idOf(name)}`, {
+  guessBoard = await step(`strzał ${name}`, `${api}/guesses/${String(idOf(name))}`, {
     method: "PUT",
     json: place === undefined ? { amount } : { amount, place },
   });
 }
 
-// --- 6. Food order -----------------------------------------------------------------------------------------------
+// --- 6. Orders from the event's menu (each line takes its dish's price and course), RSVPs -----------------------
 
-// menu-catalog-courses (S-16): the owner fills the restaurant's menu (all five courses) and gives the main event a
-// reduced menu; the client then orders only from it and every line takes the menu's price and course (no
-// „Cennik wydarzenia” needed — that stays the venue's way to re-price an event).
-let catalog;
-for (const [name, course, price] of MENU) {
-  catalog = await step(
-    `menu ${name}`,
-    `/api/panel/restaurants/${String(restaurantId)}/menu`,
-    { method: "POST", json: { name, course, price }, cookie: ownerCookie },
-    201,
-  );
+let orderBoard = await step("zamówienia: menu imprezy", `${api}/orders`);
+if (!orderBoard.menu?.active) {
+  fail(`Menu „${MAIN_EVENT}” nie jest aktywne (menu lokalu puste?).`);
 }
-const reducedIds = MENU.filter((entry) => entry[3]).map(
-  ([name]) => catalog.items.find((item) => item.name === name)?.id ?? 0,
-);
-const eventMenu = await step("menu wydarzenia (okrojone)", `/api/panel/events/${String(event.id)}/menu`, {
-  method: "PUT",
-  json: { mode: "reduced", itemIds: reducedIds },
-  cookie: ownerCookie,
-});
-for (const [name, price, quantity, note, target] of ORDERS) {
+const menuItems = orderBoard.menu.items;
+for (const [courses, pick, quantity, note, target] of ORDERS) {
+  const item = pickMenuItem(menuItems, courses, pick);
   const assignment =
     target === null
       ? null
       : typeof target === "string"
         ? { guestId: idOf(target) }
-        : { tableId: tableByName.get(target.table).id };
+        : { tableId: tableOfGroup(target.group) };
   const added = await step(
-    `zamówienie ${name}`,
+    `zamówienie ${item.name}`,
     `${api}/orders`,
-    { method: "POST", json: { name, quantity, note, assignment } },
+    { method: "POST", json: { name: item.name, quantity, note, assignment } },
     201,
   );
-  const line = added.items.at(-1);
-  if (line?.course === null || formatGrosze(line?.unitPriceGrosze ?? -1) !== price) {
-    fail(`Pozycja „${name}” nie wzięła ceny i kursu z menu (${JSON.stringify(line)}).`);
+  const line = added.items.find((candidate) => !orderBoard.items.some((old) => old.id === candidate.id));
+  if (line?.course !== item.course || line.unitPriceGrosze !== item.priceGrosze) {
+    fail(`Pozycja „${item.name}” nie wzięła ceny i kursu z menu (${JSON.stringify(line)}).`);
   }
+  orderBoard = added;
 }
-let orderBoard = await step("zamówienie z menu", `${api}/orders`);
-const firstLine = orderBoard.items[0];
-orderBoard = await step(`wydane: ${firstLine.name}`, `${api}/orders/${firstLine.id}`, {
+const firstLine = orderBoard.items.reduce((first, line) => (line.id < first.id ? line : first));
+orderBoard = await step(`wydane: ${firstLine.name}`, `${api}/orders/${String(firstLine.id)}`, {
   method: "PATCH",
   json: { delivered: true },
 });
 
-// --- 7. More events of the restaurant (restaurant-events): upcoming, past and archived ---------------------------
-
-const eventsApi = `/api/panel/restaurants/${String(restaurantId)}/events`;
-const { today } = await step("lista wydarzeń lokalu", eventsApi, { cookie: ownerCookie });
-const shiftDate = (date, days) => {
-  const [year, month, day] = date.split("-").map(Number);
-  return new Date(Date.UTC(year, month - 1, day + days)).toISOString().slice(0, 10);
-};
-const MORE_EVENTS = [
-  { name: "Wigilia firmowa (demo)", date: shiftDate(today, 32), expectedGuests: 80, archived: false },
-  { name: "Urodziny Ani (demo)", date: shiftDate(today, -10), expectedGuests: 30, archived: false },
-  { name: "Komunia Zosi (demo)", date: shiftDate(today, -60), expectedGuests: null, archived: true },
-];
-// client-restaurant-split: the company Christmas party is run by the venue („Lokal prowadzi”): the owner flips the
-// switch and adds its first guests through the panel (the dispatcher to the client's API); its client link is
-// view-only. The main event stays client-led (its prices were set by the owner above).
-const VENUE_LED_EVENT = MORE_EVENTS[0].name;
-const VENUE_LED_GUESTS = ["Dyrektor Nowak", "Pani Kowalska", "Pan Wiśniewski", "Ola z księgowości"];
-let venueLedEventId = null;
-const moreEventIds = new Map();
-for (const { name, date, expectedGuests, archived } of MORE_EVENTS) {
-  const created = await step(
-    `wydarzenie ${name}`,
-    eventsApi,
-    { method: "POST", json: { name, date, expectedGuests }, cookie: ownerCookie },
-    201,
-  );
-  moreEventIds.set(name, created.event.id);
-  if (name === VENUE_LED_EVENT) {
-    venueLedEventId = created.event.id;
-    const switched = await step(`lokal prowadzi: ${name}`, `/api/panel/events/${String(venueLedEventId)}`, {
-      method: "PATCH",
-      json: { venueLeads: true },
-      cookie: ownerCookie,
-    });
-    if (switched.event.venueLeads !== true) {
-      fail(`„Lokal prowadzi” nie włączył się dla „${name}”.`);
-    }
-    await step(
-      `goście przez panel: ${name}`,
-      `/api/panel/events/${String(venueLedEventId)}/klient/guests`,
-      { method: "POST", json: { text: VENUE_LED_GUESTS.join("\n") }, cookie: ownerCookie },
-      201,
-    );
-  }
-  if (archived) {
-    await step(`archiwum: ${name}`, `/api/panel/events/${String(created.event.id)}`, {
-      method: "PATCH",
-      json: { archived: true },
-      cookie: ownerCookie,
-    });
-  }
-}
-
-// --- 7b. A venue template (venue-templates, S-15): the main event's room saved as a template, and an event created from
-// it with the room ready (the template's rows are its own; it is in no event list or counter) ----------------------
-
-const TEMPLATE_NAME = "Sala główna (szablon demo)";
-const TEMPLATE_EVENT = "Rocznica firmy (demo)";
-const savedTemplate = await step(
-  `szablon sali ${TEMPLATE_NAME}`,
-  `/api/panel/restaurants/${String(restaurantId)}/templates`,
-  { method: "POST", json: { name: TEMPLATE_NAME, sourceEventId: event.id }, cookie: ownerCookie },
-  201,
-);
-const templateId = savedTemplate.template.id;
-const fromTemplate = await step(
-  `wydarzenie z szablonu ${TEMPLATE_EVENT}`,
-  eventsApi,
-  {
-    method: "POST",
-    json: { name: TEMPLATE_EVENT, date: shiftDate(today, 20), expectedGuests: 60, templateId },
-    cookie: ownerCookie,
-  },
-  201,
-);
-const templateEventVenue = await step(
-  `sala wydarzenia z szablonu`,
-  `/api/panel/events/${String(fromTemplate.event.id)}/klient/venue`,
-  { cookie: ownerCookie },
-);
-if (
-  templateEventVenue.tables.length !== savedTemplate.template.tableCount ||
-  templateEventVenue.rooms.length !== savedTemplate.template.roomCount
-) {
-  fail(`Wydarzenie „${TEMPLATE_EVENT}” nie dostało sali z szablonu „${TEMPLATE_NAME}”.`);
-}
-
-const eventLists = await step("listy wydarzeń lokalu", eventsApi, { cookie: ownerCookie });
-if (eventLists.upcoming.length === 0 || eventLists.past.length === 0 || eventLists.archived.length === 0) {
-  fail("Lista wydarzeń lokalu demo nie ma wszystkich trzech zakładek (nadchodzące, minione, archiwum).");
-}
-
-// --- 7c. RSVP and dish choice (guest-rsvp-menu, S-25): the client offers the reduced menu's main courses until
-// tomorrow 12:00 (Warsaw time); three guests answer on their own links (guest access on just for that, then off
-// again), the client enters ten more and „nie przyjdzie” for the absent guest (no new absence, so the published
-// seating stays up to date) -------------------------------------------------------------------------------------
-
+// guest-rsvp-menu (S-25): the client offers the menu's main courses (else any dishes) until tomorrow 12:00 (Warsaw
+// time); three guests answer on their own links (guest access on just for that), the client enters ten more and „nie
+// przyjdzie” for the absent guest (no new absence, so the published seating stays up to date).
 const RSVP_DEADLINE = `${shiftDate(today, 1)}T12:00`;
-const rsvpOptions = eventMenu.items
-  .filter((item) => item.available && item.course === "main")
-  .map((item) => item.name)
-  .slice(0, 4);
+const mains = menuItems.filter((item) => item.course === "main").map((item) => item.name);
+const rsvpOptions = (mains.length >= 2 ? mains : menuItems.map((item) => item.name)).slice(0, 4);
 if (rsvpOptions.length < 2) {
-  fail(`Menu „${EVENT_NAME}” nie ma dwóch dań głównych do wyboru (${rsvpOptions.join(", ")}).`);
+  fail(`Menu „${MAIN_EVENT}” nie ma dwóch dań do wyboru w potwierdzeniach.`);
 }
 await step("potwierdzenia: termin i dania", `${api}/rsvp`, {
   method: "PATCH",
   json: { deadline: RSVP_DEADLINE, options: rsvpOptions },
 });
-const RSVP_BY_GUESTS = ["Ania", "Bartek", "Kasia"];
-const RSVP_BY_CLIENT = ["Tomek", "Magda", "Piotrek", "Ola", "Kuba", "Ewa", "Marcin", "Zosia", "Michał", "Basia"];
 const rsvpDishOf = (index) => rsvpOptions[index % rsvpOptions.length];
 const guestLinks = await step("linki gości: włączenie na potwierdzenia", `${api}/guest-links`, {
   method: "PATCH",
@@ -808,32 +878,33 @@ await step("linki gości: wyłączenie po potwierdzeniach", `${api}/guest-links`
   json: { enabled: false },
 });
 for (const [index, name] of RSVP_BY_CLIENT.entries()) {
-  await step(`potwierdzenie za gościa: ${name}`, `${api}/rsvp/guests/${idOf(name)}`, {
+  await step(`potwierdzenie za gościa: ${name}`, `${api}/rsvp/guests/${String(idOf(name))}`, {
     method: "PUT",
     json: { attending: true, dish: rsvpDishOf(index + RSVP_BY_GUESTS.length) },
   });
 }
-const rsvpBoard = await step(`potwierdzenie za gościa: ${ABSENT} nie przyjdzie`, `${api}/rsvp/guests/${idOf(ABSENT)}`, {
-  method: "PUT",
-  json: { attending: false, dish: null },
-});
+const rsvpBoard = await step(
+  `potwierdzenie za gościa: ${ABSENT} nie przyjdzie`,
+  `${api}/rsvp/guests/${String(idOf(ABSENT))}`,
+  { method: "PUT", json: { attending: false, dish: null } },
+);
 {
   const coming = RSVP_BY_GUESTS.length + RSVP_BY_CLIENT.length;
-  const expectedDishes = rsvpOptions.map((name, optionIndex) => ({
-    name,
-    count: Array.from({ length: coming }, (_, index) => index).filter(
-      (index) => index % rsvpOptions.length === optionIndex,
-    ).length,
-  }));
   const counted = Object.fromEntries(rsvpBoard.counts.dishes.map((dish) => [dish.name, dish.count]));
   const { counts } = rsvpBoard;
+  const dishesMatch = rsvpOptions.every(
+    (name, optionIndex) =>
+      (counted[name] ?? 0) ===
+      Array.from({ length: coming }, (_, index) => index).filter((index) => index % rsvpOptions.length === optionIndex)
+        .length,
+  );
   if (
     !rsvpBoard.open ||
     counts.coming !== coming ||
     counts.notComing !== 1 ||
     counts.noAnswer !== GUESTS.length - coming - 1 ||
     counts.noDish !== 0 ||
-    expectedDishes.some((dish) => counted[dish.name] !== dish.count)
+    !dishesMatch
   ) {
     fail(`Zliczenia potwierdzeń się nie zgadzają: ${JSON.stringify(counts)}.`);
   }
@@ -848,86 +919,44 @@ const rsvpSummary =
   `nie przyjdzie ${String(rsvpBoard.counts.notComing)} (${ABSENT}), bez odpowiedzi ${String(rsvpBoard.counts.noAnswer)}; ` +
   rsvpBoard.counts.dishes.map((dish) => `${dish.name} ×${String(dish.count)}`).join(", ");
 
-// --- 8. The restaurant's team (restaurant-team): the owner invites a manager and a waiter, both set their passwords --
+// --- 6. The day of the party: the waiter's floor (a refill from the menu), the per-event waiter, readouts, prints ---
 
-const teamApi = `/api/panel/restaurants/${String(restaurantId)}/team`;
-const TEAM = [
-  {
-    email: `menedzer-${String(restaurantId)}@demo.stolik`,
-    name: "Menedżer demo",
-    role: "manager",
-    password: MANAGER_PASSWORD,
-  },
-  {
-    email: `kelner-${String(restaurantId)}@demo.stolik`,
-    name: "Kelner demo",
-    role: "waiter",
-    password: WAITER_PASSWORD,
-  },
-];
-for (const person of TEAM) {
-  const answer = await step(
-    `zaproszenie ${person.email}`,
-    teamApi,
-    { method: "POST", json: { email: person.email, name: person.name, role: person.role }, cookie: ownerCookie },
-    201,
-  );
-  const token = /^\/haslo\/([A-Za-z0-9_-]{43})$/.exec(answer.invited?.link?.path ?? "")?.[1];
-  if (!token) {
-    fail(`Zaproszenie ${person.email} nie dało jednorazowego linku.`);
+const floorApi = `/api/panel/events/${mainId}/obsluga`;
+{
+  const waiterPage = await request(restaurantPath, { cookie: waiterCookie });
+  if (waiterPage.status !== 200 || !waiterPage.text.includes(`data-floor-event="${mainId}"`)) {
+    fail(`Kelner demo nie widzi „${MAIN_EVENT}” w „Dziś na sali” (HTTP ${String(waiterPage.status)}).`);
   }
-  const redeemed = await request("/api/auth/password-link", {
-    method: "POST",
-    form: { token, password: person.password, repeat: person.password },
-  });
-  if (!toPanel(redeemed)) {
-    fail(`Nie udało się ustawić hasła ${person.email} (HTTP ${redeemed.status} → ${redeemed.location || "-"}).`);
-  }
-  person.cookie = `kp-session=${/(?:^|[\s,])kp-session=([A-Za-z0-9_-]{43});/.exec(redeemed.setCookie)?.[1] ?? ""}`;
 }
-const team = await step("zespół lokalu", teamApi, { cookie: ownerCookie });
-if (team.team?.members?.length !== 3 || !team.team.members.every((member) => member.hasPassword)) {
-  fail("Zespół lokalu demo nie ma trzech osób z ustawionym hasłem (właściciel, menedżer, kelner).");
-}
-
-// --- 8b. The floor (waiter-day-and-refills, S-21): the main event runs today, so the waiter sees it under „Dziś na
-// sali”, adds a refill on the floor (priced by the venue from the menu) and serves it -------------------------------
-
-const floorApi = `/api/panel/events/${String(event.id)}/obsluga`;
-const waiter = TEAM[1];
-const waiterPage = await request(`/panel/restauracje/${String(restaurantId)}`, { cookie: waiter.cookie });
-if (waiterPage.status !== 200 || !waiterPage.text.includes(`data-floor-event="${String(event.id)}"`)) {
-  fail(`Kelner demo nie widzi „${EVENT_NAME}” w „Dziś na sali” (HTTP ${String(waiterPage.status)}).`);
-}
-const REFILL = "Dzbanek kompotu";
+const refillItem = pickMenuItem(menuItems, ["drinks"]);
+const refillTable = tableOfGroup(0);
 const refilled = await step(
-  `dokładka kelnera: ${REFILL}`,
+  `dokładka kelnera: ${refillItem.name}`,
   `${floorApi}/orders`,
   {
     method: "POST",
-    json: { name: REFILL, quantity: 1, note: "dokładka", assignment: { tableId: tableByName.get("Długi stół").id } },
-    cookie: waiter.cookie,
+    json: { name: refillItem.name, quantity: 1, note: "dokładka", assignment: { tableId: refillTable } },
+    cookie: waiterCookie,
   },
   201,
 );
-const refill = refilled.items.at(-1);
-if (refill?.name !== REFILL || formatGrosze(refill.unitPriceGrosze) !== "24,00") {
+const refill = refilled.items.find((candidate) => !orderBoard.items.some((old) => old.id === candidate.id));
+if (refill?.name !== refillItem.name || refill.unitPriceGrosze !== refillItem.priceGrosze) {
   fail(`Dokładka kelnera nie wzięła ceny z menu (${JSON.stringify(refill)}).`);
 }
-await step(`kelner wydaje dokładkę`, `${floorApi}/orders/${String(refill.id)}/pieces`, {
+await step("kelner wydaje dokładkę", `${floorApi}/orders/${String(refill.id)}/pieces`, {
   method: "PUT",
   json: { piece: 1, delivered: true },
-  cookie: waiter.cookie,
+  cookie: waiterCookie,
 });
+orderBoard = await step("zamówienia po dokładce", `${api}/orders`);
 
-// --- 8c. A per-event waiter (event-waiter-access, S-21b): the owner adds „Kuba (na imprezę)” to the main event on
-// its card; the one-time link and the code are printed (not used: opening the link page uses nothing up) ------------
-
-const EVENT_WAITER = "Kuba (na imprezę)";
+// event-waiter-access (S-21b): the manager adds „Kuba (na imprezę)” on the event card; the one-time link and the code
+// are printed (not used: opening the link page uses nothing up).
 const addedWaiter = await step(
   `kelner na imprezę: ${EVENT_WAITER}`,
-  `/api/panel/events/${String(event.id)}/waiters`,
-  { method: "POST", json: { name: EVENT_WAITER }, cookie: ownerCookie },
+  `/api/panel/events/${mainId}/waiters`,
+  { method: "POST", json: { name: EVENT_WAITER }, cookie: managerCookie },
   201,
 );
 const eventWaiter = addedWaiter.issued;
@@ -938,19 +967,17 @@ const eventWaiter = addedWaiter.issued;
   }
 }
 
-// --- 8d. The staff's offline readout (staff-offline-readout, S-27): the tablet's and the floor's readout pages open
-// (the saved state itself lives in the browser that opened the live page; their HTML carries no guest or dish) ---------
-
+// staff-offline-readout (S-27): the tablet's and the floor's readout pages open; their HTML carries no guest or dish.
 const READOUT_PATHS = {
-  tablet: `/r/${event.restaurantKey}/odczyt`,
-  floor: `/panel/obsluga/${String(event.id)}/odczyt`,
-  waiter: `/kelner/sala/${String(event.id)}/odczyt`,
+  tablet: `/r/${restaurantKey}/odczyt`,
+  floor: `/panel/obsluga/${mainId}/odczyt`,
+  waiter: `/kelner/sala/${mainId}/odczyt`,
 };
 {
   const someGuest = board.guestList.guests[0]?.displayName ?? "";
   for (const [area, path, cookie] of [
     ["tablet", READOUT_PATHS.tablet, undefined],
-    ["floor", READOUT_PATHS.floor, waiter.cookie],
+    ["floor", READOUT_PATHS.floor, waiterCookie],
   ]) {
     const page = await request(path, { cookie });
     if (
@@ -963,15 +990,14 @@ const READOUT_PATHS = {
   }
 }
 
-// --- 8e. Room prints (room-prints, S-24): the client's board shows the guests from the published seating and never a
-// diet; the staff list (the client's and the waiter's on the floor) shows the diets at the seats ----------------------
-
+// room-prints (S-24): the board shows the guests from the published seating and never a diet; the staff list (the
+// client's and the waiter's on the floor) shows the diets at the seats.
 const PRINT_PATHS = {
-  hub: `/o/${event.organizerKey}/wydruki`,
-  board: `/o/${event.organizerKey}/wydruki/tablica`,
-  staff: `/o/${event.organizerKey}/wydruki/lista-obslugi`,
-  panel: `/panel/wydarzenia/${String(event.id)}/wydruki/tablica`,
-  floor: `/panel/obsluga/${String(event.id)}/lista-obslugi`,
+  hub: `/o/${organizerKey}/wydruki`,
+  board: `/o/${organizerKey}/wydruki/tablica`,
+  staff: `/o/${organizerKey}/wydruki/lista-obslugi`,
+  panel: `/panel/wydarzenia/${mainId}/wydruki/tablica`,
+  floor: `/panel/obsluga/${mainId}/lista-obslugi`,
 };
 {
   const boardPage = await request(PRINT_PATHS.board);
@@ -981,7 +1007,7 @@ const PRINT_PATHS = {
     !boardPage.text.includes("Justyna") ||
     boardPage.text.includes("alergia na orzechy") ||
     boardPage.text.includes("celiakia") ||
-    boardPage.text.includes(event.organizerKey)
+    boardPage.text.includes(organizerKey)
   ) {
     fail(
       `Tablica „Znajdź swój stolik” nie pokazuje gości albo pokazuje dietę lub klucz (HTTP ${String(boardPage.status)}).`,
@@ -989,7 +1015,7 @@ const PRINT_PATHS = {
   }
   for (const [name, path, cookie] of [
     ["klienta", PRINT_PATHS.staff, undefined],
-    ["kelnera na sali", PRINT_PATHS.floor, waiter.cookie],
+    ["kelnera na sali", PRINT_PATHS.floor, waiterCookie],
   ]) {
     const staffPage = await request(path, { cookie });
     if (
@@ -1004,10 +1030,9 @@ const PRINT_PATHS = {
   }
 }
 
-// --- 9. A support visit of the platform admin (admin-support-log): enter with a reason, two pages, exit -----------
+// --- Extras: the admin's logged support visit unlocks the paid modules; pub quiz; the client's brand; exports -------
 
-const SUPPORT_REASON = "Pokaz trybu wsparcia: sprawdzenie listy wydarzeń (demo)";
-const supportApi = `/api/panel/platform/restaurants/${String(restaurantId)}/support`;
+const supportApi = `${PLATFORM_API}/${String(restaurantId)}/support`;
 await step(
   "wejście administratora jako wsparcie",
   supportApi,
@@ -1015,93 +1040,74 @@ await step(
   201,
 );
 for (const [name, path] of [
-  ["strona restauracji", `/panel/restauracje/${String(restaurantId)}`],
-  ["karta wydarzenia", `/panel/wydarzenia/${String(event.id)}`],
+  ["strona restauracji", restaurantPath],
+  ["karta wydarzenia", `/panel/wydarzenia/${mainId}`],
 ]) {
   const page = await request(path, { cookie: adminCookie });
   if (page.status !== 200 || !page.text.includes("data-support-banner")) {
     fail(`Tryb wsparcia nie otworzył: ${name} (HTTP ${String(page.status)}).`);
   }
 }
-// event-modules (S-17): inside the same visit the admin unlocks the paid AI topics for the venue-led Christmas party
-// (logged for the owner), and the owner — the venue leads there — switches AI topics and the guessing game on through
-// the dispatcher. „Urodziny Ani (demo)” keeps the new-event defaults (AI topics and the game off).
-const unlocked = await step(
-  "odblokowanie tematów AI (administrator)",
-  `/api/panel/platform/events/${String(venueLedEventId)}/modules/aiTopics`,
-  { method: "PUT", json: { unlocked: true }, cookie: adminCookie },
-);
-if (unlocked.modules.find((module) => module.key === "aiTopics")?.unlocked !== true) {
-  fail("Administrator nie odblokował tematów AI dla „Wigilii firmowej (demo)”.");
-}
-// pub-quiz (S-28): in the same visit the admin unlocks the paid pub quiz for the main event (the client has it on).
-const quizUnlocked = await step(
-  "odblokowanie pub quizu (administrator)",
-  `/api/panel/platform/events/${String(event.id)}/modules/pubQuiz`,
-  { method: "PUT", json: { unlocked: true }, cookie: adminCookie },
-);
-if (quizUnlocked.modules.find((module) => module.key === "pubQuiz")?.active !== true) {
-  fail(`Administrator nie odblokował pub quizu dla „${EVENT_NAME}”.`);
+// event-modules (S-17), pub-quiz (S-28): the paid modules are unlocked inside the visit (each logged for the owner).
+for (const [eventId, eventName, module] of [
+  [venueLedId, VENUE_LED_EVENT, "aiTopics"],
+  [mainId, MAIN_EVENT, "aiTopics"],
+  [mainId, MAIN_EVENT, "pubQuiz"],
+]) {
+  const answer = await step(
+    `odblokowanie ${module}: ${eventName} (administrator)`,
+    `/api/panel/platform/events/${eventId}/modules/${module}`,
+    { method: "PUT", json: { unlocked: true }, cookie: adminCookie },
+  );
+  if (answer.modules.find((entry) => entry.key === module)?.unlocked !== true) {
+    fail(`Administrator nie odblokował modułu ${module} dla „${eventName}”.`);
+  }
 }
 const supportEnded = await step("koniec trybu wsparcia", supportApi, { method: "DELETE", cookie: adminCookie });
+if (supportEnded.ended !== true) {
+  fail("Tryb wsparcia administratora demo nie był aktywny przy wyjściu.");
+}
+const supportLog = await step("dziennik wejść administratora", `${restaurantApi}/support-log`, { cookie: ownerCookie });
+{
+  const latest = supportLog.entries.slice(0, 7);
+  const kinds = latest.map((entry) => entry.kind).join(",");
+  if (kinds !== "exit,unlock,unlock,unlock,access,access,enter" || latest[6].reason !== SUPPORT_REASON) {
+    fail(`Dziennik wejść administratora demo ma nieoczekiwane wpisy: ${kinds || "brak"}.`);
+  }
+}
+// The venue switches AI topics and the game on for the party it runs; the client switches AI topics and the pub quiz
+// on for its own (with the game and the default modules: all six on). „Urodziny Ani (demo)” keeps the defaults.
 for (const module of ["aiTopics", "guessing"]) {
-  await step(`moduł ${module}: ${VENUE_LED_EVENT}`, `/api/panel/events/${String(venueLedEventId)}/klient/modules`, {
+  await step(`moduł ${module}: ${VENUE_LED_EVENT} (właściciel)`, `/api/panel/events/${venueLedId}/klient/modules`, {
     method: "PUT",
     json: { module, enabled: true },
     cookie: ownerCookie,
   });
 }
-if (supportEnded.ended !== true) {
-  fail("Tryb wsparcia administratora demo nie był aktywny przy wyjściu.");
+let mainModules;
+for (const module of ["aiTopics", "pubQuiz"]) {
+  mainModules = await step(`moduł ${module}: ${MAIN_EVENT} (klient)`, `${api}/modules`, {
+    method: "PUT",
+    json: { module, enabled: true },
+  });
 }
-const supportLog = await step(
-  "dziennik wejść administratora",
-  `/api/panel/restaurants/${String(restaurantId)}/support-log`,
-  { cookie: ownerCookie },
-);
-const supportKinds = supportLog.entries.map((entry) => entry.kind).join(",");
-if (supportKinds !== "exit,unlock,unlock,access,access,enter" || supportLog.entries[5].reason !== SUPPORT_REASON) {
-  fail(`Dziennik wejść administratora demo ma nieoczekiwane wpisy: ${supportKinds || "brak"}.`);
+if (!mainModules.modules.every((entry) => entry.active)) {
+  fail(`Nie wszystkie moduły „${MAIN_EVENT}” działają.`);
 }
 
-// --- 9a. Pub quiz (pub-quiz, S-28): the client prepares three questions, starts the quiz on the TV, asks two of them;
-// four guests answer through their links (switched on for the round, then off again, like the RSVP); each question is
-// closed and the results are left on the TV (places 1–3 by name); the third question stays for a manual round --------
-
-const QUIZ = [
-  { text: "W którym roku Polska wstąpiła do Unii Europejskiej?", options: ["1999", "2004", "2007"], correct: 1 },
-  { text: "Nad jaką rzeką leży Gdańsk?", options: ["Motława", "Warta", "Odra", "Wisłok"], correct: 0 },
-  { text: "Ile minut trwa mecz piłki nożnej bez doliczonego czasu?", options: ["80", "90", "100"], correct: 1 },
-];
-// Who answers what (option index) per asked question: Tomek misses the first, Kasia and Tomek the second.
-const QUIZ_ANSWERS = [
-  { Ania: 1, Bartek: 1, Kasia: 1, Tomek: 0 },
-  { Ania: 0, Bartek: 0, Kasia: 2, Tomek: 3 },
-];
-const QUIZ_RESULTS = [
-  ["Ania", 1, 2],
-  ["Bartek", 1, 2],
-  ["Kasia", 3, 1],
-  ["Tomek", 4, 0],
-];
+// pub-quiz (S-28): three questions, the quiz started on the TV, two asked; four guests answer through their links
+// (switched on for the round, then off again); each question is closed and the results stay on the TV.
 let quizBoard;
 for (const question of QUIZ) {
   quizBoard = await step(
     `pub quiz: pytanie „${question.text}”`,
     `${api}/quiz/questions`,
-    {
-      method: "POST",
-      json: question,
-    },
+    { method: "POST", json: question },
     201,
   );
 }
 await step("pub quiz: start na TV", `${api}/quiz/run`, { method: "POST", json: { action: "start" } });
-const quizLinks = await step("linki gości: włączenie na pub quiz", `${api}/guest-links`, {
-  method: "PATCH",
-  json: { enabled: true },
-});
-const quizKeyOf = (name) => quizLinks.guests.find((guest) => guest.displayName === name)?.key ?? "";
+await step("linki gości: włączenie na pub quiz", `${api}/guest-links`, { method: "PATCH", json: { enabled: true } });
 for (const [index, answers] of QUIZ_ANSWERS.entries()) {
   const questionId = quizBoard.questions[index].id;
   await step(`pub quiz: pytanie ${String(index + 1)} na TV`, `${api}/quiz/run`, {
@@ -1109,7 +1115,7 @@ for (const [index, answers] of QUIZ_ANSWERS.entries()) {
     json: { action: "ask", questionId },
   });
   for (const [name, option] of Object.entries(answers)) {
-    const state = await step(`pub quiz: odpowiedź gościa ${name}`, `/api/g/${quizKeyOf(name)}/quiz`, {
+    const state = await step(`pub quiz: odpowiedź gościa ${name}`, `/api/g/${guestKeyOf(name)}/quiz`, {
       method: "PUT",
       json: { questionId, option },
     });
@@ -1123,40 +1129,27 @@ for (const [index, answers] of QUIZ_ANSWERS.entries()) {
   });
 }
 quizBoard = await step("pub quiz: wyniki na TV", `${api}/quiz/run`, { method: "POST", json: { action: "results" } });
-const quizStandings = quizBoard.standings.map((row) => [row.name, row.place, row.points]);
-if (JSON.stringify(quizStandings) !== JSON.stringify(QUIZ_RESULTS)) {
-  fail(`Wyniki pub quizu demo są inne niż oczekiwane: ${JSON.stringify(quizStandings)}.`);
-}
-const quizTv = await step("pub quiz: ekran TV", `/api/tv/${event.tvKey}/seating`);
-const quizTvNames = (quizTv?.quiz?.results?.entries ?? []).map((entry) => `${String(entry.place)}. ${entry.name}`);
-if (quizTv?.quiz?.phase !== "results" || quizTvNames.join(", ") !== "1. Ania, 1. Bartek, 3. Kasia") {
-  fail(`TV nie pokazuje wyników pub quizu (${quizTvNames.join(", ") || "brak"}).`);
-}
-const quizPhone = await step("pub quiz: telefon gościa Tomek", `/api/g/${quizKeyOf("Tomek")}/state`);
-if (quizPhone?.quiz?.result?.place !== 4 || quizPhone.quiz.result.players !== 4) {
-  fail(`Telefon gościa Tomek nie pokazuje jego miejsca w pub quizie (${JSON.stringify(quizPhone?.quiz ?? null)}).`);
+{
+  const standings = quizBoard.standings.map((row) => [row.name, row.place, row.points]);
+  if (JSON.stringify(standings) !== JSON.stringify(QUIZ_RESULTS)) {
+    fail(`Wyniki pub quizu demo są inne niż oczekiwane: ${JSON.stringify(standings)}.`);
+  }
+  const quizTv = await step("pub quiz: ekran TV", `/api/tv/${tvKey}/seating`);
+  const tvNames = (quizTv?.quiz?.results?.entries ?? []).map((entry) => `${String(entry.place)}. ${entry.name}`);
+  if (quizTv?.quiz?.phase !== "results" || tvNames.join(", ") !== "1. Ania, 1. Bartek, 3. Kasia") {
+    fail(`TV nie pokazuje wyników pub quizu (${tvNames.join(", ") || "brak"}).`);
+  }
+  const phone = await step("pub quiz: telefon gościa Tomek", `/api/g/${guestKeyOf("Tomek")}/state`);
+  if (phone?.quiz?.result?.place !== 4 || phone.quiz.result.players !== 4) {
+    fail(`Telefon gościa Tomek nie pokazuje jego miejsca w pub quizie (${JSON.stringify(phone?.quiz ?? null)}).`);
+  }
 }
 await step("linki gości: wyłączenie po pub quizie", `${api}/guest-links`, {
   method: "PATCH",
   json: { enabled: false },
 });
 
-// --- 9b. Branding (event-branding, S-18): the restaurant's colour and logo (owner), the client's name and logo -------
-
-const BRAND_COLOR = "#7c2d12";
-const CLIENT_BRAND = "Acme Polska sp. z o.o.";
-const restaurantBrand = `/api/panel/restaurants/${String(restaurantId)}/branding`;
-await step("kolor marki lokalu", restaurantBrand, {
-  method: "PATCH",
-  json: { color: BRAND_COLOR },
-  cookie: ownerCookie,
-});
-await step("logo lokalu", `${restaurantBrand}/logo`, {
-  method: "PUT",
-  bytes: logoPng(240, 96, [124, 45, 18], [253, 230, 138]),
-  contentType: "image/png",
-  cookie: ownerCookie,
-});
+// event-branding (S-18): the client's company name and logo next to the restaurant's (set by the owner above).
 await step("nazwa firmy klienta", `${api}/branding`, { method: "PATCH", json: { name: CLIENT_BRAND } });
 const brand = await step("logo firmy klienta", `${api}/branding/logo`, {
   method: "PUT",
@@ -1172,119 +1165,90 @@ if (
   fail("Marka demo nie została zapisana.");
 }
 
-// --- 9c. Guest data retention and the export (privacy-retention, S-26): the owner keeps the default term of 30 days;
-// „Komunia Zosi (demo)” (60 days ago) lost its guests' data when it was archived (the panel's guard purges an event
-// past its term before serving it) — its export says so; the manager downloads the main event's export --------------
-
-const RETENTION_DAYS = 30;
-const PURGED_EVENT = MORE_EVENTS[2].name;
-const purgedEventId = moreEventIds.get(PURGED_EVENT);
-const retention = await step(
-  `retencja danych gości: ${String(RETENTION_DAYS)} dni`,
-  `/api/panel/restaurants/${String(restaurantId)}/retention`,
-  {
-    method: "PATCH",
-    json: { guestRetentionDays: RETENTION_DAYS },
-    cookie: ownerCookie,
-  },
-);
-if (retention.guestRetentionDays !== RETENTION_DAYS) {
-  fail(`Retencja danych gości lokalu demo nie jest ${String(RETENTION_DAYS)} dni.`);
-}
-const purgedExport = await step(`eksport: ${PURGED_EVENT}`, `/api/panel/events/${String(purgedEventId)}/export`, {
+// privacy-retention (S-26): the archived party of 60 days ago exports without guests; the manager downloads the main
+// party's export.
+const purgedExport = await step(`eksport: ${PURGED_EVENT}`, `/api/panel/events/${purgedId}/export`, {
   cookie: ownerCookie,
 });
 if (typeof purgedExport?.event?.guestData?.purgedAt !== "string" || purgedExport.guests.length !== 0) {
   fail(`Dane gości „${PURGED_EVENT}” (60 dni temu) nie zostały usunięte po terminie.`);
 }
-const exportPath = `/api/panel/events/${String(event.id)}/export`;
+const exportPath = `/api/panel/events/${mainId}/export`;
 {
-  const response = await fetch(new URL(exportPath, BASE_URL), { headers: { Cookie: TEAM[0].cookie } });
-  const exported = await response.json().catch(() => null);
+  const response = await request(exportPath, { cookie: managerCookie });
   if (
     response.status !== 200 ||
     !(response.headers.get("content-disposition") ?? "").startsWith("attachment;") ||
-    exported?.guests?.length !== board.guestList.guests.length ||
-    exported.event.guestData.purgedAt !== null
+    response.data?.guests?.length !== GUESTS.length ||
+    response.data.event.guestData.purgedAt !== null
   ) {
-    fail(`Menedżer demo nie pobrał eksportu „${EVENT_NAME}” (HTTP ${String(response.status)}).`);
+    fail(`Menedżer demo nie pobrał eksportu „${MAIN_EVENT}” (HTTP ${String(response.status)}).`);
   }
 }
-const privacyGuest = RSVP_BY_GUESTS[0];
-const privacyUrl = new URL(`/g/${guestKeyOf(privacyGuest)}/prywatnosc`, BASE_URL).href;
 
-// --- 10. Summary ------------------------------------------------------------------------------------------------
+// tv-room-rotation (S-20): one TV pinned to a room (`?sala=<room name>`): the second room that has tables.
+const roomsWithTables = venue.rooms.filter((room) => venue.tables.some((table) => table.roomId === room.id));
+const pinnedRoom = (roomsWithTables[1] ?? roomsWithTables[0]).name;
+const pinnedTvUrl = href(`/tv/${tvKey}?sala=${encodeURIComponent(pinnedRoom)}`);
+{
+  const page = await request(pinnedTvUrl);
+  if (page.status !== 200 || !page.text.includes(`data-tv-room="${pinnedRoom}"`)) {
+    fail(`TV przypięty do sali ${pinnedRoom} nie pokazuje jej (HTTP ${String(page.status)}).`);
+  }
+}
+
+// --- Summary --------------------------------------------------------------------------------------------------
 
 const seatTotal = venue.tables.reduce((sum, table) => sum + table.seatCount, 0);
 const guessCount = guessBoard.guests.filter((guest) => guest.amountGrosze !== null).length;
 const placeCount = guessBoard.guests.filter((guest) => guest.predictedPlace !== null).length;
-const organizerUrl = new URL(`/o/${event.organizerKey}`, BASE_URL).href;
-
-// tv-room-rotation (S-20): one TV pinned to a room (`?sala=<room name>`); its page shows that room's caption.
-const PINNED_TV_ROOM = ROOMS[1].name;
-const pinnedTvUrl = new URL(`/tv/${event.tvKey}?sala=${encodeURIComponent(PINNED_TV_ROOM)}`, BASE_URL).href;
-{
-  const response = await fetch(pinnedTvUrl);
-  const html = await response.text();
-  if (response.status !== 200 || !html.includes(`data-tv-room="${PINNED_TV_ROOM}"`)) {
-    throw new Error(`TV przypięty do sali ${PINNED_TV_ROOM} nie pokazuje jej (${String(response.status)}).`);
-  }
-}
+const eventCard = (name) => href(`/panel/wydarzenia/${String(events.get(name).id)}`);
+const availableCount = eventMenu.items.filter((item) => item.available).length;
+const accountLine = (person, role) => `${person.email} / ${person.password} (${role})`;
 
 console.log(`
-Dane demo gotowe („${RESTAURANT_NAME}” · „${EVENT_NAME}”, id ${String(event.id)}):
-- goście: ${board.guestList.guests.length} (nieobecna: ${ABSENT}), grupy: ${GROUPS.map((group) => group.members.length).join(" + ")}
-- plan ${PLAN_WIDTH}×${PLAN_HEIGHT}, sale: ${venue.rooms.length}, stoliki: ${venue.tables.length}, miejsca: ${seatTotal}
-- rozsadzenie opublikowane na TV: ${board.assignments.length} osób, przypięta: ${PINNED}
-- strzały: ${guessCount} (remis: Bartek i Marta, strzał nieobecnej), brakuje: ${guessBoard.missing.length}
-- typy miejsc: ${placeCount} (wpisz prawidłową kwotę 1500, żeby zobaczyć podium i trafione miejsca)
-- import i diety: ${String(IMPORTED_GUESTS.length)} gości z pliku CSV (podgląd, potem zapis), ${String(PATCHED_DIETS.length)} diety wpisane ręcznie; obecni: ${dietSummary} (tablet, zamówienia, sala, rozsadzenie)
-- zamówienie: ${orderBoard.totals.lines} pozycji, ${orderBoard.totals.quantity} szt., wydane: ${orderBoard.totals.deliveredQuantity}
+Restauracja demo gotowa: „${restaurantName}” (id ${String(restaurantId)}, ${restaurantCreated ? "założona teraz" : "odświeżona"}).
+- szablon „${TEMPLATE_NAME}”: ${rebuildTemplate || !oldTemplates.some((entry) => entry.id === templateId) ? "zbudowany z plików" : "zachowany"} — ${String(template.roomCount)} sale, ${String(template.tableCount)} stolików, ${String(template.seatCount)} miejsc${options.plan ? ` (plan z ${options.plan})` : ""}
+- menu lokalu: ${rebuildMenu ? "zbudowane z pliku" : "zachowane"} — ${String(catalog.items.length)} pozycji; menu imprezy: ${eventMenu.mode === "reduced" ? `okrojone do ${String(availableCount)}` : "całe"}
+- wydarzenia (odświeżone z szablonu): ${EVENTS.map((entry) => `„${entry.name}” ${shiftDate(today, entry.days)}`).join(", ")}
+- „${MAIN_EVENT}”: ${String(board.guestList.guests.length)} gości (nieobecna: ${ABSENT}, przypięta: ${PINNED}), grupy ${GROUPS.map((group) => group.members.length).join(" + ")}, rozsadzenie opublikowane (${String(board.assignments.length)} osób na ${String(seatTotal)} miejscach)
+- import i diety: ${String(IMPORTED_GUESTS.length)} gości z CSV, ${String(PASTED_GUESTS.length)} wklejonych, ${String(PATCHED_DIETS.length)} diety wpisane ręcznie; obecni: ${dietSummary}
+- strzały: ${String(guessCount)} (remis: Bartek i Marta), typy miejsc: ${String(placeCount)}, brakuje: ${String(guessBoard.missing.length)} — wpisz prawidłową kwotę 1500, żeby zobaczyć podium
+- zamówienie: ${String(orderBoard.totals.lines)} pozycji z menu imprezy (z dokładką kelnera „${refillItem.name}” przy stoliku ${tableName(refillTable)}), wydane: ${String(orderBoard.totals.deliveredQuantity)} z ${String(orderBoard.totals.quantity)} szt.
 - potwierdzenia: ${rsvpSummary}
-- bez zmian: przyjmowanie strzałów otwarte, prawidłowa kwota niewpisana, dostęp gości wyłączony, pytania startowe
-- wydarzenia lokalu: nadchodzące ${String(eventLists.upcoming.length)}, minione ${String(eventLists.past.length)}, archiwum ${String(eventLists.archived.length)}
-- zespół lokalu: ${String(team.team.members.length)} osoby (właściciel, menedżer, kelner)
-- dziennik wejść administratora: wejście jako wsparcie z powodem, 2 otwarte strony, odblokowanie tematów AI i pub quizu, wyjście (widzi go właściciel na stronie restauracji)
-- moduły: „${EVENT_NAME}” ma wszystkie gry włączone (pub quiz odblokowany przez administratora); „${VENUE_LED_EVENT}” — tematy AI odblokowane przez administratora i włączone z grą przez lokal; „Urodziny Ani (demo)” — domyślne (tematy AI i gra wyłączone)
-- menu lokalu: ${String(catalog.items.length)} pozycji w 5 kursach; menu „${EVENT_NAME}” okrojone do ${String(eventMenu.items.filter((item) => item.available).length)} pozycji, zamówienie z niego (ceny i kursy z menu, kuchnia na tablecie po kursach)
-- „${VENUE_LED_EVENT}”: lokal prowadzi, ${String(VENUE_LED_GUESTS.length)} gości dodanych w panelu
-- marka: lokal w kolorze ${BRAND_COLOR} z logo, klient „${CLIENT_BRAND}” z logo (telefony gości, TV, tablet, karteczki, panel)
-- szablon sali „${TEMPLATE_NAME}” (${String(savedTemplate.template.roomCount)} sale, ${String(savedTemplate.template.tableCount)} stolików) i wydarzenie z niego „${TEMPLATE_EVENT}”
-- pub quiz: ${String(QUIZ.length)} pytania, 2 zadane, ${String(QUIZ_RESULTS.length)} gości odpowiedziało przez swoje linki; wyniki na TV (1. Ania i Bartek, 3. Kasia), trzecie pytanie czeka
-- wydruki dla sali: tablica „Znajdź swój stolik” (A4 / A3), karty stołów, winietki (3 formaty), lista dla obsługi z dietami (też dla kelnerów na sali)
-- retencja danych gości: ${String(retention.guestRetentionDays)} dni po wydarzeniu; „${PURGED_EVENT}” — dane gości usunięte (po terminie), eksport bez gości
+- moduły: „${MAIN_EVENT}” wszystkie (tematy AI i pub quiz odblokowane przez administratora we wsparciu); „${VENUE_LED_EVENT}” tematy AI i gra włączone przez lokal; „${PAST_EVENT}” domyślne
+- retencja: ${String(retention.guestRetentionDays)} dni; „${PURGED_EVENT}” w archiwum, dane gości usunięte
 
-Organizator: ${organizerUrl}
-TV:          ${new URL(`/tv/${event.tvKey}`, BASE_URL).href}
-TV jednej sali (${PINNED_TV_ROOM}): ${pinnedTvUrl}
-Restauracja: ${new URL(`/r/${event.restaurantKey}`, BASE_URL).href}
-Linki gości: włącz dostęp na ${organizerUrl}/linki
-Pub quiz:    ${organizerUrl}/quiz (wyniki są na TV; „Zadaj pytanie 3”, potem „Zakończ quiz” zdejmuje quiz z TV)
-             telefon gościa (po włączeniu dostępu gości): ${new URL(`/g/${quizKeyOf("Tomek")}`, BASE_URL).href} (Tomek: 4. miejsce z 4)
-Potwierdzenia: ${organizerUrl}/potwierdzenia (karta „Potwierdzenia i wybór dania” także w „Praca klienta” w panelu)
-Panel lokalu: ${new URL("/logowanie", BASE_URL).href} — e-mail ${owner.email}, hasło ${OWNER_PASSWORD} (rola: właściciel)
-             e-mail ${TEAM[0].email}, hasło ${MANAGER_PASSWORD} (rola: menedżer)
-             e-mail ${TEAM[1].email}, hasło ${WAITER_PASSWORD} (rola: kelner)
-Wydarzenia lokalu: ${new URL(`/panel/restauracje/${String(restaurantId)}`, BASE_URL).href} (po zalogowaniu)
-Obsługa sali:    ${new URL(`/panel/obsluga/${String(event.id)}`, BASE_URL).href} (kelner ${TEAM[1].email} / ${WAITER_PASSWORD}: dziś do południa jutra; dokładka „${REFILL}” dopisana i wydana)
-Kelner na imprezę: ${new URL(eventWaiter.path, BASE_URL).href} („${EVENT_WAITER}”: jednorazowy link)
-                 albo kod ${eventWaiter.code} na ${new URL("/kelner", BASE_URL).href} — pierwsze użycie zużywa oba; sala „${EVENT_NAME}” do południa jutra
-Odczyt bez sieci (obsługa): stan zapisany na urządzeniu, które otworzyło widok na żywo (do południa jutra)
-                 tablet: ${new URL(READOUT_PATHS.tablet, BASE_URL).href}
-                 sala:   ${new URL(READOUT_PATHS.floor, BASE_URL).href} (po zalogowaniu)
-                 kelner na imprezę: ${new URL(READOUT_PATHS.waiter, BASE_URL).href} (po wejściu linkiem lub kodem)
-Wydruki:         ${new URL(PRINT_PATHS.hub, BASE_URL).href} (tablica „Znajdź swój stolik”, karty stołów, winietki, lista dla obsługi)
-                 tablica: ${new URL(PRINT_PATHS.board, BASE_URL).href} (?format=a3 — plakat)
-                 lista dla obsługi z dietami: ${new URL(PRINT_PATHS.staff, BASE_URL).href}
-                 w panelu: ${new URL(PRINT_PATHS.panel, BASE_URL).href} (karta wydarzenia: „Wydruki dla sali”)
-                 na sali: ${new URL(PRINT_PATHS.floor, BASE_URL).href} (kelner, po zalogowaniu)
-Menu lokalu:     ${new URL(`/panel/restauracje/${String(restaurantId)}/menu`, BASE_URL).href} („Menu wydarzenia” na karcie wydarzenia)
-Praca klienta:   ${new URL(`/panel/wydarzenia/${String(event.id)}`, BASE_URL).href} (prowadzi klient: podgląd)
-                 ${new URL(`/panel/wydarzenia/${String(venueLedEventId)}`, BASE_URL).href} (lokal prowadzi: edycja w panelu)
-Szablon sali:    ${new URL(`/panel/szablony/${String(templateId)}`, BASE_URL).href} („Zaktualizuj z szablonu” na karcie wydarzenia)
-                 ${new URL(`/panel/wydarzenia/${String(fromTemplate.event.id)}`, BASE_URL).href} (wydarzenie z szablonu)
-Eksport danych:  ${new URL(exportPath, BASE_URL).href} (JSON; ?format=guests-csv, ?format=orders-csv — właściciel lub menedżer, po zalogowaniu)
-                 ${new URL(`/panel/wydarzenia/${String(purgedEventId)}`, BASE_URL).href} („${PURGED_EVENT}”: „Dane gości usunięte”)
-Prywatność gościa: ${privacyUrl} (${privacyGuest}; szkic do przeglądu prawnika — działa, gdy dostęp gości jest włączony)
-Panel platformy: ${new URL("/logowanie", BASE_URL).href} — e-mail ${ADMIN_EMAIL}, hasło ${ADMIN_PASSWORD}
+Konta (logowanie: ${href("/logowanie")}):
+  administrator platformy: ${accountLine(ADMIN, "panel platformy")}
+  właściciel:              ${accountLine(OWNER, "zespół, marka, retencja, usuwanie wydarzeń")}
+  menedżer:                ${accountLine(MANAGER, "szablon, menu, wydarzenia")}
+  kelner:                  ${accountLine(WAITER, "„Dziś na sali”")}
+
+Krok 1 — administrator zakłada restaurację: ${href("/panel/platforma")} (karta „${restaurantName}”; do pokazu na żywo załóż drugą restaurację i daj właścicielowi link)
+Krok 2 — właściciel i zespół: ${href(restaurantPath)} (sekcja „Zespół”; zaproszenie nowej osoby = jednorazowy link)
+Krok 3 — szablon sali: ${href(`/panel/szablony/${String(templateId)}`)} (plan, sale, stoliki); menu lokalu: ${href(`/panel/restauracje/${String(restaurantId)}/menu`)}
+Krok 4 — wydarzenie z szablonu: ${eventCard(MAIN_EVENT)} (link organizatora dla klienta na karcie; „Nowe wydarzenie” na stronie restauracji)
+Krok 5 — klient: ${organizerUrl} (goście: ${organizerUrl}/goscie, rozsadzenie: ${organizerUrl}/rozsadzenie)
+          podgląd lokalu: ${href(`/panel/wydarzenia/${mainId}/rozsadzenie`)}
+Krok 6 — zamówienia klienta: ${organizerUrl}/zamowienia
+          lokal prowadzi: ${eventCard(VENUE_LED_EVENT)} („${VENUE_LED_EVENT}”: edycja w panelu)
+          TV: ${href(main.links.tv)} (sale na zmianę); jednej sali (${pinnedRoom}): ${pinnedTvUrl}
+          kelner (${WAITER.email}): ${href(`/panel/obsluga/${mainId}`)} — do południa jutra
+          kelner na imprezę „${EVENT_WAITER}”: ${href(eventWaiter.path)} albo kod ${eventWaiter.code} na ${href("/kelner")}
+          tablet kuchni: ${href(main.links.restaurant)}
+Krok 7 — archiwum: ${href(`${restaurantPath}?lista=archiwum`)} („${PURGED_EVENT}”); z tego samego szablonu: ${eventCard(TEMPLATE_EVENT)}
+
+Dodatki:
+  strzały i ranking: ${organizerUrl}/strzaly
+  potwierdzenia i wybór dania: ${organizerUrl}/potwierdzenia
+  pub quiz: ${organizerUrl}/quiz (wyniki na TV; trzecie pytanie czeka) — telefon Tomka (po włączeniu linków gości): ${href(`/g/${guestKeyOf("Tomek")}`)}
+  odczyt bez sieci: tablet ${href(READOUT_PATHS.tablet)}, sala ${href(READOUT_PATHS.floor)}, kelner na imprezę ${href(READOUT_PATHS.waiter)}
+  wydruki: ${href(PRINT_PATHS.hub)} (tablica: ${href(PRINT_PATHS.board)}, lista dla obsługi: ${href(PRINT_PATHS.staff)})
+           w panelu: ${href(PRINT_PATHS.panel)}; na sali: ${href(PRINT_PATHS.floor)}
+  eksport danych: ${href(exportPath)} (?format=guests-csv, ?format=orders-csv; właściciel lub menedżer)
+  prywatność gościa: ${href(`/g/${guestKeyOf("Ania")}/prywatnosc`)} (działa, gdy linki gości są włączone)
+  marka: lokal ${BRAND_COLOR} z logo, klient „${CLIENT_BRAND}” z logo; dziennik wejść administratora na stronie restauracji
+
+Scenariusz pokazu: ${SCENARIO}
 Linki są sekretne: nie wklejaj ich publicznie.`);
