@@ -5,20 +5,26 @@ import { NewEventForm } from "@/components/events/NewEventForm";
 import { authMessages } from "@/lib/auth/messages";
 import { canManageEvents, eventPanelMessages, formatEventDate, listRestaurantEvents } from "@/lib/events";
 import { findPanelRestaurant } from "@/lib/panel-api";
-import { getRestaurantOverview, restaurantPanelMessages } from "@/lib/restaurants";
+import { restaurantPanelMessages } from "@/lib/restaurants";
+import { TeamManager } from "@/components/team/TeamManager";
+import { canManageTeam, getTeam, teamMessages } from "@/lib/team";
 
-// The restaurant panel (platform-restaurants, S-10; restaurant-events, S-11): the restaurant, the person's role, its
-// events and (owners and managers) the team. Owners and managers create an event („Nowe wydarzenie” → its card) and
-// browse the tabs „Nadchodzące / Minione / Archiwum” (?lista=nadchodzace|minione|archiwum, anything else = upcoming);
-// waiters get a note until their day view (S-21). Through the central lookup: a foreign, unknown, malformed or
-// disabled restaurant gets the no-access page (404), the same for every reason.
+// The restaurant panel (platform-restaurants, S-10; restaurant-events, S-11; restaurant-team, S-12): the restaurant,
+// the person's role, its events and (owners and managers) the team. Owners and managers create an event („Nowe
+// wydarzenie” → its card), browse the tabs „Nadchodzące / Minione / Archiwum” (?lista=nadchodzace|minione|archiwum,
+// anything else = upcoming) and manage the team within their scope (island TeamManager: invitations, roles, removal,
+// one-time links); waiters get a note until their day view (S-21) and no team. Through the central lookup: a foreign,
+// unknown, malformed or disabled restaurant gets the no-access page (404), the same for every reason.
 const locale = Astro.locals.locale;
 const t = restaurantPanelMessages(locale);
 const te = eventPanelMessages(locale);
 const roles = authMessages(locale).roleLabels;
 const panel = await findPanelRestaurant(Astro.locals, Astro.params.id);
-const overview = panel ? await getRestaurantOverview(panel.db, panel.restaurant.id) : null;
-const showTeam = panel?.role === "owner" || panel?.role === "manager";
+const tt = teamMessages(locale);
+const team =
+  panel && canManageTeam(panel.role)
+    ? await getTeam(panel.db, panel.restaurant.id, { accountId: panel.staff.accountId, role: panel.role })
+    : null;
 const manages = panel ? canManageEvents(panel.role) : false;
 const lists = panel && manages ? await listRestaurantEvents(panel.db, panel.restaurant.id, new Date()) : null;
 const listParam = Astro.url.searchParams.get("lista");
@@ -37,7 +43,7 @@ if (!panel) {
 }
 ---
 
-{panel && overview ? (
+{panel ? (
   <Layout title={t.pageTitle(panel.restaurant.name)}>
     <main class="mx-auto flex max-w-3xl flex-col gap-6 p-4 sm:p-8">
       <header class="flex flex-col gap-2">
@@ -108,24 +114,22 @@ if (!panel) {
         )}
       </section>
 
-      {showTeam && (
-        <section aria-labelledby="team-heading" class="flex flex-col gap-3 rounded-xl border p-4 sm:p-6">
+      {team && (
+        <section
+          aria-labelledby="team-heading"
+          class="flex flex-col gap-3 rounded-xl border p-4 sm:p-6"
+          data-team-section
+        >
           <h2 id="team-heading" class="text-xl font-semibold">
-            {t.teamHeading}
+            {tt.heading}
           </h2>
-          <ul class="flex flex-col gap-2">
-            {overview.team.map((member) => (
-              <li class="flex flex-wrap items-center justify-between gap-2">
-                <span>
-                  {member.displayName ? `${member.displayName} · ` : ""}
-                  {member.email}
-                  {!member.hasPassword && <span class="text-sm text-muted-foreground"> ({t.accountPending})</span>}
-                </span>
-                <span class="rounded-full border px-2 py-0.5 text-sm">{roles[member.role]}</span>
-              </li>
-            ))}
-          </ul>
-          <p class="text-sm text-muted-foreground">{t.teamComingSoon}</p>
+          <TeamManager
+            client:load
+            restaurantId={panel.restaurant.id}
+            initial={team}
+            origin={Astro.url.origin}
+            locale={locale}
+          />
         </section>
       )}
     </main>

@@ -788,14 +788,6 @@ export interface OwnerResultDto {
   link: StaffLinkDto | null;
 }
 
-// A member of the restaurant's team in the restaurant panel (owners and managers see it).
-export interface RestaurantTeamMemberDto {
-  email: string;
-  displayName: string | null;
-  role: "owner" | "manager" | "waiter";
-  hasPassword: boolean;
-}
-
 // --- Restaurant team (restaurant-team, S-12) -----------------------------------------------------------------------
 
 // A member of the restaurant's team as owners and managers see it (never hashes or tokens).
