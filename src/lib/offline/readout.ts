@@ -1,6 +1,6 @@
 import { rankGuesses } from "@/lib/guesses/ranking";
 import type { Locale } from "@/lib/i18n/locale";
-import { compareTableNames } from "@/lib/venue/rules";
+import { searchSeats, type SeatHit } from "@/lib/map-search/search";
 import type { GuessBoardDto, GuessRankingDto, PublishedSeatingDto, TableShape } from "@/types";
 import { offlineMessages } from "./messages";
 
@@ -51,33 +51,16 @@ export function seatingByRoom(seating: PublishedSeatingDto): ReadoutRoom[] {
   return rooms;
 }
 
-// Lower case without Polish letters' marks („Żółć” → „zolc”, „Łukasz” → „lukasz”), single spaces, trimmed.
-export function normalizeSearch(text: string): string {
-  return text.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase().replace(/ł/g, "l").replace(/\s+/g, " ").trim();
-}
+// The name search („Gdzie siedzi…?”) is the venue map's (guest-map-search, S-22): one matcher for every place that finds
+// a guest in the published seating.
+export { normalizeSearch } from "@/lib/map-search/search";
 
-export interface GuestSeatMatch {
-  name: string;
-  table: string;
-  room: string;
-  seat: number;
-}
+export type GuestSeatMatch = SeatHit;
 
-const polishCollator = new Intl.Collator("pl");
-
-// Every seated guest whose name contains the query (case and Polish marks ignored); an empty query finds nobody.
+// Every seated guest whose name contains the query (case and Polish marks ignored, words in any order); an empty query
+// finds nobody. Same rule and order as the map search.
 export function findGuestSeats(seating: PublishedSeatingDto, query: string): GuestSeatMatch[] {
-  const needle = normalizeSearch(query);
-  if (needle === "") {
-    return [];
-  }
-  return seating.tables
-    .flatMap((table) =>
-      table.seats
-        .filter((seat) => normalizeSearch(seat.name).includes(needle))
-        .map((seat) => ({ name: seat.name, table: table.name, room: table.room, seat: seat.seat })),
-    )
-    .sort((a, b) => polishCollator.compare(a.name, b.name) || compareTableNames(a.table, b.table) || a.seat - b.seat);
+  return searchSeats(seating.tables, query);
 }
 
 // The ranking to show: with an amount typed on this device, computed here from the saved guesses (never sent);

@@ -1,7 +1,10 @@
 import { useMemo, useState } from "react";
+import { useMapSearch } from "@/components/hooks/useMapSearch";
+import { MapSearch } from "@/components/map-search/MapSearch";
 import { Button } from "@/components/ui/button";
-import { VenueDrawing, type VenueDrawingTable } from "@/components/venue-drawing/VenueDrawing";
+import { VenueDrawing, type DrawingMark, type VenueDrawingTable } from "@/components/venue-drawing/VenueDrawing";
 import type { Locale } from "@/lib/i18n";
+import { mapSearchMessages } from "@/lib/map-search/messages";
 import { servingMessages } from "@/lib/orders/messages";
 import { describeSelection, markedTables, type ResolvedSelection, type ServingLine } from "@/lib/orders/serving";
 import { cn } from "@/lib/utils";
@@ -26,20 +29,25 @@ const BLANK_ASPECT = 16 / 9;
 // The plan of the order pages (serving-highlight): the venue drawn from the PUBLISHED seating with the names at the
 // chairs, and the places of what is picked in the lists lit up (chairs, or the middle of a table, with the pieces'
 // numbers); the caption says it in words. While something is picked, only the tables it touches stay bright.
+// guest-map-search (S-22): a guest searched by name lights up violet on the same plan (the published seating it
+// draws; the note says so), next to whatever dish is picked; their table stays bright.
 export function ServingPlan({ apiBase, seating, servingTables, selection, onClear, locale, className }: Props) {
   const t = servingMessages(locale);
   const [loaded, setLoaded] = useState<{ version: number; aspect: number } | null>(null);
   const aspect = loaded !== null && loaded.version === seating.planVersion ? loaded.aspect : BLANK_ASPECT;
-  const marks = selection?.marks;
+  const servingMarks = selection?.marks;
+  const search = useMapSearch(seating.tables);
+  // Search marks last: at a chair with both, the found guest's colour wins (the serving label stays).
+  const marks = useMemo((): DrawingMark[] => [...(servingMarks ?? []), ...search.marks], [servingMarks, search.marks]);
 
   const tables = useMemo((): VenueDrawingTable[] => {
-    const bright = marks ? markedTables(marks) : servingTables;
+    const serving = servingMarks ? markedTables(servingMarks) : servingTables;
     return seating.tables.map((table, index) => ({
       ...table,
       key: `${String(index).padStart(3, "0")} ${table.name}`,
-      muted: !bright.has(table.name),
+      muted: !serving.has(table.name) && !search.foundTables.has(table.name),
     }));
-  }, [seating.tables, servingTables, marks]);
+  }, [seating.tables, servingTables, servingMarks, search.foundTables]);
 
   function readNatural(img: HTMLImageElement | null) {
     const version = seating.planVersion;
@@ -78,6 +86,9 @@ export function ServingPlan({ apiBase, seating, servingTables, selection, onClea
       {seating.publishedAt === null ? (
         <p className="text-muted-foreground">{t.seatingNotReady}</p>
       ) : (
+        <MapSearch search={search} locale={locale} note={mapSearchMessages(locale).publishedNote} />
+      )}
+      {seating.publishedAt !== null && (
         <div className="bg-background rounded-xl border p-2">
           {seating.planVersion !== null && (
             <img
