@@ -1,7 +1,7 @@
 ---
 change_id: venue-templates
 title: Venue templates of a restaurant (S-15)
-status: plan_reviewed
+status: implementing
 created: 2026-11-10
 updated: 2026-11-10
 archived_at: null

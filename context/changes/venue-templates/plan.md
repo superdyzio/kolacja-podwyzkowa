@@ -296,9 +296,9 @@ lookup and panel page is a 500).
 
 #### Automated
 
-- [ ] 1.1 Migration applies on the current local data and from zero
-- [ ] 1.2 `AI_PROVIDER=mock npm test` passes (new unit + integration tests)
-- [ ] 1.3 `npm run lint` and `npx astro check` pass
+- [x] 1.1 Migration applies on the current local data and from zero
+- [x] 1.2 `AI_PROVIDER=mock npm test` passes (new unit + integration tests)
+- [x] 1.3 `npm run lint` and `npx astro check` pass
 
 ### Phase 2: Routes, pages and islands
 

@@ -53,7 +53,8 @@ export class AccessLookupError extends Error {
 }
 
 // Returns null only when no event matches the key. A DB error throws (→ 500), so a misconfigured service key never
-// masquerades as "brak dostępu".
+// masquerades as "brak dostępu". A venue template (venue-templates, S-15: an event row with is_template) has keys from
+// the column defaults but never opens: every branch filters it out, so its keys get the identical denial.
 export async function resolveAccess(db: DbClient, role: AccessRole, key: string): Promise<Access | null> {
   if (!isWellFormedAccessKey(key)) {
     return null;
@@ -65,6 +66,7 @@ export async function resolveAccess(db: DbClient, role: AccessRole, key: string)
         .from("event")
         .select("id, name, organizer_key, tv_key, restaurant_key, venue_leads")
         .eq("organizer_key", key)
+        .eq("is_template", false)
         .maybeSingle();
       if (error) {
         throw new AccessLookupError(error.message);
@@ -85,7 +87,12 @@ export async function resolveAccess(db: DbClient, role: AccessRole, key: string)
       };
     }
     case "tv": {
-      const { data, error } = await db.from("event").select("id, name").eq("tv_key", key).maybeSingle();
+      const { data, error } = await db
+        .from("event")
+        .select("id, name")
+        .eq("tv_key", key)
+        .eq("is_template", false)
+        .maybeSingle();
       if (error) {
         throw new AccessLookupError(error.message);
       }
@@ -95,7 +102,12 @@ export async function resolveAccess(db: DbClient, role: AccessRole, key: string)
       return { role: "tv", event: { id: data.id, name: data.name } };
     }
     case "restaurant": {
-      const { data, error } = await db.from("event").select("id, name").eq("restaurant_key", key).maybeSingle();
+      const { data, error } = await db
+        .from("event")
+        .select("id, name")
+        .eq("restaurant_key", key)
+        .eq("is_template", false)
+        .maybeSingle();
       if (error) {
         throw new AccessLookupError(error.message);
       }
@@ -108,13 +120,14 @@ export async function resolveAccess(db: DbClient, role: AccessRole, key: string)
       // One round trip: the guest by key with the event's switch embedded (every guest poll pays this lookup).
       const { data, error } = await db
         .from("guest")
-        .select("id, display_name, event(id, name, guest_access_enabled)")
+        .select("id, display_name, event(id, name, guest_access_enabled, is_template)")
         .eq("access_key", key)
         .maybeSingle();
       if (error) {
         throw new AccessLookupError(error.message);
       }
-      if (!data?.event.guest_access_enabled) {
+      // venue-templates: a template never has guests (nor the switch, a DB check), and never opens anyway.
+      if (!data?.event.guest_access_enabled || data.event.is_template) {
         return null;
       }
       return {

@@ -1,5 +1,6 @@
 import { generateAccessKey, organizerPath, restaurantPath, tvPath } from "@/lib/access";
 import { createEvent } from "@/lib/event";
+import { createEventFromTemplate } from "@/lib/templates/service";
 import type { DbClient } from "@/lib/supabase-client";
 import type { EventCardDto, EventSummaryDto, RestaurantEventListDto } from "@/types";
 import { eventTiming, partitionEvents, platformToday } from "./dates";
@@ -10,7 +11,8 @@ import type { EventLinkKind, ValidEventInput } from "./rules";
 // wrong pairing can never read or touch another restaurant's event (it behaves like an unknown one: null /
 // "not-found"). Supabase errors throw. Keys leave this module only as link paths of the card (owners and managers).
 //
-// Templates (S-15) will be event rows too: listRestaurantEvents is the ONE list query and must leave them out.
+// Venue templates (venue-templates, S-15) are event rows too (is_template): every query here filters them out —
+// listRestaurantEvents is the ONE list query, the others treat a template like an unknown event.
 
 function fail(action: string, message: string): never {
   throw new Error(`Nie udało się ${action}: ${message}`);
@@ -45,6 +47,7 @@ export async function listRestaurantEvents(
     .from("event")
     .select("id, name, event_date, expected_guests, archived_at")
     .eq("restaurant_id", restaurantId)
+    .eq("is_template", false)
     .order("event_date")
     .order("id");
   if (error) {
@@ -72,6 +75,7 @@ export async function getEventCard(
       )
       .eq("id", eventId)
       .eq("restaurant_id", restaurantId)
+      .eq("is_template", false)
       .maybeSingle(),
     db.from("guest").select("id", { count: "exact", head: true }).eq("event_id", eventId),
   ]);
@@ -104,22 +108,38 @@ export type CreateRestaurantEventResult =
   { status: "created"; event: EventCardDto } | { status: "restaurant-not-found" };
 
 // A new event of the restaurant (with the starter question base, like every new event). The input is validated.
+// venue-templates (S-15): with `templateId` the event starts with a copy of that template's venue (one transaction);
+// a template of another restaurant or an unknown one → "restaurant-not-found" (the route's identical 404).
 export async function createRestaurantEvent(
   db: DbClient,
   restaurantId: number,
-  input: { name: string; date: string; expectedGuests: number | null },
+  input: { name: string; date: string; expectedGuests: number | null; templateId?: number | null },
   now: Date,
 ): Promise<CreateRestaurantEventResult> {
-  const created = await createEvent(db, {
-    restaurantId,
-    name: input.name,
-    date: input.date,
-    expectedGuests: input.expectedGuests,
-  });
-  if (created.status !== "created") {
-    return { status: "restaurant-not-found" };
+  let eventId: number;
+  if (input.templateId !== undefined && input.templateId !== null) {
+    const fromTemplate = await createEventFromTemplate(db, restaurantId, input.templateId, {
+      name: input.name,
+      date: input.date,
+      expectedGuests: input.expectedGuests,
+    });
+    if (fromTemplate.status !== "created") {
+      return { status: "restaurant-not-found" };
+    }
+    eventId = fromTemplate.eventId;
+  } else {
+    const created = await createEvent(db, {
+      restaurantId,
+      name: input.name,
+      date: input.date,
+      expectedGuests: input.expectedGuests,
+    });
+    if (created.status !== "created") {
+      return { status: "restaurant-not-found" };
+    }
+    eventId = created.event.id;
   }
-  const card = await getEventCard(db, restaurantId, created.event.id, now);
+  const card = await getEventCard(db, restaurantId, eventId, now);
   if (!card) {
     // Deleted between the insert and the read (another tab): nothing to show, like an unknown restaurant.
     return { status: "restaurant-not-found" };
@@ -151,6 +171,7 @@ export async function updateEvent(
     })
     .eq("id", eventId)
     .eq("restaurant_id", restaurantId)
+    .eq("is_template", false)
     .select("id");
   if (error) {
     fail("zapisać wydarzenia", error.message);
@@ -174,6 +195,7 @@ export async function rotateEventKey(
     .update(change)
     .eq("id", eventId)
     .eq("restaurant_id", restaurantId)
+    .eq("is_template", false)
     .select("id");
   if (error) {
     fail("wymienić linku wydarzenia", error.message);
@@ -193,6 +215,7 @@ export async function deleteEvent(
     .delete()
     .eq("id", eventId)
     .eq("restaurant_id", restaurantId)
+    .eq("is_template", false)
     .select("id");
   if (error) {
     fail("usunąć wydarzenia", error.message);

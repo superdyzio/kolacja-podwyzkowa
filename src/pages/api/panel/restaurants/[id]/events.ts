@@ -15,7 +15,9 @@ export const prerender = false;
 
 // A restaurant's events (restaurant-events, S-11), owners and managers only (a waiter, another restaurant's staff, an
 // unknown or malformed id: the guard's identical 404). GET → the three lists (upcoming, past, archived). POST
-// { name, date, expectedGuests? } → a new event with the starter questions and fresh links → 201 with its card.
+// { name, date, expectedGuests?, templateId? } → a new event with the starter questions and fresh links (venue-templates,
+// S-15: with a copy of the template's room; another restaurant's or an unknown template → the same 404) → 201 with its
+// card.
 
 export const GET: APIRoute = async ({ locals, params }) => {
   const api = await panelRestaurantApi(locals, params.id, EVENT_STAFF_ROLES);
@@ -41,7 +43,12 @@ export const POST: APIRoute = async ({ request, locals, params }) => {
   const result = await createRestaurantEvent(
     api.db,
     api.restaurant.id,
-    { name: input.value.name ?? "", date: input.value.date ?? "", expectedGuests: input.value.expectedGuests ?? null },
+    {
+      name: input.value.name ?? "",
+      date: input.value.date ?? "",
+      expectedGuests: input.value.expectedGuests ?? null,
+      templateId: body.data.templateId ?? null,
+    },
     new Date(),
   );
   if (result.status !== "created") {

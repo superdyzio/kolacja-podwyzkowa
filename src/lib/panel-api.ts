@@ -11,6 +11,7 @@ import { getDb } from "@/lib/db";
 import { httpMessages, jsonError, parseId } from "@/lib/http";
 import { isReadMethod, SUPPORT_ROLE } from "@/lib/support/rules";
 import { recordSupportAccess, type SupportTarget } from "@/lib/support/service";
+import { findTemplateRow } from "@/lib/templates/service";
 import type { DbClient } from "@/lib/supabase-client";
 import type { SupportAccessDto } from "@/types";
 
@@ -40,6 +41,8 @@ export interface PanelApi {
 // platform administrator reads it in support mode (null for members).
 export type PanelRestaurant = PanelApi & RestaurantMembership & { support: SupportAccessDto | null };
 export type PanelEvent = PanelApi & EventMembership & { support: SupportAccessDto | null };
+// venue-templates (S-15): a venue template with its restaurant, opened like the restaurant itself.
+export type PanelTemplate = PanelRestaurant & { template: { id: number; name: string } };
 
 export function panelApi(locals: App.Locals): PanelApi | Response {
   if (!locals.staff) {
@@ -175,4 +178,43 @@ export async function panelEventApi(
     return api;
   }
   return (await findPanelEvent(locals, idParam, roles)) ?? denied(locals);
+}
+
+// The venue template of a panel page or route (venue-templates, S-15), or null. A template is an event row with
+// is_template, but it is NEVER opened by the event guards (findEventMembership and record_support_access leave it
+// out) and this guard never opens a real event: it reads the row with is_template = true and then decides exactly
+// like findPanelRestaurant for the template's restaurant (roles, a switched-off restaurant, the platform
+// administrator's logged, read-only support access — the log row names the restaurant and the path). A malformed,
+// unknown or foreign id, an event's id and a role outside `roles` all give null.
+export async function findPanelTemplate(
+  locals: App.Locals,
+  idParam: string | undefined,
+  roles: readonly StaffRole[] = STAFF_ROLES,
+): Promise<PanelTemplate | null> {
+  const db = getDb();
+  if (!locals.staff || !db) {
+    return null;
+  }
+  const id = parseIntId(idParam);
+  if (id === null) {
+    return null;
+  }
+  const row = await findTemplateRow(db, id);
+  if (!row) {
+    return null;
+  }
+  const panel = await findPanelRestaurant(locals, String(row.restaurantId), roles);
+  return panel ? { ...panel, template: { id: row.id, name: row.name } } : null;
+}
+
+export async function panelTemplateApi(
+  locals: App.Locals,
+  idParam: string | undefined,
+  roles: readonly StaffRole[] = STAFF_ROLES,
+): Promise<PanelTemplate | Response> {
+  const api = panelApi(locals);
+  if (api instanceof Response) {
+    return api;
+  }
+  return (await findPanelTemplate(locals, idParam, roles)) ?? denied(locals);
 }

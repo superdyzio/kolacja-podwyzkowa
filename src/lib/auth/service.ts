@@ -380,7 +380,14 @@ export async function findEventMembership(
   accountId: number,
   eventId: number,
 ): Promise<EventMembership | null> {
-  const { data, error } = await db.from("event").select("id, name, restaurant_id").eq("id", eventId).maybeSingle();
+  // venue-templates (S-15): a template is never an event — every event route and page answers it like an unknown id
+  // (the template guard, findPanelTemplate, opens it through its restaurant).
+  const { data, error } = await db
+    .from("event")
+    .select("id, name, restaurant_id")
+    .eq("id", eventId)
+    .eq("is_template", false)
+    .maybeSingle();
   if (error) {
     fail("sprawdzanie członkostwa", error);
   }

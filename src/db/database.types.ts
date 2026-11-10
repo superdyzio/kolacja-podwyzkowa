@@ -59,6 +59,8 @@ export interface Database {
           archived_at: string | null;
           // client-restaurant-split: „Lokal prowadzi” — true = staff edit in the panel, the organizer link is view-only.
           venue_leads: boolean;
+          // venue-templates: true = a restaurant's venue template (never opens through a key, never listed or counted).
+          is_template: boolean;
         };
         Insert: {
           id?: never;
@@ -76,6 +78,7 @@ export interface Database {
           expected_guests?: number | null;
           archived_at?: string | null;
           venue_leads?: boolean;
+          is_template?: boolean;
         };
         Update: {
           id?: never;
@@ -92,6 +95,7 @@ export interface Database {
           expected_guests?: number | null;
           archived_at?: string | null;
           venue_leads?: boolean;
+          is_template?: boolean;
         };
         Relationships: [
           {
@@ -1197,6 +1201,29 @@ export interface Database {
       apply_venue_layout: {
         Args: { p_event_id: number; p_layout: Json; p_max_tables: number };
         Returns: undefined;
+      };
+      // venue-templates: a new venue template of the restaurant (empty, or a copy of an event's venue of the same
+      // restaurant) → its id. Raises RESTAURANT_NOT_FOUND or SOURCE_NOT_FOUND.
+      create_venue_template: {
+        Args: { p_restaurant_id: number; p_name: string; p_source_event_id: number | null };
+        Returns: number;
+      };
+      // venue-templates: a new event with a copy of the template's venue → its id. Raises TEMPLATE_NOT_FOUND.
+      create_event_from_template: {
+        Args: {
+          p_restaurant_id: number;
+          p_template_id: number;
+          p_name: string;
+          p_date: string;
+          p_expected_guests: number | null;
+        };
+        Returns: number;
+      };
+      // venue-templates: „Zaktualizuj z szablonu” → { seatsBefore, seatsAfter, roomsAdded, roomsRemoved, tablesAdded,
+      // tablesRemoved, tablesKept }. Raises EVENT_NOT_FOUND or TEMPLATE_NOT_FOUND.
+      apply_venue_template: {
+        Args: { p_event_id: number; p_template_id: number };
+        Returns: Json;
       };
       // S-06: saves or replaces a guest's own guess while intake is open. Raises GUEST_NOT_FOUND or INTAKE_CLOSED.
       save_guest_guess: {

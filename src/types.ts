@@ -947,3 +947,66 @@ export interface SupportEventAnswerDto {
   event: SupportEventSummaryDto;
   support: SupportAccessDto;
 }
+
+// venue-templates (S-15; FR-030, US-06, US-09): a restaurant's venue template — an event row with is_template, whose
+// venue (plan, rooms, tables, drawing) is edited with the venue editor through /api/panel/templates/<id>/sala. Never
+// keys, never guests.
+export interface VenueTemplateSummaryDto {
+  id: number;
+  name: string;
+  roomCount: number;
+  tableCount: number;
+  seatCount: number;
+  hasPlan: boolean;
+}
+
+// GET|POST /api/panel/restaurants/<id>/templates (POST adds `template`); GET|PATCH /api/panel/templates/<id>.
+export interface TemplateListAnswerDto {
+  templates: VenueTemplateSummaryDto[];
+  template?: VenueTemplateSummaryDto;
+}
+
+export interface TemplateAnswerDto {
+  template: VenueTemplateSummaryDto;
+  restaurantId: number;
+}
+
+// A guest who would lose their seat in „Zaktualizuj z szablonu” (their table is not in the template, or it has fewer
+// seats there).
+export interface TemplateLostSeatDto {
+  guestName: string;
+  table: string;
+  seat: number;
+}
+
+// What „Zaktualizuj z szablonu” would change in the event's venue (match by name, case-insensitive): computed before
+// the confirm, so it names everyone who loses a seat. planChange: the plan photo is replaced by the template's
+// ("replaced"), removed because the template has none ("removed"), or neither has one ("none").
+export interface TemplateUpdatePreviewDto {
+  templateId: number;
+  templateName: string;
+  lost: TemplateLostSeatDto[];
+  tablesAdded: string[];
+  tablesRemoved: string[];
+  tablesResized: string[];
+  roomsAdded: string[];
+  roomsRemoved: string[];
+  planChange: "replaced" | "removed" | "none";
+}
+
+// The counts apply_venue_template reports (seat assignments before and after).
+export interface TemplateUpdateResultDto {
+  seatsBefore: number;
+  seatsAfter: number;
+  roomsAdded: number;
+  roomsRemoved: number;
+  tablesAdded: number;
+  tablesRemoved: number;
+  tablesKept: number;
+}
+
+// GET (preview) / POST (apply) /api/panel/events/<id>/from-template/<templateId>.
+export interface TemplateUpdateAnswerDto {
+  preview: TemplateUpdatePreviewDto;
+  result?: TemplateUpdateResultDto;
+}

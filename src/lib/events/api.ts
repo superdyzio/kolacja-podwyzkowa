@@ -7,7 +7,10 @@ const TEXT = z.string().max(400);
 const DATE = z.string().max(20);
 const GUESTS = z.number().nullable().optional();
 
-export const CreateEventBody = z.object({ name: TEXT, date: DATE, expectedGuests: GUESTS }).strict();
+// venue-templates (S-15): `templateId` = start with a copy of that venue template's room.
+export const CreateEventBody = z
+  .object({ name: TEXT, date: DATE, expectedGuests: GUESTS, templateId: z.number().int().positive().optional() })
+  .strict();
 
 // client-restaurant-split (S-14): `venueLeads` flips „Lokal prowadzi”.
 export const UpdateEventBody = z

@@ -131,11 +131,12 @@ export async function listRestaurants(env) {
   return result.data.map((row) => ({ id: row.id, name: row.name }));
 }
 
-// Every event with its restaurant's name, by id.
+// Every event with its restaurant's name, by id. Venue templates (venue-templates, S-15: event rows with is_template)
+// are not events: their keys open nothing and are never printed.
 export async function listEvents(env) {
   const result = await rest(
     env,
-    "event?select=id,name,organizer_key,tv_key,restaurant_key,restaurant(id,name)&order=id",
+    "event?select=id,name,organizer_key,tv_key,restaurant_key,restaurant(id,name)&is_template=eq.false&order=id",
   );
   if (!result.ok || !Array.isArray(result.data)) {
     throw new PlatformError(`Nie udało się odczytać wydarzeń z bazy (${describeFailure(result)}).`);

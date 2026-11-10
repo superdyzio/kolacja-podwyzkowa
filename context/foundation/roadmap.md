@@ -57,7 +57,7 @@ Restauracja, która gościła kolację 2026-11-08, chce tego narzędzia do włas
 | S-12 | restaurant-team         | właściciel i menedżer zapraszają zespół, zmieniają role, usuwają osoby i dają jednorazowy link resetu hasła               | S-10             | FR-023, US-05                                                                                 | done     |
 | S-13 | admin-support-log       | administrator platformy wchodzi w dane lokalu w trybie wsparcia, a właściciel widzi każde wejście w dzienniku             | S-11             | FR-021, US-05, US-10, NFR-012                                                                 | done     |
 | S-14 | client-restaurant-split | lokal przełącza „lokal prowadzi”; klient prowadzi zamówienia i robi reset prób; pełny reset i koszty AI tylko w panelu    | S-11             | FR-026, FR-027, FR-028, US-07                                                                 | done        |
-| S-15 | venue-templates         | menedżer zapisuje salę jako szablon, tworzy z niego wydarzenia i aktualizuje wydarzenie z szablonu                        | S-11             | FR-030, US-06, US-09                                                                          | planning |
+| S-15 | venue-templates         | menedżer zapisuje salę jako szablon, tworzy z niego wydarzenia i aktualizuje wydarzenie z szablonu                        | S-11             | FR-030, US-06, US-09                                                                          | in-progress |
 | S-16 | menu-catalog-courses    | menedżer prowadzi katalog menu z kursami i menu wydarzenia; klient zamawia z niego bez zmiany cen; kuchnia widzi kursy    | S-14             | FR-037, FR-027, US-07                                                                         | proposed |
 | S-17 | event-modules           | lokal oznacza dostępne moduły, klient je włącza, administrator odblokowuje płatne; wyłączony moduł znika wszędzie         | S-14             | FR-031, US-07, NFR-023                                                                        | proposed |
 | S-18 | event-branding          | właściciel ustawia markę lokalu, klient markę wydarzenia; gość, TV, karteczki i panel pokazują je bez nazwy platformy     | S-11             | FR-032                                                                                        | proposed |
@@ -206,7 +206,7 @@ Fundamenty poniżej zakładają, że to istnieje, i NIE budują tego od nowa.
 - **Blockers:** —
 - **Unknowns:** —
 - **Risk:** Szablon nie może się otworzyć żadnym linkiem ani pojawić na listach, w retencji, resecie i licznikach (uwaga w `shape-notes.md` `## Forward: technical-roadmap` i w `m2-product-notes.md`, punkt 5). „Zaktualizuj z szablonu” może zabrać miejsca przy usuniętych stolikach, więc ostrzega przed tym jak edytor sal w v1.
-- **Status:** planning
+- **Status:** in-progress
 
 ### S-16: Katalog menu z kursami
 
