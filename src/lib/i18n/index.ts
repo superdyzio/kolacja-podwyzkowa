@@ -8,6 +8,7 @@ export {
   defineMessages,
   isLocale,
   localeCookieName,
+  localeSwitchTarget,
   resolveLocale,
   type Locale,
 } from "./locale";

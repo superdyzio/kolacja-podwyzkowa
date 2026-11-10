@@ -38,6 +38,15 @@ export function resolveLocale(pathname: string, cookieValue: string | undefined)
   return isLocale(cookieValue) ? cookieValue : defaultLocaleFor(pathname);
 }
 
+// Where the language switch redirects: the request's own path and query (without `?lang=`), always as a same-origin
+// path. Astro already hands the middleware a normalized pathname (decoded, duplicate slashes collapsed), but this is
+// the one place a request path is echoed into a Location header, so leading slashes, backslashes and whitespace are
+// collapsed here too: `//evil.com/` or `/\evil.com/` would be a scheme-relative address on another host. Never decode
+// the path here (`/%2F%2Fevil.com/` stays an encoded, same-origin path).
+export function localeSwitchTarget(pathname: string, search: string): string {
+  return `/${pathname.replace(/^[\s/\\]+/, "")}${search}`;
+}
+
 // Picks this locale's entry of a { pl, en } dictionary. `en` must have the same shape as `pl` (a missing key or a
 // function with other parameters is a type error), so no text can be forgotten in one language.
 export function defineMessages<T>(pl: T, en: NoInfer<T>): (locale?: Locale) => T {

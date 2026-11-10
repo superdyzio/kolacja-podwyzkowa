@@ -4443,6 +4443,60 @@ check(
   ) && meNoCookie.data?.error !== undefined,
   [meNoCookie, meGarbage, meMalformed, panelApiUnknown].map((res) => res.status).join(" "),
 );
+// The middleware judges the pathname Astro's router matches (decoded, duplicate slashes collapsed): a percent-encoded
+// letter or a doubled slash reaches exactly the same staff and waiter guards, with the same headers and bodies.
+const encodedPanel = await request("/%70anel");
+const encodedPanelDeep = await request("/%70anel/x");
+const doubledPanel = await request("//panel");
+const encodedLogin = await request("/%6Cogowanie");
+const plainLogin = await request("/logowanie");
+const encodedMe = await request("/api/%70anel/me");
+const plainWaiterFloor = await request("/kelner/sala/1");
+const encodedWaiterFloor = await request("/%6Belner/sala/1");
+const sameHeaders = (a, b) =>
+  a.status === b.status &&
+  a.location === b.location &&
+  a.cacheControl === b.cacheControl &&
+  a.referrerPolicy === b.referrerPolicy &&
+  a.frameOptions === b.frameOptions &&
+  a.robots === b.robots;
+check(
+  "staff: percent-encoded and doubled-slash staff paths (/%70anel, //panel, /%6Cogowanie, /api/%70anel/me, /%6Belner/sala/1) answer exactly like the plain ones (303 / 200 / identical 401, the staff headers)",
+  redirectsTo(encodedPanel, "/logowanie") &&
+    authHeaders(encodedPanel) &&
+    sameHeaders(encodedPanel, panelNoSession) &&
+    sameHeaders(encodedPanelDeep, panelDeepNoSession) &&
+    sameHeaders(doubledPanel, panelNoSession) &&
+    encodedLogin.status === 200 &&
+    authHeaders(encodedLogin) &&
+    sameHeaders(encodedLogin, plainLogin) &&
+    encodedMe.status === 401 &&
+    encodedMe.body === meNoCookie.body &&
+    sameHeaders(encodedMe, meNoCookie) &&
+    redirectsTo(plainWaiterFloor, "/kelner") &&
+    authHeaders(encodedWaiterFloor) &&
+    sameHeaders(encodedWaiterFloor, plainWaiterFloor),
+  [encodedPanel, encodedPanelDeep, doubledPanel, encodedLogin, encodedMe, plainWaiterFloor, encodedWaiterFloor]
+    .map((res) => `${res.status} ${res.location} ${res.frameOptions}`)
+    .join(", "),
+);
+// The language switch echoes the request's path into Location: always a same-origin path, never `//host/…`.
+const offsiteSwitches = await Promise.all(
+  ["//evil.example/?lang=pl", "///evil.example/x?lang=en", "/\\evil.example/?lang=pl", "/%5Cevil.example/?lang=pl"].map(
+    (path) => request(path),
+  ),
+);
+check(
+  "i18n: the language switch on //evil.example/, ///…, /\\… and /%5C… redirects to a same-origin path (no open redirect)",
+  offsiteSwitches.every(
+    (res) =>
+      res.status === 303 &&
+      res.location.startsWith("/") &&
+      !/^[/\\]{2}/.test(res.location) &&
+      new URL(res.location, BASE_URL).origin === new URL(BASE_URL).origin,
+  ),
+  offsiteSwitches.map((res) => `${res.status} ${res.location}`).join(", "),
+);
 check(
   "staff: a session cookie that opens nothing is cleared (Max-Age=0)",
   /kp-session=;[^,]*Max-Age=0/.test(meGarbage.setCookie) && meNoCookie.setCookie === "",
@@ -4653,6 +4707,26 @@ check(
   "staff: login, logout and the password change without the page's Origin → 403 without a cookie",
   originResults.every((line) => line.endsWith(": 403")),
   originResults.join("; "),
+);
+// A percent-encoded letter in the path reaches the same Origin pre-check: the JSON login (which Astro's own form-only
+// origin check never refuses) gets the middleware's identical 403 body and the staff headers, and logs nobody in.
+const loginJsonForeign = (path) =>
+  request(path, {
+    method: "POST",
+    json: { email: staff.ownerA.email, password: STAFF_PASSWORD },
+    extraHeaders: FOREIGN,
+  });
+const plainLoginForeign = await loginJsonForeign("/api/auth/login");
+const encodedLoginForeign = await loginJsonForeign("/api/%61uth/login");
+check(
+  "staff: a foreign-Origin JSON login on /api/%61uth/login → the middleware's identical 403 (body and headers), no cookie",
+  plainLoginForeign.status === 403 &&
+    encodedLoginForeign.status === 403 &&
+    encodedLoginForeign.body === plainLoginForeign.body &&
+    plainLoginForeign.data?.error !== undefined &&
+    authHeaders(encodedLoginForeign) &&
+    encodedLoginForeign.setCookie === "",
+  `${plainLoginForeign.status} ${encodedLoginForeign.status} ${encodedLoginForeign.body.slice(0, 80)}`,
 );
 const stillLoggedIn = await me(sessionA1);
 const oldPasswordStill = await logIn(staff.ownerA.email, STAFF_PASSWORD);
@@ -7642,6 +7716,33 @@ check(
     stateOff33.data?.modules?.guessing === false &&
     stateOff33.data?.modules?.questions === true,
   `${g33.length} ${guessOffGuest33.status} ${guessOffGuest33.body} ${JSON.stringify(stateOff33.data?.modules)}`,
+);
+// The gate reads the pathname Astro's router matches (fully decoded): a percent-encoded letter, also encoded twice,
+// reaches the same gate — the organizer's identical 409 module-off, the guest's identical 404 of a wrong key.
+const sameAnswer33 = (a, b) =>
+  a.status === b.status && a.body === b.body && a.cacheControl === b.cacheControl && a.robots === b.robots;
+const encodedGuesses33 = await request(`${e33Api}/%67uesses`);
+const twiceEncodedGuesses33 = await request(`${e33Api}/%2567uesses`);
+const encodedAi33 = await request(`${e33Api}/%61i-topics`, { method: "POST", json: { category: null } });
+const encodedGuess33 = await request(`${gApi33}/%67uess`, { method: "PUT", json: { amount: "100" } });
+const encodedGuestAi33 = await request(`${gApi33}/%61i-topics`, { method: "POST", json: { category: null } });
+const badGuestAi33 = await request(`/api/g/${"A".repeat(24)}/ai-topics`, {
+  method: "POST",
+  json: { category: null },
+});
+check(
+  "modules: percent-encoded module paths (/%67uesses, /%2567uesses, /%61i-topics; the guest's /%67uess, /%61i-topics) get the identical 409 module-off / 404 of the plain path",
+  isModuleOff(encodedGuesses33, "guessing") &&
+    sameAnswer33(encodedGuesses33, guessesOff33) &&
+    sameAnswer33(twiceEncodedGuesses33, guessesOff33) &&
+    isModuleOff(encodedAi33, "aiTopics") &&
+    sameAnswer33(encodedAi33, aiOff33) &&
+    sameAnswer33(encodedGuess33, guessOffGuest33) &&
+    encodedGuestAi33.status === 404 &&
+    sameAnswer33(encodedGuestAi33, badGuestAi33),
+  [encodedGuesses33, twiceEncodedGuesses33, encodedAi33, encodedGuess33, encodedGuestAi33]
+    .map((res) => `${res.status} ${res.data?.code ?? ""}`)
+    .join(", "),
 );
 
 const enable = (module, enabled, api = e33Api) =>

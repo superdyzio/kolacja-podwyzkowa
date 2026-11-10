@@ -27,7 +27,14 @@ import {
   WAITER_ENTRY_PATH,
   type WaiterArea,
 } from "@/lib/event-waiters";
-import { LOCALE_COOKIE_MAX_AGE_SECONDS, LOCALE_PARAM, isLocale, localeCookieName, resolveLocale } from "@/lib/i18n";
+import {
+  LOCALE_COOKIE_MAX_AGE_SECONDS,
+  LOCALE_PARAM,
+  isLocale,
+  localeCookieName,
+  localeSwitchTarget,
+  resolveLocale,
+} from "@/lib/i18n";
 import { clientMayWrite, isOrganizerApiPath, LEAD_CODES, leadMessages } from "@/lib/lead";
 import { keyedApiSubPath, MODULE_CODES, moduleForApiPath, modulesMessages, type ModuleKey } from "@/lib/modules";
 import { sweepGuestRetention } from "@/lib/privacy/service";
@@ -36,8 +43,15 @@ import { sweepGuestRetention } from "@/lib/privacy/service";
 // matching role; anything else gets the same 404 "brak dostępu" response, whatever the reason (malformed, unknown or
 // another role's key). A DB failure throws and becomes a 500, never a misleading 404.
 //
+// Paths: every decision here reads `context.url.pathname`, which Astro (7.3, `FetchState#normalizePathname`) has
+// already fully decoded (`decodeURI`, repeated; `%2F` stays encoded) with duplicate slashes collapsed — the same
+// pathname its router matches. So `/api/g/<key>/%61i-topics`, `/%70anel` or `//panel` are judged exactly like the plain
+// path; never decode it again here (a second decode would create the very mismatch it seems to prevent). Smoke
+// sections 25 and 33 pin this against an Astro upgrade.
+//
 // Language (i18n): `locals.locale` comes from the cookie of this path's area, else the path's default (the restaurant
-// starts in English). A page GET with `?lang=pl|en` stores the choice and redirects to the same address without it.
+// starts in English). A page GET with `?lang=pl|en` stores the choice and redirects to the same address without it,
+// always as a same-origin path (`localeSwitchTarget`: never `//host/…`).
 //
 // Staff areas (staff-accounts, F-03; src/lib/auth/paths.ts): every mutation under /api/panel/ and /api/auth/ must carry
 // a same-origin Origin header (else 403, before any DB read); the session cookie sets `locals.staff`; /panel/ without a
@@ -184,7 +198,7 @@ export const onRequest = defineMiddleware(async (context, next) => {
     });
     const target = new URL(context.url);
     target.searchParams.delete(LOCALE_PARAM);
-    return context.redirect(`${target.pathname}${target.search}`, 303);
+    return context.redirect(localeSwitchTarget(target.pathname, target.search), 303);
   }
   // A denial re-enters here as a rewrite to /404 with the same locals: keep the language of the original path.
   const rewritten = (context.locals as Partial<App.Locals>).locale;
