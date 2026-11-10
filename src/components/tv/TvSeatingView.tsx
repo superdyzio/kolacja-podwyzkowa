@@ -19,7 +19,7 @@ interface Props {
   eventName: string;
   // tv-room-rotation: the room this TV is pinned to (`?sala=`), already resolved on the server to a published room's
   // own name, or null. Re-checked against every new publish (a room that disappears gives the whole venue again).
-  pinnedRoom: string | null;
+  fixedRoom: string | null;
   locale: Locale;
 }
 
@@ -34,7 +34,7 @@ const BLANK_ASPECT = 16 / 9;
 // are fractions of it). On its own layer above (also before the first publish): what the organizer put on the TV
 // (tv-spotlight). tv-room-rotation: the whole venue while every name is readable (≥ 2.5% of the screen height), else
 // room by room (zoomed, with the room's name and where the rotation is); a pinned TV shows its room only.
-export function TvSeatingView({ apiBase, initial, eventName, pinnedRoom, locale }: Props) {
+export function TvSeatingView({ apiBase, initial, eventName, fixedRoom, locale }: Props) {
   const t = tvScreenMessages(locale);
   const r = tvRoomMessages(locale);
   const { tv, offline, updates } = useTvSeating(apiBase, initial);
@@ -60,9 +60,9 @@ export function TvSeatingView({ apiBase, initial, eventName, pinnedRoom, locale 
         chairPitch: tv.chairPitch,
         aspect,
         screen,
-        pinnedRoom: resolveRoomPin(pinnedRoom, tvRoomNames(tv.tables)),
+        pinnedRoom: resolveRoomPin(fixedRoom, tvRoomNames(tv.tables)),
       }),
-    [tv.tables, tv.rooms, tv.chairPitch, aspect, screen, pinnedRoom],
+    [tv.tables, tv.rooms, tv.chairPitch, aspect, screen, fixedRoom],
   );
   const rotation = plan.mode === "rotate" ? plan.rooms : NO_ROOMS;
   const roomIndex = useRoomRotation(rotation);

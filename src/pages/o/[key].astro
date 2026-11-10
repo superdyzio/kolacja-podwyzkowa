@@ -1,4 +1,5 @@
 ---
+import { TvRoomLinks } from "@/components/tv/TvRoomLinks";
 import NoAccess from "@/components/NoAccess.astro";
 import BrandHeader from "@/components/branding/BrandHeader.astro";
 import { EventBrandingManager } from "@/components/branding/EventBrandingManager";
@@ -57,6 +58,7 @@ const view = access
       apiBase: `/api${organizerPath(access.event.organizerKey)}`,
       organizerUrl: new URL(organizerPath(access.event.organizerKey), Astro.url).href,
       tvUrl: new URL(tvPath(access.event.tvKey), Astro.url).href,
+      roomNames: board ? board.venue.rooms.map((room) => room.name) : [],
       guestsPath: `${organizerPath(access.event.organizerKey)}/goscie`,
       guestSummary: board ? formatGuestSummary(summarizeGuestList(board.guestList), locale) : null,
       venuePath: `${organizerPath(access.event.organizerKey)}/sale`,
@@ -132,6 +134,8 @@ const tb = brandingMessages(locale);
             class="w-full rounded-md border bg-muted px-3 py-2 font-mono text-sm"
           />
           <p class="text-sm text-muted-foreground">{t.tvLinkHint}</p>
+          {/* tv-room-rotation (S-20): one TV link per room. */}
+          <TvRoomLinks client:load tvUrl={view.tvUrl} rooms={view.roomNames} locale={locale} />
         </div>
       </section>
 

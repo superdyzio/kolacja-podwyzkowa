@@ -76,8 +76,10 @@ describe("support rules", () => {
       venueLeads: true,
       guestCount: 12,
       links: { organizer: "/o/AAAA", tv: "/tv/BBBB", restaurant: "/r/CCCC" },
+      rooms: ["Sala"],
     });
     expect(summary).not.toHaveProperty("links");
+    expect(summary).not.toHaveProperty("rooms");
     expect(JSON.stringify(summary)).not.toMatch(/\/(o|tv|r)\//);
     expect(summary).toMatchObject({ id: 9, name: "Wigilia", guestCount: 12, restaurantName: "Pod Lipą" });
   });

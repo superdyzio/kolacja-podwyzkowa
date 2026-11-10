@@ -29,7 +29,7 @@ export function supportStartPath(restaurantId: number): string {
 // The event card as support mode shows it: the links (keys) are dropped — the client link writes the event's data with
 // no session and no log, and outlives any time box.
 export function supportEventSummary(card: EventCardDto): SupportEventSummaryDto {
-  const { links: _links, ...summary } = card;
+  const { links: _links, rooms: _rooms, ...summary } = card;
   return summary;
 }
 

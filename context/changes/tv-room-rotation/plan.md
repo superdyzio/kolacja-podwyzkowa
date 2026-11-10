@@ -122,9 +122,9 @@ Unit: readability with fixed inputs (two sparse tables → venue; many dense tab
 
 #### Automated
 
-- [ ] 2.1 Tests, lint, check and build pass
-- [ ] 2.2 Smoke passes against the mock preview
-- [ ] 2.3 Demo passes and prints the pinned-room TV link
+- [x] 2.1 Tests, lint, check and build pass
+- [x] 2.2 Smoke passes against the mock preview
+- [x] 2.3 Demo passes and prints the pinned-room TV link
 
 #### Manual
 

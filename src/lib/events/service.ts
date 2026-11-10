@@ -1,3 +1,4 @@
+import { compareTableNames } from "@/lib/venue/rules";
 import { generateAccessKey, organizerPath, restaurantPath, tvPath } from "@/lib/access";
 import { createEvent } from "@/lib/event";
 import { createEventFromTemplate } from "@/lib/templates/service";
@@ -67,7 +68,7 @@ export async function getEventCard(
   eventId: number,
   now: Date,
 ): Promise<EventCardDto | null> {
-  const [event, guests] = await Promise.all([
+  const [event, guests, rooms] = await Promise.all([
     db
       .from("event")
       .select(
@@ -78,7 +79,12 @@ export async function getEventCard(
       .eq("is_template", false)
       .maybeSingle(),
     db.from("guest").select("id", { count: "exact", head: true }).eq("event_id", eventId),
+    // tv-room-rotation: the room names for the per-room TV links (this event's rooms only).
+    db.from("venue_room").select("name").eq("event_id", eventId),
   ]);
+  if (rooms.error) {
+    fail("odczytać sal wydarzenia", rooms.error.message);
+  }
   if (event.error) {
     fail("odczytać wydarzenia", event.error.message);
   }
@@ -101,6 +107,7 @@ export async function getEventCard(
       tv: tvPath(row.tv_key),
       restaurant: restaurantPath(row.restaurant_key),
     },
+    rooms: rooms.data.map((room) => room.name).sort(compareTableNames),
   };
 }
 

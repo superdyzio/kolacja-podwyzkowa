@@ -838,6 +838,17 @@ const guessCount = guessBoard.guests.filter((guest) => guest.amountGrosze !== nu
 const placeCount = guessBoard.guests.filter((guest) => guest.predictedPlace !== null).length;
 const organizerUrl = new URL(`/o/${event.organizerKey}`, BASE_URL).href;
 
+// tv-room-rotation (S-20): one TV pinned to a room (`?sala=<room name>`); its page shows that room's caption.
+const PINNED_TV_ROOM = ROOMS[1].name;
+const pinnedTvUrl = new URL(`/tv/${event.tvKey}?sala=${encodeURIComponent(PINNED_TV_ROOM)}`, BASE_URL).href;
+{
+  const response = await fetch(pinnedTvUrl);
+  const html = await response.text();
+  if (response.status !== 200 || !html.includes(`data-tv-room="${PINNED_TV_ROOM}"`)) {
+    throw new Error(`TV przypięty do sali ${PINNED_TV_ROOM} nie pokazuje jej (${String(response.status)}).`);
+  }
+}
+
 console.log(`
 Dane demo gotowe („${RESTAURANT_NAME}” · „${EVENT_NAME}”, id ${String(event.id)}):
 - goście: ${board.guestList.guests.length} (nieobecna: ${ABSENT}), grupy: ${GROUPS.map((group) => group.members.length).join(" + ")}
@@ -858,6 +869,7 @@ Dane demo gotowe („${RESTAURANT_NAME}” · „${EVENT_NAME}”, id ${String(e
 
 Organizator: ${organizerUrl}
 TV:          ${new URL(`/tv/${event.tvKey}`, BASE_URL).href}
+TV jednej sali (${PINNED_TV_ROOM}): ${pinnedTvUrl}
 Restauracja: ${new URL(`/r/${event.restaurantKey}`, BASE_URL).href}
 Linki gości: włącz dostęp na ${organizerUrl}/linki
 Panel lokalu: ${new URL("/logowanie", BASE_URL).href} — e-mail ${owner.email}, hasło ${OWNER_PASSWORD} (rola: właściciel)

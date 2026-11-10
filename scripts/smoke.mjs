@@ -873,7 +873,7 @@ check(
   leaksFromTv(tvFirst.body).join(" "),
 );
 check(
-  "TV draws the published venue: rotations, outlined rooms and the chair pitch, nothing else",
+  "TV draws the published venue: rotations, outlined rooms, each table's room name and the chair pitch, nothing else",
   JSON.stringify(Object.keys(tvFirst.data ?? {}).sort()) ===
     JSON.stringify(["chairPitch", "planVersion", "publishedAt", "rooms", "spotlight", "tables", "version"]) &&
     tvFirst.data.chairPitch === 0.04 &&
@@ -881,7 +881,7 @@ check(
     tvFirst.data.rooms.every((room) => Object.keys(room).sort().join(",") === "height,name,width,x,y") &&
     tableNamed(tvFirst, TABLE_NAME)?.rotation === 270 &&
     tvFirst.data.tables.every(
-      (table) => Object.keys(table).sort().join(",") === "name,rotation,seatCount,seats,shape,x,y",
+      (table) => Object.keys(table).sort().join(",") === "name,room,rotation,seatCount,seats,shape,x,y",
     ),
   tvFirst.body,
 );
@@ -1022,6 +1022,48 @@ const tvPageLeaks = [organizerKey, "guestId", "pinned", "isAbsent", "tableId", "
   tvPage.body.includes(secret),
 );
 check("TV page leaks no organizer key, ids, pins or absences", tvPageLeaks.length === 0, tvPageLeaks.join(" "));
+
+// 15a. TV pinned to one room (tv-room-rotation, S-20): `?sala=<room name>` (any case) shows that room with its own
+// name as the caption; a malformed or unknown value gives the plain TV page — 200, never an echo of the value, nothing
+// private. The pin is resolved on the server against THIS event's published rooms only.
+const tvPinned = await request(`/tv/${tvKey}?sala=${encodeURIComponent(ROOM_NAME.toLowerCase())}`);
+check(
+  "TV page pinned to a room shows that room by its own name",
+  tvPinned.status === 200 &&
+    tvPinned.body.includes(`data-tv-room="${ROOM_NAME}"`) &&
+    tvPinned.body.includes(TABLE_NAME) &&
+    tvPinned.body.includes(GUEST_NAMES[0]),
+  String(tvPinned.status),
+);
+const tvPinLeaks = [organizerKey, "guestId", "pinned", "isAbsent", "tableId"].filter((secret) =>
+  tvPinned.body.includes(secret),
+);
+check("TV page pinned to a room leaks no key, ids or absences", tvPinLeaks.length === 0, tvPinLeaks.join(" "));
+const organizerWithRooms = await request(`/o/${organizerKey}`);
+check(
+  "organizer page lists a TV link per room",
+  organizerWithRooms.status === 200 &&
+    organizerWithRooms.body.includes(`/tv/${tvKey}?sala=${encodeURIComponent(ROOM_NAME)}`),
+  String(organizerWithRooms.status),
+);
+const PIN_MARK = `PinSmoke${RUN_TAG}`;
+for (const [label, value] of [
+  ["markup", `<b>${PIN_MARK}</b><script>alert(1)</script>`],
+  ["unknown", `Nieznana ${PIN_MARK}`],
+  ["overlong", `${PIN_MARK}${"x".repeat(200)}`],
+  ["blank", "   "],
+]) {
+  const res = await request(`/tv/${tvKey}?sala=${encodeURIComponent(value)}`);
+  check(
+    `TV page with the room parameter (${label}) is the plain TV page (no echo, no pin)`,
+    res.status === 200 &&
+      res.body.includes(TABLE_NAME) &&
+      !res.body.includes(PIN_MARK) &&
+      !res.body.includes("alert(1)") &&
+      !res.body.includes(organizerKey),
+    String(res.status),
+  );
+}
 
 // 16. Draw, draft and restore (S-04). The draw itself runs in the browser; the server gives it the neighbour history,
 // re-checks the drawn draft and restores published arrangements. State here: Ania Smoke at seat 4 of "Okno Smoke"
@@ -1260,7 +1302,7 @@ check(
     aniaState.data.drawing.chairPitch === 0.04 &&
     aniaState.data.drawing.tables.some((table) => table.name === TABLE_NAME && table.rotation === 270) &&
     aniaState.data.drawing.tables.every(
-      (table) => Object.keys(table).sort().join(",") === "name,rotation,seatCount,seats,shape,x,y",
+      (table) => Object.keys(table).sort().join(",") === "name,room,rotation,seatCount,seats,shape,x,y",
     ) &&
     aniaState.data.drawing.tables.every((table) =>
       table.seats.every((seat) => Object.keys(seat).sort().join(",") === "name,seat"),
@@ -3899,6 +3941,8 @@ const aReads = [
   `/o/${organizerKey}/pytania`,
   `/o/${organizerKey}/zamowienia`,
   `/tv/${tvKey}`,
+  // tv-room-rotation: A's TV pinned to B's room name shows nothing of B (the pin only filters A's own rooms).
+  `/tv/${tvKey}?sala=${encodeURIComponent(`Sala ${B_MARK}`)}`,
   tvSeatingApi,
   `/r/${newRestaurantKey}`,
   `/api/r/${newRestaurantKey}/orders`,

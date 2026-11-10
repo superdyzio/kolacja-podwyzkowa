@@ -26,7 +26,7 @@ if (!access || !db) {
 const initial = access && db ? await getTvScreen(db, access.event.id, access.event.modules.tvSpotlight) : null;
 // tv-room-rotation (S-20): `?sala=<room name>` pins this TV to one room of THIS event. Resolved here against the
 // published rooms: only a room's own name reaches the HTML, never the raw parameter; anything else = no pin.
-const pinnedRoom = initial
+const fixedRoom = initial
   ? resolveRoomPin(parseRoomPin(Astro.url.searchParams.get(ROOM_PIN_PARAM)), tvRoomNames(initial.tables))
   : null;
 const view =
@@ -49,7 +49,7 @@ const view =
         apiBase={view.apiBase}
         initial={view.initial}
         eventName={view.name}
-        pinnedRoom={pinnedRoom}
+        fixedRoom={fixedRoom}
         locale={locale}
       />
       <BrandHeader branding={view.branding} base={`${view.apiBase}/branding`} locale={locale} variant="tv" />

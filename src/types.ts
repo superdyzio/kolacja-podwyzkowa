@@ -888,6 +888,8 @@ export interface EventCardDto extends EventSummaryDto {
   venueLeads: boolean;
   guestCount: number;
   links: EventLinksDto;
+  // tv-room-rotation (S-20): the venue's room names, for the per-room TV links (`/tv/<key>?sala=<room>`).
+  rooms: string[];
 }
 
 // GET /api/panel/restaurants/<id>/events: "today" in the platform's time zone and the three lists (upcoming = today
@@ -954,7 +956,7 @@ export interface SupportLogDto {
 }
 
 // The event card as support mode shows it: everything but the links (keys never reach support mode).
-export type SupportEventSummaryDto = Omit<EventCardDto, "links">;
+export type SupportEventSummaryDto = Omit<EventCardDto, "links" | "rooms">;
 
 // GET /api/panel/events/<id> in support mode.
 export interface SupportEventAnswerDto {

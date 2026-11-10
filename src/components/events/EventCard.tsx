@@ -2,6 +2,7 @@ import { useId, useState, type SubmitEvent } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { EventLinkRow } from "@/components/events/EventLinkRow";
+import { TvRoomLinks } from "@/components/tv/TvRoomLinks";
 import { useEventCard, type EventCardStatus, type EventDetailsPatch } from "@/components/hooks/useEventCard";
 import { formatEventDate } from "@/lib/events/dates";
 import { eventInputProblemText, eventPanelMessages } from "@/lib/events/messages";
@@ -260,6 +261,8 @@ export function EventCard({ initial, role, origin, locale }: Props) {
             />
           ))}
         </ul>
+        {/* tv-room-rotation (S-20): one TV link per room, following the current TV link. */}
+        <TvRoomLinks tvUrl={new URL(card.links.tv, origin).href} rooms={card.rooms} locale={locale} />
       </section>
 
       <EventDetailsForm
