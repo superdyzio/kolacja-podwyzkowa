@@ -38,6 +38,8 @@ export const shellMessages = defineMessages(
     aiTopicsTitle: "Tematy AI",
     aiTopicsText: (guestLimit: number, eventLimit: number) =>
       `Temat do rozmowy od AI w wybranej kategorii; gość ma ${guestLimit} na wieczór, wszyscy razem ${eventLimit}.`,
+    quizTitle: "Pub quiz",
+    quizText: "Pytania z odpowiedziami A–D na TV, goście odpowiadają na telefonach, punkty i wyniki.",
     ordersTitle: "Zamówienia i restauracja",
     ordersText: "Co kto zamówił, ceny i suma rachunku oraz odhaczanie wydanych dań.",
     readoutTitle: "Odczyt bez sieci",
@@ -82,6 +84,8 @@ export const shellMessages = defineMessages(
     aiTopicsTitle: "AI topics",
     aiTopicsText: (guestLimit: number, eventLimit: number) =>
       `A conversation topic from AI in the chosen category; each guest has ${guestLimit} for the evening, everyone together ${eventLimit}.`,
+    quizTitle: "Pub quiz",
+    quizText: "Questions with answers A–D on the TV, guests answer on their phones, points and results.",
     ordersTitle: "Orders and restaurant",
     ordersText: "Who ordered what, prices and the bill's total, and ticking off served dishes.",
     readoutTitle: "Offline readout",

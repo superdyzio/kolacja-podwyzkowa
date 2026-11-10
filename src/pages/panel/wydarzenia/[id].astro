@@ -24,6 +24,7 @@ import { leadMessages } from "@/lib/lead/messages";
 import { formatOrderSummary, getOrderItems, orderTotals } from "@/lib/orders";
 import { findPanelEvent } from "@/lib/panel-api";
 import { formatQuestionSummary, getQuestionList } from "@/lib/questions";
+import { formatQuizSummary, getQuizBoard } from "@/lib/quiz";
 import { formatRsvpSummary, getRsvpBoard } from "@/lib/rsvp";
 import { formatSeatingSummary, getSeatingBoard, summarizeSeating } from "@/lib/seating";
 import { supportEventSummary } from "@/lib/support";
@@ -86,6 +87,8 @@ const loaded = panel
       getRsvpBoard(panel.db, panel.event.id, new Date()),
       // privacy-retention (S-26): „Dane gości i eksport” (the guard has applied the retention already).
       getEventRetention(panel.db, panel.event.id),
+      // pub-quiz (S-28): the quiz card's summary (the card shows only while the module works).
+      getQuizBoard(panel.db, panel.event.id),
     ])
   : null;
 const card = loaded?.[0] ?? null;
@@ -109,7 +112,9 @@ const work = loaded
         waiters,
         rsvpBoard,
         retention,
+        quizBoard,
       ] = loaded;
+      const quizActive = modules?.modules.find((module) => module.key === "pubQuiz")?.active ?? false;
       return {
         retention,
         branding,
@@ -118,9 +123,9 @@ const work = loaded
         menu,
         modules,
         ai: { usage: aiUsage, provider: getAiProviderStatus(locale) },
-        sections: panel?.support
-          ? CLIENT_SECTIONS.filter((section) => !KEY_SECTIONS.includes(section))
-          : CLIENT_SECTIONS,
+        sections: CLIENT_SECTIONS.filter(
+          (section) => !(panel?.support && KEY_SECTIONS.includes(section)) && (section !== "quiz" || quizActive),
+        ),
         summaries: {
           goscie: formatGuestSummary(summarizeGuestList(board.guestList), locale),
           sale: formatVenueSummary(summarizeVenue(board.venue), locale),
@@ -133,6 +138,7 @@ const work = loaded
           strzaly: formatGuessSummary(guessBoard, locale),
           pytania: formatQuestionSummary(questionList.questions, locale),
           zamowienia: formatOrderSummary(orderTotals(orderItems), locale),
+          quiz: quizBoard ? formatQuizSummary(quizBoard, locale) : null,
         },
       };
     })()

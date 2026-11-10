@@ -10,6 +10,7 @@ import { tvScreenMessages } from "@/lib/tv-spotlight/messages";
 import { cn } from "@/lib/utils";
 import { planImagePath } from "@/lib/venue/pin";
 import type { TvScreenDto } from "@/types";
+import { TvQuiz } from "./TvQuiz";
 import { TvSpotlight } from "./TvSpotlight";
 
 interface Props {
@@ -33,7 +34,8 @@ const BLANK_ASPECT = 16 / 9;
 // polling. The plan photo is never shown: it is loaded hidden only for its aspect ratio (the drawing's coordinates
 // are fractions of it). On its own layer above (also before the first publish): what the organizer put on the TV
 // (tv-spotlight). tv-room-rotation: the whole venue while every name is readable (≥ 2.5% of the screen height), else
-// room by room (zoomed, with the room's name and where the rotation is); a pinned TV shows its room only.
+// room by room (zoomed, with the room's name and where the rotation is); a pinned TV shows its room only. pub-quiz
+// (S-28): a running quiz covers both on its own layer.
 export function TvSeatingView({ apiBase, initial, eventName, fixedRoom, locale }: Props) {
   const t = tvScreenMessages(locale);
   const r = tvRoomMessages(locale);
@@ -162,6 +164,10 @@ export function TvSeatingView({ apiBase, initial, eventName, fixedRoom, locale }
           locale={locale}
         />
       )}
+      {
+        // pub-quiz (S-28): the running quiz covers the plan and the spotlight (the offline badge stays on top).
+        tv.quiz && <TvQuiz quiz={tv.quiz} locale={locale} />
+      }
       {offline && (
         <p
           role="status"

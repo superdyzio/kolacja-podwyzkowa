@@ -20,6 +20,7 @@ import { getEventModules, modulesMessages } from "@/lib/modules";
 import { formatOrderSummary, getOrderItems, orderTotals } from "@/lib/orders";
 import { formatGuestSummary, summarizeGuestList } from "@/lib/guests";
 import { formatQuestionSummary, getQuestionList } from "@/lib/questions";
+import { formatQuizSummary, getQuizBoard } from "@/lib/quiz";
 import { formatRsvpSummary, getRsvpBoard } from "@/lib/rsvp";
 import { formatSeatingSummary, getSeatingBoard, summarizeSeating } from "@/lib/seating";
 import { shellMessages } from "@/lib/shell/messages";
@@ -50,6 +51,7 @@ const [
   branding,
   rsvpBoard,
   retention,
+  quizBoard,
 ] =
   access && db
     ? await Promise.all([
@@ -66,8 +68,10 @@ const [
         getRsvpBoard(db, access.event.id, new Date()),
         // privacy-retention (S-26): when the guests' data goes (the key lookup has applied the retention already).
         getEventRetention(db, access.event.id),
+        // pub-quiz (S-28): the quiz card's summary, only while the module is on.
+        on?.pubQuiz ? getQuizBoard(db, access.event.id) : null,
       ])
-    : [null, false, null, null, null, null, null, null, null, null];
+    : [null, false, null, null, null, null, null, null, null, null, null];
 const view = access
   ? {
       name: access.event.name,
@@ -105,6 +109,9 @@ const view = access
       // The questions page also holds the TV screen and the AI topics.
       questionsOn: access.event.modules.questions || access.event.modules.tvSpotlight,
       aiTopicsOn: access.event.modules.aiTopics,
+      quizPath: `${organizerPath(access.event.organizerKey)}/quiz`,
+      quizSummary: quizBoard ? formatQuizSummary(quizBoard, locale) : null,
+      quizOn: access.event.modules.pubQuiz,
       modules,
       modulesApi: `/api${organizerPath(access.event.organizerKey)}/modules`,
       branding,
@@ -274,6 +281,22 @@ const tb = brandingMessages(locale);
                 </div>
                 <p class="text-sm text-muted-foreground">{t.aiTopicsText(MAX_GUEST_TOPICS, MAX_EVENT_TOPICS)}</p>
                 {view.aiTopicsSummary && <p class="text-sm font-medium">{view.aiTopicsSummary}</p>}
+              </a>
+            </li>
+          )}
+          {view.quizOn && (
+            <li>
+              <a
+                href={view.quizPath}
+                data-quiz-card
+                class="flex h-full flex-col gap-2 rounded-xl border p-4 transition-colors hover:bg-accent focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
+              >
+                <div class="flex items-center justify-between gap-2">
+                  <h3 class="font-semibold">{t.quizTitle}</h3>
+                  <span class="rounded-full bg-primary px-2 py-0.5 text-xs text-primary-foreground">{t.open}</span>
+                </div>
+                <p class="text-sm text-muted-foreground">{t.quizText}</p>
+                {view.quizSummary && <p class="text-sm font-medium">{view.quizSummary}</p>}
               </a>
             </li>
           )}

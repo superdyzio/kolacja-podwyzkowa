@@ -322,24 +322,24 @@ HTTP coverage, the demo round, CLAUDE.md.
 
 #### Automated
 
-- [x] 1.1 Migration applies from zero: `npx supabase db reset`
-- [x] 1.2 Migration applies on the populated database (demo data of the previous commit): `npx supabase migration up`
-- [x] 1.3 Unit and integration tests pass: `AI_PROVIDER=mock npm test`
-- [x] 1.4 Lint passes: `npm run lint`
-- [x] 1.5 Type check passes: `npx astro check`
+- [x] 1.1 Migration applies from zero: `npx supabase db reset` — 27504c6
+- [x] 1.2 Migration applies on the populated database (demo data of the previous commit): `npx supabase migration up` — 27504c6
+- [x] 1.3 Unit and integration tests pass: `AI_PROVIDER=mock npm test` — 27504c6
+- [x] 1.4 Lint passes: `npm run lint` — 27504c6
+- [x] 1.5 Type check passes: `npx astro check` — 27504c6
 
 #### Manual
 
-- [x] 1.6 The migration's function list and grants read right (`\df public.quiz*`, no execute for anon/authenticated)
+- [x] 1.6 The migration's function list and grants read right (`\df public.quiz*`, no execute for anon/authenticated) — 27504c6
 
 ### Phase 2: Client, panel, phone and TV UI
 
 #### Automated
 
-- [ ] 2.1 Unit and integration tests pass: `AI_PROVIDER=mock npm test`
-- [ ] 2.2 Lint passes: `npm run lint`
-- [ ] 2.3 Type check passes: `npx astro check`
-- [ ] 2.4 Production build passes: `npm run build`
+- [x] 2.1 Unit and integration tests pass: `AI_PROVIDER=mock npm test`
+- [x] 2.2 Lint passes: `npm run lint`
+- [x] 2.3 Type check passes: `npx astro check`
+- [x] 2.4 Production build passes: `npm run build`
 
 #### Manual
 

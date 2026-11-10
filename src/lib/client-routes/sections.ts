@@ -11,6 +11,8 @@ export const CLIENT_SECTIONS = [
   "strzaly",
   "pytania",
   "zamowienia",
+  // pub-quiz (S-28).
+  "quiz",
 ] as const;
 
 export type ClientSection = (typeof CLIENT_SECTIONS)[number];

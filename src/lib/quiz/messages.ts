@@ -39,6 +39,7 @@ export const quizMessages = defineMessages(
     correctIs: (letter: string, text: string) => `Poprawna odpowiedź: ${letter} — ${text}`,
     optionCount: (n: number) => pl(n, "osoba", "osoby", "osób"),
     working: "Zapisywanie…",
+    dismiss: "Zamknij",
     // Questions.
     questionsHeading: (count: number, max: number) => `Pytania (${count} z ${max})`,
     questionNumber: (number: number) => `Pytanie ${number}`,
@@ -164,6 +165,7 @@ export const quizMessages = defineMessages(
     correctIs: (letter: string, text: string) => `Correct answer: ${letter} — ${text}`,
     optionCount: (n: number) => en(n, "person", "people"),
     working: "Saving…",
+    dismiss: "Dismiss",
     questionsHeading: (count: number, max: number) => `Questions (${count} of ${max})`,
     questionNumber: (number: number) => `Question ${number}`,
     statusDraft: "to ask",
