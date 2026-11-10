@@ -1,7 +1,7 @@
 ---
 change_id: event-branding
 title: Restaurant and event branding (S-18, FR-032)
-status: implementing
+status: implemented
 created: 2026-11-10
 updated: 2026-11-10
 archived_at: null
