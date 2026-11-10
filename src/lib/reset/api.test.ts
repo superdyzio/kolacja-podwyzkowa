@@ -19,6 +19,8 @@ const COUNTS = {
   orders: 0,
   questions: 90,
   guestAccessEnabled: false,
+  quizAnswers: 0,
+  quizAsked: 0,
 };
 
 describe("reset request body", () => {

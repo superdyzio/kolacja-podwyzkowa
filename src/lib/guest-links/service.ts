@@ -3,6 +3,7 @@ import { getGuestGuess } from "@/lib/guesses/service";
 import { getGuestOrders } from "@/lib/orders/service";
 import { getPublishedVersion, readSnapshotRooms } from "@/lib/seating/service";
 import { ALL_GUEST_MODULES, type GuestModules } from "@/lib/modules/rules";
+import { getGuestQuiz } from "@/lib/quiz/service";
 import { getGuestRsvp } from "@/lib/rsvp/service";
 import type { DbClient } from "@/lib/supabase-client";
 import { DEFAULT_CHAIR_PITCH, compareTableNames, isTableShape } from "@/lib/venue/rules";
@@ -189,12 +190,14 @@ export async function getGuestState(
   guest: { id: number; displayName: string },
   modules: GuestModules = ALL_GUEST_MODULES,
 ): Promise<GuestStateDto> {
-  const [published, guess, orders, rsvp] = await Promise.all([
+  const [published, guess, orders, rsvp, quiz] = await Promise.all([
     getPublishedVersion(db, eventId),
     getGuestGuess(db, eventId, guest.id),
     getGuestOrders(db, guest.id),
     // guest-rsvp-menu: the guest's own RSVP (null while off), the same RPC as the 204 path.
     getGuestRsvp(db, eventId, guest.id),
+    // pub-quiz: the guest's own quiz, read only while the module is on (the same RPC as the 204 path).
+    modules.pubQuiz ? getGuestQuiz(db, eventId, guest.id) : Promise.resolve(null),
   ]);
   const snapshotId = published.snapshotId;
   const seat = snapshotId === null ? null : await guestSeat(db, snapshotId, guest.id);
@@ -211,6 +214,7 @@ export async function getGuestState(
     orders,
     modules,
     rsvp,
+    quiz,
   });
 }
 
@@ -222,11 +226,12 @@ export async function getGuestStateVersion(
   guest: { id: number; displayName: string },
   modules: GuestModules = ALL_GUEST_MODULES,
 ): Promise<string> {
-  const [published, guess, orders, rsvp] = await Promise.all([
+  const [published, guess, orders, rsvp, quiz] = await Promise.all([
     getPublishedVersion(db, eventId),
     getGuestGuess(db, eventId, guest.id),
     getGuestOrders(db, guest.id),
     getGuestRsvp(db, eventId, guest.id),
+    modules.pubQuiz ? getGuestQuiz(db, eventId, guest.id) : Promise.resolve(null),
   ]);
-  return guestStateVersion(published.version, guest.displayName, guess, orders, modules, rsvp);
+  return guestStateVersion(published.version, guest.displayName, guess, orders, modules, rsvp, quiz);
 }

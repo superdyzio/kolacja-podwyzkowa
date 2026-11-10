@@ -1,12 +1,14 @@
 import type { Locale } from "@/lib/i18n/locale";
 import { ALL_GUEST_MODULES, guestModulesKey, type GuestModules } from "@/lib/modules/rules";
 import { guestOrdersKey } from "@/lib/orders/pieces";
+import { quizKey } from "@/lib/quiz/rules";
 import { rsvpKey } from "@/lib/rsvp/rules";
 import { oppositeSeat, sideNeighbours } from "@/lib/venue/seats";
 import type {
   GuestDrawingDto,
   GuestGuessDto,
   GuestOrderLineDto,
+  GuestQuizDto,
   GuestRsvpDto,
   GuestSeatDto,
   GuestStateDto,
@@ -46,13 +48,18 @@ export function guestStateVersion(
   orders: readonly GuestOrderLineDto[],
   modules: GuestModules = ALL_GUEST_MODULES,
   rsvp: GuestRsvpDto | null = null,
+  quiz: GuestQuizDto | null = null,
 ): string {
   const amount = guess.amountGrosze ?? "n";
   const place = guess.predictedPlace ?? "n";
   // event-modules: the phone's module flags go into the hashed part (no new part: the token has 2 chars of headroom).
   // guest-rsvp-menu: so does the guest's RSVP — appended only while RSVP is on, so other events keep their tokens.
   const rsvpPart = rsvp === null ? "" : `\u0000${rsvpKey(rsvp)}`;
-  const live = shortHash(`${name}\u0000${guestOrdersKey(orders)}\u0000${guestModulesKey(modules)}${rsvpPart}`);
+  // pub-quiz: and the guest's own quiz — appended only while one runs (and the module is on).
+  const quizPart = quiz === null ? "" : `\u0000quiz\u0000${quizKey(quiz)}`;
+  const live = shortHash(
+    `${name}\u0000${guestOrdersKey(orders)}\u0000${guestModulesKey(modules)}${rsvpPart}${quizPart}`,
+  );
   return `${seatingVersion}.${live}.${guess.intakeOpen ? "1" : "0"}.${amount}.${place}.${guess.maxPlace}`;
 }
 
@@ -75,6 +82,8 @@ export interface GuestStateInput {
   modules?: GuestModules;
   // guest-rsvp-menu: the guest's own RSVP (getGuestRsvp), null while RSVP is off; null when omitted.
   rsvp?: GuestRsvpDto | null;
+  // pub-quiz: the guest's own quiz (getGuestQuiz), null without a run or with the module off; null when omitted.
+  quiz?: GuestQuizDto | null;
 }
 
 export function toGuestState({
@@ -88,8 +97,9 @@ export function toGuestState({
   orders,
   modules = ALL_GUEST_MODULES,
   rsvp = null,
+  quiz = null,
 }: GuestStateInput): GuestStateDto {
-  const version = guestStateVersion(seatingVersion, name, guess, orders, modules, rsvp);
+  const version = guestStateVersion(seatingVersion, name, guess, orders, modules, rsvp, quiz);
   const own: GuestGuessDto = {
     intakeOpen: guess.intakeOpen,
     amountGrosze: guess.amountGrosze,
@@ -108,6 +118,7 @@ export function toGuestState({
       orders,
       modules,
       rsvp,
+      quiz,
     };
   }
   if (!seat) {
@@ -122,9 +133,10 @@ export function toGuestState({
       orders,
       modules,
       rsvp,
+      quiz,
     };
   }
-  return { version, name, status: "seated", seat, planVersion, guess: own, drawing, orders, modules, rsvp };
+  return { version, name, status: "seated", seat, planVersion, guess: own, drawing, orders, modules, rsvp, quiz };
 }
 
 // Everyone else at the guest's table in the same snapshot (rows = that table's snapshot seats, names as published),

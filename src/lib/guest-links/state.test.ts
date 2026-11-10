@@ -224,6 +224,7 @@ describe("toGuestState", () => {
       orders: [],
       modules: ALL_GUEST_MODULES,
       rsvp: null,
+      quiz: null,
     });
   });
 
@@ -243,6 +244,7 @@ describe("toGuestState", () => {
       orders: [],
       modules: ALL_GUEST_MODULES,
       rsvp: null,
+      quiz: null,
     });
   });
 
@@ -277,6 +279,7 @@ describe("toGuestState", () => {
       "name",
       "orders",
       "planVersion",
+      "quiz",
       "rsvp",
       "seat",
       "status",

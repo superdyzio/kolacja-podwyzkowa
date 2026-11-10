@@ -35,6 +35,9 @@ export const ResetCountsSchema = z.strictObject({
   orders: Count,
   questions: Count,
   guestAccessEnabled: z.boolean(),
+  // pub-quiz (S-28).
+  quizAnswers: Count,
+  quizAsked: Count,
 });
 
 export const ResetEventAnswerSchema = z.strictObject({

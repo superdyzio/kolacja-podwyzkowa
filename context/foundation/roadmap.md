@@ -71,7 +71,7 @@ Restauracja, która gościła kolację 2026-11-08, chce tego narzędzia do włas
 | S-25  | guest-rsvp-menu         | gość potwierdza obecność i wybiera danie do terminu, klient wpisuje za gościa, a klient i lokal widzą zliczenia                              | S-16             | FR-039, US-07                                                                                 | done        |
 | S-26  | privacy-retention       | dane gości znikają N dni po imprezie, menedżer eksportuje dane wydarzenia, a gość czyta informację o prywatności                             | S-11             | FR-040, US-09, NFR-019                                                                        | done        |
 | S-27  | staff-offline-readout   | tablet obsługi i kelner bez sieci widzą ostatni stan zamówień i rozsadzenia, także po odświeżeniu                                            | S-21             | FR-047, US-08, NFR-017                                                                        | done        |
-| S-28  | pub-quiz                | klient przygotowuje pub quiz i prowadzi go na TV, a goście odpowiadają na telefonach                                                         | S-17             | FR-049                                                                                        | proposed |
+| S-28  | pub-quiz                | klient przygotowuje pub quiz i prowadzi go na TV, a goście odpowiadają na telefonach                                                         | S-17             | FR-049                                                                                        | in-progress |
 | S-29  | demo-restaurant         | administrator platformy przygotowuje restaurację demo na prawdziwym planie i menu z przykładową imprezą firmową                              | S-15, S-16, S-21 | FR-042, US-05, US-06, US-07, US-08, US-09                                                     | proposed |
 | S-30  | landing-legal           | odwiedzający widzi publiczną stronę produktu z logowaniem oraz szkice regulaminu i polityki prywatności                                      | S-29             | FR-041                                                                                        | proposed |
 
@@ -383,7 +383,7 @@ Fundamenty poniżej zakładają, że to istnieje, i NIE budują tego od nowa.
 - **Unknowns:**
   - Wynik quizu na TV jako wyjątek od zasady v1 „ranking tylko u prowadzącego” (PRD v2, Poza zakresem: „szczegóły należą do planu modułu”). — Owner: planer S-28. Block: no.
 - **Risk:** Największy nowy moduł gry. Wspólne odpytywanie telefonu gościa ma pomieścić quiz bez drugiego kanału.
-- **Status:** proposed
+- **Status:** in-progress
 
 ### S-29: Restauracja demo
 

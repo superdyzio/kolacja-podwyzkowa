@@ -4,6 +4,7 @@ import { getDrinkItems } from "@/lib/orders/drinks-service";
 import { billTotalGrosze, drinkTotals } from "@/lib/orders/drinks";
 import { orderTotals } from "@/lib/orders/rules";
 import { getOrderItems } from "@/lib/orders/service";
+import { getQuizBoard } from "@/lib/quiz/service";
 import { getRsvpBoard } from "@/lib/rsvp/service";
 import { toPublishedSeating } from "@/lib/seating/published";
 import { getLatestSnapshot } from "@/lib/seating/service";
@@ -41,7 +42,7 @@ export async function getEventExport(
   if (!event) {
     return null;
   }
-  const [guestList, rsvp, venue, snapshot, orderItems, drinks, guesses] = await Promise.all([
+  const [guestList, rsvp, venue, snapshot, orderItems, drinks, guesses, quiz] = await Promise.all([
     getGuestList(db, eventId),
     getRsvpBoard(db, eventId, now),
     getVenue(db, eventId),
@@ -49,6 +50,7 @@ export async function getEventExport(
     getOrderItems(db, eventId),
     getDrinkItems(db, eventId),
     getGuessBoard(db, eventId),
+    getQuizBoard(db, eventId),
   ]);
 
   const names = new Map(guestList.guests.map((guest) => [guest.id, guest.displayName]));
@@ -160,5 +162,16 @@ export async function getEventExport(
       billGrosze: billTotalGrosze(dishes, drinkSum),
     },
     guesses: { intakeOpen: guesses.intakeOpen, correctAmountGrosze: guesses.correctAmountGrosze },
+    // pub-quiz (S-28): every question with its correct option, the live standings by name (after a purge: none).
+    quiz: {
+      questions: (quiz?.questions ?? []).map((question) => ({
+        text: question.text,
+        options: question.options,
+        correct: question.correct,
+        asked: question.askedAt !== null,
+        closed: question.closedAt !== null,
+      })),
+      standings: (quiz?.standings ?? []).map(({ place, name, points }) => ({ place, name, points })),
+    },
   };
 }

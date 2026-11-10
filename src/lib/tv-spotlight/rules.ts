@@ -36,8 +36,11 @@ export function normalizeSpotlightText(raw: string): string | null {
 
 // The TV polling token: the seating token ("<snapshot id>.<plan version>", seatingVersion()) plus the spotlight's
 // row id (0 = nothing shown). The seating token itself is untouched, because the guests' token is built from it.
-export function tvScreenVersion(seatingVersion: string, spotlightId: number | null): string {
-  return `${seatingVersion}.${spotlightId ?? 0}`;
+// pub-quiz (S-28): while the quiz module is on, a 4th part: the quiz's own token ("<revision>-<answers>", 0 = no
+// quiz runs); left out (undefined) while it is off, so the TVs of other events keep their 3-part token.
+export function tvScreenVersion(seatingVersion: string, spotlightId: number | null, quiz?: string | null): string {
+  const base = `${seatingVersion}.${spotlightId ?? 0}`;
+  return quiz === undefined ? base : `${base}.${quiz ?? 0}`;
 }
 
 // Font size on the TV in vh: the longer the text, the smaller, so 300 characters still fit on a 16:9 screen.

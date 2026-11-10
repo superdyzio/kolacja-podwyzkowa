@@ -16,11 +16,13 @@ export const RESET_PARTS = [
   "orders",
   "questions",
   "guestLinks",
+  "quiz",
 ] as const satisfies readonly ResetPart[];
 
 // „Reset prób” on the client link (client-restaurant-split, FR-028): what the client clears between rehearsals —
-// guests, the venue, orders, questions and links stay. The quiz slice adds `quiz` here. The full reset is the venue's.
-export const TRIAL_RESET_PARTS = ["guesses", "seating"] as const satisfies readonly ResetPart[];
+// guests, the venue, orders, questions and links stay; pub-quiz (S-28): the quiz's answers and run (its questions
+// stay). The full reset is the venue's.
+export const TRIAL_RESET_PARTS = ["guesses", "seating", "quiz"] as const satisfies readonly ResetPart[];
 
 export type TrialResetPart = (typeof TRIAL_RESET_PARTS)[number];
 
@@ -41,16 +43,18 @@ export function resetPartDescriptions(locale: Locale = "pl"): Readonly<Record<Re
 export const RESET_PART_LABELS = resetPartLabels("pl");
 export const RESET_PART_DESCRIPTIONS = resetPartDescriptions("pl");
 
-// What a part takes with it: without guests there are no guesses, AI attempts or seats; without tables no seats.
+// What a part takes with it: without guests there are no guesses, AI attempts, seats or quiz answers; without tables
+// no seats.
 export const RESET_IMPLIES: Readonly<Record<ResetPart, readonly ResetPart[]>> = {
   guesses: [],
   aiUsage: [],
   seating: [],
-  guests: ["guesses", "aiUsage", "seating"],
+  guests: ["guesses", "aiUsage", "seating", "quiz"],
   venue: ["seating"],
   orders: [],
   questions: [],
   guestLinks: [],
+  quiz: [],
 };
 
 // The chosen parts with everything they imply, deduplicated, in canonical order.

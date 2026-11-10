@@ -315,6 +315,77 @@ export interface TvSpotlightAnswerDto {
 // ("<snapshot id>.<plan version>.<spotlight id>"), compared for equality only.
 export interface TvScreenDto extends TvSeatingDto {
   spotlight: TvSpotlightDto | null;
+  // pub-quiz (S-28): the running quiz while the module is on (null otherwise); its own layer over the spotlight.
+  quiz: TvQuizDto | null;
+}
+
+// pub-quiz (S-28): the steps of a running quiz.
+export type QuizPhase = "intro" | "question" | "reveal" | "results";
+
+// pub-quiz: one question of the client's board (the client sees everything about its own quiz). `counts` = answers per
+// option (index = option), `answers` their sum; `askedAt` set = shown (locked), `closedAt` set = its answers count.
+export interface QuizQuestionDto {
+  id: number;
+  number: number;
+  text: string;
+  options: string[];
+  correct: number;
+  askedAt: string | null;
+  closedAt: string | null;
+  answers: number;
+  counts: number[];
+}
+
+// pub-quiz: one player of the client's live standings (guests with ≥ 1 answer to a closed question), best first,
+// competition places (1, 2, 2, 4).
+export interface QuizStandingDto {
+  place: number;
+  tied: boolean;
+  guestId: number;
+  name: string;
+  points: number;
+  answered: number;
+}
+
+// pub-quiz: GET /api/o/<key>/quiz — the client's whole quiz.
+export interface QuizBoardDto {
+  run: { phase: QuizPhase; questionId: number | null } | null;
+  questions: QuizQuestionDto[];
+  standings: QuizStandingDto[];
+  // Players = standings.length; closed = questions closed so far.
+  closed: number;
+  guestCount: number;
+  maxQuestions: number;
+}
+
+// pub-quiz: the guest's OWN quiz on the phone (null while no quiz runs or the module is off). `question.id` is the
+// handle for answering (re-checked under the run lock); `correct` only once the question is closed; `points` = own
+// correct answers to closed questions; `result` = own place among the players at the results (null = did not play).
+export interface GuestQuizDto {
+  phase: QuizPhase;
+  total: number;
+  closed: number;
+  question: { id: number; number: number; text: string; options: string[]; correct: number | null } | null;
+  answer: number | null;
+  points: number;
+  result: { place: number; players: number } | null;
+}
+
+// pub-quiz: what the TV shows of the quiz — no ids; names only at the results (places 1–3, the PRD's exception to
+// „ranking only at the organizer”); per-option counts only once the question is closed.
+export interface TvQuizDto {
+  phase: QuizPhase;
+  total: number;
+  closed: number;
+  question: {
+    number: number;
+    text: string;
+    options: string[];
+    answered: number;
+    correct: number | null;
+    counts: number[] | null;
+  } | null;
+  results: { players: number; entries: { place: number; name: string; points: number }[]; more: number } | null;
 }
 
 // The organizer's view of the latest published arrangement (S-09 offline readout): names on seats with the room, no
@@ -437,6 +508,9 @@ export interface GuestStateDto {
   // guest-rsvp-menu: the guest's OWN attendance answer and dish choice, null while the client has RSVP off; in the
   // token's hashed part. Never other guests' answers, counts, prices or ids.
   rsvp: GuestRsvpDto | null;
+  // pub-quiz (S-28): the guest's OWN quiz while one runs and the module is on (null otherwise); in the token's hashed
+  // part. Never other guests' answers, scores or names.
+  quiz: GuestQuizDto | null;
 }
 
 // guest-rsvp-menu (S-25): a dish guests may pick — a menu item the event's menu offers, by name (no price, no id).
@@ -688,7 +762,8 @@ export interface OrganizerAiTopicAnswerDto {
 
 // Organizer reset („Reset danych”). Part ids in canonical order (src/lib/reset/parts.ts has the labels, texts and
 // implications: guests ⇒ guesses, aiUsage, seating; venue ⇒ seating).
-export type ResetPart = "guesses" | "aiUsage" | "seating" | "guests" | "venue" | "orders" | "questions" | "guestLinks";
+export type ResetPart =
+  "guesses" | "aiUsage" | "seating" | "guests" | "venue" | "orders" | "questions" | "guestLinks" | "quiz";
 
 // What a reset would remove (and the flags it would change), read in one query (DB function reset_counts).
 export interface ResetCountsDto {
@@ -711,6 +786,9 @@ export interface ResetCountsDto {
   orders: number;
   questions: number;
   guestAccessEnabled: boolean;
+  // pub-quiz: the quiz answers and the questions already asked (the part `quiz` clears both).
+  quizAnswers: number;
+  quizAsked: number;
 }
 
 // GET /api/o/<key>/reset: fresh counts for the modal; starterQuestions = how many the questions part puts back.
@@ -1342,6 +1420,11 @@ export interface EventExportDto {
     billGrosze: number;
   };
   guesses: { intakeOpen: boolean; correctAmountGrosze: number | null };
+  // pub-quiz (S-28): the client's questions and the live standings by name (no ids).
+  quiz: {
+    questions: { text: string; options: string[]; correct: number; asked: boolean; closed: boolean }[];
+    standings: { place: number; name: string; points: number }[];
+  };
 }
 
 export interface EventExportGuestDto {

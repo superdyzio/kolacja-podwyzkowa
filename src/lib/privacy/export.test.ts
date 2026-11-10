@@ -80,6 +80,7 @@ const DATA: EventExportDto = {
     billGrosze: 11_800,
   },
   guesses: { intakeOpen: false, correctAmountGrosze: null },
+  quiz: { questions: [], standings: [] },
 };
 
 function rowsOf(csv: string): string[] {

@@ -1,4 +1,5 @@
 import { secureRandom } from "@/lib/questions/draw";
+import { getTvQuiz, getTvQuizVersion } from "@/lib/quiz/service";
 import { getSeatingVersion, getTvSeating } from "@/lib/seating/service";
 import type { DbClient } from "@/lib/supabase-client";
 import type { TvScreenDto, TvSpotlightDto } from "@/types";
@@ -132,23 +133,39 @@ export async function hideTvSpotlight(db: DbClient, eventId: number): Promise<vo
 // Everything the TV shows (the TV page and its poll use this one function, so their versions match).
 // event-modules (S-17): with „Pokaż na TV” off (`spotlightOn` false) the TV shows no spotlight and the token's last part
 // is 0, so the TV drops it on its next poll; the row stays and comes back when the module is on again.
-export async function getTvScreen(db: DbClient, eventId: number, spotlightOn = true): Promise<TvScreenDto> {
-  const [seating, current] = await Promise.all([
+// pub-quiz (S-28): with the quiz module on (`quizOn`) the running quiz rides along (its own token part); off, the TV
+// shows none and the token has no quiz part.
+export async function getTvScreen(
+  db: DbClient,
+  eventId: number,
+  spotlightOn = true,
+  quizOn = false,
+): Promise<TvScreenDto> {
+  const [seating, current, quiz] = await Promise.all([
     getTvSeating(db, eventId),
     spotlightOn ? newestRow(db, eventId) : Promise.resolve(null),
+    quizOn ? getTvQuiz(db, eventId) : Promise.resolve(null),
   ]);
   return {
     ...seating,
-    version: tvScreenVersion(seating.version, current?.id ?? null),
+    version: tvScreenVersion(seating.version, current?.id ?? null, quizOn ? (quiz?.version ?? null) : undefined),
     spotlight: current?.spotlight ?? null,
+    quiz: quiz?.quiz ?? null,
   };
 }
 
-// The TV polling token without reading the seating (the 204 path): three tiny queries in parallel.
-export async function getTvScreenVersion(db: DbClient, eventId: number, spotlightOn = true): Promise<string> {
-  const [seatingVersion, spotlightId] = await Promise.all([
+// The TV polling token without reading the seating (the 204 path): three tiny queries in parallel (four with the
+// quiz on).
+export async function getTvScreenVersion(
+  db: DbClient,
+  eventId: number,
+  spotlightOn = true,
+  quizOn = false,
+): Promise<string> {
+  const [seatingVersion, spotlightId, quizVersion] = await Promise.all([
     getSeatingVersion(db, eventId),
     spotlightOn ? newestId(db, eventId) : Promise.resolve(null),
+    quizOn ? getTvQuizVersion(db, eventId) : Promise.resolve(null),
   ]);
-  return tvScreenVersion(seatingVersion, spotlightId);
+  return tvScreenVersion(seatingVersion, spotlightId, quizOn ? quizVersion : undefined);
 }

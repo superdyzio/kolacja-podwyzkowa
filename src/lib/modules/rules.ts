@@ -84,7 +84,8 @@ export function withModule(set: readonly string[], key: ModuleKey, on: boolean):
 
 // The module behind an API sub-path (after /api/o/<key>/ or /api/g/<key>/), or null when the route belongs to none.
 // Organizer: the question base and draw, AI topics, the guess board, the draw's draft (the history stays readable:
-// the seating editor reads it on mount) and the TV screen. Guest: the question draw, AI topics, the own guess.
+// the seating editor reads it on mount), the TV screen and the pub quiz. Guest: the question draw, AI topics, the own
+// guess and the quiz answer.
 export function moduleForApiPath(role: "organizer" | "guest", subPath: string): ModuleKey | null {
   const first = subPath.split("/").filter((segment) => segment.length > 0);
   const [head, second] = first;
@@ -100,6 +101,8 @@ export function moduleForApiPath(role: "organizer" | "guest", subPath: string): 
         return "tvSpotlight";
       case "seating":
         return second === "draft" ? "seatingDraw" : null;
+      case "quiz":
+        return "pubQuiz";
       default:
         return null;
     }
@@ -111,6 +114,8 @@ export function moduleForApiPath(role: "organizer" | "guest", subPath: string): 
       return "aiTopics";
     case "guess":
       return "guessing";
+    case "quiz":
+      return "pubQuiz";
     default:
       return null;
   }
@@ -125,19 +130,27 @@ export function keyedApiSubPath(pathname: string): { role: "organizer" | "guest"
   return { role: match[1] === "o" ? "organizer" : "guest", subPath: match[2] };
 }
 
-// The guest token part of the modules a phone shows (questions, AI topics, the guess): one character each.
+// The guest token part of the modules a phone shows (questions, AI topics, the guess): one character each; the pub
+// quiz (S-28) adds its `p` only while it is on, so phones of events without it keep their token.
 export function guestModulesKey(modules: GuestModules): string {
-  return `${modules.questions ? "q" : "-"}${modules.aiTopics ? "a" : "-"}${modules.guessing ? "g" : "-"}`;
+  const base = `${modules.questions ? "q" : "-"}${modules.aiTopics ? "a" : "-"}${modules.guessing ? "g" : "-"}`;
+  return modules.pubQuiz ? `${base}p` : base;
 }
 
 export interface GuestModules {
   questions: boolean;
   aiTopics: boolean;
   guessing: boolean;
+  pubQuiz: boolean;
 }
 
-export const ALL_GUEST_MODULES: GuestModules = { questions: true, aiTopics: true, guessing: true };
+export const ALL_GUEST_MODULES: GuestModules = { questions: true, aiTopics: true, guessing: true, pubQuiz: true };
 
 export function guestModulesOf(modules: EventModules): GuestModules {
-  return { questions: modules.questions, aiTopics: modules.aiTopics, guessing: modules.guessing };
+  return {
+    questions: modules.questions,
+    aiTopics: modules.aiTopics,
+    guessing: modules.guessing,
+    pubQuiz: modules.pubQuiz,
+  };
 }

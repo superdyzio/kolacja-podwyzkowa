@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { isQuizPhase } from "@/lib/quiz/rules";
 import { isTvSpotlightKind } from "@/lib/tv-spotlight/rules";
 import type { TvScreenDto } from "@/types";
 
@@ -21,6 +22,10 @@ function isSpotlight(value: unknown): boolean {
   return isTvSpotlightKind(kind) && typeof text === "string" && typeof shownAt === "string";
 }
 
+function isTvQuiz(value: unknown): boolean {
+  return typeof value === "object" && value !== null && isQuizPhase((value as { phase?: unknown }).phase);
+}
+
 function isTvScreen(data: unknown): data is TvScreenDto {
   if (typeof data !== "object" || data === null) {
     return false;
@@ -31,7 +36,9 @@ function isTvScreen(data: unknown): data is TvScreenDto {
     Array.isArray(candidate.tables) &&
     "planVersion" in candidate &&
     "spotlight" in candidate &&
-    isSpotlight(candidate.spotlight)
+    isSpotlight(candidate.spotlight) &&
+    // pub-quiz: absent (an older server) or null = no quiz; otherwise an object with its phase.
+    (candidate.quiz === undefined || candidate.quiz === null || isTvQuiz(candidate.quiz))
   );
 }
 
@@ -63,7 +70,7 @@ export function useTvSeating(apiBase: string, initial: TvScreenDto) {
             throw new Error("unexpected answer");
           }
           version.current = data.version;
-          setTv(data);
+          setTv({ ...data, quiz: data.quiz ?? null });
           setUpdates((count) => count + 1);
           setFailures(0);
         } else {

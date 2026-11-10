@@ -20,6 +20,8 @@ const EMPTY: ResetCountsDto = {
   orders: 0,
   questions: 0,
   guestAccessEnabled: false,
+  quizAnswers: 0,
+  quizAsked: 0,
 };
 
 const DEMO: ResetCountsDto = {
@@ -39,6 +41,8 @@ const DEMO: ResetCountsDto = {
   orders: 12,
   questions: 95,
   guestAccessEnabled: true,
+  quizAnswers: 24,
+  quizAsked: 3,
 };
 
 describe("joinPl", () => {
@@ -61,6 +65,7 @@ describe("describeResetCount", () => {
       "12 pozycji zamówienia",
       "95 pytań → zostanie 90 startowych",
       "40 linków · dostęp gości włączony",
+      "24 odpowiedzi w quizie · 3 zadane pytania",
     ]);
   });
 
@@ -127,6 +132,7 @@ describe("describeResetResult", () => {
       "Zamówienia i napoje: usunięto 12 pozycji zamówienia.",
       "Pytania: usunięto 95 pytań, wczytano 90 startowych.",
       "Linki gości: dostęp gości wyłączony.",
+      "Pub quiz: usunięto 24 odpowiedzi w quizie; pytania można zadać od nowa.",
     ]);
   });
 

@@ -19,18 +19,21 @@ export const resetMessages = defineMessages(
       orders: "Zamówienia i napoje",
       questions: "Pytania",
       guestLinks: "Linki gości",
+      quiz: "Pub quiz",
     },
     partDescriptions: {
       guesses: "Usuwa wszystkie strzały i prawidłową kwotę, otwiera przyjmowanie strzałów.",
       aiUsage: `Zeruje licznik: każdy gość znów ma ${pl(MAX_GUEST_TOPICS, "temat", "tematy", "tematów")}, cały wieczór ${MAX_EVENT_TOPICS}. Szacunek kosztu AI też liczy się od nowa.`,
       seating:
         "Usuwa rozsadzenie (z przypięciami) i wszystkie publikacje: TV nic nie pokazuje, historia sąsiadów zaczyna się od zera.",
-      guests: "Usuwa wszystkich gości i grupy, a razem z nimi strzały, licznik tematów AI i rozsadzenie.",
+      guests:
+        "Usuwa wszystkich gości i grupy, a razem z nimi strzały, licznik tematów AI, rozsadzenie i odpowiedzi w quizie.",
       venue: "Usuwa plan lokalu, sale i stoliki, a razem z nimi rozsadzenie.",
       orders: "Usuwa wszystkie pozycje zamówienia i napoje do rachunku. Link restauracji zostaje bez zmian.",
       questions: "Usuwa wszystkie pytania i wczytuje od nowa bazę startową.",
       guestLinks:
         "Nowy link dla każdego gościa i wyłączony dostęp gości: wydrukowane karteczki i wysłane linki przestają działać.",
+      quiz: "Usuwa odpowiedzi gości, wyniki i przebieg quizu (TV wraca do planu sali). Pytania zostają i można je zadać od nowa.",
     },
     guestLinksWithGuestsNote: "Goście zostaną usunięci, więc zostanie tylko wyłączenie dostępu gości.",
     // Counts (what would go away) and, where Polish needs it, the accusative after „usunięto”.
@@ -71,6 +74,9 @@ export const resetMessages = defineMessages(
     aiReset: (label: string, limit: number, guestLimit: number) =>
       `${label}: wyzerowany (0 z ${limit}), każdy gość znów ma ${guestLimit}.`,
     seatingTail: "TV nie pokazuje rozsadzenia do następnej publikacji",
+    quizAnswers: (n: number) => `${pl(n, "odpowiedź", "odpowiedzi", "odpowiedzi")} w quizie`,
+    quizAsked: (n: number) => pl(n, "zadane pytanie", "zadane pytania", "zadanych pytań"),
+    quizTail: "pytania można zadać od nowa",
     questionsReset: (label: string, removed: string | null, starter: string) =>
       `${label}: ${removed ? `usunięto ${removed}, ` : ""}wczytano ${starter}.`,
     newGuestLinks: (label: string, guests: string) =>
@@ -108,18 +114,21 @@ export const resetMessages = defineMessages(
       orders: "Orders and drinks",
       questions: "Questions",
       guestLinks: "Guest links",
+      quiz: "Pub quiz",
     },
     partDescriptions: {
       guesses: "Deletes every guess and the correct amount, and opens guessing again.",
       aiUsage: `Resets the counter: every guest again has ${en(MAX_GUEST_TOPICS, "topic", "topics")}, the whole evening ${MAX_EVENT_TOPICS}. The AI cost estimate starts over too.`,
       seating:
         "Deletes the seating (with pins) and every publication: the TV shows nothing and the neighbour history starts from zero.",
-      guests: "Deletes every guest and group, and with them the guesses, the AI topic counter and the seating.",
+      guests:
+        "Deletes every guest and group, and with them the guesses, the AI topic counter, the seating and the quiz answers.",
       venue: "Deletes the venue plan, the rooms and the tables, and with them the seating.",
       orders: "Deletes every order line and every drink for the bill. The restaurant link stays the same.",
       questions: "Deletes every question and loads the starter base again.",
       guestLinks:
         "A new link for every guest and guest access turned off: printed cards and links already sent stop working.",
+      quiz: "Deletes the guests' answers, the results and the quiz run (the TV goes back to the plan). The questions stay and can be asked again.",
     },
     guestLinksWithGuestsNote: "The guests will be deleted, so only turning guest access off is left.",
     and: "and",
@@ -157,6 +166,9 @@ export const resetMessages = defineMessages(
     aiReset: (label: string, limit: number, guestLimit: number) =>
       `${label}: reset (0 of ${limit}), every guest again has ${guestLimit}.`,
     seatingTail: "the TV shows no seating until the next publish",
+    quizAnswers: (n: number) => en(n, "quiz answer", "quiz answers"),
+    quizAsked: (n: number) => en(n, "asked question", "asked questions"),
+    quizTail: "the questions can be asked again",
     questionsReset: (label: string, removed: string | null, starter: string) =>
       `${label}: ${removed ? `removed ${removed}, ` : ""}loaded ${starter}.`,
     newGuestLinks: (label: string, guests: string) =>

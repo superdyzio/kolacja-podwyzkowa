@@ -23,6 +23,10 @@ import * as questions from "@/pages/api/o/[key]/questions";
 import * as questionsById from "@/pages/api/o/[key]/questions/[id]";
 import * as questionsDraw from "@/pages/api/o/[key]/questions/draw";
 import * as questionsStarter from "@/pages/api/o/[key]/questions/starter";
+import * as quiz from "@/pages/api/o/[key]/quiz";
+import * as quizQuestions from "@/pages/api/o/[key]/quiz/questions";
+import * as quizQuestionsById from "@/pages/api/o/[key]/quiz/questions/[id]";
+import * as quizRun from "@/pages/api/o/[key]/quiz/run";
 import * as rooms from "@/pages/api/o/[key]/rooms";
 import * as roomsById from "@/pages/api/o/[key]/rooms/[id]";
 import * as rsvp from "@/pages/api/o/[key]/rsvp";
@@ -76,6 +80,10 @@ export const CLIENT_ROUTE_MODULES: Readonly<Record<ClientRoutePattern, ClientRou
   "questions/:id": questionsById,
   "questions/draw": questionsDraw,
   "questions/starter": questionsStarter,
+  quiz: quiz,
+  "quiz/questions": quizQuestions,
+  "quiz/questions/:id": quizQuestionsById,
+  "quiz/run": quizRun,
   rooms: rooms,
   "rooms/:id": roomsById,
   rsvp: rsvp,

@@ -83,6 +83,12 @@ export function describeResetCount(
     case "guestLinks":
       items = nonEmpty([counts.guests > 0 && t.links(counts.guests), counts.guestAccessEnabled && t.guestAccessOn]);
       break;
+    case "quiz":
+      items = nonEmpty([
+        counts.quizAnswers > 0 && t.quizAnswers(counts.quizAnswers),
+        counts.quizAsked > 0 && t.quizAsked(counts.quizAsked),
+      ]);
+      break;
   }
   return items.length > 0 ? items.join(" · ") : t.nothingToReset;
 }
@@ -145,6 +151,13 @@ function resultLine(part: ResetPart, outcome: ResetOutcome, locale: Locale): str
       return outcome.guestKeysReplaced > 0
         ? t.newGuestLinks(label, t.guestsAcc(outcome.guestKeysReplaced))
         : t.guestAccessOff(label);
+    case "quiz":
+      return removedLine(
+        part,
+        locale,
+        [before.quizAnswers > 0 && t.quizAnswers(before.quizAnswers)],
+        before.quizAsked > 0 ? t.quizTail : undefined,
+      );
   }
 }
 

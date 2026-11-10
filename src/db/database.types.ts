@@ -1052,6 +1052,151 @@ export interface Database {
           },
         ];
       };
+      // pub-quiz (S-28): the client's questions (2–4 options, the correct index); asked_at = shown, closed_at = counts.
+      quiz_question: {
+        Row: {
+          id: number;
+          event_id: number;
+          text: string;
+          options: string[];
+          correct_option: number;
+          asked_at: string | null;
+          closed_at: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: never;
+          event_id: number;
+          text: string;
+          options: string[];
+          correct_option: number;
+          asked_at?: string | null;
+          closed_at?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: never;
+          event_id?: number;
+          text?: string;
+          options?: string[];
+          correct_option?: number;
+          asked_at?: string | null;
+          closed_at?: string | null;
+          created_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "quiz_question_event_id_fkey";
+            columns: ["event_id"];
+            isOneToOne: false;
+            referencedRelation: "event";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      // pub-quiz: the running quiz of an event (one row while it runs); written only by quiz_run_action.
+      quiz_run: {
+        Row: {
+          event_id: number;
+          phase: string;
+          question_id: number | null;
+          revision: number;
+          updated_at: string;
+        };
+        Insert: {
+          event_id: number;
+          phase: string;
+          question_id?: number | null;
+          revision?: number;
+          updated_at?: string;
+        };
+        Update: {
+          event_id?: number;
+          phase?: string;
+          question_id?: number | null;
+          revision?: number;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "quiz_run_question_fkey";
+            columns: ["event_id", "question_id"];
+            isOneToOne: false;
+            referencedRelation: "quiz_question";
+            referencedColumns: ["event_id", "id"];
+          },
+        ];
+      };
+      // pub-quiz: a guest's answer (option index) to one question; written only by save_quiz_answer.
+      quiz_answer: {
+        Row: {
+          question_id: number;
+          guest_id: number;
+          event_id: number;
+          choice: number;
+          answered_at: string;
+        };
+        Insert: {
+          question_id: number;
+          guest_id: number;
+          event_id: number;
+          choice: number;
+          answered_at?: string;
+        };
+        Update: {
+          question_id?: number;
+          guest_id?: number;
+          event_id?: number;
+          choice?: number;
+          answered_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "quiz_answer_question_fkey";
+            columns: ["event_id", "question_id"];
+            isOneToOne: false;
+            referencedRelation: "quiz_question";
+            referencedColumns: ["event_id", "id"];
+          },
+          {
+            foreignKeyName: "quiz_answer_guest_fkey";
+            columns: ["event_id", "guest_id"];
+            isOneToOne: false;
+            referencedRelation: "guest";
+            referencedColumns: ["event_id", "id"];
+          },
+        ];
+      };
+      // pub-quiz: the standings computed at „Pokaż wyniki”; written only by quiz_run_action.
+      quiz_score: {
+        Row: {
+          event_id: number;
+          guest_id: number;
+          points: number;
+          place: number;
+        };
+        Insert: {
+          event_id: number;
+          guest_id: number;
+          points: number;
+          place: number;
+        };
+        Update: {
+          event_id?: number;
+          guest_id?: number;
+          points?: number;
+          place?: number;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "quiz_score_guest_fkey";
+            columns: ["event_id", "guest_id"];
+            isOneToOne: true;
+            referencedRelation: "guest";
+            referencedColumns: ["event_id", "id"];
+          },
+        ];
+      };
       drink_item: {
         Row: {
           id: number;
@@ -1486,6 +1631,42 @@ export interface Database {
       };
       // menu-catalog-courses: sets an event's menu mode and (reduced) its items in one transaction. Raises
       // EVENT_NOT_FOUND (also templates), INVALID_MODE, ITEM_NOT_FOUND (an item of another restaurant or unknown).
+      // pub-quiz (S-28): start / ask / close / results / end; raises INVALID_ACTION, EVENT_NOT_FOUND, QUESTION_OPEN,
+      // QUESTION_NOT_FOUND, QUESTION_ASKED, NO_OPEN_QUESTION.
+      quiz_run_action: {
+        Args: { p_event_id: number; p_action: string; p_question_id: number | null };
+        Returns: undefined;
+      };
+      // pub-quiz: a guest's answer to the open question; raises QUIZ_CLOSED (any other question id), GUEST_NOT_FOUND,
+      // OPTION_OUT_OF_RANGE.
+      save_quiz_answer: {
+        Args: { p_event_id: number; p_guest_id: number; p_question_id: number; p_choice: number };
+        Returns: undefined;
+      };
+      // pub-quiz: the guest's own quiz for the phone's poll (JSON; null without a run).
+      quiz_guest_state: {
+        Args: { p_event_id: number; p_guest_id: number };
+        Returns: Json;
+      };
+      // pub-quiz: the TV token part (<revision>-<answers>) or null without a run.
+      quiz_tv_version: {
+        Args: { p_event_id: number };
+        Returns: string | null;
+      };
+      // pub-quiz: what the TV shows of the quiz (JSON with its version; null without a run).
+      quiz_tv_state: {
+        Args: { p_event_id: number };
+        Returns: Json;
+      };
+      // pub-quiz: the client's board (JSON; null for an unknown event or a template).
+      quiz_board: {
+        Args: { p_event_id: number };
+        Returns: Json;
+      };
+      quiz_options_valid: {
+        Args: { p_options: string[] };
+        Returns: boolean;
+      };
       // guest-rsvp-menu: the guest's own RSVP for the phone's poll (JSON; null while RSVP is off).
       guest_rsvp_state: {
         Args: { p_event_id: number; p_guest_id: number };

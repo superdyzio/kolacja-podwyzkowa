@@ -10,6 +10,7 @@ import {
   DEFAULT_UNLOCKED,
   effectiveModules,
   enableProblem,
+  guestModulesKey,
   isPaidModule,
   keyedApiSubPath,
   MODULE_KEYS,
@@ -107,9 +108,20 @@ describe("event modules", () => {
     expect(guestStateVersion("4.17", "Ania", guess, [], { ...ALL_GUEST_MODULES, guessing: false })).not.toBe(on);
     expect(guestStateVersion("4.17", "Ania", guess, [], { ...ALL_GUEST_MODULES, questions: false })).not.toBe(on);
     expect(guestStateVersion("4.17", "Ania", guess, [], { ...ALL_GUEST_MODULES, aiTopics: false })).not.toBe(on);
-    expect(on.length).toBe(
-      guestStateVersion("4.17", "Ania", guess, [], { ...ALL_GUEST_MODULES, aiTopics: false }).length,
+    expect(guestStateVersion("4.17", "Ania", guess, [], { ...ALL_GUEST_MODULES, pubQuiz: false })).not.toBe(on);
+    // The flags live in the hashed part: no new token part.
+    expect(on.split(".")).toHaveLength(
+      guestStateVersion("4.17", "Ania", guess, [], { ...ALL_GUEST_MODULES, aiTopics: false }).split(".").length,
     );
+  });
+
+  it("adds the pub quiz's flag to the phone's module key only while it is on", () => {
+    expect(guestModulesKey({ ...ALL_GUEST_MODULES, pubQuiz: false })).toBe("qag");
+    expect(guestModulesKey(ALL_GUEST_MODULES)).toBe("qagp");
+    expect(moduleForApiPath("organizer", "quiz")).toBe("pubQuiz");
+    expect(moduleForApiPath("organizer", "quiz/questions/3")).toBe("pubQuiz");
+    expect(moduleForApiPath("organizer", "quiz/run")).toBe("pubQuiz");
+    expect(moduleForApiPath("guest", "quiz")).toBe("pubQuiz");
   });
 
   it("names every module in both languages and describes the administrator's unlock for the owner", () => {

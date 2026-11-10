@@ -109,6 +109,9 @@ describe.skipIf(!hasLocalDb)("organizer reset", () => {
     orders: 3,
     questions: starterQuestionRows().length + 1,
     guestAccessEnabled: true,
+    // pub-quiz: the quiz part is covered by tests/integration/pub-quiz.test.ts.
+    quizAnswers: 0,
+    quizAsked: 0,
   };
 
   async function seed(): Promise<void> {
@@ -232,10 +235,10 @@ describe.skipIf(!hasLocalDb)("organizer reset", () => {
       expect(await readGuestKeys(db, await guestIds())).toEqual(keys);
     });
 
-    it("guests take guesses, AI usage and seating with them", async () => {
+    it("guests take guesses, AI usage, seating and the quiz with them", async () => {
       await seed();
       const result = await reset(["guests"]);
-      expect(result.parts).toEqual(["guesses", "aiUsage", "seating", "guests"]);
+      expect(result.parts).toEqual(["guesses", "aiUsage", "seating", "guests", "quiz"]);
       expect(await counts()).toEqual({
         ...SEEDED,
         guesses: 0,
@@ -301,7 +304,7 @@ describe.skipIf(!hasLocalDb)("organizer reset", () => {
       await seed();
       const result = await reset(["guests", "guestLinks"]);
       expect(result.guestKeysReplaced).toBe(0);
-      expect(result.summary.at(-1)).toBe("Linki gości: dostęp gości wyłączony.");
+      expect(result.summary).toContain("Linki gości: dostęp gości wyłączony.");
       expect((await counts()).guestAccessEnabled).toBe(false);
     });
 
@@ -340,6 +343,8 @@ describe.skipIf(!hasLocalDb)("organizer reset", () => {
         orders: 0,
         questions: starterQuestionRows().length,
         guestAccessEnabled: false,
+        quizAnswers: 0,
+        quizAsked: 0,
       });
       expect(await readEventKeys(db, event.id)).toEqual(keys);
       const published = await publishSeating(db, event.id);
