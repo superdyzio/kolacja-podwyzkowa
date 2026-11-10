@@ -12,6 +12,8 @@ import SupportLogSection from "@/components/support/SupportLogSection.astro";
 import SupportTeamList from "@/components/support/SupportTeamList.astro";
 import { getSupportLog, SUPPORT_LOG_ROLES, supportMessages } from "@/lib/support";
 import { canManageTeam, getTeam, teamMessages } from "@/lib/team";
+import { NewTemplateForm } from "@/components/templates/NewTemplateForm";
+import { listVenueTemplates, templateMessages, templatePath } from "@/lib/templates";
 
 // The restaurant panel (platform-restaurants, S-10; restaurant-events, S-11; restaurant-team, S-12): the restaurant,
 // the person's role, its events and (owners and managers) the team. Owners and managers create an event („Nowe
@@ -22,6 +24,8 @@ import { canManageTeam, getTeam, teamMessages } from "@/lib/team";
 // restaurant gets the no-access page (404), the same for every reason — except the platform administrator in support
 // mode (logged for the owner), who sees what the owner sees, read-only: the banner instead of the role, no „Nowe
 // wydarzenie”, the team as a plain list, the log.
+// venue-templates (S-15): owners and managers also get „Szablony sal” (the list linking to /panel/szablony/<id> and
+// „Nowy szablon sali”; support mode: the list only) and a template choice in „Nowe wydarzenie”.
 const locale = Astro.locals.locale;
 const t = restaurantPanelMessages(locale);
 const te = eventPanelMessages(locale);
@@ -36,6 +40,8 @@ const team =
     : null;
 const manages = panel ? canManageEvents(panel.role) : false;
 const lists = panel && manages ? await listRestaurantEvents(panel.db, panel.restaurant.id, new Date()) : null;
+const templates = panel && manages ? await listVenueTemplates(panel.db, panel.restaurant.id) : null;
+const tv = templateMessages(locale);
 const listParam = Astro.url.searchParams.get("lista");
 const tab = listParam === "minione" ? "past" : listParam === "archiwum" ? "archived" : "upcoming";
 const tabs = lists
@@ -74,7 +80,14 @@ if (!panel) {
 
       {support && <SupportBanner support={support} locale={locale} />}
 
-      {manages && !support && <NewEventForm client:load restaurantId={panel.restaurant.id} locale={locale} />}
+      {manages && !support && (
+        <NewEventForm
+          client:load
+          restaurantId={panel.restaurant.id}
+          templates={(templates ?? []).map(({ id, name }) => ({ id, name }))}
+          locale={locale}
+        />
+      )}
 
       <section aria-labelledby="events-heading" class="flex flex-col gap-3 rounded-xl border p-4 sm:p-6">
         <h2 id="events-heading" class="text-xl font-semibold">
@@ -131,6 +144,40 @@ if (!panel) {
           <p class="text-sm text-muted-foreground">{te.waiterNote}</p>
         )}
       </section>
+
+      {templates && (
+        <section
+          aria-labelledby="templates-heading"
+          class="flex flex-col gap-3 rounded-xl border p-4 sm:p-6"
+          data-templates-section
+        >
+          <h2 id="templates-heading" class="text-xl font-semibold">
+            {tv.heading}
+          </h2>
+          <p class="text-sm text-muted-foreground">{tv.intro}</p>
+          {templates.length === 0 ? (
+            <p class="text-muted-foreground" data-template-list>
+              {tv.empty}
+            </p>
+          ) : (
+            <ul class="flex flex-col divide-y" data-template-list>
+              {templates.map((template) => (
+                <li class="flex flex-col py-3" data-template-id={template.id}>
+                  <a
+                    href={templatePath(template.id)}
+                    class="font-medium underline-offset-4 hover:underline"
+                    aria-label={tv.openFor(template.name)}
+                  >
+                    {template.name}
+                  </a>
+                  <span class="text-sm text-muted-foreground">{tv.counts(template)}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+          {!support && <NewTemplateForm client:load restaurantId={panel.restaurant.id} locale={locale} />}
+        </section>
+      )}
 
       {team && (
         <section

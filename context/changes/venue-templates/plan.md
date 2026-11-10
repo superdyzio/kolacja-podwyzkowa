@@ -296,16 +296,16 @@ lookup and panel page is a 500).
 
 #### Automated
 
-- [x] 1.1 Migration applies on the current local data and from zero
-- [x] 1.2 `AI_PROVIDER=mock npm test` passes (new unit + integration tests)
-- [x] 1.3 `npm run lint` and `npx astro check` pass
+- [x] 1.1 Migration applies on the current local data and from zero — 23082f5
+- [x] 1.2 `AI_PROVIDER=mock npm test` passes (new unit + integration tests) — 23082f5
+- [x] 1.3 `npm run lint` and `npx astro check` pass — 23082f5
 
 ### Phase 2: Routes, pages and islands
 
 #### Automated
 
-- [ ] 2.1 `npm run lint`, `npx astro check`, `npm run build` pass
-- [ ] 2.2 `AI_PROVIDER=mock npm test` passes
+- [x] 2.1 `npm run lint`, `npx astro check`, `npm run build` pass
+- [x] 2.2 `AI_PROVIDER=mock npm test` passes
 
 ### Phase 3: Smoke, demo and documentation
 

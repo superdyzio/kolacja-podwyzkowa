@@ -12,18 +12,26 @@ import {
   validateEventInput,
 } from "@/lib/events/rules";
 import type { Locale } from "@/lib/i18n";
-import type { EventCardAnswerDto } from "@/types";
+import { templateMessages } from "@/lib/templates/messages";
+import type { EventCardAnswerDto, VenueTemplateSummaryDto } from "@/types";
 
 interface Props {
   restaurantId: number;
+  // venue-templates (S-15): the restaurant's venue templates; a chosen one gives the new event its room.
+  templates?: Pick<VenueTemplateSummaryDto, "id" | "name">[];
   locale: Locale;
 }
+
+const SELECT_CLASS =
+  "border-input focus-visible:border-ring focus-visible:ring-ring/50 h-10 rounded-md border bg-transparent px-3 text-sm outline-none focus-visible:ring-[3px]";
 
 // „Nowe wydarzenie” (restaurant-events, S-11): name, date and the optional expected guests → the event is created and
 // the browser lands on its card, where the client's link is ready to copy (US-06: < 3 minutes). Checked here with the
 // server's own rules first, so a typo never costs a round trip.
-export function NewEventForm({ restaurantId, locale }: Props) {
+export function NewEventForm({ restaurantId, templates = [], locale }: Props) {
   const t = eventPanelMessages(locale);
+  const tt = templateMessages(locale);
+  const [templateId, setTemplateId] = useState<number | null>(null);
   const id = useId();
   const [name, setName] = useState("");
   const [date, setDate] = useState("");
@@ -45,7 +53,12 @@ export function NewEventForm({ restaurantId, locale }: Props) {
       const response = await fetch(`/api/panel/restaurants/${String(restaurantId)}/events`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: input.value.name, date: input.value.date, expectedGuests }),
+        body: JSON.stringify({
+          name: input.value.name,
+          date: input.value.date,
+          expectedGuests,
+          ...(templateId === null ? {} : { templateId }),
+        }),
       });
       const data = await readJson(response);
       const created = (data as Partial<EventCardAnswerDto> | null)?.event;
@@ -124,6 +137,29 @@ export function NewEventForm({ restaurantId, locale }: Props) {
             />
           </div>
         </div>
+        {templates.length > 0 && (
+          <div className="flex flex-col gap-2">
+            <label htmlFor={`${id}-template`} className="font-medium">
+              {tt.templateLabel}
+            </label>
+            <select
+              id={`${id}-template`}
+              value={templateId ?? ""}
+              onChange={(event) => {
+                setTemplateId(event.target.value === "" ? null : Number(event.target.value));
+              }}
+              className={`${SELECT_CLASS} self-start`}
+              data-template-select
+            >
+              <option value="">{tt.templateNone}</option>
+              {templates.map((template) => (
+                <option key={template.id} value={template.id}>
+                  {template.name}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
         {problem && (
           <p role="alert" className="text-destructive text-sm">
             {problem}
