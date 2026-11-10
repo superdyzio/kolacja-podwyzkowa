@@ -6,7 +6,7 @@ import { orderMessages, servingMessages } from "@/lib/orders/messages";
 import { isPieceDelivered } from "@/lib/orders/pieces";
 import { lineTotal, type DishSuggestion } from "@/lib/orders/rules";
 import { cn } from "@/lib/utils";
-import type { OrderGuestOptionDto, OrderItemDto, OrderPieceMarkDto, OrderTableOptionDto } from "@/types";
+import type { OrderGuestOptionDto, OrderItemDto, OrderMenuDto, OrderPieceMarkDto, OrderTableOptionDto } from "@/types";
 import { OrderItemForm, type OrderItemFormValues } from "./OrderItemForm";
 
 interface Props {
@@ -16,6 +16,8 @@ interface Props {
   guests: readonly OrderGuestOptionDto[];
   tables: readonly OrderTableOptionDto[];
   dishes: readonly DishSuggestion[];
+  // menu-catalog-courses: the event's available menu (an active one turns the dish field into a list).
+  menu: OrderMenuDto;
   locale: Locale;
   onEdit: () => void;
   onCancel: () => void;
@@ -39,6 +41,7 @@ export function OrderLineRow({
   guests,
   tables,
   dishes,
+  menu,
   locale,
   onEdit,
   onCancel,
@@ -105,6 +108,7 @@ export function OrderLineRow({
           guests={guests}
           tables={tables}
           dishes={dishes}
+          menu={menu}
           pending={pending}
           locale={locale}
           submitLabel={t.save}

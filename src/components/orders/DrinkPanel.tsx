@@ -13,7 +13,7 @@ import {
 } from "@/lib/orders/drinks";
 import { drinkMessages, priceMessages } from "@/lib/orders/messages";
 import { dishKey, dishSuggestions, findDish, type DishSuggestion } from "@/lib/orders/rules";
-import type { DrinkItemDto, DrinkTotalsDto } from "@/types";
+import type { DrinkItemDto, DrinkTotalsDto, OrderMenuItemDto } from "@/types";
 
 // The body the drinks API takes (bill-drinks): the name as typed and the quantity; the server checks again. No price
 // since client-restaurant-split (FR-027): a drink takes the venue's price of its name.
@@ -146,6 +146,8 @@ interface Props {
   totals: DrinkTotalsDto;
   pending: boolean;
   locale: Locale;
+  // menu-catalog-courses (S-16): the drinks of the event's menu, suggested with their price after the bill's own.
+  menuDrinks: readonly OrderMenuItemDto[];
   // useOrderBoard's queue: every answer is the whole board.
   send: (request: OrderRequest) => Promise<boolean>;
 }
@@ -153,10 +155,19 @@ interface Props {
 // „Napoje do rachunku” on the organizer's order page (bill-drinks): the drinks on the restaurant's bill — name, price
 // per item, quantity — for nobody in particular and seen by nobody but the organizer; their sum goes into the bill
 // total at the top of the page.
-export function DrinkPanel({ drinks, totals, pending, locale, send }: Props) {
+export function DrinkPanel({ drinks, totals, pending, locale, menuDrinks, send }: Props) {
   const t = drinkMessages(locale);
   const [editingId, setEditingId] = useState<number | null>(null);
-  const suggestions = useMemo(() => dishSuggestions(drinks), [drinks]);
+  const suggestions = useMemo(() => {
+    const own = dishSuggestions(drinks);
+    const known = new Set(own.map((drink) => dishKey(drink.name)));
+    return [
+      ...own,
+      ...menuDrinks
+        .filter((drink) => !known.has(dishKey(drink.name)))
+        .map((drink) => ({ name: drink.name, unitPriceGrosze: drink.priceGrosze })),
+    ];
+  }, [drinks, menuDrinks]);
 
   function add(values: DrinkFormValues) {
     return send({ method: "POST", path: "/drinks", body: values });

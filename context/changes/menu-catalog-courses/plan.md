@@ -188,17 +188,17 @@ database BEFORE the code.
 
 #### Automated
 
-- [ ] 1.1 `npx supabase migration up` applies on the current local data; counts unchanged
-- [ ] 1.2 `npx supabase db reset` applies every migration from zero
-- [ ] 1.3 Unit and integration tests for the menu pass
-- [ ] 1.4 `npm run lint`, `npx astro check` pass
+- [x] 1.1 `npx supabase migration up` applies on the current local data; counts unchanged — abbad9b
+- [x] 1.2 `npx supabase db reset` applies every migration from zero — abbad9b
+- [x] 1.3 Unit and integration tests for the menu pass — abbad9b
+- [x] 1.4 `npm run lint`, `npx astro check` pass — abbad9b
 
 ### Phase 2: Orders from the menu, course grouping, UI
 
 #### Automated
 
-- [ ] 2.1 `npm test` incl. the price snapshot
-- [ ] 2.2 `npm run lint`, `npx astro check`, `npm run build`
+- [x] 2.1 `npm test` incl. the price snapshot
+- [x] 2.2 `npm run lint`, `npx astro check`, `npm run build`
 
 #### Manual
 

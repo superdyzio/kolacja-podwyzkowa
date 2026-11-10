@@ -7,6 +7,7 @@ import type { Locale } from "@/lib/i18n";
 import { restaurantMessages, servingMessages } from "@/lib/orders/messages";
 import { deliveredCount } from "@/lib/orders/pieces";
 import { dishKey } from "@/lib/orders/rules";
+import { courseLabel } from "@/lib/menu/rules";
 import type { ServingSpot } from "@/lib/orders/serving";
 import { describeToServe } from "@/lib/orders/summary";
 import { cn } from "@/lib/utils";
@@ -105,6 +106,7 @@ export function RestaurantView({ apiBase, initial, eventName, locale }: Props) {
   const { view, gone, offline } = useRestaurantView(apiBase, initial);
   const { seating, placement, prep, totals } = view;
   const serving = useServingSelection(placement, prep);
+  const byCourse = prep.some((line) => line.course !== null);
   const servingTables = useMemo(() => new Set(placement.tables.map((table) => table.name)), [placement.tables]);
   const spotOf = (item: RestaurantItemDto) => serving.spotByItem.get(item);
 
@@ -165,12 +167,25 @@ export function RestaurantView({ apiBase, initial, eventName, locale }: Props) {
                     </tr>
                   </thead>
                   <tbody>
-                    {prep.map((line) => {
+                    {prep.map((line, index) => {
                       const key = dishKey(line.name);
                       const dish = serving.dishes.get(key);
                       const picked = serving.selectedDish === key;
+                      // menu-catalog-courses (S-16): the kitchen's list by course (headings once any line has one).
+                      const heading = byCourse && (index === 0 || prep[index - 1].course !== line.course);
                       return (
-                        <Fragment key={line.name}>
+                        <Fragment key={`${line.course ?? ""}|${line.name}`}>
+                          {heading && (
+                            <tr className="bg-muted/60 border-t" data-course={line.course ?? "other"}>
+                              <th
+                                colSpan={3}
+                                scope="colgroup"
+                                className="p-2 text-left text-sm font-semibold uppercase"
+                              >
+                                {courseLabel(line.course, locale)}
+                              </th>
+                            </tr>
+                          )}
                           <tr
                             className={cn(
                               "border-t align-top",

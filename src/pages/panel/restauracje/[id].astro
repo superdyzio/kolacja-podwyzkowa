@@ -14,6 +14,7 @@ import { getSupportLog, SUPPORT_LOG_ROLES, supportMessages } from "@/lib/support
 import { canManageTeam, getTeam, teamMessages } from "@/lib/team";
 import { NewTemplateForm } from "@/components/templates/NewTemplateForm";
 import { listVenueTemplates, templateMessages, templatePath } from "@/lib/templates";
+import { getMenuCatalog, menuMessages } from "@/lib/menu";
 
 // The restaurant panel (platform-restaurants, S-10; restaurant-events, S-11; restaurant-team, S-12): the restaurant,
 // the person's role, its events and (owners and managers) the team. Owners and managers create an event („Nowe
@@ -42,6 +43,9 @@ const manages = panel ? canManageEvents(panel.role) : false;
 const lists = panel && manages ? await listRestaurantEvents(panel.db, panel.restaurant.id, new Date()) : null;
 const templates = panel && manages ? await listVenueTemplates(panel.db, panel.restaurant.id) : null;
 const tv = templateMessages(locale);
+// menu-catalog-courses (S-16): owners and managers (and support) see the „Menu lokalu” section with a link.
+const catalog = panel && manages ? await getMenuCatalog(panel.db, panel.restaurant.id) : null;
+const tm = menuMessages(locale);
 const listParam = Astro.url.searchParams.get("lista");
 const tab = listParam === "minione" ? "past" : listParam === "archiwum" ? "archived" : "upcoming";
 const tabs = lists
@@ -176,6 +180,26 @@ if (!panel) {
             </ul>
           )}
           {!support && <NewTemplateForm client:load restaurantId={panel.restaurant.id} locale={locale} />}
+        </section>
+      )}
+
+      {catalog && (
+        <section
+          aria-labelledby="menu-heading"
+          class="flex flex-col gap-3 rounded-xl border p-4 sm:p-6"
+          data-menu-section
+        >
+          <h2 id="menu-heading" class="text-xl font-semibold">
+            {tm.heading}
+          </h2>
+          <p class="text-sm text-muted-foreground">{tm.intro}</p>
+          <p data-menu-count={catalog.items.length}>{tm.sectionCounts(catalog.items.length)}</p>
+          <a
+            href={`/panel/restauracje/${String(panel.restaurant.id)}/menu`}
+            class="self-start font-medium underline-offset-4 hover:underline"
+          >
+            {tm.openCatalog}
+          </a>
         </section>
       )}
 

@@ -1,0 +1,64 @@
+---
+import Layout from "@/layouts/Layout.astro";
+import NoAccess from "@/components/NoAccess.astro";
+import { MenuCatalogManager } from "@/components/menu/MenuCatalogManager";
+import SupportBanner from "@/components/support/SupportBanner.astro";
+import { EVENT_STAFF_ROLES } from "@/lib/events";
+import { formatAmount } from "@/lib/guesses/amount";
+import { courseLabel, getMenuCatalog, groupByCourse, menuMessages } from "@/lib/menu";
+import { findPanelRestaurant } from "@/lib/panel-api";
+
+// The restaurant's menu catalog (menu-catalog-courses, S-16; FR-037): owners and managers add, change and remove
+// dishes and drinks with a course and a price (island MenuCatalogManager). Through the central lookup (ONE call): a
+// waiter, another restaurant, a disabled one, an unknown or malformed id → the no-access page (404). The platform
+// administrator in support mode (logged for the owner) gets the banner and a static list, without forms.
+const locale = Astro.locals.locale;
+const t = menuMessages(locale);
+const panel = await findPanelRestaurant(Astro.locals, Astro.params.id, EVENT_STAFF_ROLES);
+const catalog = panel ? await getMenuCatalog(panel.db, panel.restaurant.id) : null;
+if (!panel || !catalog) {
+  Astro.response.status = 404;
+}
+const support = panel?.support ?? null;
+---
+
+{panel && catalog ? (
+  <Layout title={t.pageTitle(panel.restaurant.name)}>
+    <main class="mx-auto flex max-w-3xl flex-col gap-6 p-4 sm:p-8" data-menu-page={panel.restaurant.id}>
+      <header class="flex flex-col gap-2">
+        <a
+          href={`/panel/restauracje/${String(panel.restaurant.id)}`}
+          class="self-start py-2 text-sm text-muted-foreground underline-offset-4 hover:underline"
+        >
+          {t.backTo(panel.restaurant.name)}
+        </a>
+        <h1 class="text-3xl font-bold">{t.heading}</h1>
+        <p class="text-sm text-muted-foreground">{t.intro}</p>
+      </header>
+      {support && <SupportBanner support={support} locale={locale} />}
+      {support ? (
+        catalog.items.length === 0 ? (
+          <p class="text-muted-foreground">{t.empty}</p>
+        ) : (
+          groupByCourse(catalog.items).map((group) => (
+            <section class="flex flex-col gap-2" data-course={group.course ?? "other"}>
+              <h2 class="text-lg font-semibold">{courseLabel(group.course, locale)}</h2>
+              <ul class="flex flex-col divide-y rounded-xl border">
+                {group.items.map((item) => (
+                  <li class="flex justify-between gap-2 p-3" data-menu-item={item.id}>
+                    <span class="font-medium">{item.name}</span>
+                    <span class="whitespace-nowrap">{formatAmount(item.priceGrosze)}</span>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          ))
+        )
+      ) : (
+        <MenuCatalogManager client:load restaurantId={panel.restaurant.id} initial={catalog} locale={locale} />
+      )}
+    </main>
+  </Layout>
+) : (
+  <NoAccess />
+)}

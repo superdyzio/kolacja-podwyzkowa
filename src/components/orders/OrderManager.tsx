@@ -7,6 +7,7 @@ import type { Locale } from "@/lib/i18n";
 import { billTotalGrosze } from "@/lib/orders/drinks";
 import { drinkMessages, orderMessages, servingMessages } from "@/lib/orders/messages";
 import { dishKey, dishSuggestions, lineTotal } from "@/lib/orders/rules";
+import { courseLabel } from "@/lib/menu/rules";
 import { describeLines, formatServedSummary } from "@/lib/orders/summary";
 import { cn } from "@/lib/utils";
 import type { OrderBoardDto, OrderItemDto } from "@/types";
@@ -57,6 +58,7 @@ export function OrderManager({ apiBase, initial, locale }: Props) {
   const dishes = useMemo(() => dishSuggestions(board.items), [board.items]);
   const { totals, placement } = board;
   const serving = useServingSelection(placement, board.prep, lineKey);
+  const byCourse = board.prep.some((line) => line.course !== null);
   const servingTables = useMemo(() => new Set(placement.tables.map((table) => table.name)), [placement.tables]);
 
   function body(values: OrderItemFormValues) {
@@ -94,6 +96,7 @@ export function OrderManager({ apiBase, initial, locale }: Props) {
             guests={board.guests}
             tables={board.tables}
             dishes={dishes}
+            menu={board.menu}
             locale={locale}
             onEdit={() => {
               setEditingId(item.id);
@@ -167,6 +170,7 @@ export function OrderManager({ apiBase, initial, locale }: Props) {
             guests={board.guests}
             tables={board.tables}
             dishes={dishes}
+            menu={board.menu}
             pending={pending}
             locale={locale}
             submitLabel={t.add}
@@ -206,12 +210,21 @@ export function OrderManager({ apiBase, initial, locale }: Props) {
                   </tr>
                 </thead>
                 <tbody>
-                  {board.prep.map((line) => {
+                  {board.prep.map((line, index) => {
                     const key = dishKey(line.name);
                     const dish = serving.dishes.get(key);
                     const picked = serving.selectedDish === key;
+                    // menu-catalog-courses: a course heading before each course (only once any line has one).
+                    const heading = byCourse && (index === 0 || board.prep[index - 1].course !== line.course);
                     return (
-                      <Fragment key={line.name}>
+                      <Fragment key={`${line.course ?? ""}|${line.name}`}>
+                        {heading && (
+                          <tr className="bg-muted/60 border-t" data-course={line.course ?? "other"}>
+                            <th colSpan={4} scope="colgroup" className="p-2 text-left text-xs font-semibold uppercase">
+                              {courseLabel(line.course, locale)}
+                            </th>
+                          </tr>
+                        )}
                         <tr className={cn("border-t align-top", picked && "bg-red-500/10")}>
                           <td className="p-0">
                             <button
@@ -341,6 +354,7 @@ export function OrderManager({ apiBase, initial, locale }: Props) {
         {failureAtDrinks && failureAlert}
         <DrinkPanel
           drinks={board.drinks}
+          menuDrinks={board.menu.items.filter((item) => item.course === "drinks")}
           totals={board.drinkTotals}
           pending={pending}
           locale={locale}

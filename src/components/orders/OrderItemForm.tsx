@@ -16,7 +16,9 @@ import {
   type DishSuggestion,
 } from "@/lib/orders/rules";
 import { cn } from "@/lib/utils";
-import type { OrderGuestOptionDto, OrderItemDto, OrderTableOptionDto } from "@/types";
+import { courseLabel, findMenuItem, groupByCourse } from "@/lib/menu/rules";
+import { menuMessages } from "@/lib/menu/messages";
+import type { OrderGuestOptionDto, OrderItemDto, OrderMenuDto, OrderTableOptionDto } from "@/types";
 
 // The body the order API takes (restaurant-orders): texts as typed; the server checks again. No price since
 // client-restaurant-split (FR-027): a line takes the venue's price of its name.
@@ -33,6 +35,9 @@ interface Props {
   guests: readonly OrderGuestOptionDto[];
   tables: readonly OrderTableOptionDto[];
   dishes: readonly DishSuggestion[];
+  // menu-catalog-courses (S-16): while active, the dish is picked from the event's menu (grouped by course, with
+  // prices); otherwise typed as before.
+  menu: OrderMenuDto;
   pending: boolean;
   locale: Locale;
   submitLabel: string;
@@ -84,6 +89,7 @@ export function OrderItemForm({
   guests,
   tables,
   dishes,
+  menu,
   pending,
   locale,
   submitLabel,
@@ -92,6 +98,7 @@ export function OrderItemForm({
 }: Props) {
   const t = orderMessages(locale);
   const prices = priceMessages(locale);
+  const m = menuMessages(locale);
   const formId = useId();
   const [name, setName] = useState(item?.name ?? "");
   const [quantity, setQuantity] = useState(String(item?.quantity ?? 1));
@@ -101,7 +108,10 @@ export function OrderItemForm({
 
   // What the server will charge: the line's own price while its dish keeps its name, else the dish's price.
   const ownPrice = item !== null && dishKey(name) === dishKey(item.name) ? item.unitPriceGrosze : null;
-  const knownPrice = ownPrice ?? findDish(dishes, name)?.unitPriceGrosze ?? null;
+  const menuItem = menu.active ? findMenuItem(menu.items, name) : null;
+  const knownPrice = ownPrice ?? menuItem?.priceGrosze ?? findDish(dishes, name)?.unitPriceGrosze ?? null;
+  // An edited line from before the menu keeps its own dish as the first choice.
+  const ownOffMenu = menu.active && item !== null && findMenuItem(menu.items, item.name) === null ? item.name : null;
   const priceText = knownPrice === null ? prices.byVenue : prices.fromList(formatAmount(knownPrice));
 
   async function submit(event: SubmitEvent<HTMLFormElement>) {
@@ -119,10 +129,14 @@ export function OrderItemForm({
       setProblem(quantityMessage(locale));
       return;
     }
+    if (menu.active && menuItem === null && (item === null || dishKey(name) !== dishKey(item.name))) {
+      setProblem(m.notOnMenu);
+      return;
+    }
     setProblem(null);
     // A dish already on the order keeps its spelling, so the prep list shows one line for it — except when an edit
     // only changes the spelling of the line's own dish.
-    const known = item !== null && dishKey(name) === dishKey(item.name) ? null : findDish(dishes, name);
+    const known = item !== null && dishKey(name) === dishKey(item.name) ? null : (menuItem ?? findDish(dishes, name));
     const saved = await onSubmit({
       name: known?.name ?? name,
       note,
@@ -146,23 +160,49 @@ export function OrderItemForm({
     >
       <div className="col-span-2 flex flex-col gap-1 sm:col-span-3">
         <label htmlFor={`${formId}-name`} className="text-sm font-medium">
-          {t.dish}
+          {menu.active ? m.fromMenu : t.dish}
         </label>
-        <Input
-          id={`${formId}-name`}
-          list={`${formId}-dishes`}
-          autoComplete="off"
-          value={name}
-          onChange={(event) => {
-            setName(event.target.value);
-          }}
-          className="h-10"
-        />
-        <datalist id={`${formId}-dishes`}>
-          {dishes.map((dish) => (
-            <option key={dish.name} value={dish.name} />
-          ))}
-        </datalist>
+        {menu.active ? (
+          <select
+            id={`${formId}-name`}
+            value={name}
+            onChange={(event) => {
+              setName(event.target.value);
+            }}
+            className={SELECT_CLASS}
+            data-menu-select
+          >
+            <option value="">{m.chooseDish}</option>
+            {ownOffMenu !== null && <option value={ownOffMenu}>{ownOffMenu}</option>}
+            {groupByCourse(menu.items).map((group) => (
+              <optgroup key={group.course ?? "other"} label={courseLabel(group.course, locale)}>
+                {group.items.map((dish) => (
+                  <option key={dish.name} value={dish.name}>
+                    {`${dish.name} — ${formatAmount(dish.priceGrosze)}`}
+                  </option>
+                ))}
+              </optgroup>
+            ))}
+          </select>
+        ) : (
+          <>
+            <Input
+              id={`${formId}-name`}
+              list={`${formId}-dishes`}
+              autoComplete="off"
+              value={name}
+              onChange={(event) => {
+                setName(event.target.value);
+              }}
+              className="h-10"
+            />
+            <datalist id={`${formId}-dishes`}>
+              {dishes.map((dish) => (
+                <option key={dish.name} value={dish.name} />
+              ))}
+            </datalist>
+          </>
+        )}
       </div>
       <div className="flex flex-col gap-1 sm:col-span-2">
         <span className="text-sm font-medium">{t.unitPrice}</span>
