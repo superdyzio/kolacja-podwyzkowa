@@ -239,12 +239,12 @@ None. Existing local databases keep the per-run demo restaurants of earlier vers
 
 #### Automated
 
-- [x] 2.1 Linting passes: `npm run lint`
-- [x] 2.2 Build passes: `npm run build`
-- [x] 2.3 `npm run demo` succeeds against `AI_PROVIDER=mock npm run preview` on the local database
-- [x] 2.4 A second `npm run demo` succeeds and converges (same restaurant, five demo events, template and menu kept)
-- [x] 2.5 `npm run demo -- --reset` rebuilds the template and the menu and succeeds
-- [x] 2.6 Smoke passes: `npm run smoke`
+- [x] 2.1 Linting passes: `npm run lint` — 0909b61
+- [x] 2.2 Build passes: `npm run build` — 0909b61
+- [x] 2.3 `npm run demo` succeeds against `AI_PROVIDER=mock npm run preview` on the local database — 0909b61
+- [x] 2.4 A second `npm run demo` succeeds and converges (same restaurant, five demo events, template and menu kept) — 0909b61
+- [x] 2.5 `npm run demo -- --reset` rebuilds the template and the menu and succeeds — 0909b61
+- [x] 2.6 Smoke passes: `npm run smoke` — 0909b61
 
 #### Manual
 
@@ -255,10 +255,10 @@ None. Existing local databases keep the per-run demo restaurants of earlier vers
 
 #### Automated
 
-- [ ] 3.1 `docs/scenariusz-pokazu.md` exists and every repository path it names exists
-- [ ] 3.2 Full test suite: `AI_PROVIDER=mock npm test`
-- [ ] 3.3 Linting, types and build: `npm run lint`, `npx astro check`, `npm run build`
-- [ ] 3.4 Smoke and demo: `npm run smoke`, `npm run demo`
+- [x] 3.1 `docs/scenariusz-pokazu.md` exists and every repository path it names exists
+- [x] 3.2 Full test suite: `AI_PROVIDER=mock npm test`
+- [x] 3.3 Linting, types and build: `npm run lint`, `npx astro check`, `npm run build`
+- [x] 3.4 Smoke and demo: `npm run smoke`, `npm run demo`
 
 #### Manual
 
