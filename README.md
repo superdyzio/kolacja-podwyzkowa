@@ -45,7 +45,7 @@ Pierwszy administrator platformy (lokalnie):
 npm run platform:admin -- ja@example.com --name "Imię Nazwisko"
 ```
 
-Skrypt wypisuje host bazy i link do ustawienia hasła. Konto bez hasła dostaje zaproszenie, konto z hasłem — link do ustawienia nowego (tak administrator wraca po zgubieniu hasła). Na produkcji patrz „Pierwsze uruchomienie”. Zapraszanie personelu przez właściciela przyjdzie w kolejnym etapie; `npm run demo` zakłada konto właściciela „Restauracji demo” oraz administratora platformy i wypisuje ich e-maile i hasła.
+Skrypt wypisuje host bazy i link do ustawienia hasła. Konto bez hasła dostaje zaproszenie, konto z hasłem — link do ustawienia nowego (tak administrator wraca po zgubieniu hasła). Na produkcji patrz „Pierwsze uruchomienie”. Resztę personelu zaprasza właściciel (i menedżer — kelnerów) w panelu lokalu, patrz „Zespół lokalu”; `npm run demo` zakłada konta właściciela, menedżera i kelnera „Restauracji demo” oraz administratora platformy i wypisuje ich e-maile i hasła.
 
 ### Panel platformy
 
@@ -69,6 +69,17 @@ Właściciel i menedżer prowadzą wydarzenia w panelu lokalu `/panel/restauracj
 5. „Usuń wydarzenie trwale” (tylko właściciel) usuwa wydarzenie ze wszystkimi danymi — gośćmi, salą, rozsadzeniem, zamówieniami, strzałami i pytaniami — i unieważnia wszystkie jego linki, także linki gości i karteczki QR. Tego nie da się cofnąć.
 
 Kelner widzi na razie tylko notkę (dzisiejsze wydarzenia dla kelnerów przyjdą później); personel innej restauracji dostaje „Brak dostępu”, jak dla nieistniejącego wydarzenia. Na produkcji ta zmiana wymaga migracji bazy **przed** wdrożeniem kodu (panel czyta nowe kolumny daty, liczby gości i archiwum); migracja tylko dodaje kolumny, linki istniejących wydarzeń się nie zmieniają, a istniejące wydarzenia dostają datę swojego utworzenia.
+
+### Zespół lokalu
+
+Właściciel i menedżer widzą w panelu lokalu `/panel/restauracje/<id>` sekcję „Zespół”: listę osób z rolą i stanem konta.
+
+1. „Zaproś do zespołu”: e-mail, imię (opcjonalnie) i rola → „Zaproś”. Właściciel zaprasza menedżerów i kelnerów, menedżer tylko kelnerów. Pod formularzem pojawia się jednorazowy link zaproszenia (ważny 7 dni) z „Kopiuj” — przekaż go tej osobie sam. Jeśli e-mail ma już konto z hasłem, linku nie ma: restauracja pojawi się tej osobie po zalogowaniu.
+2. Rola: właściciel zmienia rolę każdej osoby (także na „Właściciel” — współwłaściciel ma pełną władzę nad restauracją — i swoją). Menedżer zarządza tylko kelnerami. Restauracja zawsze ma co najmniej jednego właściciela: jedynego właściciela nie da się zdegradować ani usunąć.
+3. „Usuń z zespołu” odcina tę osobę od tej restauracji od razu (przy jej następnym kliknięciu); inne restauracje, w których pracuje, zostają. Nieużyte zaproszenie usuniętej osoby przestaje działać.
+4. „Nowy link” przy osobie, która nie ustawiła hasła, daje nowe zaproszenie; przy osobie z hasłem — link do ustawienia nowego hasła (24 godziny; po jego użyciu inne urządzenia tej osoby są wylogowane). Poprzedni nieużyty link przestaje działać. Tak wraca ktoś, kto zgubił hasło.
+
+Link ustawia hasło do całego konta, więc restauracja nie da go osobie, która pracuje też w innej restauracji (właścicielowi da go administrator platformy; menedżera albo kelnera trzeba najpierw usunąć z zespołu jednej z restauracji). Z tego samego powodu nieużyty link od zespołu przestaje działać, gdy konto dołączy do innej restauracji, a osoby, która ma już konto w innej restauracji, ale nie ustawiła hasła, nie da się zaprosić, dopóki go nie ustawi. Kelner „na jedną imprezę” i widok dnia dla kelnerów przyjdą później. Na produkcji ta zmiana wymaga migracji bazy **przed** wdrożeniem kodu (zapraszanie, zmiany ról, usuwanie i „Nowy link” wołają nowe funkcje bazy); migracja tylko dodaje funkcje.
 
 ## Języki
 
@@ -153,10 +164,10 @@ Na produkcji ta zmiana wymaga migracji bazy **przed** wdrożeniem kodu (bez niej
 - `npm run event:create`: zakłada wydarzenie (z nową restauracją albo w istniejącej: `--restaurant-id`) z bazą startową pytań w bazie z `.env` i wypisuje jego linki; najpierw podaje, do jakiej bazy pisze.
 - `npm run links`: wypisuje wszystkie wydarzenia (restauracja · nazwa, id) z linkiem organizatora, adresem TV i linkiem restauracji.
 - `npm run platform:admin -- <email> [--name "<imię>"] [--remote]`: zakłada (albo znajduje) konto administratora platformy i wypisuje jednorazowy link do ustawienia hasła; najpierw podaje host bazy, a baza inna niż lokalna wymaga `--remote`. Link jest sekretny.
-- `npm run smoke`: test HTTP macierzy dostępu na działającym serwerze (`BASE_URL`, domyślnie `http://localhost:4321`). Działa tylko z lokalnym Supabase w `.env` (tym samym co serwer): przy każdym uruchomieniu zakłada w nim własne dwie restauracje z wydarzeniami (A do wszystkich sprawdzeń, B do sprawdzenia, że linki A nie sięgają do B) i własne konta personelu (logowanie, limit prób, sesje, panel, panel platformy z trzecią restauracją, wydarzenia lokalu z menedżerem) i nie rusza innych wydarzeń ani kont, więc można go puszczać wielokrotnie na tej samej bazie. `npm run preview` czyta `.env` przy starcie, więc po zmianie `.env` uruchom podgląd ponownie.
+- `npm run smoke`: test HTTP macierzy dostępu na działającym serwerze (`BASE_URL`, domyślnie `http://localhost:4321`). Działa tylko z lokalnym Supabase w `.env` (tym samym co serwer): przy każdym uruchomieniu zakłada w nim własne dwie restauracje z wydarzeniami (A do wszystkich sprawdzeń, B do sprawdzenia, że linki A nie sięgają do B) i własne konta personelu (logowanie, limit prób, sesje, panel, panel platformy z trzecią restauracją, wydarzenia lokalu z menedżerem, zespół lokalu) i nie rusza innych wydarzeń ani kont, więc można go puszczać wielokrotnie na tej samej bazie. `npm run preview` czyta `.env` przy starcie, więc po zmianie `.env` uruchom podgląd ponownie.
 - `npm run package:lambda`: build do `dist-lambda/build` (nie rusza `dist/` podglądu) i paczka `dist-lambda/function.zip` dla AWS Lambda, ze sprawdzeniem (bez plików env i sekretów, bez modułów natywnych, zip < 50 MB, rozpakowany zip startuje poza repozytorium).
 - `npm run deploy:aws`: wdrożenie na AWS Lambda (patrz niżej); `-- --dry-run` tylko wypisuje plan.
-- `npm run demo`: wypełnia lokalną aplikację danymi demo do sprawdzeń ręcznych (40 gości, plan, 3 sale, 7 stolików, grupy 4/2/2, 1 nieobecny, 1 przypięty, opublikowany rozkład, 30 strzałów z remisem, 12 z typem miejsca, zamówienie z 9 pozycjami) przez API działającego serwera (`BASE_URL`) i wypisuje linki. Za każdym razem zakłada w lokalnej bazie nową restaurację „Restauracja demo” z wydarzeniem „Kolacja podwyżkowa (demo)” i kontem jej właściciela (e-mail i hasło do `/logowanie` na końcu wydruku), który przez panel dokłada nadchodzące, minione i zarchiwizowane wydarzenie (wydruk „Wydarzenia lokalu”). Utrzymuje też jedno konto administratora platformy `admin@demo.stolik` z hasłem `demo-admin-1` (tylko lokalnie; wydruk „Panel platformy”).
+- `npm run demo`: wypełnia lokalną aplikację danymi demo do sprawdzeń ręcznych (40 gości, plan, 3 sale, 7 stolików, grupy 4/2/2, 1 nieobecny, 1 przypięty, opublikowany rozkład, 30 strzałów z remisem, 12 z typem miejsca, zamówienie z 9 pozycjami) przez API działającego serwera (`BASE_URL`) i wypisuje linki. Za każdym razem zakłada w lokalnej bazie nową restaurację „Restauracja demo” z wydarzeniem „Kolacja podwyżkowa (demo)” i kontem jej właściciela (e-mail i hasło do `/logowanie` na końcu wydruku), który przez panel dokłada nadchodzące, minione i zarchiwizowane wydarzenie (wydruk „Wydarzenia lokalu”) i zaprasza do zespołu menedżera i kelnera (hasła `demo-menedzer-1` i `demo-kelner-1`, e-maile w wydruku „Panel lokalu”). Utrzymuje też jedno konto administratora platformy `admin@demo.stolik` z hasłem `demo-admin-1` (tylko lokalnie; wydruk „Panel platformy”).
 
 ## CI
 
