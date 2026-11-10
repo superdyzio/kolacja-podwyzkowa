@@ -205,6 +205,6 @@ Nowe do decyzji:
 ## Wdrożenie — przypomnienie (przebieg 2)
 
 - Jak w części 1: wszystkie migracje tylko do **NOWEGO** projektu platformy, w kolejności nazw, `db push` przed `deploy:aws`; nigdy do `eaubtfkoehpekdckhnxf`.
-- Migracje przebiegu 2 w kolejności: `20261111020000_event_waiters`, `20261111030000_guest_diets`, `20261111040000_guest_rsvp`, `20261111050000_privacy_retention`, `20261111060000_pub_quiz`. S-24, S-29 i S-30 nie mają migracji. Po review PR #4 doszła `20261111070000_review_fixes` (addytywna, przed kodem; szczegóły w `context/foundation/m2-review.md`).
+- Migracje przebiegu 2 w kolejności: `20261111020000_event_waiters`, `20261111030000_guest_diets`, `20261111040000_guest_rsvp`, `20261111050000_privacy_retention`, `20261111060000_pub_quiz`. S-24, S-29 i S-30 nie mają migracji. Po review PR #4 i Twoich decyzjach doszły: `20261111070000_review_fixes`, `20261111080000_guest_erasure` (z rozmysłem usuwa imiona gości skasowanych wcześniej — najpierw eksport), `20261111090000_retention_preview`, `20261111100000_rsvp_reset` (kod zaraz po niej). Razem 21 migracji M-2. Nowy sekret `RETENTION_TOKEN` w `.env.aws` włącza codzienny harmonogram retencji (kroki w README „Wdrożenie na AWS”). Szczegóły w `context/foundation/m2-review.md`.
 - Pub quiz: kod zaraz po migracji (stary kod nie przyjmuje nowych liczników resetu, więc podgląd resetu do czasu deployu nie działa).
 - Retencja: przed pierwszym wdrożeniem wyeksportuj, co ma zostać — wydarzenia starsze niż termin tracą dane gości przy pierwszym odczycie.

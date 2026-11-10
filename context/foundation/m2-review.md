@@ -4,7 +4,7 @@ Sześciu recenzentów Fable 5.1 przejrzało PR równolegle, każdy pod innym ką
 
 Kąty: 1 dostęp i izolacja restauracji, 2 prywatność i dane, 3 migracje i funkcje bazy, 4 logika biznesowa względem PRD v2, 5 frontend, PL/EN i dostępność, 6 rzetelność testów, smoke, skryptów i CLAUDE.md.
 
-**Wynik po poprawkach** (`e4edf76`, sprawdzone przeze mnie, `AI_PROVIDER=mock`): 148 plików / 1594 testy zielone, 6 pominiętych; lint 0, astro check 0 błędów; build OK; smoke 881 PASS / 0 FAIL; `npm run demo` dwa razy z rzędu OK. Doszła jedna migracja: `20261111070000_review_fixes.sql` (addytywna, przed kodem).
+**Wynik końcowy** (po poprawkach z review i decyzjach użytkownika, `e429104`, sprawdzone przeze mnie, `AI_PROVIDER=mock`): 154 pliki / 1652 testy zielone, 6 pominiętych; lint 0, astro check 0 błędów; build OK; smoke 892 PASS / 0 FAIL / 1 SKIP bez `RETENTION_TOKEN` i 893 PASS / 0 FAIL / 0 SKIP z tokenem testowym; `npm run demo` dwa razy z rzędu OK. Nowe migracje po review: `20261111070000_review_fixes`, `20261111080000_guest_erasure` (z rozmysłem usuwa imiona gości skasowanych wcześniej), `20261111090000_retention_preview`, `20261111100000_rsvp_reset` — wszystkie przed kodem.
 
 ## Naprawione
 
@@ -52,19 +52,22 @@ Testy regresji: smoke sekcje 25 i 33 (zakodowane ścieżki, przełącznik język
 
 ## Decyzje użytkownika (2026-11-10, po review) — wszystkie rekomendacje przyjęte
 
-1. Usunięcie gościa czyści jego imię z opublikowanych rozsadzeń i z wpisu „osoba na TV” — **do zrobienia**.
-2. Tryb wsparcia admina nie widzi diet: podgląd i wydruk bez diet, spójnie z eksportem — **do zrobienia**.
-3. Harmonogram retencji: codzienna reguła EventBridge Scheduler w `deploy:aws` (zgoda na zmianę architektury), do tego czasu ostrożniejszy tekst — **do zrobienia**.
+1. Usunięcie gościa czyści jego imię z opublikowanych rozsadzeń i z wpisu „osoba na TV” — **zrobione** (`8be8b19`, migracja `20261111080000_guest_erasure`). Trigger przy usunięciu gościa kasuje jego miejsca we wszystkich migawkach i wpis TV. TV, telefony i tablet gubią imię przy następnym odpytaniu, bez ponownej publikacji. **Uwaga przy wdrożeniu:** migracja z rozmysłem usuwa też imiona gości skasowanych wcześniej z dawnych migawek, więc najpierw eksport.
+2. Tryb wsparcia admina nie widzi diet: podgląd i wydruk bez diet, spójnie z eksportem — **zrobione** (`8be8b19`). Diety są wycięte z odpowiedzi dyspozytora i z podglądów. „Lista dla obsługi” daje adminowi tę samą stronę braku dostępu bez wpisu w dzienniku. Szkice prawne mówią, że admin nie widzi diet.
+3. Harmonogram retencji: codzienna reguła EventBridge Scheduler w `deploy:aws` (zgoda na zmianę architektury) — **zrobione** (`09b75b1`). Przy ustawionym `RETENTION_TOKEN` w `.env.aws` wdrożenie tworzy rolę `kolacja-podwyzkowa-scheduler` i harmonogram `kolacja-podwyzkowa-retention` (codziennie 04:15 Europe/Warsaw). Harmonogram wywołuje `POST /api/jobs/retention` przez adapter Lambdy; bez poprawnego tokenu trasa daje 404. Teksty prywatności mówią o codziennym sprzątaniu. **Niesprawdzone na AWS** (tylko `--dry-run` i testy): kroki dla Ciebie są w README „Wdrożenie na AWS” (token, `get-schedule`, test `aws lambda invoke`, log „Retencja danych gości”).
 4. Uwagi „na środek stołu” widoczne przy stole — zostaje bez zmian.
 5. Bez furtki do cofnięcia daty wydarzenia z danymi gości — zostaje bez zmian.
-6. Skrócenie terminu przechowywania pokazuje ostrzeżenie z liczbą wydarzeń, które stracą dane — **do zrobienia**.
+6. Skrócenie terminu przechowywania pokazuje ostrzeżenie z liczbą wydarzeń, które stracą dane — **zrobione** (`09b75b1`, migracja `20261111090000_retention_preview`): `GET …/retention?days=<n>` i potwierdzenie w formularzu właściciela.
 7. „Nowy link” administratora z wpisem w dzienniku — zostaje bez zmian (decyzje S-10/S-12/S-13 w logu są przez to uzupełnione).
 8. `inert` w podglądach (czytnik ekranu) — odłożone na później.
 
 Punkty z raportu przebiegu 2:
 - ryzyka kelnera „na imprezę” (S-21b) — zaakceptowane;
-- tablet zapisuje odczyt bez sieci tylko w dniu imprezy (S-27) — **do zrobienia**;
-- RSVP poza zakresem S-25: liczby wyborów na tablecie kuchni, „Przenieś wybory do zamówień”, część resetu RSVP — **do zrobienia**;
+- tablet zapisuje odczyt bez sieci tylko w dniu imprezy (S-27) — **zrobione** (`e1e8f2d`): od północy dnia imprezy do południa następnego dnia; wcześniej strona działa na żywo bez kopii i bez linku do odczytu;
+- RSVP poza zakresem S-25 — **zrobione**, każdy dodatek w osobnym commicie (łatwo cofnąć):
+  - „Potwierdzone dania” na tablecie kuchni: liczby dań według kursów, bez imion, id i cen; nie trafiają do kopii offline (`c2986f0`);
+  - „Przenieś wybory do zamówień” na stronie potwierdzeń klienta (`GET|POST /api/o/<klucz>/rsvp/orders`): jedna linia na przychodzącego gościa z daniem, z bramką menu i ceną lokalu, ponowne użycie nic nie dodaje, obowiązuje reguła „kto prowadzi”. Bez blokady w bazie: dwa kliknięcia w tej samej chwili mogłyby dodać linie dwa razy (zapisane w CLAUDE.md) (`f928929`);
+  - część `rsvp` w „Reset danych”: czyści odpowiedzi, dania do wyboru i termin, a nieobecności zostają (migracja `20261111100000_rsvp_reset`; kod zaraz po migracji, jak przy pub quizie) (`e429104`). **Do Twojej oceny:** reset części `guests` pociąga też `rsvp`, więc czyści także dania do wyboru i termin. Quiz przy resecie gości zachowuje pytania. Jeśli wolisz, żeby reset gości zostawiał ustawienia RSVP, to druga migracja;
 - tryb wsparcia widzi diety (S-23) — rozstrzygnięte punktem 2.
 
 ## Co recenzenci sprawdzili i uznali za poprawne (skrót; szczegóły w raportach)
@@ -74,4 +77,4 @@ Punkty z raportu przebiegu 2:
 - **Baza (3):** wszystkie 17 migracji zachowuje dane wydarzenia 1 (klucze, wiersze). Wszędzie jest RLS z `revoke` i `search_path = ''`. Wszystkie 13 starych sygnatur jest jawnie usuniętych, bez `security definer`. Blokady są brane w spójnej kolejności, kaskady nie sięgają za daleko, a `database.types.ts` zgadza się z SQL. Kolejność wdrożenia opisana w CLAUDE.md się zgadza.
 - **Logika (4):** strefa Europe/Warsaw i reguła południa są spójne w TS i SQL, także przy zmianie czasu. Granice terminu retencji są takie same w aplikacji i bazie. RSVP, quiz, menu z cenami w groszach, moduły, reguła „kto prowadzi”, szablony i import CSV działają zgodnie z PRD. Tokeny odpytywania budują ścieżki 204 i 200 z tych samych odczytów.
 - **Frontend (5):** hooki odpytywania sprzątają timery i anulują zapytania. Akcje nie dają się kliknąć dwa razy. Nie ma tekstów tylko w jednym języku. Strony robią jedno wywołanie strażnika. White-label jest zachowany. Nie ma rozjazdów hydracji. CSS wydruków jest poprawny.
-- **Rzetelność (6):** smoke (634 sprawdzenia w 45 sekcjach) nie ma sprawdzeń, które nie mogą się wywrócić. Testy nie mają `.skip` ani `.only`, a `skipIf` są uzasadnione. Każdy skrypt ma strażnika lokalnej bazy albo jawne `--remote`, i nic nie może dosięgnąć wydarzenia 1. Paczka Lambdy sprawdza sekrety, nie ma nowych zależności. 12 sprawdzonych twierdzeń z CLAUDE.md zgadza się z kodem.
+- **Rzetelność (6):** smoke (634 sprawdzenia w 45 sekcjach w chwili review) nie ma sprawdzeń, które nie mogą się wywrócić. Testy nie mają `.skip` ani `.only`, a `skipIf` są uzasadnione. Każdy skrypt ma strażnika lokalnej bazy albo jawne `--remote`, i nic nie może dosięgnąć wydarzenia 1. Paczka Lambdy sprawdza sekrety, nie ma nowych zależności. 12 sprawdzonych twierdzeń z CLAUDE.md zgadza się z kodem.
