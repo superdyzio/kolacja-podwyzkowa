@@ -1,4 +1,4 @@
-import { useId, useRef, type KeyboardEvent } from "react";
+import { useId, useRef, type KeyboardEvent, type ReactNode } from "react";
 import type { MapSearch as MapSearchState } from "@/components/hooks/useMapSearch";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -14,6 +14,9 @@ interface Props {
   note?: string;
   // A hit chosen by click or Enter (the guest's phone opens and scrolls its map).
   onPick?: (hit: SeatHit) => void;
+  // Shown under a hit (guest-import-diets, S-23: the found guest's diet on the staff's and the client's plan). The
+  // guest's phone never passes it.
+  hitExtra?: (table: string, seat: number) => ReactNode;
   className?: string;
 }
 
@@ -21,7 +24,7 @@ interface Props {
 // live summary (how many found, nobody, or who is marked), the hits as buttons (name — table, seat · room; at most
 // MAP_SEARCH_LIMIT, then „and N more”). Enter picks the first hit; Escape anywhere inside clears and returns to the
 // field (and goes no further, so a picked dish of the serving plan stays). Rendered on the server too (`data-map-search`).
-export function MapSearch({ search, locale, note, onPick, className }: Props) {
+export function MapSearch({ search, locale, note, onPick, hitExtra, className }: Props) {
   const t = mapSearchMessages(locale);
   const inputId = useId();
   const hintId = useId();
@@ -104,8 +107,9 @@ export function MapSearch({ search, locale, note, onPick, className }: Props) {
         <ul aria-label={t.resultsLabel} className="flex max-h-72 flex-col gap-1 overflow-y-auto">
           {shown.map((hit) => {
             const pressed = active !== null && seatHitKey(active) === seatHitKey(hit);
+            const extra = hitExtra?.(hit.table, hit.seat);
             return (
-              <li key={seatHitKey(hit)}>
+              <li key={seatHitKey(hit)} className="flex flex-col gap-1">
                 <button
                   type="button"
                   aria-pressed={pressed}
@@ -122,6 +126,7 @@ export function MapSearch({ search, locale, note, onPick, className }: Props) {
                   <strong className="break-words">{hit.name}</strong>
                   <span className="text-muted-foreground text-sm">{t.place(hit.table, hit.seat, hit.room)}</span>
                 </button>
+                {extra && <div className="px-3">{extra}</div>}
               </li>
             );
           })}

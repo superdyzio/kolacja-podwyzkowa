@@ -1,7 +1,10 @@
 import { Fragment, useMemo, useState } from "react";
+import { DietBadges } from "@/components/diets/DietBadges";
+import { DietSection } from "@/components/diets/DietSection";
 import { useOrderBoard } from "@/components/hooks/useOrderBoard";
 import { useServingSelection } from "@/components/hooks/useServingSelection";
 import { Button } from "@/components/ui/button";
+import { dietSeatLookup } from "@/lib/diets/board";
 import { formatAmount } from "@/lib/guesses/amount";
 import type { Locale } from "@/lib/i18n";
 import { billTotalGrosze } from "@/lib/orders/drinks";
@@ -41,7 +44,8 @@ function lineKey(item: OrderItemDto): string {
 // grouped where it is served — by the PUBLISHED seating, exactly as the restaurant sees it — with „Wydane”, edit and
 // delete. serving-highlight: the plan beside the lists (above them on narrow screens, pinned while something is picked)
 // lights up where a dish, one piece of it or a line goes. bill-drinks: „Napoje do rachunku” at the bottom (the
-// organizer's own list) and the bill total (dishes + drinks) at the top.
+// organizer's own list) and the bill total (dishes + drinks) at the top. guest-import-diets (S-23): „Diety i alergie”
+// under the totals and each seat's diet next to its name (the client, the staff's preview and both floors).
 export function OrderManager({ apiBase, initial, locale, floor = false }: Props) {
   const t = orderMessages(locale);
   const s = servingMessages(locale);
@@ -59,7 +63,8 @@ export function OrderManager({ apiBase, initial, locale, floor = false }: Props)
   };
   const [editingId, setEditingId] = useState<number | null>(null);
   const dishes = useMemo(() => dishSuggestions(board.items), [board.items]);
-  const { totals, placement } = board;
+  const { totals, placement, diets } = board;
+  const dietAt = useMemo(() => dietSeatLookup(diets), [diets]);
   const serving = useServingSelection(placement, board.prep, lineKey);
   const byCourse = board.prep.some((line) => line.course !== null);
   const servingTables = useMemo(() => new Set(placement.tables.map((table) => table.name)), [placement.tables]);
@@ -169,6 +174,8 @@ export function OrderManager({ apiBase, initial, locale, floor = false }: Props)
           </p>
         </section>
 
+        <DietSection diets={diets} published={board.published} locale={locale} />
+
         {!failureAtDrinks && failureAlert}
 
         <section aria-labelledby="order-add-heading" className="flex flex-col gap-3 rounded-xl border p-4 sm:p-6">
@@ -196,6 +203,7 @@ export function OrderManager({ apiBase, initial, locale, floor = false }: Props)
         servingTables={servingTables}
         selection={serving.resolved}
         onClear={serving.clear}
+        diets={diets}
         locale={locale}
         className={cn(
           "bg-background lg:sticky lg:top-4 lg:col-start-2 lg:row-span-2 lg:row-start-1",
@@ -311,15 +319,21 @@ export function OrderManager({ apiBase, initial, locale, floor = false }: Props)
                   </h3>
                   <span className="font-semibold">{formatAmount(sum(items))}</span>
                 </header>
-                {table.seats.map((seat) => (
-                  <div key={seat.seat} className="flex flex-col gap-2">
-                    <h4 className="flex flex-wrap justify-between gap-2 text-sm font-medium">
-                      <span>{t.seat(seat.seat, seat.guestName)}</span>
-                      <span className="text-muted-foreground">{formatAmount(sum(seat.items))}</span>
-                    </h4>
-                    {renderLines(seat.items, true)}
-                  </div>
-                ))}
+                {table.seats.map((seat) => {
+                  const diet = dietAt(table.name, seat.seat);
+                  return (
+                    <div key={seat.seat} className="flex flex-col gap-2">
+                      <h4 className="flex flex-wrap justify-between gap-2 text-sm font-medium">
+                        <span>
+                          {t.seat(seat.seat, seat.guestName)}
+                          {diet && <DietBadges diets={diet.diets} note={diet.note} locale={locale} className="ml-2" />}
+                        </span>
+                        <span className="text-muted-foreground">{formatAmount(sum(seat.items))}</span>
+                      </h4>
+                      {renderLines(seat.items, true)}
+                    </div>
+                  );
+                })}
                 {table.tableItems.length > 0 && (
                   <div className="flex flex-col gap-2">
                     <h4 className="text-sm font-medium">{t.onTable}</h4>

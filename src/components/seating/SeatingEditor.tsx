@@ -137,6 +137,8 @@ export function SeatingEditor({ apiBase, panelPath, initialBoard, initialHistory
         ...occupant,
         absent: guestById.get(occupant.guestId)?.isAbsent ?? false,
         partners: partnersById.get(occupant.guestId) ?? [],
+        diets: guestById.get(occupant.guestId)?.diets ?? [],
+        dietNote: guestById.get(occupant.guestId)?.dietNote ?? null,
       },
       selected: selected !== null && occupant?.guestId === selected.guestId,
       refusal: selected !== null && click.kind === "refuse" ? click.reason : null,
@@ -198,7 +200,14 @@ export function SeatingEditor({ apiBase, panelPath, initialBoard, initialHistory
 
   const unseated = guestList.guests
     .filter((guest) => !assignmentByGuest.has(guest.id))
-    .map((guest) => ({ id: guest.id, name: guest.displayName, partners: partnersById.get(guest.id) ?? [], guest }));
+    .map((guest) => ({
+      id: guest.id,
+      name: guest.displayName,
+      partners: partnersById.get(guest.id) ?? [],
+      diets: guest.diets,
+      dietNote: guest.dietNote,
+      guest,
+    }));
   const rooms = venue.rooms
     .map((room) => ({ room, tables: venue.tables.filter((table) => table.roomId === room.id) }))
     .filter(({ tables }) => tables.length > 0);

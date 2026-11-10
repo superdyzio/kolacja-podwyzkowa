@@ -23,7 +23,9 @@ function isRestaurantView(data: unknown): data is RestaurantViewDto {
     typeof candidate.placement === "object" &&
     candidate.placement !== null &&
     typeof candidate.totals === "object" &&
-    candidate.totals !== null
+    candidate.totals !== null &&
+    typeof candidate.diets === "object" &&
+    candidate.diets !== null
   );
 }
 

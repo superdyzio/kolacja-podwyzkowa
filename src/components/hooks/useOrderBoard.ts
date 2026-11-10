@@ -40,7 +40,9 @@ function isBoard(data: unknown): data is OrderBoardDto {
     typeof candidate.menu === "object" &&
     candidate.menu !== null &&
     typeof candidate.drinkTotals === "object" &&
-    candidate.drinkTotals !== null
+    candidate.drinkTotals !== null &&
+    typeof candidate.diets === "object" &&
+    candidate.diets !== null
   );
 }
 

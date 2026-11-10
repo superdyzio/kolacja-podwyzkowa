@@ -1,4 +1,5 @@
 import { defineMessages } from "@/lib/i18n/locale";
+import { pluralEn, pluralPl } from "@/lib/i18n/plural";
 
 // Texts of the guest list and groups (S-01), both languages (i18n): the pure rules' messages, the organizer API's
 // answers and the organizer page /o/<key>/goscie. Pure: imported by the routes and directly by the islands.
@@ -105,6 +106,29 @@ export const guestManagerMessages = defineMessages(
     addFromList: "Dodaj gości z listy",
     cancel: "Anuluj",
     pasteList: "Wklej listę gości",
+    // GuestImportForm (guest-import-diets, S-23)
+    importOpen: "Import z pliku lub arkusza",
+    importHeading: "Import gości z dietami",
+    importFileLabel: "Plik CSV lub TXT (w Excelu: „Zapisz jako” → CSV)",
+    importTextLabel: "…albo wklej wiersze skopiowane z arkusza",
+    importPlaceholder: "Imię;Dieta;Uwagi\nAnia;wegetariańska;\nKuba;bez glutenu, bez laktozy;alergia na seler",
+    importHint: (diets: string) =>
+      `Kolumny: imię, dieta, uwagi (nagłówek nie jest wymagany), rozdzielone tabulatorem, średnikiem lub przecinkiem. Diety: ${diets} — kilka po przecinku lub „i”; resztę wpisz w uwagach (najwyżej 120 znaków).`,
+    importFileLoaded: (name: string) => `Wczytano „${name}” — treść jest w polu poniżej.`,
+    importFileFailed: "Nie udało się odczytać pliku.",
+    importCheck: "Sprawdź",
+    importChecking: "Sprawdzam…",
+    importDetected: (separator: string, header: boolean) =>
+      `Rozpoznano: ${separator}${header ? ", z nagłówkiem" : ", bez nagłówka"}.`,
+    importSeparators: { tab: "tabulator", semicolon: "średnik", comma: "przecinek", none: "jedna kolumna" },
+    importPreviewHeading: (count: number) =>
+      `Podgląd: ${count} ${pluralPl(count, "gość", "gości", "gości")} do dodania`,
+    importLine: "Linia",
+    importName: "Imię",
+    importDiet: "Dieta i uwagi",
+    importProblems: (count: number) => `Do poprawienia: ${count} — nic nie zostanie dodane, dopóki lista ma błędy.`,
+    importSave: (count: number) => `Dodaj ${count} ${pluralPl(count, "gościa", "gości", "gości")}`,
+    importAdded: (count: number) => `Dodano ${count} ${pluralPl(count, "gościa", "gości", "gości")}.`,
     // GuestGroups
     groupsHeading: "Nierozdzielne grupy",
     noGroups: (min: number, max: number) =>
@@ -156,6 +180,27 @@ export const guestManagerMessages = defineMessages(
     addFromList: "Add guests from the list",
     cancel: "Cancel",
     pasteList: "Paste a guest list",
+    importOpen: "Import from a file or spreadsheet",
+    importHeading: "Import guests with diets",
+    importFileLabel: "CSV or TXT file (in Excel: “Save as” → CSV)",
+    importTextLabel: "…or paste rows copied from a spreadsheet",
+    importPlaceholder: "Name;Diet;Notes\nAnna;vegetarian;\nJake;gluten-free, lactose-free;celery allergy",
+    importHint: (diets: string) =>
+      `Columns: name, diet, notes (a header is optional), separated by tabs, semicolons or commas. Diets: ${diets} — several separated by commas or “and”; anything else goes into the notes (at most 120 characters).`,
+    importFileLoaded: (name: string) => `Loaded “${name}” — its text is in the field below.`,
+    importFileFailed: "Could not read the file.",
+    importCheck: "Check",
+    importChecking: "Checking…",
+    importDetected: (separator: string, header: boolean) =>
+      `Detected: ${separator}${header ? ", with a header" : ", no header"}.`,
+    importSeparators: { tab: "tab", semicolon: "semicolon", comma: "comma", none: "one column" },
+    importPreviewHeading: (count: number) => `Preview: ${count} ${pluralEn(count, "guest", "guests")} to add`,
+    importLine: "Line",
+    importName: "Name",
+    importDiet: "Diet and notes",
+    importProblems: (count: number) => `To fix: ${count} — nothing is added while the list has errors.`,
+    importSave: (count: number) => `Add ${count} ${pluralEn(count, "guest", "guests")}`,
+    importAdded: (count: number) => `Added ${count} ${pluralEn(count, "guest", "guests")}.`,
     groupsHeading: "Inseparable groups",
     noGroups: (min: number, max: number) =>
       `No groups yet. Select ${min} to ${max} people on the list and make a pair or a group — they will always sit together.`,

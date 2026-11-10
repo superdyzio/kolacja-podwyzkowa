@@ -1,4 +1,6 @@
 import { Pin } from "lucide-react";
+import { DietBadges } from "@/components/diets/DietBadges";
+import type { DietTag } from "@/lib/diets/rules";
 import type { Locale } from "@/lib/i18n";
 import { seatingEditorMessages } from "@/lib/seating/messages";
 
@@ -7,12 +9,15 @@ interface Props {
   absent?: boolean;
   // The other present-or-absent members of the guest's inseparable group.
   partners: string[];
+  // guest-import-diets (S-23): the guest's diet and note (the client's seating editor; never a guest or the TV).
+  diets?: readonly DietTag[];
+  dietNote?: string | null;
   locale: Locale;
 }
 
-// Small text markers next to a name: pinned (with a pin icon — never colour alone), absent, member of a group.
-export function GuestMarkers({ pinned = false, absent = false, partners, locale }: Props) {
-  if (!pinned && !absent && partners.length === 0) {
+// Small text markers next to a name: pinned (with a pin icon — never colour alone), absent, member of a group, the diet.
+export function GuestMarkers({ pinned = false, absent = false, partners, diets = [], dietNote = null, locale }: Props) {
+  if (!pinned && !absent && partners.length === 0 && diets.length === 0 && dietNote === null) {
     return null;
   }
   const t = seatingEditorMessages(locale);
@@ -31,6 +36,7 @@ export function GuestMarkers({ pinned = false, absent = false, partners, locale 
           <span className="sr-only">{t.withNames(partners.join(", "))}</span>
         </span>
       )}
+      <DietBadges diets={diets} note={dietNote} locale={locale} />
     </span>
   );
 }

@@ -430,10 +430,10 @@ Additive (two columns with defaults/null and three CHECKs); old code ignores the
 
 #### Automated
 
-- [x] 1.1 Migration applies on populated data and from zero
-- [x] 1.2 Unit and integration tests pass
-- [x] 1.3 Type checking passes
-- [x] 1.4 Linting passes
+- [x] 1.1 Migration applies on populated data and from zero — 972f17c
+- [x] 1.2 Unit and integration tests pass — 972f17c
+- [x] 1.3 Type checking passes — 972f17c
+- [x] 1.4 Linting passes — 972f17c
 
 #### Manual
 
@@ -443,10 +443,10 @@ Additive (two columns with defaults/null and three CHECKs); old code ignores the
 
 #### Automated
 
-- [ ] 2.1 Type checking passes
-- [ ] 2.2 Linting passes
-- [ ] 2.3 Tests pass
-- [ ] 2.4 Build passes
+- [x] 2.1 Type checking passes
+- [x] 2.2 Linting passes
+- [x] 2.3 Tests pass
+- [x] 2.4 Build passes
 
 #### Manual
 

@@ -1,8 +1,11 @@
 import { Fragment, useMemo } from "react";
+import { DietBadges } from "@/components/diets/DietBadges";
+import { DietSection } from "@/components/diets/DietSection";
 import { useRestaurantView } from "@/components/hooks/useRestaurantView";
 import { useServingSelection } from "@/components/hooks/useServingSelection";
 import { DishInstanceChips } from "@/components/orders/DishInstanceChips";
 import { ServingPlan } from "@/components/orders/ServingPlan";
+import { dietSeatLookup } from "@/lib/diets/board";
 import type { Locale } from "@/lib/i18n";
 import { restaurantMessages, servingMessages } from "@/lib/orders/messages";
 import { deliveredCount } from "@/lib/orders/pieces";
@@ -100,11 +103,14 @@ function ItemList({
 // table with its seats' dishes and the dishes for the middle of the table. No prices. Refreshed by polling.
 // serving-highlight: a dish of the prep list, one of its pieces or a line lights up its places on the plan, which
 // stays in view (beside the lists on wide screens, pinned on top while something is picked on narrow ones).
+// guest-import-diets (S-23): „Diety i alergie” (counts and every seat with a diet) before the prep list, and the diet
+// next to each seat's name and under a guest found on the plan.
 export function RestaurantView({ apiBase, initial, eventName, locale }: Props) {
   const t = restaurantMessages(locale);
   const s = servingMessages(locale);
   const { view, gone, offline } = useRestaurantView(apiBase, initial);
-  const { seating, placement, prep, totals } = view;
+  const { seating, placement, prep, totals, diets } = view;
+  const dietAt = useMemo(() => dietSeatLookup(diets), [diets]);
   const serving = useServingSelection(placement, prep);
   const byCourse = prep.some((line) => line.course !== null);
   const servingTables = useMemo(() => new Set(placement.tables.map((table) => table.name)), [placement.tables]);
@@ -142,6 +148,7 @@ export function RestaurantView({ apiBase, initial, eventName, locale }: Props) {
           servingTables={servingTables}
           selection={serving.resolved}
           onClear={serving.clear}
+          diets={diets}
           locale={locale}
           className={cn(
             "bg-background lg:sticky lg:top-4 lg:order-2",
@@ -150,6 +157,7 @@ export function RestaurantView({ apiBase, initial, eventName, locale }: Props) {
           )}
         />
         <div className="flex flex-col gap-8 lg:order-1">
+          <DietSection diets={diets} published={seating.publishedAt !== null} locale={locale} />
           <section aria-labelledby="prep-heading" className="flex flex-col gap-3">
             <h2 id="prep-heading" className="text-xl font-semibold">
               {t.prepHeading}
@@ -259,23 +267,27 @@ export function RestaurantView({ apiBase, initial, eventName, locale }: Props) {
                 <h3 className="text-lg font-semibold">
                   {table.name} <span className="text-muted-foreground text-sm font-normal">{table.room}</span>
                 </h3>
-                {table.seats.map((seat) => (
-                  <div key={seat.seat} className="flex flex-col gap-1 border-l-4 border-amber-500/60 pl-3">
-                    <h4 className="text-muted-foreground text-sm">
-                      {`${t.seat(seat.seat)} · `}
-                      <span className="text-foreground font-semibold">{seat.guestName}</span>
-                    </h4>
-                    <ItemList
-                      deliveredLabel={t.delivered}
-                      partlyLabel={t.partlyServed}
-                      items={seat.items}
-                      spotOf={spotOf}
-                      selectedSpot={serving.selectedSpot}
-                      onSelect={serving.toggleSpot}
-                      showLabel={s.showLine}
-                    />
-                  </div>
-                ))}
+                {table.seats.map((seat) => {
+                  const diet = dietAt(table.name, seat.seat);
+                  return (
+                    <div key={seat.seat} className="flex flex-col gap-1 border-l-4 border-amber-500/60 pl-3">
+                      <h4 className="text-muted-foreground text-sm">
+                        {`${t.seat(seat.seat)} · `}
+                        <span className="text-foreground font-semibold">{seat.guestName}</span>
+                        {diet && <DietBadges diets={diet.diets} note={diet.note} locale={locale} className="ml-2" />}
+                      </h4>
+                      <ItemList
+                        deliveredLabel={t.delivered}
+                        partlyLabel={t.partlyServed}
+                        items={seat.items}
+                        spotOf={spotOf}
+                        selectedSpot={serving.selectedSpot}
+                        onSelect={serving.toggleSpot}
+                        showLabel={s.showLine}
+                      />
+                    </div>
+                  );
+                })}
                 {table.tableItems.length > 0 && (
                   <div className="flex flex-col gap-1 border-l-4 border-sky-500/60 pl-3">
                     <h4 className="text-sm font-semibold">{t.middleOfTable}</h4>
