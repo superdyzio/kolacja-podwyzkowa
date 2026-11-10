@@ -1179,6 +1179,43 @@ export interface Database {
           owners: Json;
         }[];
       };
+      // restaurant-team: the team's invitations, role changes, removals and one-time links, each within the actor's
+      // scope under a lock on the restaurant row (errors NOT_ALLOWED, MEMBER_NOT_FOUND, ALREADY_MEMBER, LAST_OWNER,
+      // ELSEWHERE, RESTAURANT_NOT_FOUND, INVALID_ROLE). The team_* helpers are internal and not called by the app.
+      add_restaurant_member: {
+        Args: {
+          p_restaurant_id: number;
+          p_actor_id: number;
+          p_email: string;
+          p_display_name: string | null;
+          p_role: string;
+        };
+        Returns: {
+          member_account_id: number;
+          member_created: boolean;
+          member_has_password: boolean;
+          member_exclusive: boolean;
+        }[];
+      };
+      set_restaurant_member_role: {
+        Args: { p_restaurant_id: number; p_actor_id: number; p_account_id: number; p_role: string };
+        Returns: undefined;
+      };
+      remove_restaurant_member: {
+        Args: { p_restaurant_id: number; p_actor_id: number; p_account_id: number };
+        Returns: undefined;
+      };
+      issue_member_link: {
+        Args: {
+          p_restaurant_id: number;
+          p_actor_id: number;
+          p_account_id: number;
+          p_token_hash: string;
+          p_invite_expires_at: string;
+          p_reset_expires_at: string;
+        };
+        Returns: { link_kind: string; link_expires_at: string }[];
+      };
     };
     Enums: { [_ in never]: never };
     CompositeTypes: { [_ in never]: never };

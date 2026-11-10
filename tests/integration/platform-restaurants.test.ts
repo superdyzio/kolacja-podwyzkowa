@@ -16,8 +16,8 @@ import {
   listPlatformRestaurants,
   setRestaurantDisabled,
 } from "@/lib/platform";
-import { getRestaurantOverview } from "@/lib/restaurants";
 import type { DbClient } from "@/lib/supabase-client";
+import { getTeam } from "@/lib/team";
 import { createTestEvent, hasLocalDb, localDb, releaseTestEvent, testTag, type TestEvent } from "./helpers";
 
 // platform-restaurants (S-10): restaurants with owners, the list with counters, owner links and the on/off switch on
@@ -207,7 +207,7 @@ describe.skipIf(!hasLocalDb)("platform restaurants (integration)", () => {
     expect(await setRestaurantDisabled(db, 2_000_000_000, true)).toBe("not-found");
   });
 
-  it("the restaurant overview counts events and orders the team by role", async () => {
+  it("the team (restaurant-team getTeam) orders the members by role with their account ids", async () => {
     if (!event) throw new Error("event");
     const waiter = await activeAccount("a-kelner");
     const manager = await activeAccount("b-menedzer");
@@ -215,12 +215,13 @@ describe.skipIf(!hasLocalDb)("platform restaurants (integration)", () => {
     await addRestaurantMember(db, event.restaurantId, waiter.id, "waiter");
     await addRestaurantMember(db, event.restaurantId, manager.id, "manager");
     await addRestaurantMember(db, event.restaurantId, owner.id, "owner");
-    const overview = await getRestaurantOverview(db, event.restaurantId);
-    expect(overview.eventCount).toBe(1);
-    const roles = overview.team.map((m) => m.role);
+    const team = await getTeam(db, event.restaurantId, { accountId: owner.id, role: "owner" });
+    expect(team.you).toEqual({ accountId: owner.id, role: "owner" });
+    const roles = team.members.map((m) => m.role);
     expect(roles.indexOf("owner")).toBeLessThan(roles.indexOf("manager"));
     expect(roles.indexOf("manager")).toBeLessThan(roles.indexOf("waiter"));
-    expect(overview.team.find((m) => m.email === waiter.email)).toEqual({
+    expect(team.members.find((m) => m.email === waiter.email)).toEqual({
+      accountId: waiter.id,
       email: waiter.email,
       displayName: null,
       role: "waiter",

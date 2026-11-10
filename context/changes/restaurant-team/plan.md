@@ -289,14 +289,14 @@ Additive (functions only); the new code calls them, so the migration goes to the
 
 #### Automated
 
-- [ ] 1.1 Migration applies from scratch: `npx supabase db reset`
-- [ ] 1.2 Migration applies on the populated local DB, every existing row unchanged
-- [ ] 1.3 Unit and integration tests pass: `AI_PROVIDER=mock npm test`
-- [ ] 1.4 Lint and type check pass: `npm run lint`, `npx astro check`
+- [x] 1.1 Migration applies from scratch: `npx supabase db reset`
+- [x] 1.2 Migration applies on the populated local DB, every existing row unchanged
+- [x] 1.3 Unit and integration tests pass: `AI_PROVIDER=mock npm test`
+- [x] 1.4 Lint and type check pass: `npm run lint`, `npx astro check`
 
 #### Manual
 
-- [ ] 1.5 The four functions refuse `anon`/`authenticated`
+- [x] 1.5 The four functions refuse `anon`/`authenticated`
 
 ### Phase 2: Routes, page and island
 

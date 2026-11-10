@@ -54,7 +54,7 @@ Restauracja, która gościła kolację 2026-11-08, chce tego narzędzia do włas
 | F-03 | staff-accounts          | (foundation) zaproszona osoba ustawia hasło z jednorazowego linku, loguje się na 30 dni, wylogowuje się i zmienia hasło   | F-02             | FR-022, US-05, NFR-013, NFR-020, NFR-022                                                      | done     |
 | S-10 | platform-restaurants    | administrator platformy zakłada restaurację z zaproszeniem właściciela, widzi listę, wyłącza i włącza restaurację         | F-03             | FR-021, US-05                                                                                 | done     |
 | S-11 | restaurant-events       | lokal zakłada wydarzenie, przegląda nadchodzące, minione i archiwum, kopiuje i wymienia linki, archiwizuje i usuwa        | S-10             | FR-024, FR-025, US-06, US-09, US-10                                                           | done     |
-| S-12 | restaurant-team         | właściciel i menedżer zapraszają zespół, zmieniają role, usuwają osoby i dają jednorazowy link resetu hasła               | S-10             | FR-023, US-05                                                                                 | planning |
+| S-12 | restaurant-team         | właściciel i menedżer zapraszają zespół, zmieniają role, usuwają osoby i dają jednorazowy link resetu hasła               | S-10             | FR-023, US-05                                                                                 | in-progress |
 | S-13 | admin-support-log       | administrator platformy wchodzi w dane lokalu w trybie wsparcia, a właściciel widzi każde wejście w dzienniku             | S-11             | FR-021, US-05, US-10, NFR-012                                                                 | proposed |
 | S-14 | client-restaurant-split | lokal przełącza „lokal prowadzi”; klient prowadzi zamówienia i robi reset prób; pełny reset i koszty AI tylko w panelu    | S-11             | FR-026, FR-027, FR-028, US-07                                                                 | proposed |
 | S-15 | venue-templates         | menedżer zapisuje salę jako szablon, tworzy z niego wydarzenia i aktualizuje wydarzenie z szablonu                        | S-11             | FR-030, US-06, US-09                                                                          | proposed |
@@ -168,7 +168,7 @@ Fundamenty poniżej zakładają, że to istnieje, i NIE budują tego od nowa.
 - **Blockers:** —
 - **Unknowns:** —
 - **Risk:** Granice ról (właściciel, menedżer, kelner) muszą być sprawdzane po stronie serwera dla każdej akcji. Kelner „na imprezę” (część FR-023) jest w S-21 razem z widokiem kelnera.
-- **Status:** planning
+- **Status:** in-progress
 
 ### S-13: Wgląd administratora platformy z dziennikiem wejść
 

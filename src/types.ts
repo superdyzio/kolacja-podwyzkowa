@@ -796,6 +796,44 @@ export interface RestaurantTeamMemberDto {
   hasPassword: boolean;
 }
 
+// --- Restaurant team (restaurant-team, S-12) -----------------------------------------------------------------------
+
+// A member of the restaurant's team as owners and managers see it (never hashes or tokens).
+export interface TeamMemberDto {
+  accountId: number;
+  email: string;
+  displayName: string | null;
+  role: "owner" | "manager" | "waiter";
+  hasPassword: boolean;
+}
+
+// The team of one restaurant and who is looking at it (their account and role decide what the UI offers).
+export interface TeamDto {
+  restaurantId: number;
+  you: { accountId: number; role: "owner" | "manager" | "waiter" };
+  // Owners, then managers, then waiters; by e-mail inside a role.
+  members: TeamMemberDto[];
+}
+
+// The person after „Zaproś”: `link` is a fresh invitation, or null when the e-mail already had an account (they see
+// the restaurant after logging in, or after using the link they already have).
+export interface TeamInviteResultDto {
+  accountId: number;
+  email: string;
+  role: "owner" | "manager" | "waiter";
+  created: boolean;
+  hasPassword: boolean;
+  link: StaffLinkDto | null;
+}
+
+// Every team answer: the whole team, or null when the person no longer manages it (removed themself or gave up the
+// owner/manager role).
+export interface TeamAnswerDto {
+  team: TeamDto | null;
+  invited?: TeamInviteResultDto;
+  link?: StaffLinkDto;
+}
+
 // --- Restaurant events (restaurant-events, S-11) -------------------------------------------------------------------
 
 // Where an event's day stands relative to "today" in the platform's time zone (src/lib/events/dates.ts): an event
