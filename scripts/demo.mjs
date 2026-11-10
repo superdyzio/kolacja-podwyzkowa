@@ -13,7 +13,9 @@
 // main event's card, exit), so the owner's „Dziennik wejść administratora” is not empty. client-restaurant-split: the
 // main event stays client-led; the upcoming company Christmas party is switched to „Lokal prowadzi” and gets its first
 // guests through the panel. menu-catalog-courses: the owner fills the restaurant's menu (all five courses) and gives
-// the main event a reduced menu, from which the client's order lines take their price and course.
+// the main event a reduced menu, from which the client's order lines take their price and course. guest-rsvp-menu:
+// the main event collects RSVPs with a dish choice until tomorrow noon (3 guests on their links, 10 entered by the
+// client, the absent guest's „no”).
 // Every write after that goes through the HTTP API of a running server, so it passes the same validation as the UI.
 // Defaults stay as they are: guest access OFF, guess intake OPEN, no correct amount, only the starter questions.
 // Usage: npm run build && npm run preview, then npm run demo   (BASE_URL, default http://localhost:4321)
@@ -764,6 +766,85 @@ if (eventLists.upcoming.length === 0 || eventLists.past.length === 0 || eventLis
   fail("Lista wydarzeń lokalu demo nie ma wszystkich trzech zakładek (nadchodzące, minione, archiwum).");
 }
 
+// --- 7c. RSVP and dish choice (guest-rsvp-menu, S-25): the client offers the reduced menu's main courses until
+// tomorrow 12:00 (Warsaw time); three guests answer on their own links (guest access on just for that, then off
+// again), the client enters ten more and „nie przyjdzie” for the absent guest (no new absence, so the published
+// seating stays up to date) -------------------------------------------------------------------------------------
+
+const RSVP_DEADLINE = `${shiftDate(today, 1)}T12:00`;
+const rsvpOptions = eventMenu.items
+  .filter((item) => item.available && item.course === "main")
+  .map((item) => item.name)
+  .slice(0, 4);
+if (rsvpOptions.length < 2) {
+  fail(`Menu „${EVENT_NAME}” nie ma dwóch dań głównych do wyboru (${rsvpOptions.join(", ")}).`);
+}
+await step("potwierdzenia: termin i dania", `${api}/rsvp`, {
+  method: "PATCH",
+  json: { deadline: RSVP_DEADLINE, options: rsvpOptions },
+});
+const RSVP_BY_GUESTS = ["Ania", "Bartek", "Kasia"];
+const RSVP_BY_CLIENT = ["Tomek", "Magda", "Piotrek", "Ola", "Kuba", "Ewa", "Marcin", "Zosia", "Michał", "Basia"];
+const rsvpDishOf = (index) => rsvpOptions[index % rsvpOptions.length];
+const guestLinks = await step("linki gości: włączenie na potwierdzenia", `${api}/guest-links`, {
+  method: "PATCH",
+  json: { enabled: true },
+});
+const guestKeyOf = (name) => guestLinks.guests.find((guest) => guest.displayName === name)?.key ?? "";
+for (const [index, name] of RSVP_BY_GUESTS.entries()) {
+  const state = await step(`potwierdzenie gościa: ${name}`, `/api/g/${guestKeyOf(name)}/rsvp`, {
+    method: "PUT",
+    json: { attending: true, dish: rsvpDishOf(index) },
+  });
+  if (state?.rsvp?.attending !== true || state.rsvp.dish !== rsvpDishOf(index) || state.rsvp.open !== true) {
+    fail(`Telefon gościa ${name} nie pokazuje jego potwierdzenia (${JSON.stringify(state?.rsvp ?? null)}).`);
+  }
+}
+await step("linki gości: wyłączenie po potwierdzeniach", `${api}/guest-links`, {
+  method: "PATCH",
+  json: { enabled: false },
+});
+for (const [index, name] of RSVP_BY_CLIENT.entries()) {
+  await step(`potwierdzenie za gościa: ${name}`, `${api}/rsvp/guests/${idOf(name)}`, {
+    method: "PUT",
+    json: { attending: true, dish: rsvpDishOf(index + RSVP_BY_GUESTS.length) },
+  });
+}
+const rsvpBoard = await step(`potwierdzenie za gościa: ${ABSENT} nie przyjdzie`, `${api}/rsvp/guests/${idOf(ABSENT)}`, {
+  method: "PUT",
+  json: { attending: false, dish: null },
+});
+{
+  const coming = RSVP_BY_GUESTS.length + RSVP_BY_CLIENT.length;
+  const expectedDishes = rsvpOptions.map((name, optionIndex) => ({
+    name,
+    count: Array.from({ length: coming }, (_, index) => index).filter(
+      (index) => index % rsvpOptions.length === optionIndex,
+    ).length,
+  }));
+  const counted = Object.fromEntries(rsvpBoard.counts.dishes.map((dish) => [dish.name, dish.count]));
+  const { counts } = rsvpBoard;
+  if (
+    !rsvpBoard.open ||
+    counts.coming !== coming ||
+    counts.notComing !== 1 ||
+    counts.noAnswer !== GUESTS.length - coming - 1 ||
+    counts.noDish !== 0 ||
+    expectedDishes.some((dish) => counted[dish.name] !== dish.count)
+  ) {
+    fail(`Zliczenia potwierdzeń się nie zgadzają: ${JSON.stringify(counts)}.`);
+  }
+}
+const seatingAfterRsvp = await step("rozsadzenie po potwierdzeniach", `${api}/seating`);
+if (!seatingAfterRsvp.upToDate) {
+  fail("Potwierdzenia zmieniły opublikowane rozsadzenie (nowa nieobecność?).");
+}
+const rsvpSummary =
+  `do ${shiftDate(today, 1)} 12:00, przyjdzie ${String(rsvpBoard.counts.coming)} ` +
+  `(${String(RSVP_BY_GUESTS.length)} na swoich linkach, ${String(RSVP_BY_CLIENT.length)} wpisanych przez klienta), ` +
+  `nie przyjdzie ${String(rsvpBoard.counts.notComing)} (${ABSENT}), bez odpowiedzi ${String(rsvpBoard.counts.noAnswer)}; ` +
+  rsvpBoard.counts.dishes.map((dish) => `${dish.name} ×${String(dish.count)}`).join(", ");
+
 // --- 8. The restaurant's team (restaurant-team): the owner invites a manager and a waiter, both set their passwords --
 
 const teamApi = `/api/panel/restaurants/${String(restaurantId)}/team`;
@@ -963,6 +1044,7 @@ Dane demo gotowe („${RESTAURANT_NAME}” · „${EVENT_NAME}”, id ${String(e
 - typy miejsc: ${placeCount} (wpisz prawidłową kwotę 1500, żeby zobaczyć podium i trafione miejsca)
 - import i diety: ${String(IMPORTED_GUESTS.length)} gości z pliku CSV (podgląd, potem zapis), ${String(PATCHED_DIETS.length)} diety wpisane ręcznie; obecni: ${dietSummary} (tablet, zamówienia, sala, rozsadzenie)
 - zamówienie: ${orderBoard.totals.lines} pozycji, ${orderBoard.totals.quantity} szt., wydane: ${orderBoard.totals.deliveredQuantity}
+- potwierdzenia: ${rsvpSummary}
 - bez zmian: przyjmowanie strzałów otwarte, prawidłowa kwota niewpisana, dostęp gości wyłączony, pytania startowe
 - wydarzenia lokalu: nadchodzące ${String(eventLists.upcoming.length)}, minione ${String(eventLists.past.length)}, archiwum ${String(eventLists.archived.length)}
 - zespół lokalu: ${String(team.team.members.length)} osoby (właściciel, menedżer, kelner)
@@ -978,6 +1060,7 @@ TV:          ${new URL(`/tv/${event.tvKey}`, BASE_URL).href}
 TV jednej sali (${PINNED_TV_ROOM}): ${pinnedTvUrl}
 Restauracja: ${new URL(`/r/${event.restaurantKey}`, BASE_URL).href}
 Linki gości: włącz dostęp na ${organizerUrl}/linki
+Potwierdzenia: ${organizerUrl}/potwierdzenia (karta „Potwierdzenia i wybór dania” także w „Praca klienta” w panelu)
 Panel lokalu: ${new URL("/logowanie", BASE_URL).href} — e-mail ${owner.email}, hasło ${OWNER_PASSWORD} (rola: właściciel)
              e-mail ${TEAM[0].email}, hasło ${MANAGER_PASSWORD} (rola: menedżer)
              e-mail ${TEAM[1].email}, hasło ${WAITER_PASSWORD} (rola: kelner)

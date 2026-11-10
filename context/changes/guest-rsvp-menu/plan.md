@@ -440,8 +440,8 @@ the migrated database.
 
 #### Automated
 
-- [x] 2.1 `npm run lint`, `npx astro check`, `npm run build` pass
-- [x] 2.2 `AI_PROVIDER=mock npm test` passes (sections list tests, if any, updated)
+- [x] 2.1 `npm run lint`, `npx astro check`, `npm run build` pass — 8cd7f66
+- [x] 2.2 `AI_PROVIDER=mock npm test` passes (sections list tests, if any, updated) — 8cd7f66
 
 #### Manual
 
@@ -452,9 +452,9 @@ the migrated database.
 
 #### Automated
 
-- [ ] 3.1 `npm run smoke` passes against `AI_PROVIDER=mock npm run preview`
-- [ ] 3.2 `npm run demo` passes
-- [ ] 3.3 `AI_PROVIDER=mock npm test`, `npm run lint`, `npx astro check`, `npm run build` pass
+- [x] 3.1 `npm run smoke` passes against `AI_PROVIDER=mock npm run preview`
+- [x] 3.2 `npm run demo` passes
+- [x] 3.3 `AI_PROVIDER=mock npm test`, `npm run lint`, `npx astro check`, `npm run build` pass
 
 #### Manual
 

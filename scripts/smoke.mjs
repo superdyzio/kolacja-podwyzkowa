@@ -9202,7 +9202,8 @@ const drawingTable38 = state38.data?.drawing?.tables?.[0];
 check(
   "map search: no new data — the guest's state and the tablet's view keep exactly their fields (state, seat, drawing table and seat; view and its seating)",
   state38.status === 200 &&
-    fieldsOf38(state38.data) === "drawing guess modules name orders planVersion seat status version" &&
+    // guest-rsvp-menu (S-25) added `rsvp` (null while RSVP is off); section 40 checks it.
+    fieldsOf38(state38.data) === "drawing guess modules name orders planVersion rsvp seat status version" &&
     fieldsOf38(state38.data?.seat) === "room seat seatCount shape table tablemates x y" &&
     fieldsOf38(drawingTable38) === "name room rotation seatCount seats shape x y" &&
     fieldsOf38(drawingTable38?.seats?.[0]) === "name seat" &&
@@ -9601,5 +9602,291 @@ check(
 
 const deleted39 = await staffCall(sessionOwner, eventApi(e39Id), { method: "DELETE" });
 check("diets: the section's event is deleted", deleted39.status === 200, String(deleted39.status));
+
+// 40. Guests' RSVP and dish choice (guest-rsvp-menu, S-25; FR-039, US-07). A new event of A (panel, in 10 days) with
+// three guests, guest links on and A's catalog as the event's full menu (section 32: Tatar, Pierogi, Schabowy, Sernik,
+// Lemoniada). Off by default (the phone's `rsvp` null, a guest's answer 409); the client's options (only names on the
+// event's menu, ≤ 12, no repeats, strict body) and deadline (Warsaw time; malformed → 400); the phone gets exactly its
+// own answer, the options' names and courses (no prices, ids or other guests) and the poll's token covers it (204 with
+// the same token, a new one after an answer); „no” = absent on the guest list; a dish not offered → 400; the counts on
+// the client's board, the staff's dispatcher, the preview, the event card and the shell; close → the guest 409 and the
+// read-only placement while the client still answers; the lead rule; event B's key / guest, a malformed id, owner B and
+// A's waiter → the identical 404; a deleted guest leaves the counts; the event deleted.
+const ANIA40 = `Ania RSVP ${RUN_TAG}`;
+const BARTEK40 = `Bartek RSVP ${RUN_TAG}`;
+const CELINA40 = `Celina RSVP ${RUN_TAG}`;
+const e40 = await staffCall(sessionOwner, eventsApiOf(restaurantA.id), {
+  method: "POST",
+  json: { name: `RSVP smoke ${RUN_TAG}`, date: shiftDate(today, 10) },
+});
+const e40Id = e40.data?.event?.id ?? 0;
+const e40Organizer = keyOfPath(e40.data?.event?.links?.organizer);
+const e40Api = `/api/o/${e40Organizer}`;
+const e40Tv = keyOfPath(e40.data?.event?.links?.tv);
+const e40Klient = `${eventApi(e40Id)}/klient`;
+const guests40 = await request(`${e40Api}/guests`, {
+  method: "POST",
+  json: { text: [ANIA40, BARTEK40, CELINA40].join("\n") },
+});
+const links40 = await request(`${e40Api}/guest-links`, { method: "PATCH", json: { enabled: true } });
+const keyOf40 = (name) => links40.data?.guests?.find((guest) => guest.displayName === name)?.key ?? "";
+const idOf40 = (name) => guestNamed(guests40, name)?.id ?? 0;
+const guestApi40 = (name) => `/api/g/${keyOf40(name)}`;
+const rsvpOf40 = (res) => res.data?.rsvp;
+const answer40 = (name, json) => request(`${guestApi40(name)}/rsvp`, { method: "PUT", json });
+const proxy40 = (name, json, api = e40Api, token = null) =>
+  token === null
+    ? request(`${api}/rsvp/guests/${String(idOf40(name))}`, { method: "PUT", json })
+    : staffCall(token, `${api}/rsvp/guests/${String(idOf40(name))}`, { method: "PUT", json });
+const settings40 = (json) => request(`${e40Api}/rsvp`, { method: "PATCH", json });
+const countsOf40 = (res) =>
+  [res.data?.counts?.coming, res.data?.counts?.notComing, res.data?.counts?.noAnswer].map(String).join("/");
+
+const offBoard40 = await request(`${e40Api}/rsvp`);
+const offState40 = await request(`${guestApi40(ANIA40)}/state`);
+const offAnswer40 = await answer40(ANIA40, { attending: true, dish: null });
+check(
+  "rsvp: off by default — the client's board has no deadline and offers the event's menu; the guest's state has `rsvp` null and a guest's answer → 409 rsvp-closed",
+  e40.status === 201 &&
+    guests40.status === 201 &&
+    keyOf40(ANIA40).length === 24 &&
+    offBoard40.status === 200 &&
+    offBoard40.data?.deadline === null &&
+    offBoard40.data?.open === false &&
+    JSON.stringify(offBoard40.data?.menu?.map((item) => item.name)) ===
+      JSON.stringify(["Tatar", "Pierogi", "Schabowy", "Sernik", "Lemoniada"]) &&
+    countsOf40(offBoard40) === "0/0/3" &&
+    offState40.status === 200 &&
+    rsvpOf40(offState40) === null &&
+    offAnswer40.status === 409 &&
+    leadCode(offAnswer40) === "rsvp-closed",
+  `${e40.status} ${guests40.status} ${offBoard40.status} ${offBoard40.body.slice(0, 160)} ${offState40.status} ${offAnswer40.status}`,
+);
+
+const notOnMenu40 = await settings40({ options: ["Kawior"] });
+const tooMany40 = await settings40({ options: Array.from({ length: 13 }, (_, index) => `Danie ${String(index)}`) });
+const repeated40 = await settings40({ options: ["Schabowy", "schabowy"] });
+const extra40 = await settings40({ options: [], price: 5 });
+const empty40 = await settings40({});
+const badDeadline40 = await settings40({ deadline: "jutro" });
+const both40 = await settings40({ deadline: `${shiftDate(today, 9)}T20:00`, close: true });
+const set40 = await settings40({
+  options: ["schabowy", "Pierogi", "Sernik"],
+  deadline: `${shiftDate(today, 9)}T20:00`,
+});
+check(
+  "rsvp: options not on the event's menu, 13 options, a repeat in another letter case, an extra field, an empty body, a malformed deadline and a deadline with „close” → 400; three dishes of the menu and a deadline → 200, open, the menu's spelling",
+  notOnMenu40.status === 400 &&
+    (notOnMenu40.data?.error ?? "").includes("Kawior") &&
+    tooMany40.status === 400 &&
+    repeated40.status === 400 &&
+    extra40.status === 400 &&
+    empty40.status === 400 &&
+    badDeadline40.status === 400 &&
+    both40.status === 400 &&
+    set40.status === 200 &&
+    set40.data?.open === true &&
+    typeof set40.data?.deadline === "string" &&
+    JSON.stringify(set40.data?.options?.map((option) => [option.name, option.available])) ===
+      JSON.stringify([
+        ["Pierogi", true],
+        ["Schabowy", true],
+        ["Sernik", true],
+      ]),
+  `${notOnMenu40.status} ${tooMany40.status} ${repeated40.status} ${extra40.status} ${empty40.status} ${badDeadline40.status} ${both40.status} ${set40.status} ${set40.body.slice(0, 200)}`,
+);
+
+const open40 = await request(`${guestApi40(ANIA40)}/state`);
+const openRsvp40 = rsvpOf40(open40);
+const same40 = await request(`${guestApi40(ANIA40)}/state?since=${open40.data?.version ?? ""}`);
+const secrets40 = [e40Organizer, e40Tv, keyOf40(BARTEK40), keyOf40(CELINA40)];
+check(
+  "rsvp: the guest's state carries exactly its own answer and the options' names and courses — no prices, ids, keys or other guests; the poll answers 204 for the same token",
+  open40.status === 200 &&
+    fieldsOf38(openRsvp40) === "attending byOrganizer deadline dish open options" &&
+    openRsvp40?.open === true &&
+    openRsvp40?.attending === null &&
+    openRsvp40?.deadline === set40.data?.deadline &&
+    (openRsvp40?.options ?? []).every((option) => fieldsOf38(option) === "course name") &&
+    JSON.stringify(openRsvp40?.options?.map((option) => option.name)) ===
+      JSON.stringify(["Pierogi", "Schabowy", "Sernik"]) &&
+    !/"price|"priceGrosze"|"id"|"menuItemId"|"guestId"/.test(open40.body) &&
+    !open40.body.includes(BARTEK40) &&
+    !open40.body.includes(CELINA40) &&
+    !secrets40.some((key) => key !== "" && open40.body.includes(key)) &&
+    same40.status === 204,
+  `${open40.status} [${fieldsOf38(openRsvp40)}] ${JSON.stringify(openRsvp40 ?? null).slice(0, 200)} ${same40.status}`,
+);
+
+const aniaYes40 = await answer40(ANIA40, { attending: true, dish: "schabowy" });
+const afterAnswer40 = await request(`${guestApi40(ANIA40)}/state?since=${open40.data?.version ?? ""}`);
+const sameAfter40 = await request(`${guestApi40(ANIA40)}/state?since=${aniaYes40.data?.version ?? ""}`);
+const bartekNo40 = await answer40(BARTEK40, { attending: false, dish: null });
+const notOffered40 = await answer40(CELINA40, { attending: true, dish: "Tatar" });
+const extraGuest40 = await answer40(CELINA40, { attending: true, dish: null, guestId: idOf40(ANIA40) });
+const list40 = await request(`${e40Api}/guests`);
+check(
+  "rsvp: a guest's „yes” with a dish (any letter case) → 200 with a new token (the old one now 200, the new one 204); „no” → the guest is absent on the client's list; a dish that is not an option → 400 dish-not-offered; a body naming a guest → 400",
+  aniaYes40.status === 200 &&
+    rsvpOf40(aniaYes40)?.attending === true &&
+    rsvpOf40(aniaYes40)?.dish === "Schabowy" &&
+    rsvpOf40(aniaYes40)?.byOrganizer === false &&
+    aniaYes40.data?.version !== open40.data?.version &&
+    afterAnswer40.status === 200 &&
+    sameAfter40.status === 204 &&
+    bartekNo40.status === 200 &&
+    rsvpOf40(bartekNo40)?.attending === false &&
+    rsvpOf40(bartekNo40)?.dish === null &&
+    guestNamed(list40, BARTEK40)?.isAbsent === true &&
+    guestNamed(list40, ANIA40)?.isAbsent === false &&
+    notOffered40.status === 400 &&
+    leadCode(notOffered40) === "dish-not-offered" &&
+    extraGuest40.status === 400,
+  `${aniaYes40.status} ${afterAnswer40.status} ${sameAfter40.status} ${bartekNo40.status} ${notOffered40.status} ${extraGuest40.status}`,
+);
+
+const board40 = await request(`${e40Api}/rsvp`);
+const staffBoard40 = await staffCall(sessionManager, `${e40Klient}/rsvp`);
+const preview40 = await staffCall(sessionOwner, `${eventPage(e40Id)}/potwierdzenia`);
+const card40 = await staffCall(sessionOwner, eventPage(e40Id));
+const shell40 = await request(`/o/${e40Organizer}`);
+const page40 = await request(`/o/${e40Organizer}/potwierdzenia`);
+const pageEn40 = await request(`/o/${e40Organizer}/potwierdzenia`, { cookie: "kp-lang=en" });
+const SUMMARY40 = "przyjdzie 1 · nie przyjdzie 1 · bez odpowiedzi 1";
+check(
+  "rsvp: the counts (coming / not coming / no answer, per dish) on the client's board, the staff's dispatcher, the preview, the event card's „Praca klienta” and the client's shell; the client's page in PL and EN",
+  board40.status === 200 &&
+    countsOf40(board40) === "1/1/1" &&
+    JSON.stringify(board40.data?.counts?.dishes) ===
+      JSON.stringify([{ name: "Schabowy", course: "main", count: 1, offered: true }]) &&
+    staffBoard40.status === 200 &&
+    JSON.stringify(staffBoard40.data?.counts) === JSON.stringify(board40.data?.counts) &&
+    preview40.status === 200 &&
+    preview40.body.includes("data-rsvp-manager") &&
+    preview40.body.includes('data-rsvp-count="coming"') &&
+    card40.status === 200 &&
+    card40.body.includes('data-client-section="potwierdzenia"') &&
+    card40.body.includes(SUMMARY40) &&
+    shell40.status === 200 &&
+    shell40.body.includes("data-rsvp-card") &&
+    shell40.body.includes(SUMMARY40) &&
+    page40.status === 200 &&
+    page40.body.includes("data-rsvp-manager") &&
+    page40.body.includes("Potwierdzenia i wybór dania") &&
+    pageEn40.status === 200 &&
+    pageEn40.body.includes("RSVP and dish choice"),
+  `${board40.status} ${countsOf40(board40)} ${staffBoard40.status} ${preview40.status} ${card40.status} ${shell40.status} ${page40.status} ${pageEn40.status}`,
+);
+
+const guestPage40 = await request(`/g/${keyOf40(CELINA40)}`);
+const guestPageEn40 = await request(`/g/${keyOf40(CELINA40)}`, { cookie: "kp-lang=en" });
+const tvPoll40 = await request(`/api/tv/${e40Tv}/seating`);
+check(
+  "rsvp: the guest's page shows the open RSVP above the seat (PL, EN); the TV poll carries nothing of it",
+  guestPage40.status === 200 &&
+    guestPage40.body.includes('data-guest-rsvp="open"') &&
+    guestPage40.body.includes("Potwierdź obecność") &&
+    guestPage40.body.indexOf('data-guest-rsvp="open"') < guestPage40.body.indexOf('id="seat-heading"') &&
+    guestPageEn40.status === 200 &&
+    guestPageEn40.body.includes("Confirm your attendance") &&
+    tvPoll40.status === 200 &&
+    !/rsvp|Schabowy|attending/i.test(tvPoll40.body),
+  `${guestPage40.status} ${guestPageEn40.status} ${tvPoll40.status}`,
+);
+
+const close40 = await settings40({ close: true });
+const closedAnswer40 = await answer40(CELINA40, { attending: true, dish: null });
+const closedState40 = await request(`${guestApi40(CELINA40)}/state`);
+const closedPage40 = await request(`/g/${keyOf40(ANIA40)}`);
+const proxyClosed40 = await proxy40(CELINA40, { attending: true, dish: "Pierogi" });
+check(
+  "rsvp: „Zamknij teraz” → the guests' answers 409 rsvp-closed, the phone shows the own answer read-only at the bottom; the client still answers for a guest (200, by the organizer)",
+  close40.status === 200 &&
+    close40.data?.open === false &&
+    closedAnswer40.status === 409 &&
+    leadCode(closedAnswer40) === "rsvp-closed" &&
+    rsvpOf40(closedState40)?.open === false &&
+    closedPage40.status === 200 &&
+    closedPage40.body.includes('data-guest-rsvp="closed"') &&
+    !closedPage40.body.includes('data-guest-rsvp="open"') &&
+    closedPage40.body.includes('data-rsvp-answer="yes"') &&
+    proxyClosed40.status === 200 &&
+    countsOf40(proxyClosed40) === "2/1/0" &&
+    proxyClosed40.data?.guests?.find((guest) => guest.displayName === CELINA40)?.byOrganizer === true,
+  `${close40.status} ${closedAnswer40.status} ${closedState40.status} ${closedPage40.status} ${proxyClosed40.status} ${countsOf40(proxyClosed40)}`,
+);
+
+const leadOn40 = await staffCall(sessionOwner, eventApi(e40Id), { method: "PATCH", json: { venueLeads: true } });
+const clientOn40 = await proxy40(BARTEK40, { attending: null, dish: null });
+const clientSettingsOn40 = await settings40({ deadline: null });
+const staffOn40 = await proxy40(BARTEK40, { attending: null, dish: null }, e40Klient, sessionManager);
+const leadOff40 = await staffCall(sessionOwner, eventApi(e40Id), { method: "PATCH", json: { venueLeads: false } });
+const staffOff40 = await proxy40(BARTEK40, { attending: false, dish: null }, e40Klient, sessionManager);
+const listAfterLead40 = await request(`${e40Api}/guests`);
+check(
+  "rsvp: while the venue leads the client's answer and settings → 409 venue-leads and the staff answer through the dispatcher („no answer” → present again); when the client leads again the staff → 409 client-leads",
+  leadOn40.status === 200 &&
+    clientOn40.status === 409 &&
+    leadCode(clientOn40) === "venue-leads" &&
+    clientSettingsOn40.status === 409 &&
+    staffOn40.status === 200 &&
+    countsOf40(staffOn40) === "2/0/1" &&
+    leadOff40.status === 200 &&
+    staffOff40.status === 409 &&
+    leadCode(staffOff40) === "client-leads" &&
+    guestNamed(listAfterLead40, BARTEK40)?.isAbsent === false,
+  `${leadOn40.status} ${clientOn40.status} ${clientSettingsOn40.status} ${staffOn40.status} ${leadOff40.status} ${staffOff40.status}`,
+);
+
+const NO40 = { attending: false, dish: null };
+const bOnA40 = await request(`/api/o/${eventB.organizerKey}/rsvp/guests/${String(idOf40(ANIA40))}`, {
+  method: "PUT",
+  json: NO40,
+});
+const bOnUnknown40 = await request(`/api/o/${eventB.organizerKey}/rsvp/guests/${String(UNKNOWN_ID)}`, {
+  method: "PUT",
+  json: NO40,
+});
+const aOnB40 = await request(`${e40Api}/rsvp/guests/${String(b1)}`, { method: "PUT", json: NO40 });
+const aOnUnknown40 = await request(`${e40Api}/rsvp/guests/${String(UNKNOWN_ID)}`, { method: "PUT", json: NO40 });
+const aMalformed40 = await request(`${e40Api}/rsvp/guests/abc`, { method: "PUT", json: NO40 });
+const denied40 = [];
+for (const [name, token, path] of [
+  ["owner B on A's dispatcher", sessionB, `${e40Klient}/rsvp`],
+  ["A's waiter on A's dispatcher", sessionWaiter, `${e40Klient}/rsvp`],
+  ["a malformed event id", sessionOwner, "/api/panel/events/abc/klient/rsvp"],
+]) {
+  const res = await staffCall(token, path);
+  if (!noAccessJson(res)) denied40.push(`${name}: ${String(res.status)}`);
+}
+const ownerBPreview40 = await staffCall(sessionB, `${eventPage(e40Id)}/potwierdzenia`);
+const aniaAfter40 = (await request(`${e40Api}/rsvp`)).data?.guests?.find((guest) => guest.displayName === ANIA40);
+check(
+  "rsvp: event B's key on A's guest, A's key on B's guest and a malformed id answer exactly like an unknown id; owner B, A's waiter and a malformed event id → the identical 404 (preview page too); nothing changed",
+  bOnA40.status === 404 &&
+    bOnA40.body === bOnUnknown40.body &&
+    aOnB40.status === 404 &&
+    aOnB40.body === aOnUnknown40.body &&
+    aMalformed40.body === aOnUnknown40.body &&
+    denied40.length === 0 &&
+    ownerBPreview40.status === 404 &&
+    aniaAfter40?.attending === true &&
+    aniaAfter40?.dish === "Schabowy",
+  `${bOnA40.status} ${aOnB40.status} ${aMalformed40.status} ${denied40.join("; ")} ${ownerBPreview40.status}`,
+);
+
+const deleteAnia40 = await request(`${e40Api}/guests/${String(idOf40(ANIA40))}`, { method: "DELETE" });
+const afterDelete40 = await request(`${e40Api}/rsvp`);
+check(
+  "rsvp: deleting a guest removes their answer from the counts (and their dish)",
+  deleteAnia40.status === 200 &&
+    afterDelete40.data?.counts?.total === 2 &&
+    countsOf40(afterDelete40) === "1/0/1" &&
+    !(afterDelete40.data?.counts?.dishes ?? []).some((dish) => dish.name === "Schabowy"),
+  `${deleteAnia40.status} ${countsOf40(afterDelete40)} ${JSON.stringify(afterDelete40.data?.counts?.dishes ?? null)}`,
+);
+
+const deleted40 = await staffCall(sessionOwner, eventApi(e40Id), { method: "DELETE" });
+check("rsvp: the section's event is deleted", deleted40.status === 200, String(deleted40.status));
 
 finish();
