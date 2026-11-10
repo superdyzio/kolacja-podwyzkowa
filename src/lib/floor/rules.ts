@@ -15,6 +15,18 @@ export function isFloorOpen(eventDate: string, archivedAt: string | null, now: D
   return archivedAt === null && eventTiming(eventDate, now) === "today";
 }
 
+// The instant the floor window of an event dated `eventDate` opens: midnight Europe/Warsaw of its day (DST-correct —
+// the clock changes at 02:00 / 03:00, so midnight always exists). staff-offline-readout (S-27): no staff copy is
+// saved before it (a kitchen tablet opened days ahead keeps nothing). Together with floorWindowEnd it is exactly
+// isFloorOpen's date rule: start ≤ now < end.
+export function floorWindowStart(eventDate: string): string {
+  const instant = localHourToInstant(eventDate, 0);
+  if (instant === null) {
+    throw new Error(`Nieprawidłowa data wydarzenia: ${eventDate}`);
+  }
+  return instant;
+}
+
 // The instant the floor window of an event dated `eventDate` closes: noon Europe/Warsaw of the next day (DST-correct).
 // staff-offline-readout (S-27): the staff's offline copies expire then, so nothing of the event day outlives it.
 // Any event date the rules allow works, the last one (2100-12-31 → 2101-01-01) included.

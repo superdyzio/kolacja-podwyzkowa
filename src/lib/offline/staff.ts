@@ -1,5 +1,5 @@
 import { isDietTag } from "@/lib/diets/rules";
-import { floorWindowEnd } from "@/lib/floor/rules";
+import { floorWindowEnd, floorWindowStart } from "@/lib/floor/rules";
 import { isMenuCourse } from "@/lib/menu/rules";
 import { toRestaurantItem } from "@/lib/orders/restaurant";
 import type {
@@ -19,9 +19,11 @@ import { offlineOwner } from "./cache";
 // state of their event in this browser — the tablet's own view (the published seating, the prep list by course, where
 // to serve what with the delivered pieces, the totals, the diets) plus the plan photo's aspect ratio, never prices,
 // ids, keys or who marked a piece. One fixed localStorage key per area (no key in the names); every copy is tagged
-// with its scope's owner (the link, or the event and the account / the waiter) and expires when the floor window ends
-// (noon Europe/Warsaw the day after the event), so nothing — the diets included — outlives the event day on a
-// device. Storage is never trusted: every read is validated in depth. Pure: no DB, no `astro:*`, no `window`.
+// with its scope's owner (the link, or the event and the account / the waiter) and exists only inside the floor window:
+// nothing is saved before midnight Europe/Warsaw of the event's day (a kitchen tablet opened days ahead keeps nothing —
+// the PR #4 review's decision) and every copy expires when the window ends (noon the day after), so nothing — the
+// diets included — is kept on a device outside the event day. Storage is never trusted: every read is validated in
+// depth. Pure: no DB, no `astro:*`, no `window`.
 
 export type StaffReadoutArea = "tablet" | "floor" | "waiter";
 
@@ -43,11 +45,14 @@ export const STAFF_READOUT_PATH_PREFIXES: Readonly<Record<StaffReadoutArea, stri
 };
 
 // What a page hands its island (computed on the server): no secret and no saved data. owner: who may read the copy;
+// startsAt: from when a copy may be saved (and the readout worker registered) — midnight Europe/Warsaw of the event's
+// day, checked by the browser's clock at every save, so a tablet left open overnight starts saving at midnight;
 // expiresAt: when the copy stops existing; apiBase: the live API (its `/orders` is the read); livePath: the live
 // page (= the readout worker's scope); readoutPath: livePath + "/odczyt".
 export interface StaffReadoutScope {
   area: StaffReadoutArea;
   owner: string;
+  startsAt: string;
   expiresAt: string;
   apiBase: string;
   livePath: string;
@@ -80,14 +85,44 @@ export function staffReadoutOwner(area: StaffReadoutArea, ...parts: readonly (st
   return offlineOwner([area, ...parts.map(String)].join("|"));
 }
 
-function scope(area: StaffReadoutArea, owner: string, expiresAt: string, apiBase: string, livePath: string) {
-  return { area, owner, expiresAt, apiBase, livePath, readoutPath: `${livePath}/odczyt` };
+function scope(
+  area: StaffReadoutArea,
+  owner: string,
+  eventDate: string,
+  expiresAt: string,
+  apiBase: string,
+  livePath: string,
+): StaffReadoutScope {
+  return {
+    area,
+    owner,
+    startsAt: floorWindowStart(eventDate),
+    expiresAt,
+    apiBase,
+    livePath,
+    readoutPath: `${livePath}/odczyt`,
+  };
 }
 
-// The kitchen tablet of one link (a replaced link is another owner).
+// The kitchen tablet of one link (a replaced link is another owner). Its live page opens on any day; the copy is saved
+// only inside the event's floor window (startsAt … expiresAt).
 export function tabletReadoutScope(key: string, eventDate: string): StaffReadoutScope {
   const livePath = `/r/${key}`;
-  return scope("tablet", staffReadoutOwner("tablet", livePath), floorWindowEnd(eventDate), `/api${livePath}`, livePath);
+  return scope(
+    "tablet",
+    staffReadoutOwner("tablet", livePath),
+    eventDate,
+    floorWindowEnd(eventDate),
+    `/api${livePath}`,
+    livePath,
+  );
+}
+
+// Whether a copy of this scope may be saved (and its worker registered) at `now`: inside the event's floor window.
+// The floors open only inside it anyway; the tablet's link works on every day.
+export function isStaffReadoutWindowOpen(readoutScope: Pick<StaffReadoutScope, "startsAt" | "expiresAt">, now: Date) {
+  const at = now.getTime();
+  return at >= Date.parse(readoutScope.startsAt) && at < Date.parse(readoutScope.expiresAt);
 }
 
 // The staff floor of one event for one account (another account on the same device never reads it).
@@ -96,6 +131,7 @@ export function floorReadoutScope(eventId: number, accountId: number, eventDate:
   return scope(
     "floor",
     staffReadoutOwner("floor", eventId, accountId),
+    eventDate,
     floorWindowEnd(eventDate),
     `/api/panel/events/${id}/obsluga`,
     `/panel/obsluga/${id}`,
@@ -116,6 +152,7 @@ export function waiterReadoutScope(
   return scope(
     "waiter",
     staffReadoutOwner("waiter", eventId, waiterId),
+    eventDate,
     new Date(expiresAt).toISOString(),
     `/api/kelner/sala/${id}`,
     `/kelner/sala/${id}`,
@@ -349,13 +386,14 @@ function isArea(value: unknown): value is StaffReadoutArea {
 
 // --- The envelope ---------------------------------------------------------------------------------------------------
 
-// The copy to store, or null when it would already be expired (e.g. a tablet opened after the window: nothing kept).
+// The copy to store, or null outside the scope's window: before the event's day (a tablet opened days ahead keeps
+// nothing) or already expired (a tablet opened after the window keeps nothing either).
 export function staffOfflineEntry(
   readoutScope: StaffReadoutScope,
   data: StaffReadoutDto,
   savedAt: string,
 ): StaffOfflineEntry | null {
-  if (Date.parse(savedAt) >= Date.parse(readoutScope.expiresAt)) {
+  if (!isStaffReadoutWindowOpen(readoutScope, new Date(savedAt))) {
     return null;
   }
   return {

@@ -40,8 +40,9 @@ function reload() {
 // floor of this event — read only, through the tablet's board (no prices). Its HTML carries no data: the copy comes
 // from localStorage, so the readout worker can keep the page and serve it in place of a live page of the scope that
 // cannot load („fallback”: the address is the live page's; it starts as offline, offers „Spróbuj ponownie”, and says
-// when the server can be reached again). While it can, the page reads the live API itself and saves what it got; the
-// app's denial forgets the copy and the worker at once. The copy disappears at the end of the event's floor window.
+// when the server can be reached again). While it can, the page reads the live API itself and saves what it got —
+// only inside the event's floor window, like the live pages (and only then registers the worker); the app's denial
+// forgets the copy and the worker at once. The copy disappears at the end of the event's floor window.
 export function StaffReadoutPage({ scope, locale }: Props) {
   const t = staffOfflineMessages(locale);
   const o = offlineMessages(locale);
@@ -95,7 +96,10 @@ export function StaffReadoutPage({ scope, locale }: Props) {
           return;
         }
         if (result.status === "ok") {
-          saveStaffReadout(scope, result.data, new Date().toISOString());
+          // Only inside the event's floor window (before the event's day nothing is kept and no worker registered).
+          if (saveStaffReadout(scope, result.data, new Date().toISOString())) {
+            registerReadoutWorker(scope.livePath);
+          }
           set("online");
         } else if (result.status === "gone") {
           clearStaffReadout(scope.area, scope.owner);
@@ -129,7 +133,6 @@ export function StaffReadoutPage({ scope, locale }: Props) {
       }
     }
 
-    registerReadoutWorker(scope.livePath);
     document.addEventListener("visibilitychange", onVisibilityChange);
     window.addEventListener("online", onOnline);
     window.addEventListener("offline", onOffline);

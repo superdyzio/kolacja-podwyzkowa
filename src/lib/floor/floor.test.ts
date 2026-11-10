@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { CLIENT_ROUTE_PATTERNS } from "@/lib/client-routes/match";
-import { FLOOR_ROLES, FLOOR_ROUTES, floorRouteAllows, floorWindowEnd, isFloorOpen } from "./rules";
+import { FLOOR_ROLES, FLOOR_ROUTES, floorRouteAllows, floorWindowEnd, floorWindowStart, isFloorOpen } from "./rules";
 import { floorMessages } from "./messages";
 import { EVENT_DATE_MAX, EVENT_DATE_MIN } from "@/lib/events/rules";
 
@@ -58,6 +58,35 @@ describe("floorWindowEnd (staff-offline-readout: when the staff's offline copies
       const end = Date.parse(floorWindowEnd(date));
       expect(isFloorOpen(date, null, new Date(end - 1))).toBe(true);
       expect(isFloorOpen(date, null, new Date(end))).toBe(false);
+    }
+  });
+});
+
+describe("floorWindowStart (staff-offline-readout: no staff copy before the event's day)", () => {
+  it("is midnight Europe/Warsaw of the event's day, in winter (CET) and in summer (CEST)", () => {
+    expect(floorWindowStart(EVENT)).toBe("2026-11-13T23:00:00.000Z");
+    expect(floorWindowStart("2026-07-04")).toBe("2026-07-03T22:00:00.000Z");
+  });
+
+  it("crosses the clock changes and the year's start", () => {
+    // 2026-03-29 and 2026-10-25: the clock changes at 02:00 / 03:00, midnight is still the old offset.
+    expect(floorWindowStart("2026-03-29")).toBe("2026-03-28T23:00:00.000Z");
+    expect(floorWindowStart("2026-03-30")).toBe("2026-03-29T22:00:00.000Z");
+    expect(floorWindowStart("2026-10-25")).toBe("2026-10-24T22:00:00.000Z");
+    expect(floorWindowStart("2026-10-26")).toBe("2026-10-25T23:00:00.000Z");
+    expect(floorWindowStart("2027-01-01")).toBe("2026-12-31T23:00:00.000Z");
+    expect(floorWindowStart(EVENT_DATE_MIN)).toBe("1999-12-31T23:00:00.000Z");
+  });
+
+  it("is exactly where the floor opens: start ≤ now < end is isFloorOpen's date rule", () => {
+    for (const date of [EVENT, "2026-07-04", "2026-03-29", "2026-10-25", "2026-03-28", "2026-10-24"]) {
+      const start = Date.parse(floorWindowStart(date));
+      const end = Date.parse(floorWindowEnd(date));
+      expect(isFloorOpen(date, null, new Date(start - 1))).toBe(false);
+      expect(isFloorOpen(date, null, new Date(start))).toBe(true);
+      for (let at = start - 3_600_000; at <= end + 3_600_000; at += 1_800_000) {
+        expect(isFloorOpen(date, null, new Date(at))).toBe(at >= start && at < end);
+      }
     }
   });
 });

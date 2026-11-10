@@ -10978,6 +10978,25 @@ check(
   `${rotated42.status} ${oldReadout42.status} ${oldReadout42.robots} ${oldApi42.status} ${oldApi42.robots} ${newReadout42.status}`,
 );
 
+// The PR #4 review's decision: the tablet keeps a copy only inside the event's floor window (its day in Warsaw until
+// noon the next one). Tomorrow's event's tablet link works today but offers no readout link, and its scope starts at
+// tomorrow's Warsaw midnight (today 22:00 or 23:00 UTC; the browser saves nothing before it — unit tests).
+const laterTablet42 = keyOfPath(later42.data?.event?.links?.restaurant);
+const laterLive42 = await request(`/r/${laterTablet42}`);
+const laterReadout42 = await request(tabletReadout42(laterTablet42));
+const startsTomorrow42 = new RegExp(`startsAt&quot;:\\[0,&quot;${today}T2[23]:00:00\\.000Z&quot;`);
+check(
+  "staff readout: tomorrow's event's tablet page works today without the readout link (no copy before its day); its readout scope starts at tomorrow's midnight in Warsaw; today's tablet page links its readout",
+  laterTablet42.length === 24 &&
+    laterLive42.status === 200 &&
+    !laterLive42.body.includes("data-staff-readout-link") &&
+    startsTomorrow42.test(laterLive42.body) &&
+    laterReadout42.status === 200 &&
+    startsTomorrow42.test(laterReadout42.body) &&
+    tabletLive42.body.includes("data-staff-readout-link"),
+  `${laterLive42.status} ${laterReadout42.status} ${laterLive42.body.includes("data-staff-readout-link")}`,
+);
+
 const login42 = await request("/logowanie");
 const kelnerNoCookie42 = await request("/kelner");
 const kelnerWithCookie42 = await waiterCall(waiterCookie42, "/kelner");

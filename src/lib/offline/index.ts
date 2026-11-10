@@ -40,6 +40,7 @@ export {
   isAppDenial,
   isStaffReadout,
   isStaffReadoutApiBase,
+  isStaffReadoutWindowOpen,
   liveStaffEntry,
   parseStaffOfflineEntry,
   readStaffReadoutOnce,

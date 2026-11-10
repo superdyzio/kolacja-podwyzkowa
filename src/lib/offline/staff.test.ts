@@ -6,6 +6,7 @@ import {
   isAppDenial,
   isStaffReadout,
   isStaffReadoutApiBase,
+  isStaffReadoutWindowOpen,
   liveStaffEntry,
   parseStaffOfflineEntry,
   readStaffReadoutOnce,
@@ -17,6 +18,7 @@ import {
   waiterReadoutScope,
 } from "./staff";
 import { staffOfflineMessages } from "./staff-messages";
+import { isFloorOpen } from "@/lib/floor/rules";
 
 // The staff's offline readout (staff-offline-readout, S-27): the copy (no prices, ids, keys or marks), its validation,
 // the owner and expiry of every scope, and the one-shot read. Fixed instants only. 2026-11-14 is a Saturday (CET).
@@ -24,6 +26,7 @@ import { staffOfflineMessages } from "./staff-messages";
 const KEY = "AAAAAAAAAAAAAAAAAAAAAAAA";
 const OTHER_KEY = "BBBBBBBBBBBBBBBBBBBBBBBB";
 const EVENT_DATE = "2026-11-14";
+const WINDOW_START = "2026-11-13T23:00:00.000Z";
 const WINDOW_END = "2026-11-15T11:00:00.000Z";
 const SAVED_AT = "2026-11-14T20:34:00.000Z";
 
@@ -210,6 +213,7 @@ describe("scopes", () => {
     const scope = tabletReadoutScope(KEY, EVENT_DATE);
     expect(scope).toMatchObject({
       area: "tablet",
+      startsAt: WINDOW_START,
       expiresAt: WINDOW_END,
       apiBase: `/api/r/${KEY}`,
       livePath: `/r/${KEY}`,
@@ -246,6 +250,27 @@ describe("scopes", () => {
     // The event moved a day later: the waiter's own expiry still binds.
     expect(waiterReadoutScope(12, 3, "2026-11-15", WINDOW_END).expiresAt).toBe(WINDOW_END);
     expect(waiterReadoutScope(12, 3, "2026-11-13", WINDOW_END).expiresAt).toBe("2026-11-14T11:00:00.000Z");
+  });
+
+  it("every scope starts at midnight Europe/Warsaw of the event's day (CET and CEST)", () => {
+    expect(floorReadoutScope(12, 5, EVENT_DATE).startsAt).toBe(WINDOW_START);
+    expect(waiterReadoutScope(12, 3, EVENT_DATE, WINDOW_END).startsAt).toBe(WINDOW_START);
+    expect(tabletReadoutScope(KEY, "2026-07-04").startsAt).toBe("2026-07-03T22:00:00.000Z");
+  });
+
+  it("the save window is exactly the floor's (isFloorOpen of a non-archived event), fixed clocks", () => {
+    for (const date of [EVENT_DATE, "2026-07-04", "2026-03-29", "2026-10-25"]) {
+      const scope = tabletReadoutScope(KEY, date);
+      const start = Date.parse(scope.startsAt);
+      const end = Date.parse(scope.expiresAt);
+      for (let at = start - 2 * 3_600_000; at <= end + 2 * 3_600_000; at += 900_000) {
+        expect(isStaffReadoutWindowOpen(scope, new Date(at))).toBe(isFloorOpen(date, null, new Date(at)));
+      }
+      expect(isStaffReadoutWindowOpen(scope, new Date(start - 1))).toBe(false);
+      expect(isStaffReadoutWindowOpen(scope, new Date(start))).toBe(true);
+      expect(isStaffReadoutWindowOpen(scope, new Date(end - 1))).toBe(true);
+      expect(isStaffReadoutWindowOpen(scope, new Date(end))).toBe(false);
+    }
   });
 
   it("different areas never share an owner, even for the same ids", () => {
@@ -292,6 +317,17 @@ describe("the envelope", () => {
   it("is not made when it would already be expired (a tablet opened after the window keeps nothing)", () => {
     expect(staffOfflineEntry(scope, data, WINDOW_END)).toBeNull();
     expect(staffOfflineEntry(scope, data, "2026-11-16T09:00:00.000Z")).toBeNull();
+  });
+
+  it("is not made before the event's day (a kitchen tablet opened days ahead keeps nothing), from midnight on it is", () => {
+    const tablet = tabletReadoutScope(KEY, EVENT_DATE);
+    const copy = staffReadoutFromView(view, ASPECT);
+    expect(staffOfflineEntry(tablet, copy, "2026-11-11T18:00:00.000Z")).toBeNull();
+    expect(staffOfflineEntry(tablet, copy, "2026-11-13T22:59:59.999Z")).toBeNull(); // 23:59:59 the day before
+    expect(staffOfflineEntry(tablet, copy, WINDOW_START)).not.toBeNull(); // 00:00 on the day
+    expect(staffOfflineEntry(tablet, copy, "2026-11-15T10:59:59.999Z")).not.toBeNull(); // 11:59 the day after
+    expect(staffOfflineEntry(tablet, copy, WINDOW_END)).toBeNull();
+    expect(staffOfflineEntry(tablet, copy, "jutro")).toBeNull();
   });
 
   it("is read only by its own scope and only before it expires", () => {

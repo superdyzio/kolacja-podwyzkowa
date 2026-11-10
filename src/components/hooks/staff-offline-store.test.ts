@@ -107,6 +107,20 @@ describe("staff offline store", () => {
     expect(storage.size).toBe(0);
   });
 
+  it("a tablet opened before the event's day saves nothing and leaves another event's live copy alone", async () => {
+    const store = await freshStore();
+    const tomorrow = tabletReadoutScope(OTHER_KEY, "2026-11-15");
+    expect(store.saveStaffReadout(tablet, data, SAVED_AT)).toBe(true);
+    // The same device opens tomorrow's event's tablet link today: no save, today's copy stays.
+    expect(store.saveStaffReadout(tomorrow, data, SAVED_AT)).toBe(false);
+    store.sweepExpiredStaffReadouts(DURING);
+    expect(store.readStaffReadout(tablet, DURING)?.savedAt).toBe(SAVED_AT);
+    expect(store.readStaffReadout(tomorrow, DURING)).toBeNull();
+    // From midnight of its day on it saves (and replaces the one tablet slot).
+    expect(store.saveStaffReadout(tomorrow, data, tomorrow.startsAt)).toBe(true);
+    expect(store.readStaffReadout(tomorrow, new Date(tomorrow.startsAt))).not.toBeNull();
+  });
+
   it("never reads an expired copy, and the sweep removes it and any unreadable text", async () => {
     storage.set(STAFF_READOUT_STORAGE_KEYS.waiter, '{"v":0,"data":"diety"}');
     const store = await freshStore();
