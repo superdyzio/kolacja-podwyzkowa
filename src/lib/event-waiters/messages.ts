@@ -70,6 +70,7 @@ export const eventWaiterMessages = defineMessages(
     floorWaiter: (name: string) => `Kelner na imprezę: ${name}`,
     floorUntil: (time: string) => `dostęp do ${time}`,
     logout: "Wyloguj",
+    noSession: "Brak wejścia kelnera na salę. Otwórz link albo wpisz kod od menedżera.",
     confirmLogout:
       "Wylogować? Ponowne wejście na salę wymaga nowego linku lub kodu od menedżera — ten przestanie działać.",
   },
@@ -131,6 +132,7 @@ export const eventWaiterMessages = defineMessages(
     floorWaiter: (name: string) => `Waiter for the event: ${name}`,
     floorUntil: (time: string) => `access until ${time}`,
     logout: "Log out",
+    noSession: "No waiter entry to the floor. Open the link or type the code from the manager.",
     confirmLogout:
       "Log out? Getting back to the floor needs a new link or code from the manager — this one stops working.",
   },

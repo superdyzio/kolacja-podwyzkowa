@@ -1,0 +1,50 @@
+---
+import Layout from "@/layouts/Layout.astro";
+import { Button } from "@/components/ui/button";
+import { getDb } from "@/lib/db";
+import { findWaiterLink } from "@/lib/event-waiters";
+import { eventWaiterMessages } from "@/lib/event-waiters/messages";
+import { WAITER_ENTER_API, WAITER_ENTRY_PATH } from "@/lib/event-waiters/paths";
+
+// The per-event waiter's one-time link (event-waiter-access, S-21b). Opening the page uses nothing up (messengers
+// fetch links for their previews): only the button's form post (/api/kelner/wejscie) does. The page names the event
+// and the waiter while the link works — unused, unexpired, its event on the floor right now; an unknown, used,
+// expired, revoked or malformed link and one of an event that has not started yet get ONE 404 page with the same words.
+const t = eventWaiterMessages(Astro.locals.locale);
+const token = Astro.params.token ?? "";
+const db = getDb();
+const info = db ? await findWaiterLink(db, token, new Date()) : null;
+if (!info) {
+  Astro.response.status = 404;
+}
+---
+
+<Layout title={info ? t.linkTitle : t.invalidLinkTitle}>
+  <main class="mx-auto flex min-h-screen max-w-md flex-col justify-center gap-6 p-6">
+    {info ? (
+      <>
+        <header class="flex flex-col gap-1" data-waiter-link-page>
+          <h1 class="text-3xl font-bold">{info.eventName}</h1>
+          <p class="text-lg">{t.linkWaiter(info.name)}</p>
+        </header>
+        <p class="text-muted-foreground">{t.linkText}</p>
+        <form method="post" action={WAITER_ENTER_API} class="flex flex-col gap-4">
+          <input type="hidden" name="link" value={token} />
+          <Button type="submit" className="h-12 text-base">
+            {t.enterButton}
+          </Button>
+        </form>
+      </>
+    ) : (
+      <>
+        <h1 class="text-3xl font-bold" data-waiter-link-invalid>
+          {t.invalidLinkTitle}
+        </h1>
+        <p class="text-muted-foreground">{t.invalid}</p>
+        <a href={WAITER_ENTRY_PATH} class="font-medium underline underline-offset-4">
+          {t.typeCode}
+        </a>
+      </>
+    )}
+  </main>
+</Layout>

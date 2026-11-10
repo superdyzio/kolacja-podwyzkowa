@@ -1,0 +1,68 @@
+---
+import Layout from "@/layouts/Layout.astro";
+import NoAccess from "@/components/NoAccess.astro";
+import { OrderManager } from "@/components/orders/OrderManager";
+import { Button } from "@/components/ui/button";
+import { eventWaiterMessages } from "@/lib/event-waiters/messages";
+import { WAITER_LOGOUT_API, waiterFloorApiBase } from "@/lib/event-waiters/paths";
+import { formatEventDate } from "@/lib/events/dates";
+import { floorMessages } from "@/lib/floor/messages";
+import { getOrderBoard } from "@/lib/orders";
+import { formatSupportTime } from "@/lib/support/format";
+import { findWaiterFloorEvent } from "@/lib/waiter-api";
+
+// The per-event waiter's floor (event-waiter-access, S-21b; FR-029, US-08): /kelner/sala/<event id> — the same order
+// page in floor mode as S-21's /panel/obsluga/<id> (the bill, the prep list, the serving plan with the guests, every
+// line with its price, „Wydane” per line and per piece, refills, drinks add-only), on the waiter's OWN event while it is
+// on the floor, through its own API (/api/kelner/sala/<id>). No link to the panel; the only way out is „Wyloguj”
+// (after a confirm: the link and the code are used up). Another event, an archived one, outside the window → the
+// no-access page (404); without a waiter session the middleware sends the browser to /kelner.
+const locale = Astro.locals.locale;
+const t = eventWaiterMessages(locale);
+const tf = floorMessages(locale);
+const floor = await findWaiterFloorEvent(Astro.locals, Astro.params.id);
+if (!floor) {
+  Astro.response.status = 404;
+}
+const eventId = floor?.event.id ?? 0;
+const board = floor ? await getOrderBoard(floor.db, eventId) : null;
+---
+
+{floor && board ? (
+  <Layout title={t.floorTitle(floor.event.name)}>
+    <main class="mx-auto flex max-w-6xl flex-col gap-6 p-4 sm:p-8" data-waiter-floor={eventId}>
+      <header class="flex flex-col gap-2">
+        <div class="flex flex-wrap items-start justify-between gap-2">
+          <h1 class="text-3xl font-bold">{floor.event.name}</h1>
+          <form method="post" action={WAITER_LOGOUT_API} data-confirm={t.confirmLogout}>
+            <Button type="submit" variant="outline" className="h-10">
+              {t.logout}
+            </Button>
+          </form>
+        </div>
+        <p class="text-muted-foreground">
+          {tf.heading}
+          {` · ${formatEventDate(floor.date, locale)}`}
+        </p>
+        <p class="text-sm">
+          {t.floorWaiter(floor.waiter.name)} · {t.floorUntil(formatSupportTime(floor.waiter.expiresAt, locale))}
+        </p>
+        <p class="text-sm text-muted-foreground">{tf.intro}</p>
+      </header>
+      <OrderManager client:load apiBase={waiterFloorApiBase(eventId)} initial={board} floor={true} locale={locale} />
+    </main>
+  </Layout>
+) : (
+  <NoAccess />
+)}
+
+<script>
+  // Logout ends the per-event access for good (the link and the code are used up): ask first.
+  for (const form of document.querySelectorAll<HTMLFormElement>("form[data-confirm]")) {
+    form.addEventListener("submit", (event) => {
+      if (!window.confirm(form.dataset.confirm ?? "")) {
+        event.preventDefault();
+      }
+    });
+  }
+</script>

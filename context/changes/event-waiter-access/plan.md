@@ -327,9 +327,9 @@ and in the waiter areas; old code ignores it).
 
 #### Automated
 
-- [x] 1.1 Migration applies: `npx supabase migration up` on the populated local DB (demo data of the previous commit intact)
-- [x] 1.2 `AI_PROVIDER=mock npm test` passes (unit + integration incl. `event-waiters`)
-- [x] 1.3 `npm run lint` and `npx astro check` pass
+- [x] 1.1 Migration applies: `npx supabase migration up` on the populated local DB (demo data of the previous commit intact) — 306a01e
+- [x] 1.2 `AI_PROVIDER=mock npm test` passes (unit + integration incl. `event-waiters`) — 306a01e
+- [x] 1.3 `npm run lint` and `npx astro check` pass — 306a01e
 
 #### Manual
 
@@ -339,8 +339,8 @@ and in the waiter areas; old code ignores it).
 
 #### Automated
 
-- [ ] 2.1 `AI_PROVIDER=mock npm test`, `npm run lint`, `npx astro check` pass
-- [ ] 2.2 `npm run build` passes
+- [x] 2.1 `AI_PROVIDER=mock npm test`, `npm run lint`, `npx astro check` pass
+- [x] 2.2 `npm run build` passes
 
 #### Manual
 

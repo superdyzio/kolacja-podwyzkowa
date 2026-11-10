@@ -11,5 +11,8 @@ declare namespace App {
     // the central panel guards can admit the platform admin's support access only on reads and log what was opened.
     // Null everywhere else.
     staffRequest: { method: string; path: string } | null;
+    // Set by src/middleware.ts in the per-event waiter's area (/kelner/**, /api/kelner/**; event-waiter-access): the
+    // waiter of the `kp-waiter` cookie, else null (and everywhere outside that area). Never set together with `staff`.
+    waiter: import("@/lib/event-waiters/types").WaiterSession | null;
   }
 }

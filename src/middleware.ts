@@ -17,6 +17,16 @@ import {
   type AuthArea,
 } from "@/lib/auth";
 import { getDb } from "@/lib/db";
+import {
+  classifyWaiterPath,
+  clearedWaiterCookie,
+  eventWaiterMessages,
+  getWaiterSession,
+  readWaiterToken,
+  WAITER_COOKIE,
+  WAITER_ENTRY_PATH,
+  type WaiterArea,
+} from "@/lib/event-waiters";
 import { LOCALE_PARAM, isLocale, localeCookieName, resolveLocale } from "@/lib/i18n";
 import { clientMayWrite, isOrganizerApiPath, LEAD_CODES, leadMessages } from "@/lib/lead";
 import { keyedApiSubPath, MODULE_CODES, moduleForApiPath, modulesMessages, type ModuleKey } from "@/lib/modules";
@@ -33,6 +43,13 @@ import { keyedApiSubPath, MODULE_CODES, moduleForApiPath, modulesMessages, type 
 // session → 303 to the login page, /api/panel/ without one → 401 with one fixed body (whatever the cookie was). The
 // login page with a session → 303 to the panel. `locals.staffRequest` (method, path) lets the central panel guards
 // admit the platform admin's support access only on reads and log what was opened (admin-support-log, S-13).
+//
+// The per-event waiter (event-waiter-access, S-21b; src/lib/event-waiters/paths.ts): /kelner/** and /api/kelner/** are
+// an area of their own. Every mutation under /api/kelner/ must carry a same-origin Origin header (else 403, before any
+// DB read); only the waiter cookie `kp-waiter` is read there (`locals.waiter`; `locals.staff` stays null) and only the
+// staff cookie in the staff areas, so neither door ever opens the other. /kelner/sala/** without a waiter session →
+// 303 to the entry page, /api/kelner/sala/** → 401 with one fixed body; a waiter cookie that opens nothing is cleared on
+// those answers.
 //
 // „Lokal prowadzi” (client-restaurant-split, S-14): while the restaurant's staff lead the event, the organizer link is
 // view-only — every non-safe method under /api/o/<key>/ gets a 409 with `code: "venue-leads"` before the route runs.
@@ -95,6 +112,44 @@ async function guardStaffArea(context: APIContext, next: MiddlewareNext, area: A
   return withHeaders(await next(), AUTH_AREA_HEADERS);
 }
 
+async function guardWaiterArea(context: APIContext, next: MiddlewareNext, area: WaiterArea): Promise<Response> {
+  const { request, url, locals } = context;
+  if (
+    (area === "waiter-api" || area === "waiter-floor-api") &&
+    isMutation(request.method) &&
+    !isSameOrigin(request.headers.get("origin"), url.origin)
+  ) {
+    return withHeaders(
+      Response.json({ error: authMessages(locals.locale).forbiddenOrigin }, { status: 403 }),
+      AUTH_AREA_HEADERS,
+    );
+  }
+
+  const cookieHeader = request.headers.get("cookie");
+  const token = readWaiterToken(cookieHeader);
+  const db = getDb();
+  locals.waiter = db && token ? await getWaiterSession(db, token) : null;
+
+  const stale = !locals.waiter && (cookieHeader ?? "").includes(`${WAITER_COOKIE}=`);
+  const clearing: Record<string, string> = stale
+    ? { "Set-Cookie": clearedWaiterCookie({ secure: url.protocol === "https:" }) }
+    : {};
+
+  if (!locals.waiter && area === "waiter-floor") {
+    return withHeaders(
+      new Response(null, { status: 303, headers: { Location: WAITER_ENTRY_PATH, ...clearing } }),
+      AUTH_AREA_HEADERS,
+    );
+  }
+  if (!locals.waiter && area === "waiter-floor-api") {
+    return withHeaders(
+      Response.json({ error: eventWaiterMessages(locals.locale).noSession }, { status: 401, headers: clearing }),
+      AUTH_AREA_HEADERS,
+    );
+  }
+  return withHeaders(await next(), AUTH_AREA_HEADERS);
+}
+
 // The module an API request of a key route needs when that module is off in the event, else null (event-modules).
 function offModuleOf(pathname: string, access: Access): { role: "organizer" | "guest"; module: ModuleKey } | null {
   const keyed = keyedApiSubPath(pathname);
@@ -109,6 +164,7 @@ export const onRequest = defineMiddleware(async (context, next) => {
   context.locals.access = null;
   context.locals.staff = null;
   context.locals.staffRequest = null;
+  context.locals.waiter = null;
 
   const { pathname } = context.url;
   const cookieName = localeCookieName(pathname);
@@ -132,6 +188,10 @@ export const onRequest = defineMiddleware(async (context, next) => {
   const staffArea = classifyAuthPath(pathname);
   if (staffArea) {
     return guardStaffArea(context, next, staffArea);
+  }
+  const waiterArea = classifyWaiterPath(pathname);
+  if (waiterArea) {
+    return guardWaiterArea(context, next, waiterArea);
   }
 
   if (!parseAccessPath(pathname)) {

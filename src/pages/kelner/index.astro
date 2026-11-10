@@ -1,0 +1,93 @@
+---
+import Layout from "@/layouts/Layout.astro";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { eventWaiterMessages, waiterErrorText } from "@/lib/event-waiters/messages";
+import { WAITER_ENTER_API, WAITER_LOGOUT_API, waiterFloorPath } from "@/lib/event-waiters/paths";
+
+// The per-event waiter's entry page (event-waiter-access, S-21b): a plain form posting the typed code to
+// /api/kelner/wejscie, which answers 303 (the floor, or back here with ?blad=<code>). No redirect when this device
+// already has a waiter session: it shows „Wróć na salę” and „Wyloguj” above the form (its event may be over — a new
+// code must still be typeable). Public; the code never goes into a URL.
+const t = eventWaiterMessages(Astro.locals.locale);
+const error = waiterErrorText(Astro.url.searchParams.get("blad"), Astro.locals.locale);
+const loggedOut = Astro.url.searchParams.get("wylogowano") === "1";
+const waiter = Astro.locals.waiter;
+---
+
+<Layout title={t.entryTitle}>
+  <main class="mx-auto flex min-h-screen max-w-md flex-col justify-center gap-6 p-6" data-waiter-entry>
+    <header class="flex flex-col gap-1">
+      <h1 class="text-3xl font-bold">{t.entryHeading}</h1>
+      <p class="text-muted-foreground">{t.entryIntro}</p>
+    </header>
+    {error && (
+      <p
+        role="alert"
+        aria-label={t.errorRegion}
+        class="rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm"
+        data-waiter-error
+      >
+        {error}
+      </p>
+    )}
+    {loggedOut && !error && (
+      <p role="status" aria-label={t.noticeRegion} class="rounded-md border bg-muted p-3 text-sm">
+        {t.loggedOut}
+      </p>
+    )}
+    {waiter && (
+      <section class="flex flex-col gap-3 rounded-md border p-3" data-waiter-active={waiter.eventId}>
+        <p class="text-sm">{t.activeSession}</p>
+        <p class="font-medium">{t.linkWaiter(waiter.name)}</p>
+        <div class="flex flex-wrap gap-2">
+          <a
+            href={waiterFloorPath(waiter.eventId)}
+            class="inline-flex h-10 items-center rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground"
+          >
+            {t.backToFloor}
+          </a>
+          <form method="post" action={WAITER_LOGOUT_API} data-confirm={t.confirmLogout}>
+            <Button type="submit" variant="outline">
+              {t.logout}
+            </Button>
+          </form>
+        </div>
+      </section>
+    )}
+    <form method="post" action={WAITER_ENTER_API} class="flex flex-col gap-4">
+      <div class="flex flex-col gap-2">
+        <label for="kod" class="font-medium">
+          {t.codeLabel}
+        </label>
+        <Input
+          id="kod"
+          name="kod"
+          type="text"
+          autoComplete="off"
+          autoCapitalize="characters"
+          spellCheck={false}
+          maxLength={40}
+          aria-describedby="kod-hint"
+          required
+          className="font-mono text-lg tracking-wider"
+        />
+        <p id="kod-hint" class="text-sm text-muted-foreground">
+          {t.codeHint}
+        </p>
+      </div>
+      <Button type="submit">{t.enterButton}</Button>
+    </form>
+  </main>
+</Layout>
+
+<script>
+  // Logout ends the per-event access for good (the link and the code are used up): ask first.
+  for (const form of document.querySelectorAll<HTMLFormElement>("form[data-confirm]")) {
+    form.addEventListener("submit", (event) => {
+      if (!window.confirm(form.dataset.confirm ?? "")) {
+        event.preventDefault();
+      }
+    });
+  }
+</script>
