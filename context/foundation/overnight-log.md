@@ -156,6 +156,7 @@ Dziennik decyzji, zależności i blokerów nocnego przebiegu M-2 (zasady: `overn
 - 2026-11-10 — S-20 przypięcie: `/tv/<klucz>?sala=<nazwa sali>` (bez nowego sekretu, wielkość liter bez znaczenia), rozwiązywane na serwerze względem opublikowanych sal TEGO wydarzenia; nieznana/zła wartość = zwykły TV (200), surowa wartość nigdy nie trafia do HTML. `TvTableDto.room` (nazwa sali ze snapshotu) dodane — także w rysunku gościa.
 - 2026-11-10 — S-20 linki per sala: organizator (`/o/<klucz>`) i karta wydarzenia w panelu (`EventCardDto.rooms`, wycinane w trybie wsparcia razem z linkami) — doradca radził wyciąć kartę panelu, ale czas pozwolił ją zrobić.
 - 2026-11-10 — S-20 uwaga: sala demo (39 gości, 3 sale) przy 16:9 już się obraca — przy regule „najmniejsza czcionka” TV wydarzenia 1 też by się obracał; do oceny przez użytkownika (stała `TV_READABLE_FRACTION`).
+- 2026-11-10 — S-20 /10x-archive: ostrzeżenia „2 ręczne pozycje Progress (0 automatycznych)” i „brak impl-review” — wybrana rekomendowana opcja „Continue archiving”; zmiana w `context/archive/2026-11-10-tv-room-rotation/`, S-20 `done`. Ręczne: 1.3 (gęsty lokal obraca się na prawdziwym TV, rzadki pokazuje całość), 2.4 (linki sal kopiują się i otwierają przypięty TV). Wynik: testy 126 plików / 1267 (+ 6 pominiętych), lint i `astro check` czyste, build, smoke 776 PASS, demo OK.
 
 ## Dodane zależności
 

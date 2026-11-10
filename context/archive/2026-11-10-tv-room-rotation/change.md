@@ -1,10 +1,10 @@
 ---
 change_id: tv-room-rotation
 title: TV rotates through rooms when names are unreadable and can be pinned to one room
-status: implemented
+status: archived
 created: 2026-11-10
 updated: 2026-11-10
-archived_at: null
+archived_at: 2026-11-10T05:59:17Z
 ---
 
 ## Notes

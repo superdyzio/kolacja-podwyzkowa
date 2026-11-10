@@ -62,7 +62,7 @@ Restauracja, która gościła kolację 2026-11-08, chce tego narzędzia do włas
 | S-17 | event-modules           | lokal oznacza dostępne moduły, klient je włącza, administrator odblokowuje płatne; wyłączony moduł znika wszędzie         | S-14             | FR-031, US-07, NFR-023                                                                        | done     |
 | S-18 | event-branding          | właściciel ustawia markę lokalu, klient markę wydarzenia; gość, TV, karteczki i panel pokazują je bez nazwy platformy     | S-11             | FR-032                                                                                        | done     |
 | S-19 | scale-150               | klient prowadzi wydarzenie do 150 gości, stołów do 30 miejsc i ok. 60 stolików w dotychczasowych czasach reakcji          | F-02             | FR-033, US-08, NFR-011, NFR-015                                                               | done     |
-| S-20 | tv-room-rotation        | TV przy wejściu pokazuje cały lokal i sam przechodzi po salach, gdy imiona byłyby nieczytelne; TV da się przypiąć do sali | S-19             | FR-034, US-08, NFR-018                                                                        | in-progress |
+| S-20 | tv-room-rotation        | TV przy wejściu pokazuje cały lokal i sam przechodzi po salach, gdy imiona byłyby nieczytelne; TV da się przypiąć do sali | S-19             | FR-034, US-08, NFR-018                                                                        | done |
 | S-21 | waiter-day-and-refills  | kelner (konto albo dostęp „na imprezę”) widzi dzisiejsze imprezy, oznacza wydane sztuki i dopisuje dokładki               | S-12, S-14       | FR-029, FR-023, US-08                                                                         | done |
 | S-22 | guest-map-search        | gość, klient, personel i tablet wyszukują gościa po imieniu, a mapa podświetla jego miejsce                               | S-21             | FR-048, US-08                                                                                 | proposed |
 | S-23 | guest-import-diets      | klient importuje gości z CSV lub wklejki z dietami, a kuchnia i kelnerzy widzą diety przy miejscu i w zliczeniach         | S-14, S-21       | FR-035, FR-036, US-07, NFR-021                                                                | proposed |
@@ -269,7 +269,7 @@ Fundamenty poniżej zakładają, że to istnieje, i NIE budują tego od nowa.
 - **Blockers:** —
 - **Unknowns:** —
 - **Risk:** Rotacja nie może przeszkadzać „Pokaż na TV” ani odświeżaniu po publikacji. Cel czytelności z v1 (≥ 2,5% wysokości ekranu) zostaje.
-- **Status:** in-progress
+- **Status:** done
 
 ### S-21: Kelner w dniu imprezy i dokładki
 
@@ -473,3 +473,4 @@ Fundamenty poniżej zakładają, że to istnieje, i NIE budują tego od nowa.
 - **S-18: Właściciel ustawia nazwę, logo i kolor lokalu. Klient dodaje nazwę i logo swojej firmy lub wydarzenia. Widać je na telefonach gości, TV, karteczkach z QR i w panelu. Gość nie widzi nazwy platformy, a „Kolacja podwyżkowa” znika z produktu, także z promptu AI.** — Archived 2026-11-10 → `context/archive/2026-11-10-event-branding/`. Lesson: —.
 - **S-19: Klient prowadzi wydarzenie do 150 gości, ze stołami do 30 miejsc i ok. 60 stolikami. Projekt losowania jest gotowy w ≤ 3 s, a publikacja dociera na TV i do 200 otwartych telefonów w ≤ 5 s. Kilka imprez naraz nie spowalnia się poniżej tych celów.** — Archived 2026-11-10 → `context/archive/2026-11-10-scale-150/`. Lesson: —.
 - **S-21: Kelner ze swoim kontem widzi wydarzenia trwające dziś. Okno obejmuje czas po północy, do południa dnia następnego. Widzi plan z gośćmi, zamówienia z cenami i rachunek, oznacza wydane sztuki i dopisuje zamówienia na sali (dokładki, dodatkowe napoje). Menedżer dodaje kelnera „na imprezę”: imię i jednorazowy link lub kod ważny do końca okna imprezy, bez hasła.** — Archived 2026-11-10 → `context/archive/2026-11-10-waiter-day-and-refills/`. Kelner „na imprezę” wycięty (otwarty, patrz Note w S-21). Lesson: —.
+- **S-20: TV przy wejściu pokazuje cały lokal. Gdy imiona byłyby mniejsze niż cel czytelności, sam przechodzi po salach co kilka sekund. Klient i lokal mogą przypiąć TV do jednej sali.** — Archived 2026-11-10 → `context/archive/2026-11-10-tv-room-rotation/`. Lesson: —.
