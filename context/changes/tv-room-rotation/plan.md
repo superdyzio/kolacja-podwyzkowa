@@ -111,8 +111,8 @@ Unit: readability with fixed inputs (two sparse tables → venue; many dense tab
 
 #### Automated
 
-- [x] 1.1 Unit tests for the pure rules pass
-- [x] 1.2 Lint and type check pass
+- [x] 1.1 Unit tests for the pure rules pass — be12b65
+- [x] 1.2 Lint and type check pass — be12b65
 
 #### Manual
 
@@ -122,9 +122,9 @@ Unit: readability with fixed inputs (two sparse tables → venue; many dense tab
 
 #### Automated
 
-- [x] 2.1 Tests, lint, check and build pass
-- [x] 2.2 Smoke passes against the mock preview
-- [x] 2.3 Demo passes and prints the pinned-room TV link
+- [x] 2.1 Tests, lint, check and build pass — e8691ce
+- [x] 2.2 Smoke passes against the mock preview — e8691ce
+- [x] 2.3 Demo passes and prints the pinned-room TV link — e8691ce
 
 #### Manual
 
