@@ -1,8 +1,10 @@
 ---
 import NoAccess from "@/components/NoAccess.astro";
+import BrandHeader from "@/components/branding/BrandHeader.astro";
 import { RestaurantView } from "@/components/restaurant/RestaurantView";
 import Layout from "@/layouts/Layout.astro";
 import { accessFor, restaurantPath } from "@/lib/access";
+import { getEventBranding } from "@/lib/branding";
 import { getDb } from "@/lib/db";
 import { getRestaurantView } from "@/lib/orders";
 import { restaurantMessages } from "@/lib/orders/messages";
@@ -23,6 +25,8 @@ const view =
         name: access.event.name,
         apiBase: `/api${restaurantPath(Astro.params.key ?? "")}`,
         initial: await getRestaurantView(db, access.event.id),
+        // event-branding (S-18): the restaurant's and the client's brand above the view (page load only).
+        branding: await getEventBranding(db, access.event.id),
       }
     : null;
 ---
@@ -30,6 +34,7 @@ const view =
 {view ? (
   <Layout title={restaurantMessages(locale).pageTitle(view.name)}>
     <main class="mx-auto flex max-w-4xl flex-col gap-6 p-4 sm:p-8 lg:max-w-7xl">
+      <BrandHeader branding={view.branding} base={`${view.apiBase}/branding`} locale={locale} />
       <RestaurantView client:load apiBase={view.apiBase} initial={view.initial} eventName={view.name} locale={locale} />
     </main>
   </Layout>

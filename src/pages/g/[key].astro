@@ -1,5 +1,6 @@
 ---
 import NoAccess from "@/components/NoAccess.astro";
+import BrandHeader from "@/components/branding/BrandHeader.astro";
 import { GuestGuessView } from "@/components/guest/GuestGuessView";
 import { GuestModuleGate } from "@/components/guest/GuestModuleGate";
 import { GuestOrderView } from "@/components/guest/GuestOrderView";
@@ -9,6 +10,7 @@ import { GuestTopicView } from "@/components/guest/GuestTopicView";
 import Layout from "@/layouts/Layout.astro";
 import { accessFor, guestPath } from "@/lib/access";
 import { getGuestAiQuota } from "@/lib/ai-topics/service";
+import { getEventBranding } from "@/lib/branding";
 import { getDb } from "@/lib/db";
 import { getGuestState, guestPhoneMessages } from "@/lib/guest-links";
 import { guestModulesOf } from "@/lib/modules/rules";
@@ -40,6 +42,9 @@ const view =
         apiBase: `/api${guestPath(Astro.params.key ?? "")}`,
         initial: await getGuestState(db, access.event.id, access.guest, guestModulesOf(access.event.modules)),
         initialQuota: await getGuestAiQuota(db, access.event.id, access.guest.id),
+        // event-branding (S-18): the restaurant's and the client's brand, read at page load (logo URLs carry the
+        // upload's version; the phone's poll is unchanged).
+        branding: await getEventBranding(db, access.event.id),
       }
     : null;
 ---
@@ -47,7 +52,8 @@ const view =
 {view ? (
   <Layout title={view.eventName}>
     <main class="mx-auto flex min-h-screen max-w-md flex-col gap-8 px-4 pt-6 pb-12">
-      <header>
+      <header class="flex flex-col gap-3">
+        <BrandHeader branding={view.branding} base={`${view.apiBase}/branding`} locale={locale} />
         <h1 class="text-sm font-medium tracking-wide text-muted-foreground uppercase">{view.eventName}</h1>
       </header>
 

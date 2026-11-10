@@ -12,6 +12,9 @@ import { getAiTopicUsage } from "@/lib/ai-topics/service";
 import { clientWorkMessages } from "@/lib/client-routes/messages";
 import { CLIENT_SECTIONS, KEY_SECTIONS, panelClientApiBase, panelEventApiBase } from "@/lib/client-routes/sections";
 import { EventModulesManager } from "@/components/modules/EventModulesManager";
+import { EventBrandingManager } from "@/components/branding/EventBrandingManager";
+import ReadOnlyFrame from "@/components/lead/ReadOnlyFrame.astro";
+import { brandingMessages, getEventBranding } from "@/lib/branding";
 import { getEventModules, modulesMessages } from "@/lib/modules";
 import { EVENT_STAFF_ROLES, eventPanelMessages, getEventCard } from "@/lib/events";
 import { formatGuestLinksSummary, getGuestAccessEnabled } from "@/lib/guest-links";
@@ -48,6 +51,7 @@ const lead = leadMessages(locale);
 const clientWork = clientWorkMessages(locale);
 const tmod = modulesMessages(locale);
 const tmenu = menuMessages(locale);
+const tbrand = brandingMessages(locale);
 const panel = await findPanelEvent(Astro.locals, Astro.params.id, EVENT_STAFF_ROLES);
 const loaded = panel
   ? await Promise.all([
@@ -64,6 +68,8 @@ const loaded = panel
       getEventMenu(panel.db, panel.event.restaurantId, panel.event.id),
       // event-modules (S-17): „Moduły wydarzenia”.
       getEventModules(panel.db, panel.event.id),
+      // event-branding (S-18): „Marka wydarzenia” (members only; support mode shows no brand editor).
+      panel.support ? Promise.resolve(null) : getEventBranding(panel.db, panel.event.id),
     ])
   : null;
 const card = loaded?.[0] ?? null;
@@ -72,9 +78,21 @@ if (!panel || !card) {
 }
 const work = loaded
   ? (() => {
-      const [, board, guestAccessEnabled, guessBoard, questionList, orderItems, aiUsage, templates, menu, modules] =
-        loaded;
+      const [
+        ,
+        board,
+        guestAccessEnabled,
+        guessBoard,
+        questionList,
+        orderItems,
+        aiUsage,
+        templates,
+        menu,
+        modules,
+        branding,
+      ] = loaded;
       return {
+        branding,
         templates,
         menu,
         modules,
@@ -197,6 +215,27 @@ const work = loaded
               locale={locale}
             />
           )}
+        </section>
+      )}
+
+      {!panel.support && work.branding && (
+        <section
+          aria-labelledby="event-branding-heading"
+          class="flex flex-col gap-3 rounded-xl border p-4 sm:p-6"
+          data-event-branding-section
+        >
+          <h2 id="event-branding-heading" class="text-xl font-semibold">
+            {tbrand.eventHeading}
+          </h2>
+          <p class="text-sm text-muted-foreground">{card.venueLeads ? tbrand.eventHintStaff : tbrand.readOnlyStaff}</p>
+          <ReadOnlyFrame readOnly={!card.venueLeads} locale={locale}>
+            <EventBrandingManager
+              client:load
+              apiBase={panelClientApiBase(card.id)}
+              initial={work.branding}
+              locale={locale}
+            />
+          </ReadOnlyFrame>
         </section>
       )}
       <AiCosts board={work.ai} locale={locale} />

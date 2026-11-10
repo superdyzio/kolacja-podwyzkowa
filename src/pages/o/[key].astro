@@ -1,5 +1,7 @@
 ---
 import NoAccess from "@/components/NoAccess.astro";
+import BrandHeader from "@/components/branding/BrandHeader.astro";
+import { EventBrandingManager } from "@/components/branding/EventBrandingManager";
 import LeadBanner from "@/components/lead/LeadBanner.astro";
 import { EventModulesManager } from "@/components/modules/EventModulesManager";
 import ReadOnlyFrame from "@/components/lead/ReadOnlyFrame.astro";
@@ -9,6 +11,7 @@ import Layout from "@/layouts/Layout.astro";
 import { accessFor, organizerPath, tvPath } from "@/lib/access";
 import { formatClientAiTopicSummary, MAX_EVENT_TOPICS, MAX_GUEST_TOPICS } from "@/lib/ai-topics/limits";
 import { getAiTopicUsage } from "@/lib/ai-topics/service";
+import { brandingMessages, getEventBranding } from "@/lib/branding";
 import { getDb } from "@/lib/db";
 import { formatGuestLinksSummary, getGuestAccessEnabled } from "@/lib/guest-links";
 import { formatGuessSummary, getGuessBoard } from "@/lib/guesses";
@@ -32,7 +35,7 @@ const db = access ? getDb() : null;
 // One read of the seating board carries the guest list and the venue too.
 // event-modules (S-17): a switched-off module's card is gone and its data is not read.
 const on = access?.event.modules;
-const [board, guestAccessEnabled, guessBoard, questionList, aiUsage, orderItems, modules] =
+const [board, guestAccessEnabled, guessBoard, questionList, aiUsage, orderItems, modules, branding] =
   access && db
     ? await Promise.all([
         getSeatingBoard(db, access.event.id),
@@ -42,8 +45,10 @@ const [board, guestAccessEnabled, guessBoard, questionList, aiUsage, orderItems,
         on?.aiTopics ? getAiTopicUsage(db, access.event.id, locale) : null,
         getOrderItems(db, access.event.id),
         getEventModules(db, access.event.id),
+        // event-branding (S-18): the brand header and „Marka wydarzenia”.
+        getEventBranding(db, access.event.id),
       ])
-    : [null, false, null, null, null, null, null];
+    : [null, false, null, null, null, null, null, null];
 const view = access
   ? {
       name: access.event.name,
@@ -80,15 +85,18 @@ const view = access
       aiTopicsOn: access.event.modules.aiTopics,
       modules,
       modulesApi: `/api${organizerPath(access.event.organizerKey)}/modules`,
+      branding,
     }
   : null;
 const tm = modulesMessages(locale);
+const tb = brandingMessages(locale);
 ---
 
 {view ? (
   <Layout title={t.pageTitle(view.name)}>
     <main class="mx-auto flex max-w-3xl flex-col gap-8 p-4 sm:p-8">
       <header class="flex flex-col gap-1">
+        <BrandHeader branding={view.branding} base={`${view.apiBase}/branding`} locale={locale} />
         <p class="text-sm text-muted-foreground">{t.kicker}</p>
         <h1 class="text-3xl font-bold">{view.name}</h1>
       </header>
@@ -270,6 +278,22 @@ const tm = modulesMessages(locale);
               clientApi={view.venueLeads ? null : view.modulesApi}
               locale={locale}
             />
+          </ReadOnlyFrame>
+        </section>
+      )}
+
+      {view.branding && (
+        <section
+          aria-labelledby="branding-heading"
+          class="flex flex-col gap-3 rounded-xl border p-4 sm:p-6"
+          data-event-branding
+        >
+          <h2 id="branding-heading" class="text-xl font-semibold">
+            {tb.eventHeading}
+          </h2>
+          <p class="text-sm text-muted-foreground">{tb.eventHint}</p>
+          <ReadOnlyFrame readOnly={view.venueLeads} locale={locale}>
+            <EventBrandingManager client:load apiBase={view.apiBase} initial={view.branding} locale={locale} />
           </ReadOnlyFrame>
         </section>
       )}

@@ -15,6 +15,14 @@ import { canManageTeam, getTeam, teamMessages } from "@/lib/team";
 import { NewTemplateForm } from "@/components/templates/NewTemplateForm";
 import { listVenueTemplates, templateMessages, templatePath } from "@/lib/templates";
 import { getMenuCatalog, menuMessages } from "@/lib/menu";
+import { RestaurantBrandingManager } from "@/components/branding/RestaurantBrandingManager";
+import {
+  BRAND_EDIT_ROLES,
+  BRAND_VIEW_ROLES,
+  brandingMessages,
+  getRestaurantBranding,
+  restaurantLogoUrl,
+} from "@/lib/branding";
 
 // The restaurant panel (platform-restaurants, S-10; restaurant-events, S-11; restaurant-team, S-12): the restaurant,
 // the person's role, its events and (owners and managers) the team. Owners and managers create an event („Nowe
@@ -46,6 +54,14 @@ const tv = templateMessages(locale);
 // menu-catalog-courses (S-16): owners and managers (and support) see the „Menu lokalu” section with a link.
 const catalog = panel && manages ? await getMenuCatalog(panel.db, panel.restaurant.id) : null;
 const tm = menuMessages(locale);
+// event-branding (S-18): owners and managers (and support) see „Marka lokalu”; only owners edit it. Read from the ONE
+// guard call of this page; in support mode the logo is not loaded (its route would be a second logged read).
+const brand =
+  panel && BRAND_VIEW_ROLES.includes(panel.role) ? await getRestaurantBranding(panel.db, panel.restaurant.id) : null;
+const brandEditor = Boolean(panel && !support && BRAND_EDIT_ROLES.includes(panel.role));
+const brandBase = panel ? `/api/panel/restaurants/${String(panel.restaurant.id)}/branding` : "";
+const brandLogo = brand?.logo && !support ? restaurantLogoUrl(brandBase, brand.logo.version) : null;
+const tb = brandingMessages(locale);
 const listParam = Astro.url.searchParams.get("lista");
 const tab = listParam === "minione" ? "past" : listParam === "archiwum" ? "archived" : "upcoming";
 const tabs = lists
@@ -74,7 +90,19 @@ if (!panel) {
         >
           {support ? ts.backToPlatform : t.backToPanel}
         </a>
-        <h1 class="text-3xl font-bold">{panel.restaurant.name}</h1>
+        <div class="flex items-center gap-3">
+          {brandLogo && (
+            <img src={brandLogo} alt={tb.logoAlt(brand?.name ?? "")} class="h-12 w-auto max-w-[30%] object-contain" />
+          )}
+          <h1 class="text-3xl font-bold">{brand?.name ?? panel.restaurant.name}</h1>
+        </div>
+        {brand?.color && (
+          <div
+            class="h-1.5 w-24 rounded-full"
+            style={`background-color: ${brand.color};`}
+            data-brand-color={brand.color}
+          />
+        )}
         {!support && (
           <p>
             {t.yourRole}: <span class="rounded-full border px-2 py-0.5 text-sm">{roles[panel.role]}</span>
@@ -83,6 +111,43 @@ if (!panel) {
       </header>
 
       {support && <SupportBanner support={support} locale={locale} />}
+
+      {brand && (
+        <section
+          aria-labelledby="brand-heading"
+          class="flex flex-col gap-3 rounded-xl border p-4 sm:p-6"
+          data-restaurant-branding
+        >
+          <h2 id="brand-heading" class="text-xl font-semibold">
+            {tb.restaurantHeading}
+          </h2>
+          <p class="text-sm text-muted-foreground">{tb.restaurantHint}</p>
+          {brandEditor ? (
+            <RestaurantBrandingManager client:load initial={brand} locale={locale} />
+          ) : (
+            <dl class="flex flex-col gap-2 text-sm" data-brand-read-only>
+              <div class="flex items-center gap-2">
+                <dt class="font-medium">{tb.colorLabel}:</dt>
+                <dd class="flex items-center gap-2">
+                  {brand.color ? (
+                    <>
+                      <span class="inline-block size-5 rounded border" style={`background-color: ${brand.color};`} />
+                      <span class="font-mono">{brand.color}</span>
+                    </>
+                  ) : (
+                    tb.colorNone
+                  )}
+                </dd>
+              </div>
+              <div class="flex items-center gap-2">
+                <dt class="font-medium">{tb.logoLabel}:</dt>
+                <dd>{brand.logo ? tb.logoSet : tb.logoNone}</dd>
+              </div>
+              <p class="text-muted-foreground">{tb.restaurantReadOnly}</p>
+            </dl>
+          )}
+        </section>
+      )}
 
       {manages && !support && (
         <NewEventForm

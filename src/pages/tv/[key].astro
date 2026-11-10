@@ -1,8 +1,10 @@
 ---
 import NoAccess from "@/components/NoAccess.astro";
+import BrandHeader from "@/components/branding/BrandHeader.astro";
 import { TvSeatingView } from "@/components/tv/TvSeatingView";
 import Layout from "@/layouts/Layout.astro";
 import { accessFor, tvPath } from "@/lib/access";
+import { getEventBranding } from "@/lib/branding";
 import { getDb } from "@/lib/db";
 import { getTvScreen } from "@/lib/tv-spotlight";
 import { tvScreenMessages } from "@/lib/tv-spotlight/messages";
@@ -26,6 +28,8 @@ const view =
         name: access.event.name,
         apiBase: `/api${tvPath(Astro.params.key ?? "")}`,
         initial: await getTvScreen(db, access.event.id, access.event.modules.tvSpotlight),
+        // event-branding (S-18): a small corner badge with the restaurant's and the client's brand (page load only).
+        branding: await getEventBranding(db, access.event.id),
       }
     : null;
 ---
@@ -34,6 +38,7 @@ const view =
   <Layout title={tvScreenMessages(locale).pageTitle(view.name)} languageSwitch={false}>
     <main class="fixed inset-0 overflow-hidden bg-neutral-950 text-white">
       <TvSeatingView client:load apiBase={view.apiBase} initial={view.initial} eventName={view.name} locale={locale} />
+      <BrandHeader branding={view.branding} base={`${view.apiBase}/branding`} locale={locale} variant="tv" />
     </main>
   </Layout>
 ) : (

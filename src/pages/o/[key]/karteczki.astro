@@ -2,6 +2,7 @@
 import NoAccess from "@/components/NoAccess.astro";
 import Layout from "@/layouts/Layout.astro";
 import { accessFor, organizerPath } from "@/lib/access";
+import { brandingMessages, getEventBranding, logoUrl } from "@/lib/branding";
 import { getDb } from "@/lib/db";
 import { getGuestLinks, guestLinksMessages, guestUrl, isLocalOrigin } from "@/lib/guest-links";
 import { parseId } from "@/lib/http";
@@ -15,6 +16,7 @@ const CARDS_PER_PAGE = 8;
 
 const locale = Astro.locals.locale;
 const t = guestLinksMessages(locale);
+const tb = brandingMessages(locale);
 const access = accessFor(Astro.locals, "organizer");
 const db = access ? getDb() : null;
 if (!access || !db) {
@@ -27,7 +29,13 @@ const onlyGuestId = guestParam === null ? null : parseId(guestParam);
 const view =
   access && db
     ? await (async () => {
-        const links = await getGuestLinks(db, access.event.id);
+        const [links, branding] = await Promise.all([
+          getGuestLinks(db, access.event.id),
+          // event-branding (S-18): the restaurant's and the client's logos and name on every card, the brand colour as
+          // a stripe along the card's top edge.
+          getEventBranding(db, access.event.id),
+        ]);
+        const brandingBase = `/api${organizerPath(access.event.organizerKey)}/branding`;
         const cards = links.guests
           .filter((guest) => guestParam === null || guest.id === onlyGuestId)
           .map((guest) => ({ id: guest.id, name: guest.displayName, url: guestUrl(Astro.url.origin, guest.key) }));
@@ -36,6 +44,17 @@ const view =
         );
         return {
           name: access.event.name,
+          brand: branding
+            ? {
+                restaurantName: branding.restaurant.name,
+                clientName: branding.client.name,
+                restaurantLogo: branding.restaurant.logo
+                  ? logoUrl(brandingBase, "restaurant", branding.restaurant.logo.version)
+                  : null,
+                clientLogo: branding.client.logo ? logoUrl(brandingBase, "event", branding.client.logo.version) : null,
+                stripe: branding.restaurant.color ? `border-top: 2.5mm solid ${branding.restaurant.color};` : undefined,
+              }
+            : null,
           linksPath: `${organizerPath(access.event.organizerKey)}/linki`,
           enabled: links.enabled,
           localOrigin: isLocalOrigin(Astro.url.origin),
@@ -92,7 +111,7 @@ const view =
         {view.pages.map((page) => (
           <section class="card-sheet" aria-label={t.sheetLabel}>
             {page.map((card) => (
-              <article class="card" data-guest-card>
+              <article class="card" data-guest-card style={view.brand?.stripe}>
                 <div
                   class="card-qr"
                   data-qr={card.url}
@@ -101,7 +120,24 @@ const view =
                   aria-label={t.qrLabel(card.name)}
                 ></div>
                 <div class="card-text">
-                  <p class="card-event">{view.name}</p>
+                  {view.brand && (
+                    <div class="card-brand" data-card-brand>
+                      {view.brand.restaurantLogo ? (
+                        <img src={view.brand.restaurantLogo} alt={tb.logoAlt(view.brand.restaurantName)} />
+                      ) : (
+                        <span>{view.brand.restaurantName}</span>
+                      )}
+                      {view.brand.clientLogo && (
+                        <img
+                          src={view.brand.clientLogo}
+                          alt={tb.logoAlt(view.brand.clientName ?? view.brand.restaurantName)}
+                        />
+                      )}
+                    </div>
+                  )}
+                  <p class="card-event">
+                    {view.brand?.clientName ? `${view.brand.clientName} · ${view.name}` : view.name}
+                  </p>
                   <h2 class="card-name">{card.name}</h2>
                   <p class="card-hint">{t.cardScanHint}</p>
                   <p class="card-hint">{t.cardPersonalHint}</p>
@@ -143,6 +179,8 @@ const view =
 
   .card {
     box-sizing: border-box;
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
     display: flex;
     align-items: center;
     gap: 4mm;
@@ -174,6 +212,22 @@ const view =
     display: flex;
     flex-direction: column;
     gap: 1.5mm;
+  }
+
+  .card-brand {
+    display: flex;
+    align-items: center;
+    gap: 2mm;
+    min-height: 0;
+    font-size: 8pt;
+    font-weight: 700;
+  }
+
+  .card-brand img {
+    display: block;
+    max-height: 9mm;
+    max-width: 22mm;
+    object-fit: contain;
   }
 
   .card-event {

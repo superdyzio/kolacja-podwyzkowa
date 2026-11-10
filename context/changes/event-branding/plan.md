@@ -245,16 +245,16 @@ Additive: two nullable columns, two new tables. Deploy the migration before the 
 
 #### Automated
 
-- [x] 1.1 Migration applies on the populated local DB (`npx supabase migration up`), counts unchanged
-- [x] 1.2 `AI_PROVIDER=mock npm test` passes (unit + integration incl. the new files)
-- [x] 1.3 `npm run lint` and `npx astro check` pass
-- [x] 1.4 `grep -rn "Kolacja podwyżkowa\|Raise dinner\|kolacji podwyżkowej" src public` finds nothing user-facing
+- [x] 1.1 Migration applies on the populated local DB (`npx supabase migration up`), counts unchanged — 591c849
+- [x] 1.2 `AI_PROVIDER=mock npm test` passes (unit + integration incl. the new files) — 591c849
+- [x] 1.3 `npm run lint` and `npx astro check` pass — 591c849
+- [x] 1.4 `grep -rn "Kolacja podwyżkowa\|Raise dinner\|kolacji podwyżkowej" src public` finds nothing user-facing — 591c849
 
 ### Phase 2: UI (brand header, editors, cards, TV, panel)
 
 #### Automated
 
-- [ ] 2.1 `npm run lint`, `npx astro check`, `npm run build` pass
+- [x] 2.1 `npm run lint`, `npx astro check`, `npm run build` pass
 
 #### Manual
 
