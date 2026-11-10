@@ -313,9 +313,9 @@ Additive (functions only); the new code calls them, so the migration goes to the
 
 #### Automated
 
-- [ ] 3.1 `npm run smoke` passes twice in a row on the preview
-- [ ] 3.2 `npm run demo` passes and prints the manager's and the waiter's logins
-- [ ] 3.3 Tests, lint and type check pass
+- [x] 3.1 `npm run smoke` passes twice in a row on the preview
+- [x] 3.2 `npm run demo` passes and prints the manager's and the waiter's logins
+- [x] 3.3 Tests, lint and type check pass
 
 #### Manual
 

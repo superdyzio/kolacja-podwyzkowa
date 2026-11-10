@@ -6,8 +6,9 @@
 // events are never touched, and its owner's staff account (staff-accounts: an invitation link redeemed over HTTP with
 // a fixed local demo password, printed at the end with the panel login). Through the panel API that owner then adds
 // three more events of the restaurant (restaurant-events): an upcoming, a past and an archived one, so the restaurant
-// page shows every tab filled. It also keeps ONE platform admin account admin@demo.stolik with a fixed local password
-// (platform-restaurants: the platform panel's login, printed at the end).
+// page shows every tab filled, and invites a manager and a waiter into the restaurant's team (restaurant-team), who
+// set fixed local demo passwords over HTTP (logins printed at the end). It also keeps ONE platform admin account
+// admin@demo.stolik with a fixed local password (platform-restaurants: the platform panel's login, printed at the end).
 // Every write after that goes through the HTTP API of a running server, so it passes the same validation as the UI.
 // Defaults stay as they are: guest access OFF, guess intake OPEN, no correct amount, only the starter questions.
 // Usage: npm run build && npm run preview, then npm run demo   (BASE_URL, default http://localhost:4321)
@@ -34,6 +35,9 @@ const OWNER_PASSWORD = "demo-wlasciciel-1";
 // The demo platform admin (local demo data only): one account for every run, its password set again when needed.
 const ADMIN_EMAIL = "admin@demo.stolik";
 const ADMIN_PASSWORD = "demo-admin-1";
+// The demo manager and waiter (restaurant-team; local demo data only; e-mails carry the restaurant id).
+const MANAGER_PASSWORD = "demo-menedzer-1";
+const WAITER_PASSWORD = "demo-kelner-1";
 
 // --- Demo data -------------------------------------------------------------------------------------------------
 
@@ -534,7 +538,48 @@ if (eventLists.upcoming.length === 0 || eventLists.past.length === 0 || eventLis
   fail("Lista wydarzeń lokalu demo nie ma wszystkich trzech zakładek (nadchodzące, minione, archiwum).");
 }
 
-// --- 8. Summary -------------------------------------------------------------------------------------------------
+// --- 8. The restaurant's team (restaurant-team): the owner invites a manager and a waiter, both set their passwords --
+
+const teamApi = `/api/panel/restaurants/${String(restaurantId)}/team`;
+const TEAM = [
+  {
+    email: `menedzer-${String(restaurantId)}@demo.stolik`,
+    name: "Menedżer demo",
+    role: "manager",
+    password: MANAGER_PASSWORD,
+  },
+  {
+    email: `kelner-${String(restaurantId)}@demo.stolik`,
+    name: "Kelner demo",
+    role: "waiter",
+    password: WAITER_PASSWORD,
+  },
+];
+for (const person of TEAM) {
+  const answer = await step(
+    `zaproszenie ${person.email}`,
+    teamApi,
+    { method: "POST", json: { email: person.email, name: person.name, role: person.role }, cookie: ownerCookie },
+    201,
+  );
+  const token = /^\/haslo\/([A-Za-z0-9_-]{43})$/.exec(answer.invited?.link?.path ?? "")?.[1];
+  if (!token) {
+    fail(`Zaproszenie ${person.email} nie dało jednorazowego linku.`);
+  }
+  const redeemed = await request("/api/auth/password-link", {
+    method: "POST",
+    form: { token, password: person.password, repeat: person.password },
+  });
+  if (!toPanel(redeemed)) {
+    fail(`Nie udało się ustawić hasła ${person.email} (HTTP ${redeemed.status} → ${redeemed.location || "-"}).`);
+  }
+}
+const team = await step("zespół lokalu", teamApi, { cookie: ownerCookie });
+if (team.team?.members?.length !== 3 || !team.team.members.every((member) => member.hasPassword)) {
+  fail("Zespół lokalu demo nie ma trzech osób z ustawionym hasłem (właściciel, menedżer, kelner).");
+}
+
+// --- 9. Summary -------------------------------------------------------------------------------------------------
 
 const seatTotal = venue.tables.reduce((sum, table) => sum + table.seatCount, 0);
 const guessCount = guessBoard.guests.filter((guest) => guest.amountGrosze !== null).length;
@@ -551,12 +596,15 @@ Dane demo gotowe („${RESTAURANT_NAME}” · „${EVENT_NAME}”, id ${String(e
 - zamówienie: ${orderBoard.totals.lines} pozycji, ${orderBoard.totals.quantity} szt., wydane: ${orderBoard.totals.deliveredQuantity}
 - bez zmian: przyjmowanie strzałów otwarte, prawidłowa kwota niewpisana, dostęp gości wyłączony, pytania startowe
 - wydarzenia lokalu: nadchodzące ${String(eventLists.upcoming.length)}, minione ${String(eventLists.past.length)}, archiwum ${String(eventLists.archived.length)}
+- zespół lokalu: ${String(team.team.members.length)} osoby (właściciel, menedżer, kelner)
 
 Organizator: ${organizerUrl}
 TV:          ${new URL(`/tv/${event.tvKey}`, BASE_URL).href}
 Restauracja: ${new URL(`/r/${event.restaurantKey}`, BASE_URL).href}
 Linki gości: włącz dostęp na ${organizerUrl}/linki
 Panel lokalu: ${new URL("/logowanie", BASE_URL).href} — e-mail ${owner.email}, hasło ${OWNER_PASSWORD} (rola: właściciel)
+             e-mail ${TEAM[0].email}, hasło ${MANAGER_PASSWORD} (rola: menedżer)
+             e-mail ${TEAM[1].email}, hasło ${WAITER_PASSWORD} (rola: kelner)
 Wydarzenia lokalu: ${new URL(`/panel/restauracje/${String(restaurantId)}`, BASE_URL).href} (po zalogowaniu)
 Panel platformy: ${new URL("/logowanie", BASE_URL).href} — e-mail ${ADMIN_EMAIL}, hasło ${ADMIN_PASSWORD}
 Linki są sekretne: nie wklejaj ich publicznie.`);

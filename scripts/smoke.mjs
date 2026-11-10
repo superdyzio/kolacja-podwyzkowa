@@ -5459,4 +5459,439 @@ check(
   aGuestsAfterDelete === aGuestsBeforeDelete && JSON.stringify(bAfterDelete) === JSON.stringify(bBeforeDelete),
 );
 
+// 28. Restaurant team (restaurant-team, S-12): owners invite managers and waiters, managers invite waiters, with
+// one-time links handed over by a person (no e-mail); within their scope they change roles, remove people and give a
+// fresh link (an invitation without a password, else a password reset). The last owner is never demoted or removed. A
+// removed person loses this restaurant at once, their other restaurants stay. A link sets the ACCOUNT's password, so
+// a team never gives one to an account of another restaurant (409), and a team's unused link dies when the account
+// joins a second restaurant. Outsiders get the identical 404 of an unknown restaurant, no session the identical 401, a
+// foreign Origin 403. Accounts of this section are created only through the team API; uses the sessions of 25–27.
+const TEAM_PASSWORD = "smoke-zespol-1";
+const NEW_TEAM_PASSWORD = "smoke-zespol-nowe-2";
+const HOUR_MS = 60 * 60 * 1000;
+const teamApiOf = (restaurantId) => `/api/panel/restaurants/${String(restaurantId)}/team`;
+const memberApiOf = (accountId, restaurantId = restaurantA.id) => `${teamApiOf(restaurantId)}/${String(accountId)}`;
+const teamOf = (res) => (Array.isArray(res.data?.team?.members) ? res.data.team : null);
+const memberIn = (res, email) => teamOf(res)?.members.find((member) => member.email === email) ?? null;
+const readTeamA = (token = sessionOwner) => staffCall(token, teamApiOf(restaurantA.id));
+const inviteInto = (token, json, restaurantId = restaurantA.id, options = {}) =>
+  staffCall(token, teamApiOf(restaurantId), { method: "POST", json, ...options });
+const setRoleOf = (token, accountId, role, restaurantId = restaurantA.id) =>
+  staffCall(token, memberApiOf(accountId, restaurantId), { method: "PATCH", json: { role } });
+const removeOf = (token, accountId, restaurantId = restaurantA.id) =>
+  staffCall(token, memberApiOf(accountId, restaurantId), { method: "DELETE" });
+const memberLinkOf = (token, accountId, restaurantId = restaurantA.id) =>
+  staffCall(token, `${memberApiOf(accountId, restaurantId)}/link`, { method: "POST" });
+const linkToken = (link) => HASLO_PATH.exec(typeof link?.path === "string" ? link.path : "")?.[1] ?? "brak";
+const expiresAbout = (link, ms) => {
+  const left = Date.parse(typeof link?.expiresAt === "string" ? link.expiresAt : "") - Date.now();
+  return Number.isFinite(left) && Math.abs(left - ms) < 10 * 60 * 1000;
+};
+const MEMBER_FIELDS = "accountId,displayName,email,hasPassword,role";
+const managerAEmail = staffEmail("managera");
+
+// Reading the team: owners and managers, the whole team with account ids and nothing secret.
+const teamStart = await readTeamA();
+const managerAId = memberIn(teamStart, managerAEmail)?.accountId ?? 2_000_000_002;
+check(
+  "team: owner A reads A's team (no-store) — owner A, manager A, waiter A with ids and roles, nothing secret",
+  teamStart.status === 200 &&
+    teamStart.cacheControl.includes("no-store") &&
+    teamOf(teamStart)?.restaurantId === restaurantA.id &&
+    teamOf(teamStart).you.accountId === staff.ownerA.id &&
+    teamOf(teamStart).you.role === "owner" &&
+    teamOf(teamStart).members.length === 3 &&
+    memberIn(teamStart, staff.ownerA.email)?.role === "owner" &&
+    memberIn(teamStart, staff.ownerA.email).accountId === staff.ownerA.id &&
+    memberIn(teamStart, staff.waiterA.email)?.role === "waiter" &&
+    memberIn(teamStart, managerAEmail)?.role === "manager" &&
+    teamOf(teamStart).members.every(
+      (member) => Object.keys(member).sort().join(",") === MEMBER_FIELDS && member.hasPassword === true,
+    ) &&
+    !/hash|token|session/i.test(teamStart.body),
+  `${teamStart.status} ${teamStart.body.slice(0, 200)}`,
+);
+const teamByManager = await readTeamA(sessionManager);
+check(
+  "team: manager A reads the same team as a manager",
+  teamByManager.status === 200 &&
+    teamOf(teamByManager)?.you.role === "manager" &&
+    teamOf(teamByManager).you.accountId === managerAId &&
+    JSON.stringify(teamOf(teamByManager).members) === JSON.stringify(teamOf(teamStart)?.members),
+  `${teamByManager.status} ${teamByManager.body.slice(0, 160)}`,
+);
+const ownerTeamPage = await staffCall(sessionOwner, restaurantPageOf(restaurantA.id));
+const managerTeamPage = await staffCall(sessionManager, restaurantPageOf(restaurantA.id));
+const waiterTeamPage = await staffCall(sessionWaiter, restaurantPageOf(restaurantA.id));
+check(
+  "team: the restaurant page shows „Zespół” with the invitation form and the e-mails to the owner and the manager, nothing to the waiter",
+  [ownerTeamPage, managerTeamPage].every(
+    (page) =>
+      page.status === 200 &&
+      page.body.includes("data-team-section") &&
+      page.body.includes("Zaproś do zespołu") &&
+      page.body.includes(staff.waiterA.email) &&
+      page.body.includes(managerAEmail) &&
+      page.body.includes(staff.ownerA.email),
+  ) &&
+    waiterTeamPage.status === 200 &&
+    !waiterTeamPage.body.includes("data-team-section") &&
+    !waiterTeamPage.body.includes(staff.ownerA.email) &&
+    !waiterTeamPage.body.includes(managerAEmail),
+  `${ownerTeamPage.status} ${managerTeamPage.status} ${waiterTeamPage.status}`,
+);
+
+// Invitations: 7-day one-time links that open and set the password; the new people see A with their roles.
+const mgrEmail = staffEmail("teammgr");
+const w1Email = staffEmail("teamw1");
+const w2Email = staffEmail("teamw2");
+const pendEmail = staffEmail("teampend");
+const invitedMgr = await inviteInto(sessionOwner, { email: mgrEmail, name: "  Smoke   teamMgr ", role: "manager" });
+const invitedW1 = await inviteInto(sessionOwner, { email: `  ${w1Email.toUpperCase()} `, role: "waiter" });
+const freshInvite = (res, email, role) =>
+  res.status === 201 &&
+  res.data?.invited?.email === email &&
+  res.data.invited.role === role &&
+  res.data.invited.created === true &&
+  res.data.invited.hasPassword === false &&
+  res.data.invited.link?.kind === "invite" &&
+  HASLO_PATH.test(res.data.invited.link.path) &&
+  expiresAbout(res.data.invited.link, 7 * 24 * HOUR_MS) &&
+  memberIn(res, email)?.role === role &&
+  memberIn(res, email).hasPassword === false &&
+  memberIn(res, email).accountId === res.data.invited.accountId;
+check(
+  "team: owner A invites a manager and a waiter (e-mail normalized) → 201, each with a 7-day invitation /haslo/<token>",
+  freshInvite(invitedMgr, mgrEmail, "manager") &&
+    memberIn(invitedMgr, mgrEmail)?.displayName === "Smoke teamMgr" &&
+    freshInvite(invitedW1, w1Email, "waiter") &&
+    memberIn(invitedW1, w1Email)?.displayName === null,
+  `${invitedMgr.status} ${invitedW1.status} ${invitedW1.body.slice(0, 200)}`.replace(
+    /\/haslo\/[A-Za-z0-9_-]+/g,
+    "/haslo/<token>",
+  ),
+);
+const mgrId = invitedMgr.data?.invited?.accountId ?? 2_000_000_003;
+const w1Id = invitedW1.data?.invited?.accountId ?? 2_000_000_004;
+const mgrInvitePage = await request(`/haslo/${linkToken(invitedMgr.data?.invited?.link)}`);
+const redeemedMgr = await redeem(linkToken(invitedMgr.data?.invited?.link), TEAM_PASSWORD);
+const redeemedW1 = await redeem(linkToken(invitedW1.data?.invited?.link), TEAM_PASSWORD);
+const sessionMgr = sessionOf(redeemedMgr);
+const sessionW1 = sessionOf(redeemedW1);
+const mgrReadsA = await panelGet(sessionMgr, `/restaurants/${String(restaurantA.id)}`);
+const w1ReadsA = await panelGet(sessionW1, `/restaurants/${String(restaurantA.id)}`);
+const w1ReadsTeam = await readTeamA(sessionW1);
+check(
+  "team: the invitations open with the e-mail and set the password; the manager opens A as a manager, the waiter as a waiter without the team",
+  mgrInvitePage.status === 200 &&
+    mgrInvitePage.body.includes(mgrEmail) &&
+    redirectsTo(redeemedMgr, "/panel") &&
+    redirectsTo(redeemedW1, "/panel") &&
+    mgrReadsA.status === 200 &&
+    mgrReadsA.data?.role === "manager" &&
+    w1ReadsA.status === 200 &&
+    w1ReadsA.data?.role === "waiter" &&
+    noAccessJson(w1ReadsTeam),
+  `${mgrInvitePage.status} ${redeemedMgr.status} ${mgrReadsA.status} ${w1ReadsA.status} ${w1ReadsTeam.status}`,
+);
+
+// A manager invites waiters only; anything else is the identical 404 and nothing joins.
+const invitedW2 = await inviteInto(sessionManager, { email: w2Email, role: "waiter" });
+const teamBeforeRefusals = await readTeamA();
+const scopeRefused = [];
+for (const [who, token, role] of [
+  ["manager A as a manager", sessionManager, "manager"],
+  ["manager A as an owner", sessionManager, "owner"],
+  ["owner A as an owner", sessionOwner, "owner"],
+]) {
+  const res = await inviteInto(token, { email: staffEmail("poza-zakresem"), role });
+  if (!noAccessJson(res)) {
+    scopeRefused.push(`${who}: ${String(res.status)} ${res.body.slice(0, 60)}`);
+  }
+}
+const teamAfterRefusals = await readTeamA();
+check(
+  "team: manager A invites a waiter (201, invitation); inviting a manager or an owner (also owner A an owner) → the identical 404, nobody joins",
+  freshInvite(invitedW2, w2Email, "waiter") &&
+    invitedW2.data.team?.you.role === "manager" &&
+    scopeRefused.length === 0 &&
+    JSON.stringify(teamOf(teamAfterRefusals)?.members) === JSON.stringify(teamOf(teamBeforeRefusals)?.members),
+  scopeRefused.join("; "),
+);
+const w2Id = invitedW2.data?.invited?.accountId ?? 2_000_000_005;
+const teamInvalid = [];
+for (const [name, json] of [
+  ["bad e-mail", { email: "nie-email", role: "waiter" }],
+  ["81-character name", { email: staffEmail("walidacja-zespolu"), name: "x".repeat(81), role: "waiter" }],
+  ["unknown role", { email: staffEmail("walidacja-zespolu"), role: "szef" }],
+  ["no role", { email: staffEmail("walidacja-zespolu") }],
+  ["extra field", { email: staffEmail("walidacja-zespolu"), role: "waiter", restaurantId: restaurantB.id }],
+]) {
+  const res = await inviteInto(sessionOwner, json);
+  if (res.status !== 400 || typeof res.data?.error !== "string") {
+    teamInvalid.push(`${name}: ${String(res.status)}`);
+  }
+}
+const roleInvalid = await staffCall(sessionOwner, memberApiOf(w1Id), { method: "PATCH", json: { role: "szef" } });
+const roleExtra = await staffCall(sessionOwner, memberApiOf(w1Id), {
+  method: "PATCH",
+  json: { role: "waiter", restaurantId: restaurantB.id },
+});
+const alreadyIn = await inviteInto(sessionOwner, { email: w1Email, role: "manager" });
+check(
+  "team: a bad e-mail, an 81-character name, an unknown or missing role, an extra field → 400; a member again → 409",
+  teamInvalid.length === 0 &&
+    roleInvalid.status === 400 &&
+    roleExtra.status === 400 &&
+    alreadyIn.status === 409 &&
+    alreadyIn.data?.error === "Ta osoba już jest w zespole. Jej rolę zmienisz na liście.",
+  `${teamInvalid.join("; ")} ${roleInvalid.status} ${roleExtra.status} ${alreadyIn.status}`,
+);
+
+// Role changes by the owner, also making someone an owner; a promoted owner may step down while another owner stays.
+const w1ToManager = await setRoleOf(sessionOwner, w1Id, "manager");
+const w1ToWaiter = await setRoleOf(sessionOwner, w1Id, "waiter");
+const w1Same = await setRoleOf(sessionOwner, w1Id, "waiter");
+const mgrToOwner = await setRoleOf(sessionOwner, mgrId, "owner");
+const mgrStepsDown = await setRoleOf(sessionMgr, mgrId, "manager");
+check(
+  "team: owner A makes the waiter a manager and back, the manager an owner; the new owner steps down to manager (their team as a manager)",
+  w1ToManager.status === 200 &&
+    memberIn(w1ToManager, w1Email)?.role === "manager" &&
+    w1ToWaiter.status === 200 &&
+    memberIn(w1ToWaiter, w1Email)?.role === "waiter" &&
+    w1Same.status === 200 &&
+    mgrToOwner.status === 200 &&
+    memberIn(mgrToOwner, mgrEmail)?.role === "owner" &&
+    teamOf(mgrToOwner).members.filter((member) => member.role === "owner").length === 2 &&
+    mgrStepsDown.status === 200 &&
+    teamOf(mgrStepsDown)?.you.role === "manager" &&
+    memberIn(mgrStepsDown, mgrEmail)?.role === "manager",
+  [w1ToManager, w1ToWaiter, w1Same, mgrToOwner, mgrStepsDown].map((res) => res.status).join(" "),
+);
+const lastOwnerDemote = await setRoleOf(sessionOwner, staff.ownerA.id, "manager");
+const lastOwnerRemove = await removeOf(sessionOwner, staff.ownerA.id);
+const ownerStill = await readTeamA();
+check(
+  "team: the only owner demoting or removing themself → 409 with the message, still the owner",
+  lastOwnerDemote.status === 409 &&
+    lastOwnerDemote.data?.error ===
+      "Restauracja musi mieć co najmniej jednego właściciela. Najpierw nadaj rolę właściciela komuś innemu." &&
+    lastOwnerRemove.status === 409 &&
+    lastOwnerRemove.body === lastOwnerDemote.body &&
+    teamOf(ownerStill)?.you.role === "owner" &&
+    memberIn(ownerStill, staff.ownerA.email)?.role === "owner",
+  `${lastOwnerDemote.status} ${lastOwnerRemove.status} ${lastOwnerDemote.body}`,
+);
+
+// A manager's scope: waiters only. Managers, owners and themself are the identical 404.
+const managerScope = [];
+for (const [whom, accountId] of [
+  ["the new manager", mgrId],
+  ["owner A", staff.ownerA.id],
+  ["themself", managerAId],
+]) {
+  for (const [what, call] of [
+    ["role", () => setRoleOf(sessionManager, accountId, "waiter")],
+    ["remove", () => removeOf(sessionManager, accountId)],
+    ["link", () => memberLinkOf(sessionManager, accountId)],
+  ]) {
+    const res = await call();
+    if (!noAccessJson(res)) {
+      managerScope.push(`${whom} ${what}: ${String(res.status)}`);
+    }
+  }
+}
+const managerPromotes = await setRoleOf(sessionManager, w1Id, "manager");
+const teamAfterManagerScope = await readTeamA();
+check(
+  "team: manager A on a manager, on owner A, on themself (role, remove, link) and making a waiter a manager → the identical 404, nothing changed",
+  managerScope.length === 0 &&
+    noAccessJson(managerPromotes) &&
+    JSON.stringify(teamOf(teamAfterManagerScope)?.members) === JSON.stringify(teamOf(mgrStepsDown)?.members),
+  managerScope.join("; "),
+);
+const managerResetW1 = await memberLinkOf(sessionManager, w1Id);
+const managerRemovesW2 = await removeOf(sessionManager, w2Id);
+const w2InvitePage = await request(`/haslo/${linkToken(invitedW2.data?.invited?.link)}`);
+check(
+  "team: manager A gives a waiter with a password a 24-hour reset link, removes a waiter who never set one → their invitation is the invalid-link page",
+  managerResetW1.status === 200 &&
+    managerResetW1.data?.link?.kind === "reset" &&
+    expiresAbout(managerResetW1.data.link, 24 * HOUR_MS) &&
+    managerRemovesW2.status === 200 &&
+    memberIn(managerRemovesW2, w2Email) === null &&
+    w2InvitePage.status === 404 &&
+    w2InvitePage.body === linkUnknown.body,
+  `${managerResetW1.status} ${managerResetW1.data?.link?.kind} ${managerRemovesW2.status} ${w2InvitePage.status}`,
+);
+
+// Another restaurant: an account that has a password joins without a link and A's team's unused link for it dies; an
+// account of another restaurant without a password is refused (it keeps its invitation there).
+const w1IntoB = await inviteInto(sessionB, { email: w1Email, role: "waiter" }, restaurantB.id);
+const w1ResetPage = await request(`/haslo/${linkToken(managerResetW1.data?.link)}`);
+const invitedPend = await inviteInto(sessionOwner, { email: pendEmail, role: "waiter" });
+const pendIntoB = await inviteInto(sessionB, { email: pendEmail, role: "waiter" }, restaurantB.id);
+const pendInvitePage = await request(`/haslo/${linkToken(invitedPend.data?.invited?.link)}`);
+check(
+  "team: owner B adds A's waiter (password) to B → no link, and manager A's unused reset link for them is the invalid-link page",
+  w1IntoB.status === 201 &&
+    w1IntoB.data?.invited?.created === false &&
+    w1IntoB.data.invited.hasPassword === true &&
+    w1IntoB.data.invited.link === null &&
+    w1ResetPage.status === 404 &&
+    w1ResetPage.body === linkUnknown.body,
+  `${w1IntoB.status} ${w1IntoB.body.slice(0, 160)} ${w1ResetPage.status}`,
+);
+check(
+  "team: owner B inviting A's invitee who has not set a password → 409 with the message, their invitation from A still opens",
+  freshInvite(invitedPend, pendEmail, "waiter") &&
+    pendIntoB.status === 409 &&
+    pendIntoB.data?.error ===
+      "Ta osoba ma już konto w innej restauracji, ale nie ustawiła jeszcze hasła. Zaproś ją ponownie, gdy ustawi hasło z linku, który tam dostała." &&
+    pendInvitePage.status === 200 &&
+    pendInvitePage.body.includes(pendEmail),
+  `${invitedPend.status} ${pendIntoB.status} ${pendInvitePage.status}`,
+);
+
+// A link sets the ACCOUNT's password: none for a member who also works elsewhere (owner A is an owner of B too).
+const linkForShared = await memberLinkOf(sessionOwner, w1Id);
+const linkForSelf = await memberLinkOf(sessionOwner, staff.ownerA.id);
+const ELSEWHERE_PREFIX = "Ta osoba ma dostęp także do innej restauracji";
+check(
+  "team: „Nowy link” for a waiter who is also in B and for owner A (also an owner of B) → 409, no link",
+  linkForShared.status === 409 &&
+    String(linkForShared.data?.error).startsWith(ELSEWHERE_PREFIX) &&
+    linkForShared.data.link === undefined &&
+    linkForSelf.status === 409 &&
+    linkForSelf.body === linkForShared.body,
+  `${linkForShared.status} ${linkForSelf.status}`,
+);
+
+// Removal: A closes to the person at once (API, page, hub), their other restaurant stays.
+const removedW1 = await removeOf(sessionOwner, w1Id);
+const w1AfterA = await panelGet(sessionW1, `/restaurants/${String(restaurantA.id)}`);
+const w1AfterPage = await staffCall(sessionW1, restaurantPageOf(restaurantA.id));
+const w1AfterB = await panelGet(sessionW1, `/restaurants/${String(restaurantB.id)}`);
+const w1Hub = await request("/panel", { cookie: asStaff(sessionW1) });
+const w1Me = await me(sessionW1);
+check(
+  "team: owner A removes the waiter → their session gets the identical 404 for A (API and page), still opens B, /panel lists B only",
+  removedW1.status === 200 &&
+    memberIn(removedW1, w1Email) === null &&
+    noAccessJson(w1AfterA) &&
+    isNoAccessPage(w1AfterPage) &&
+    w1AfterPage.body === cPageUnknown.body &&
+    w1AfterB.status === 200 &&
+    w1AfterB.data?.role === "waiter" &&
+    w1Hub.status === 200 &&
+    hubEntry(w1Hub, restaurantB.id) !== "" &&
+    hubEntry(w1Hub, restaurantA.id) === "" &&
+    w1Me.status === 200 &&
+    w1Me.data?.restaurants?.length === 1 &&
+    w1Me.data.restaurants[0].id === restaurantB.id,
+  `${removedW1.status} ${w1AfterA.status} ${w1AfterPage.status} ${w1AfterB.status} ${w1Me.body.slice(0, 120)}`,
+);
+const removedAgain = await removeOf(sessionOwner, w1Id);
+check("team: removing someone who is no longer in the team → the identical 404", noAccessJson(removedAgain));
+
+// A forgotten password: the owner's reset link for the manager ends the manager's sessions once used.
+const resetMgr = await memberLinkOf(sessionOwner, mgrId);
+const redeemedResetMgr = await redeem(linkToken(resetMgr.data?.link), NEW_TEAM_PASSWORD);
+const mgrOldSession = await me(sessionMgr);
+const mgrOldPassword = await logIn(mgrEmail, TEAM_PASSWORD);
+const mgrNewPassword = await logIn(mgrEmail, NEW_TEAM_PASSWORD);
+check(
+  "team: owner A's „Nowy link” for the manager is a 24-hour reset; setting the new password ends the old session, only the new password logs in",
+  resetMgr.status === 200 &&
+    resetMgr.data?.link?.kind === "reset" &&
+    expiresAbout(resetMgr.data.link, 24 * HOUR_MS) &&
+    redirectsTo(redeemedResetMgr, "/panel") &&
+    mgrOldSession.status === 401 &&
+    redirectsTo(mgrOldPassword, "/logowanie?blad=dane") &&
+    redirectsTo(mgrNewPassword, "/panel"),
+  `${resetMgr.status} ${resetMgr.data?.link?.kind} ${redeemedResetMgr.status} ${mgrOldSession.status}`,
+);
+
+// Outsiders: the identical 404 of an unknown restaurant on every team route; nothing changes.
+const teamBeforeOutsiders = await readTeamA();
+const unknownTeam = await staffCall(sessionOwner, teamApiOf(2_000_000_000));
+const teamAttempts = (restaurantId, accountId) => [
+  ["read", teamApiOf(restaurantId), {}],
+  [
+    "invite",
+    teamApiOf(restaurantId),
+    { method: "POST", json: { email: staffEmail("intruz-zespolu"), role: "waiter" } },
+  ],
+  ["role", memberApiOf(accountId, restaurantId), { method: "PATCH", json: { role: "manager" } }],
+  ["remove", memberApiOf(accountId, restaurantId), { method: "DELETE" }],
+  ["link", `${memberApiOf(accountId, restaurantId)}/link`, { method: "POST" }],
+];
+const teamOutsiders = [];
+for (const [who, token] of [
+  ["waiter A", sessionWaiter],
+  ["owner B", sessionB],
+  ["the admin", sessionAdmin],
+  ["the removed waiter", sessionW1],
+]) {
+  for (const [name, path, options] of teamAttempts(restaurantA.id, staff.waiterA.id)) {
+    const res = await staffCall(token, path, options);
+    if (!noAccessJson(res) || res.body !== unknownTeam.body) {
+      teamOutsiders.push(`${who} ${name}: ${String(res.status)}`);
+    }
+  }
+}
+for (const [name, path, options] of teamAttempts(restaurantB.id, staff.waiterA.id).slice(2)) {
+  const res = await staffCall(sessionB, path, options);
+  if (!noAccessJson(res)) {
+    teamOutsiders.push(`owner B on A's waiter through B, ${name}: ${String(res.status)}`);
+  }
+}
+for (const accountId of ["2000000000", "abc", "99999999999", "-1", "1.5"]) {
+  for (const [name, path, options] of teamAttempts(restaurantA.id, accountId).slice(2)) {
+    const res = await staffCall(sessionOwner, path, options);
+    if (!noAccessJson(res)) {
+      teamOutsiders.push(`owner A, account ${accountId}, ${name}: ${String(res.status)}`);
+    }
+  }
+}
+for (const restaurantId of ["abc", "99999999999", "-1"]) {
+  const res = await staffCall(sessionOwner, teamApiOf(restaurantId));
+  if (!noAccessJson(res)) {
+    teamOutsiders.push(`owner A, restaurant ${restaurantId}: ${String(res.status)}`);
+  }
+}
+const teamAfterOutsiders = await readTeamA();
+check(
+  "team: waiter A, owner B, the admin and the removed waiter → the identical 404 on every team route of A; foreign, unknown and malformed ids too; nothing changed",
+  noAccessJson(unknownTeam) &&
+    teamOutsiders.length === 0 &&
+    JSON.stringify(teamAfterOutsiders.data) === JSON.stringify(teamBeforeOutsiders.data),
+  teamOutsiders.join("; "),
+);
+const teamNoSession = [];
+for (const [name, path, options] of teamAttempts(restaurantA.id, staff.waiterA.id)) {
+  const res = await staffCall(null, path, options);
+  if (res.status !== 401 || res.body !== meNoCookie.body) {
+    teamNoSession.push(`${name}: ${String(res.status)}`);
+  }
+}
+const teamOrigin = [];
+for (const [name, path, options] of teamAttempts(restaurantA.id, staff.waiterA.id).slice(1)) {
+  for (const variant of [{ noOrigin: true }, { extraHeaders: FOREIGN }]) {
+    const res = await staffCall(sessionOwner, path, { ...options, ...variant });
+    if (res.status !== 403) {
+      teamOrigin.push(`${name} ${variant.noOrigin ? "no Origin" : "foreign"}: ${String(res.status)}`);
+    }
+  }
+}
+const teamAfterOrigin = await readTeamA();
+check(
+  "team: without a session every team route → the identical 401; mutations without the page's Origin → 403, nothing changed",
+  teamNoSession.length === 0 &&
+    teamOrigin.length === 0 &&
+    JSON.stringify(teamAfterOrigin.data) === JSON.stringify(teamBeforeOutsiders.data),
+  `${teamNoSession.join("; ")} ${teamOrigin.join("; ")}`,
+);
+
 finish();
