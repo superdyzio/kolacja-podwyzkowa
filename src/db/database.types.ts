@@ -61,6 +61,9 @@ export interface Database {
           venue_leads: boolean;
           // venue-templates: true = a restaurant's venue template (never opens through a key, never listed or counted).
           is_template: boolean;
+          // menu-catalog-courses: off = free-text orders (v1; every event from before), full = the whole catalog,
+          // reduced = the items in event_menu_item. Default for new rows: full.
+          menu_mode: string;
         };
         Insert: {
           id?: never;
@@ -79,6 +82,7 @@ export interface Database {
           archived_at?: string | null;
           venue_leads?: boolean;
           is_template?: boolean;
+          menu_mode?: string;
         };
         Update: {
           id?: never;
@@ -96,6 +100,7 @@ export interface Database {
           archived_at?: string | null;
           venue_leads?: boolean;
           is_template?: boolean;
+          menu_mode?: string;
         };
         Relationships: [
           {
@@ -689,6 +694,10 @@ export interface Database {
           delivered: boolean;
           created_at: string;
           updated_at: string;
+          // menu-catalog-courses: the course at order time (null = free text) and the catalog item (null when free
+          // text or deleted from the catalog).
+          course: string | null;
+          menu_item_id: number | null;
         };
         Insert: {
           id?: never;
@@ -702,6 +711,8 @@ export interface Database {
           delivered?: boolean;
           created_at?: string;
           updated_at?: string;
+          course?: string | null;
+          menu_item_id?: number | null;
         };
         Update: {
           id?: never;
@@ -715,6 +726,8 @@ export interface Database {
           delivered?: boolean;
           created_at?: string;
           updated_at?: string;
+          course?: string | null;
+          menu_item_id?: number | null;
         };
         Relationships: [
           {
@@ -791,6 +804,79 @@ export interface Database {
         ];
       };
       // bill-drinks: drinks on the restaurant's bill (organizer only).
+      // menu-catalog-courses: a restaurant's catalog of dishes and drinks with a course and a price.
+      menu_item: {
+        Row: {
+          id: number;
+          restaurant_id: number;
+          name: string;
+          course: string;
+          price_grosze: number;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: never;
+          restaurant_id: number;
+          name: string;
+          course: string;
+          price_grosze: number;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: never;
+          restaurant_id?: number;
+          name?: string;
+          course?: string;
+          price_grosze?: number;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "menu_item_restaurant_id_fkey";
+            columns: ["restaurant_id"];
+            isOneToOne: false;
+            referencedRelation: "restaurant";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      // menu-catalog-courses: the items of an event's reduced menu (written only by set_event_menu).
+      event_menu_item: {
+        Row: {
+          event_id: number;
+          restaurant_id: number;
+          menu_item_id: number;
+        };
+        Insert: {
+          event_id: number;
+          restaurant_id: number;
+          menu_item_id: number;
+        };
+        Update: {
+          event_id?: number;
+          restaurant_id?: number;
+          menu_item_id?: number;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "event_menu_item_event_fkey";
+            columns: ["event_id", "restaurant_id"];
+            isOneToOne: false;
+            referencedRelation: "event";
+            referencedColumns: ["id", "restaurant_id"];
+          },
+          {
+            foreignKeyName: "event_menu_item_menu_item_fkey";
+            columns: ["restaurant_id", "menu_item_id"];
+            isOneToOne: false;
+            referencedRelation: "menu_item";
+            referencedColumns: ["restaurant_id", "id"];
+          },
+        ];
+      };
       drink_item: {
         Row: {
           id: number;
@@ -1150,6 +1236,12 @@ export interface Database {
     };
     Views: { [_ in never]: never };
     Functions: {
+      // menu-catalog-courses: sets an event's menu mode and (reduced) its items in one transaction. Raises
+      // EVENT_NOT_FOUND (also templates), INVALID_MODE, ITEM_NOT_FOUND (an item of another restaurant or unknown).
+      set_event_menu: {
+        Args: { p_event_id: number; p_mode: string; p_item_ids: number[] };
+        Returns: undefined;
+      };
       // guest-delivered: the guest's table in the latest published snapshot (venue_table id), or null.
       guest_published_table_id: {
         Args: { p_guest_id: number };

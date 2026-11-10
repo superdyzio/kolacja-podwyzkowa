@@ -8,6 +8,7 @@ import {
   toDrinkInput,
   tooManyDrinksMessage,
 } from "@/lib/orders";
+import { findMenuItem, getAvailableMenu } from "@/lib/menu";
 import { organizerApi } from "@/lib/organizer-api";
 
 export const prerender = false;
@@ -31,7 +32,18 @@ export const POST: APIRoute = async ({ locals, request }) => {
     return jsonError(400, input.message);
   }
   // client-restaurant-split (FR-027): the price is the venue's — the newest of that name in the event, else 0.
-  const unitPriceGrosze = await priceForNewLine(api.db, api.access.event.id, "drink", input.value.name);
+  // menu-catalog-courses (S-16): a drink on the event's menu seeds the price of a name the bill does not have yet.
+  const menuDrink = findMenuItem(
+    (await getAvailableMenu(api.db, api.access.event.id)).filter((item) => item.course === "drinks"),
+    input.value.name,
+  );
+  const unitPriceGrosze = await priceForNewLine(
+    api.db,
+    api.access.event.id,
+    "drink",
+    input.value.name,
+    menuDrink?.priceGrosze ?? 0,
+  );
   const result = await addDrinkItem(api.db, api.access.event.id, { ...input.value, unitPriceGrosze });
   if (result.status === "too-many") {
     return jsonError(409, tooManyDrinksMessage(locals.locale));

@@ -29,9 +29,16 @@ async function pricedLines(db: DbClient, eventId: number, kind: PriceKind) {
   return data.map((row) => ({ id: row.id, name: row.name, unitPriceGrosze: row.unit_price_grosze }));
 }
 
-// The price of a new line of that name: the newest line's of the same name in this event, else 0.
-export async function priceForNewLine(db: DbClient, eventId: number, kind: PriceKind, name: string): Promise<number> {
-  return newestPriceFor(await pricedLines(db, eventId, kind), name);
+// The price of a new line of that name: the newest line's of the same name in this event, else the fallback (0, or
+// the catalog price of a menu item — menu-catalog-courses).
+export async function priceForNewLine(
+  db: DbClient,
+  eventId: number,
+  kind: PriceKind,
+  name: string,
+  fallback = 0,
+): Promise<number> {
+  return newestPriceFor(await pricedLines(db, eventId, kind), name, null, fallback);
 }
 
 // The price of a line renamed to `name`, or null to keep its own (same name in another spelling, or no such line).
@@ -41,8 +48,9 @@ export async function priceForRenamedLine(
   kind: PriceKind,
   id: number,
   name: string,
+  fallback = 0,
 ): Promise<number | null> {
-  return priceAfterRename(await pricedLines(db, eventId, kind), id, name);
+  return priceAfterRename(await pricedLines(db, eventId, kind), id, name, fallback);
 }
 
 export async function getPriceList(db: DbClient, eventId: number): Promise<PriceListDto> {

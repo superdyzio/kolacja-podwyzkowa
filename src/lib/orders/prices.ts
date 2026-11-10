@@ -21,19 +21,30 @@ function newestLine(lines: readonly PricedLine[], name: string, excludeId: numbe
   return newest;
 }
 
-// The price a new line of that name gets: its newest line's, else 0 („Cenę ustali lokal”).
-export function newestPriceFor(lines: readonly PricedLine[], name: string, excludeId: number | null = null): number {
-  return newestLine(lines, name, excludeId)?.unitPriceGrosze ?? 0;
+// The price a new line of that name gets: its newest line's, else the fallback — 0 („Cenę ustali lokal”) or, for a
+// dish from the event's menu (menu-catalog-courses), the catalog's price: the event's own price always wins.
+export function newestPriceFor(
+  lines: readonly PricedLine[],
+  name: string,
+  excludeId: number | null = null,
+  fallback = 0,
+): number {
+  return newestLine(lines, name, excludeId)?.unitPriceGrosze ?? fallback;
+}
+
+// The event's price of that name (its newest line's), or null when no line has it.
+export function eventPriceOf(lines: readonly PricedLine[], name: string): number | null {
+  return newestLine(lines, name)?.unitPriceGrosze ?? null;
 }
 
 // The price a renamed line gets: unchanged (null) when the name keeps its key (a spelling fix) or the line is not
 // there; otherwise the new name's price as for a new line.
-export function priceAfterRename(lines: readonly PricedLine[], id: number, name: string): number | null {
+export function priceAfterRename(lines: readonly PricedLine[], id: number, name: string, fallback = 0): number | null {
   const line = lines.find((candidate) => candidate.id === id);
   if (!line || dishKey(line.name) === dishKey(name)) {
     return null;
   }
-  return newestPriceFor(lines, name, id);
+  return newestPriceFor(lines, name, id, fallback);
 }
 
 function rowsOf(kind: PriceKind, lines: readonly PricedLine[]): PriceListRowDto[] {

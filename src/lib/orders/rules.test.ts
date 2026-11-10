@@ -23,6 +23,7 @@ function line(id: number, fields: Partial<OrderItemDto> = {}): OrderItemDto {
   return {
     id,
     name: "Schabowy",
+    course: null,
     note: null,
     quantity: 1,
     unitPriceGrosze: 4_900,

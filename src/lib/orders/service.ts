@@ -8,6 +8,8 @@ import type {
   DrinkItemDto,
   GuestListDto,
   GuestOrderLineDto,
+  MenuCourse,
+  MenuItemDto,
   OrderBoardDto,
   OrderItemDto,
   RestaurantViewDto,
@@ -22,6 +24,9 @@ import { placeOrders, type PlacementSource } from "./placement";
 import { organizerPrepList } from "./prep";
 import { toRestaurantView } from "./restaurant";
 import { MAX_ORDER_ITEMS, orderTotals } from "./rules";
+import { getAvailableMenu } from "@/lib/menu/service";
+import { isMenuCourse, orderMenu } from "@/lib/menu/rules";
+import { eventPriceOf } from "./prices";
 
 // The evening's food order and the restaurant link (restaurant-orders) of one event. Functions take the client and the
 // event id as parameters (no `astro:*`), so they are tested against the local DB; every read and write is limited to
@@ -31,7 +36,7 @@ import { MAX_ORDER_ITEMS, orderTotals } from "./rules";
 
 // guest-delivered: the marked pieces come embedded (order_piece rows); `delivered` is derived from them.
 const ITEM_COLUMNS =
-  "id, name, note, quantity, unit_price_grosze, guest_id, table_id, order_piece(piece, marked_by, guest_id)";
+  "id, name, course, note, quantity, unit_price_grosze, guest_id, table_id, order_piece(piece, marked_by, guest_id)";
 const FOREIGN_KEY_VIOLATION = "23503";
 
 function fail(action: string, message: string): never {
@@ -41,6 +46,7 @@ function fail(action: string, message: string): never {
 interface ItemRow {
   id: number;
   name: string;
+  course: string | null;
   note: string | null;
   quantity: number;
   unit_price_grosze: number;
@@ -54,6 +60,7 @@ function toItemDto(row: ItemRow): OrderItemDto {
   return {
     id: row.id,
     name: row.name,
+    course: isMenuCourse(row.course) ? row.course : null,
     note: row.note,
     quantity: row.quantity,
     unitPriceGrosze: row.unit_price_grosze,
@@ -88,6 +95,7 @@ export function toOrderBoard(
   venue: VenueDto,
   snapshot: SeatingSnapshot | null,
   drinks: DrinkItemDto[],
+  available: readonly MenuItemDto[] = [],
 ): OrderBoardDto {
   const source = placementSource(guestList, venue, snapshot);
   const snapshotTables = new Map(snapshot?.tables.map((table) => [table.snapshotTableId, table]) ?? []);
@@ -120,20 +128,23 @@ export function toOrderBoard(
     totals: orderTotals(items),
     drinks,
     drinkTotals: drinkTotals(drinks),
+    // menu-catalog-courses: what a new order line of each available item costs now (the event's price first).
+    menu: orderMenu(available, (name) => eventPriceOf(items, name)),
   };
 }
 
 // Everything the organizer's order page shows (bill-drinks: with the drinks on the bill — the organizer's board is
 // the only reader of drink_item).
 export async function getOrderBoard(db: DbClient, eventId: number): Promise<OrderBoardDto> {
-  const [items, guestList, venue, snapshot, drinks] = await Promise.all([
+  const [items, guestList, venue, snapshot, drinks, available] = await Promise.all([
     getOrderItems(db, eventId),
     getGuestList(db, eventId),
     getVenue(db, eventId),
     getLatestSnapshot(db, eventId),
     getDrinkItems(db, eventId),
+    getAvailableMenu(db, eventId),
   ]);
-  return toOrderBoard(items, guestList, venue, snapshot, drinks);
+  return toOrderBoard(items, guestList, venue, snapshot, drinks, available);
 }
 
 // What the restaurant sees (one read of everything, then a fingerprint; see restaurant.ts).
@@ -154,6 +165,9 @@ export interface OrderItemInput {
   quantity: number;
   unitPriceGrosze: number;
   assignment: OrderAssignmentInput;
+  // menu-catalog-courses: a line from the menu keeps its course and catalog item (absent/null = free text).
+  course?: MenuCourse | null;
+  menuItemId?: number | null;
 }
 
 function assignmentColumns(assignment: OrderAssignmentInput): { guest_id: number | null; table_id: number | null } {
@@ -181,6 +195,8 @@ export async function addOrderItem(db: DbClient, eventId: number, input: OrderIt
     note: input.note,
     quantity: input.quantity,
     unit_price_grosze: input.unitPriceGrosze,
+    course: input.course ?? null,
+    menu_item_id: input.menuItemId ?? null,
     ...assignmentColumns(input.assignment),
   });
   if (error) {
@@ -210,6 +226,8 @@ export async function updateOrderItem(
       ...(patch.note === undefined ? {} : { note: patch.note }),
       ...(patch.quantity === undefined ? {} : { quantity: patch.quantity }),
       ...(patch.unitPriceGrosze === undefined ? {} : { unit_price_grosze: patch.unitPriceGrosze }),
+      ...(patch.course === undefined ? {} : { course: patch.course }),
+      ...(patch.menuItemId === undefined ? {} : { menu_item_id: patch.menuItemId }),
       ...(patch.assignment === undefined ? {} : assignmentColumns(patch.assignment)),
       updated_at: new Date().toISOString(),
     })

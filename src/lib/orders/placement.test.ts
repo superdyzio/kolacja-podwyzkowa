@@ -8,6 +8,7 @@ function line(id: number, fields: Partial<OrderItemDto> = {}): OrderItemDto {
   return {
     id,
     name: "Schabowy",
+    course: null,
     note: null,
     quantity: 1,
     unitPriceGrosze: 4_900,
@@ -133,22 +134,46 @@ describe("prep list", () => {
   it("adds up each dish case-insensitively, with notes and what is left to serve", () => {
     expect(organizerPrepList(items)).toEqual([
       {
+        course: null,
         name: "Schabowy",
         quantity: 4,
         toServe: 3,
         notes: [{ note: "bez cebuli", quantity: 2 }],
         totalGrosze: 19_600,
       },
-      { name: "Tort", quantity: 1, toServe: 0, notes: [], totalGrosze: 4_900 },
-      { name: "Woda", quantity: 3, toServe: 3, notes: [], totalGrosze: 7_300 },
-      { name: "Żurek", quantity: 1, toServe: 1, notes: [], totalGrosze: 4_900 },
+      { course: null, name: "Tort", quantity: 1, toServe: 0, notes: [], totalGrosze: 4_900 },
+      { course: null, name: "Woda", quantity: 3, toServe: 3, notes: [], totalGrosze: 7_300 },
+      { course: null, name: "Żurek", quantity: 1, toServe: 1, notes: [], totalGrosze: 4_900 },
     ]);
     expect(prepList(items)[0]).toEqual({
+      course: null,
       name: "Schabowy",
       quantity: 4,
       toServe: 3,
       notes: [{ note: "bez cebuli", quantity: 2 }],
     });
+  });
+});
+
+describe("prep list by course (menu-catalog-courses)", () => {
+  it("orders courses starter → soup → main → dessert → drinks, free text last, and keeps a free-text and a menu line of one name apart", () => {
+    const lines = [
+      line(1, { name: "Sernik", course: "dessert" }),
+      line(2, { name: "Rosół", course: "soup" }),
+      line(3, { name: "Rosół", course: null }),
+      line(4, { name: "Lemoniada", course: "drinks" }),
+      line(5, { name: "Tatar", course: "starter" }),
+      line(6, { name: "Schabowy", course: "main", quantity: 2 }),
+      line(7, { name: "schabowy", course: "main" }),
+    ];
+    expect(prepList(lines).map((entry) => [entry.course, entry.name, entry.quantity])).toEqual([
+      ["starter", "Tatar", 1],
+      ["soup", "Rosół", 1],
+      ["main", "Schabowy", 3],
+      ["dessert", "Sernik", 1],
+      ["drinks", "Lemoniada", 1],
+      [null, "Rosół", 1],
+    ]);
   });
 });
 

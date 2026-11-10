@@ -610,6 +610,8 @@ export interface ResetResultDto {
 export interface OrderItemDto {
   id: number;
   name: string;
+  // menu-catalog-courses: the course at order time (a line from the menu); null = free text.
+  course: MenuCourse | null;
   note: string | null;
   quantity: number;
   unitPriceGrosze: number;
@@ -670,6 +672,8 @@ export interface OrderPlacementDto<T> {
 
 // One dish of the prep list (case-insensitive by name): toServe = the quantity not delivered yet.
 export interface PrepLineDto {
+  // menu-catalog-courses: lists are grouped by course (MENU_COURSES order), null (free text) last.
+  course: MenuCourse | null;
   name: string;
   quantity: number;
   toServe: number;
@@ -749,6 +753,8 @@ export interface OrderBoardDto {
   // bill-drinks: the drinks and their sum; the bill = totals.totalGrosze + drinkTotals.totalGrosze.
   drinks: DrinkItemDto[];
   drinkTotals: DrinkTotalsDto;
+  // menu-catalog-courses: the event's available menu (no catalog ids); active = new lines must come from it.
+  menu: OrderMenuDto;
 }
 
 // GET /api/r/<key>/orders: the restaurant's view. seating = what the TV draws (names at chairs, no ids); no prices,
@@ -1009,4 +1015,49 @@ export interface TemplateUpdateResultDto {
 export interface TemplateUpdateAnswerDto {
   preview: TemplateUpdatePreviewDto;
   result?: TemplateUpdateResultDto;
+}
+
+// --- Menu catalog (menu-catalog-courses, S-16) ----------------------------------------------------------------------
+
+// Stored course keys, in the kitchen's order; labels per locale in src/lib/menu/messages.ts.
+export type MenuCourse = "starter" | "soup" | "main" | "dessert" | "drinks";
+
+// off = free-text orders (v1; every event from before S-16), full = the whole catalog, reduced = chosen items.
+export type EventMenuMode = "off" | "full" | "reduced";
+
+export interface MenuItemDto {
+  id: number;
+  name: string;
+  course: MenuCourse;
+  priceGrosze: number;
+}
+
+// GET /api/panel/restaurants/<id>/menu and every catalog change: the whole catalog, by course then name.
+export interface MenuCatalogDto {
+  restaurantId: number;
+  items: MenuItemDto[];
+}
+
+export interface EventMenuItemDto extends MenuItemDto {
+  available: boolean;
+}
+
+// GET|PUT /api/panel/events/<id>/menu: the mode and every catalog item with whether this event offers it.
+export interface EventMenuDto {
+  eventId: number;
+  mode: EventMenuMode;
+  items: EventMenuItemDto[];
+}
+
+// An item of the event's available menu as the order form sees it: no ids; the price a new line gets now (the
+// event's price of that name, else the catalog's).
+export interface OrderMenuItemDto {
+  name: string;
+  course: MenuCourse;
+  priceGrosze: number;
+}
+
+export interface OrderMenuDto {
+  active: boolean;
+  items: OrderMenuItemDto[];
 }

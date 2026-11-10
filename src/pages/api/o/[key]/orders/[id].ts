@@ -9,6 +9,7 @@ import {
   UpdateOrderItemBody,
   updateOrderItem,
 } from "@/lib/orders";
+import { findMenuItem, getAvailableMenu, menuMessages } from "@/lib/menu";
 import { organizerApi } from "@/lib/organizer-api";
 
 export const prerender = false;
@@ -34,15 +35,23 @@ export const PATCH: APIRoute = async ({ locals, params, request }) => {
   if (!patch.ok) {
     return jsonError(400, patch.message);
   }
-  // client-restaurant-split (FR-027): a line renamed to another dish takes that dish's price (else 0).
-  const repriced =
-    patch.value.name === undefined
-      ? null
-      : await priceForRenamedLine(api.db, api.access.event.id, "dish", id, patch.value.name);
-  const result = await updateOrderItem(api.db, api.access.event.id, id, {
-    ...patch.value,
-    ...(repriced === null ? {} : { unitPriceGrosze: repriced }),
-  });
+  // client-restaurant-split (FR-027): a line renamed to another dish takes that dish's price (else the menu's, else
+  // 0). menu-catalog-courses (S-16): while the event has a menu, the other dish must be on it; a spelling fix and
+  // every other change of a line (also a free-text line from before the menu) stay allowed.
+  let rename = {};
+  if (patch.value.name !== undefined) {
+    const menu = await getAvailableMenu(api.db, api.access.event.id);
+    const item = findMenuItem(menu, patch.value.name);
+    const name = item?.name ?? patch.value.name;
+    const repriced = await priceForRenamedLine(api.db, api.access.event.id, "dish", id, name, item?.priceGrosze ?? 0);
+    if (repriced !== null) {
+      if (menu.length > 0 && !item) {
+        return jsonError(400, menuMessages(locals.locale).notOnMenu);
+      }
+      rename = { name, unitPriceGrosze: repriced, course: item?.course ?? null, menuItemId: item?.id ?? null };
+    }
+  }
+  const result = await updateOrderItem(api.db, api.access.event.id, id, { ...patch.value, ...rename });
   switch (result.status) {
     case "not-found":
       return jsonError(404, orderMessages(locals.locale).itemNotFound);
