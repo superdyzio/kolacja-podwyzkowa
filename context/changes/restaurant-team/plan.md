@@ -302,8 +302,8 @@ Additive (functions only); the new code calls them, so the migration goes to the
 
 #### Automated
 
-- [x] 2.1 Tests, lint, type check and build pass
-- [x] 2.2 The existing smoke passes on the preview
+- [x] 2.1 Tests, lint, type check and build pass — eb2cffd
+- [x] 2.2 The existing smoke passes on the preview — eb2cffd
 
 #### Manual
 

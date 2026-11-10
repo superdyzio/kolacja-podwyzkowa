@@ -8,13 +8,16 @@
 --   manager acts on waiters only and invites waiters only;
 --   waiter  nothing.
 -- A restaurant never loses its last owner (LAST_OWNER). Errors: RESTAURANT_NOT_FOUND, NOT_ALLOWED (the actor is not a
--- member or the action is outside their scope), MEMBER_NOT_FOUND, ALREADY_MEMBER, LAST_OWNER, ELSEWHERE, INVALID_ROLE.
+-- member or the action is outside their scope), MEMBER_NOT_FOUND, ALREADY_MEMBER, PENDING_ELSEWHERE, LAST_OWNER,
+-- ELSEWHERE, INVALID_ROLE.
 --
 -- add_restaurant_member: invites an e-mail into the restaurant — finds the account or creates it WITHOUT a password
 --   (the person sets one from the one-time link the server issues next, staff-accounts) and adds the membership.
 --   member_exclusive tells the server whether it may issue a link: only for an account that belongs to no other
 --   restaurant and is not a platform administrator (a link sets the ACCOUNT's password, and whoever issues it can open
---   it — it must never reach rights in another restaurant).
+--   it — it must never reach rights in another restaurant). An existing account WITHOUT a password that is not
+--   exclusive is refused (PENDING_ELSEWHERE): it would join with no way to set a password (no team may give it a link,
+--   and the trigger below ends the link it already had) — it joins once it has set its password.
 -- set_restaurant_member_role: changes a member's role within the actor's scope.
 -- remove_restaurant_member: deletes the membership only. Sessions are per account and every panel guard re-reads the
 --   membership on each request, so the restaurant closes to the person at once while their other restaurants stay.
@@ -22,9 +25,15 @@
 -- issue_member_link: a fresh one-time link for a member within the actor's scope — an invitation while the account has
 --   no password, else a password reset (issue_staff_token: the account's earlier unused link dies); ELSEWHERE for an
 --   account that belongs to another restaurant too or is a platform administrator.
+-- Trigger restaurant_member_team_links: the link rule is checked when a link is issued, so a link issued while the
+--   account belonged to one restaurant alone must not outlive that: when the account gains a membership in a second
+--   restaurant (any path: this team API, the platform panel, the CLI), its unused links issued by a restaurant's team
+--   (created_by = a staff account that is not a platform administrator) are deleted. Links of the operator's CLI
+--   (created_by null) and of a platform administrator stay: they are trusted across restaurants.
 --
 -- Access model as in the earlier migrations: service role only (EXECUTE revoked from public, anon, authenticated).
--- Additive: four functions and five internal helpers (team_*), no table, column or existing function changes.
+-- Additive: four functions, five internal helpers (team_*) and one trigger on restaurant_member, no table, column or
+-- existing function changes.
 
 -- The roles an actor may act on (and give, for role changes).
 create function public.team_role_manages(p_actor_role text, p_target_role text)
@@ -177,6 +186,9 @@ begin
   ) then
     raise exception 'ALREADY_MEMBER' using errcode = 'P0001';
   end if;
+  if v_password_hash is null and not public.team_account_exclusive(p_restaurant_id, v_account_id) then
+    raise exception 'PENDING_ELSEWHERE' using errcode = 'P0001';
+  end if;
   insert into public.restaurant_member (restaurant_id, account_id, role)
   values (p_restaurant_id, v_account_id, p_role);
 
@@ -297,6 +309,36 @@ $$;
 comment on function public.issue_member_link (integer, bigint, bigint, text, timestamptz, timestamptz) is
   'A fresh one-time link (invite without a password, else reset) for a member within the actor''s scope.';
 
+-- 5. Links do not outlive the one-restaurant rule ----------------------------------------------------------------------
+
+create function public.team_drop_team_links()
+returns trigger
+language plpgsql
+set search_path = ''
+as $$
+begin
+  if exists (
+    select 1 from public.restaurant_member m
+    where m.account_id = new.account_id and m.restaurant_id <> new.restaurant_id
+  ) then
+    delete from public.staff_token t
+    where t.account_id = new.account_id
+      and t.used_at is null
+      and t.created_by is not null
+      and not exists (select 1 from public.staff_account a where a.id = t.created_by and a.is_platform_admin);
+  end if;
+  return null;
+end;
+$$;
+
+comment on function public.team_drop_team_links () is
+  'An account joining a second restaurant loses its unused links issued by a restaurant''s team.';
+
+create trigger restaurant_member_team_links
+after insert on public.restaurant_member
+for each row execute function public.team_drop_team_links();
+
+revoke execute on function public.team_drop_team_links () from public, anon, authenticated;
 revoke execute on function public.team_role_manages (text, text) from public, anon, authenticated;
 revoke execute on function public.team_role_invites (text, text) from public, anon, authenticated;
 revoke execute on function public.team_account_exclusive (integer, bigint) from public, anon, authenticated;

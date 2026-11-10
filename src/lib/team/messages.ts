@@ -21,7 +21,7 @@ export const teamMessages = defineMessages(
     inviteButton: "Zaproś",
     invited: (email: string) => `${email} jest w zespole.`,
     hasAccount: (email: string) =>
-      `${email} ma już konto: zobaczy restaurację w swoim panelu po zalogowaniu (albo po ustawieniu hasła z linku, który już dostała). Link zaproszenia nie jest potrzebny.`,
+      `${email} ma już konto z hasłem: zobaczy restaurację w swoim panelu po zalogowaniu. Link zaproszenia nie jest potrzebny.`,
     // The list
     listHeading: (count: number) => `Osoby w zespole (${String(count)})`,
     you: "Ty",
@@ -49,8 +49,10 @@ export const teamMessages = defineMessages(
     // API messages
     lastOwner: "Restauracja musi mieć co najmniej jednego właściciela. Najpierw nadaj rolę właściciela komuś innemu.",
     alreadyMember: "Ta osoba już jest w zespole. Jej rolę zmienisz na liście.",
+    pendingElsewhere:
+      "Ta osoba ma już konto w innej restauracji, ale nie ustawiła jeszcze hasła. Zaproś ją ponownie, gdy ustawi hasło z linku, który tam dostała.",
     elsewhere:
-      "Ta osoba ma dostęp także do innej restauracji, więc link do ustawienia hasła może jej dać tylko administrator platformy.",
+      "Ta osoba ma dostęp także do innej restauracji, więc ta restauracja nie może dać jej linku do ustawienia hasła (link ustawia hasło do całego konta). Właścicielowi da go administrator platformy; menedżera lub kelnera usuń z zespołu jednej z restauracji — wtedy druga może dać link — i zaproś ponownie, gdy ustawi hasło.",
     // Lost access
     lost: "Nie zarządzasz już zespołem tej restauracji.",
     backToPanel: "Wróć do panelu",
@@ -71,7 +73,7 @@ export const teamMessages = defineMessages(
     inviteButton: "Invite",
     invited: (email: string) => `${email} is in the team.`,
     hasAccount: (email: string) =>
-      `${email} already has an account: the restaurant shows up in their panel after they log in (or after they set the password from the link they already have). No invitation link is needed.`,
+      `${email} already has an account with a password: the restaurant shows up in their panel after they log in. No invitation link is needed.`,
     listHeading: (count: number) => `People in the team (${String(count)})`,
     you: "You",
     accountActive: "account active",
@@ -96,8 +98,10 @@ export const teamMessages = defineMessages(
       `Generate a new one-time link for ${email}? Their earlier unused link stops working. If they already have a password, this is a link to set a new one: the current password works until they set it, then their other devices are logged out.`,
     lastOwner: "The restaurant needs at least one owner. Give the owner role to someone else first.",
     alreadyMember: "This person is already in the team. Change their role in the list.",
+    pendingElsewhere:
+      "This person already has an account in another restaurant but has not set a password yet. Invite them again once they have set it from the link they got there.",
     elsewhere:
-      "This person also has access to another restaurant, so only the platform administrator can give them a link to set a password.",
+      "This person also has access to another restaurant, so this restaurant cannot give them a link to set a password (the link sets the password of the whole account). For an owner, the platform administrator gives it; remove a manager or a waiter from the team of one of the restaurants — then the other can give the link — and invite them again once they have set the password.",
     lost: "You no longer manage this restaurant's team.",
     backToPanel: "Back to the panel",
     dismiss: "Close",

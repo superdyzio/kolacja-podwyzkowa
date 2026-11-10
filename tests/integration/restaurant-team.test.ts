@@ -164,7 +164,7 @@ describe.skipIf(!hasLocalDb)("restaurant team (integration)", () => {
     expect(byManager.member.link?.kind).toBe("invite");
   });
 
-  it("an existing account gets no link: one with a password, one with a pending invitation elsewhere", async () => {
+  it("an existing account with a password joins without a link; one without a password elsewhere is refused", async () => {
     const r = await restaurant("istniejace");
     const other = await restaurant("inna");
     const active = await account("aktywny", { active: true });
@@ -178,17 +178,82 @@ describe.skipIf(!hasLocalDb)("restaurant team (integration)", () => {
       member: { accountId: active.id, created: false, hasPassword: true, link: null },
     });
 
-    const pending = await member(other.id, "oczekujacy", "waiter");
-    const elsewhereInvite = await issueStaffToken(db, pending.id, "invite");
-    if (elsewhereInvite.status !== "issued") throw new Error("link");
-    const joined = await inviteMember(db, r.id, r.ownerId, { email: pending.email, displayName: null, role: "waiter" });
-    expect(joined).toMatchObject({ status: "invited", member: { hasPassword: false, link: null } });
-    expect(await getTokenInfo(db, elsewhereInvite.token)).toEqual({ kind: "invite", email: pending.email });
+    // Invited by the other restaurant's owner and not redeemed yet: joining here would leave the person with no way to
+    // set a password, so it is refused and their invitation stays.
+    const invitedThere = await inviteMember(db, other.id, other.ownerId, {
+      email: email("oczekujacy"),
+      displayName: null,
+      role: "waiter",
+    });
+    if (invitedThere.status !== "invited" || !invitedThere.member.link) throw new Error("invite");
+    accountIds.push(invitedThere.member.accountId);
+    expect(
+      await inviteMember(db, r.id, r.ownerId, {
+        email: invitedThere.member.email,
+        displayName: null,
+        role: "waiter",
+      }),
+    ).toEqual({ status: "pending-elsewhere" });
+    expect(await roleIn(r.id, invitedThere.member.accountId)).toBeNull();
+    expect(await getTokenInfo(db, tokenOf(invitedThere.member.link.path))).toEqual({
+      kind: "invite",
+      email: invitedThere.member.email,
+    });
 
-    const admin = await account("admin", { admin: true });
+    const admin = await account("admin", { admin: true, active: true });
     expect(
       await inviteMember(db, r.id, r.ownerId, { email: admin.email, displayName: null, role: "waiter" }),
-    ).toMatchObject({ status: "invited", member: { link: null } });
+    ).toMatchObject({ status: "invited", member: { hasPassword: true, link: null } });
+    const pendingAdmin = await account("admin-bez-hasla", { admin: true });
+    expect(
+      await inviteMember(db, r.id, r.ownerId, { email: pendingAdmin.email, displayName: null, role: "waiter" }),
+    ).toEqual({ status: "pending-elsewhere" });
+  });
+
+  it("a team's unused links die when the account joins a second restaurant; operator and admin links stay", async () => {
+    const r = await restaurant("drugie-czlonkostwo");
+    const other = await restaurant("drugie-czlonkostwo-inna");
+    const third = await restaurant("drugie-czlonkostwo-trzecia");
+    const manager = await member(r.id, "menedzer", "manager", true);
+    // A manager's reset link for their waiter, then the waiter joins the other restaurant (any path).
+    const waiter = await member(r.id, "kelner", "waiter", true);
+    const reset = await issueMemberLink(db, r.id, manager.id, waiter.id);
+    if (reset.status !== "issued") throw new Error(reset.status);
+    const joined = await inviteMember(db, other.id, other.ownerId, {
+      email: waiter.email,
+      displayName: null,
+      role: "waiter",
+    });
+    expect(joined).toMatchObject({ status: "invited", member: { link: null } });
+    expect(await getTokenInfo(db, tokenOf(reset.link.path))).toBeNull();
+    expect(
+      await redeemStaffToken(db, tokenOf(reset.link.path), { password: `${PASSWORD}-x`, repeat: `${PASSWORD}-x` }),
+    ).toMatchObject({ status: "invalid-token" });
+    expect(await getSession(db, waiter.session)).not.toBeNull();
+
+    // The same through a direct membership (platform panel, CLI): the trigger, not the team function, decides.
+    const invited = await inviteMember(db, r.id, r.ownerId, {
+      email: email("zaproszony"),
+      displayName: null,
+      role: "waiter",
+    });
+    if (invited.status !== "invited" || !invited.member.link) throw new Error("invite");
+    accountIds.push(invited.member.accountId);
+    await addRestaurantMember(db, other.id, invited.member.accountId, "owner");
+    expect(await getTokenInfo(db, tokenOf(invited.member.link.path))).toBeNull();
+
+    // An operator's link (created_by null) and a platform administrator's survive a second membership.
+    const operated = await member(r.id, "operator", "waiter");
+    const operatorLink = await issueStaffToken(db, operated.id, "invite");
+    if (operatorLink.status !== "issued") throw new Error("link");
+    await addRestaurantMember(db, other.id, operated.id, "waiter");
+    expect(await getTokenInfo(db, operatorLink.token)).toEqual({ kind: "invite", email: operated.email });
+    const admin = await account("admin", { admin: true, active: true });
+    const ownerThere = await member(third.id, "wlasciciel", "owner");
+    const adminLink = await issueStaffToken(db, ownerThere.id, "invite", admin.id);
+    if (adminLink.status !== "issued") throw new Error("link");
+    await addRestaurantMember(db, other.id, ownerThere.id, "owner");
+    expect(await getTokenInfo(db, adminLink.token)).toEqual({ kind: "invite", email: ownerThere.email });
   });
 
   it("role changes follow the matrix and never demote the last owner", async () => {

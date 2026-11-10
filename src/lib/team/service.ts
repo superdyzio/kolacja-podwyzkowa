@@ -83,11 +83,15 @@ export interface MemberInput {
 }
 
 export type InviteResult =
-  { status: "invited"; member: TeamInviteResultDto } | { status: "not-found" } | { status: "already-member" };
+  | { status: "invited"; member: TeamInviteResultDto }
+  | { status: "not-found" }
+  | { status: "already-member" }
+  | { status: "pending-elsewhere" };
 
 // The e-mail joins the team (add_restaurant_member); a new account — or one without a password that belongs to this
 // restaurant alone — gets a 7-day invitation. An account of another restaurant or a platform administrator never gets
-// a link from here (it would let the inviter set the password of rights elsewhere).
+// a link from here (it would let the inviter set the password of rights elsewhere); one of them that has no password
+// yet is refused (`pending-elsewhere`: it joins once it has set its password, else nobody could give it a link).
 export async function inviteMember(
   db: DbClient,
   restaurantId: number,
@@ -104,6 +108,9 @@ export async function inviteMember(
   if (error) {
     if (error.message.includes("ALREADY_MEMBER")) {
       return { status: "already-member" };
+    }
+    if (error.message.includes("PENDING_ELSEWHERE")) {
+      return { status: "pending-elsewhere" };
     }
     if (isDenial(error.message)) {
       return { status: "not-found" };

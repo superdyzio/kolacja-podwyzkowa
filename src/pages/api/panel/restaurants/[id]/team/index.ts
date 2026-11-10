@@ -11,7 +11,8 @@ export const prerender = false;
 // unknown or malformed id: the guard's identical 404). GET → the whole team. POST { email, name?, role } → the person
 // joins the team → 201 with the team and the invitation (a 7-day link, or none when the e-mail already has an
 // account). An owner invites managers and waiters, a manager waiters; any other role → the identical 404 (decided by
-// the database under a lock on the restaurant row). A member already in the team → 409.
+// the database under a lock on the restaurant row). A member already in the team → 409; an account without a password
+// that also belongs to another restaurant (or the platform) → 409 (it joins once it has set its password).
 
 export const GET: APIRoute = async ({ locals, params }) => {
   const api = await panelRestaurantApi(locals, params.id, TEAM_ROLES);
@@ -44,6 +45,9 @@ export const POST: APIRoute = async ({ request, locals, params }) => {
   });
   if (result.status === "already-member") {
     return jsonError(409, teamMessages(locals.locale).alreadyMember);
+  }
+  if (result.status === "pending-elsewhere") {
+    return jsonError(409, teamMessages(locals.locale).pendingElsewhere);
   }
   if (result.status === "not-found") {
     return denied(locals);
