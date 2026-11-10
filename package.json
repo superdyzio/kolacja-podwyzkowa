@@ -16,6 +16,7 @@
     "links": "node --env-file-if-exists=.env scripts/links.mjs",
     "event:create": "node --experimental-strip-types --env-file-if-exists=.env scripts/create-event.mjs",
     "platform:admin": "node --env-file-if-exists=.env scripts/platform-admin.mjs",
+    "retention": "node --env-file-if-exists=.env scripts/retention.mjs",
     "smoke": "node --env-file-if-exists=.env scripts/smoke.mjs",
     "demo": "node --env-file-if-exists=.env scripts/demo.mjs",
     "load:local": "node --env-file-if-exists=.env scripts/load-local.mjs",

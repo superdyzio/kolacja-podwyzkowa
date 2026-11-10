@@ -1,3 +1,4 @@
+import { enforceGuestRetention } from "@/lib/privacy/service";
 import type { DbClient } from "@/lib/supabase-client";
 import { loginKeyHash, normalizeEmail } from "./email";
 import { LOGIN_FAILURE_LIMIT, LOGIN_WINDOW_SECONDS, SESSION_MAX_AGE_SECONDS, tokenTtlMs } from "./limits";
@@ -374,17 +375,20 @@ export interface EventMembership extends RestaurantMembership {
 }
 
 // The event with the person's role in its restaurant, or null (unknown event, or the person is not a member of the
-// event's restaurant — the same).
+// event's restaurant — the same). privacy-retention (S-26; NFR-019): the same query reads the event's date and its
+// restaurant's retention term; for a member, an event past its term is purged BEFORE it is returned, so no panel
+// event route, page, dispatcher or floor ever reads expired guest data (a DB error throws → 500).
 export async function findEventMembership(
   db: DbClient,
   accountId: number,
   eventId: number,
+  now: Date = new Date(),
 ): Promise<EventMembership | null> {
   // venue-templates (S-15): a template is never an event — every event route and page answers it like an unknown id
   // (the template guard, findPanelTemplate, opens it through its restaurant).
   const { data, error } = await db
     .from("event")
-    .select("id, name, restaurant_id")
+    .select("id, name, restaurant_id, event_date, restaurant(guest_retention_days)")
     .eq("id", eventId)
     .eq("is_template", false)
     .maybeSingle();
@@ -398,5 +402,10 @@ export async function findEventMembership(
   if (!membership) {
     return null;
   }
+  await enforceGuestRetention(
+    db,
+    { eventId: data.id, eventDate: data.event_date, retentionDays: data.restaurant.guest_retention_days },
+    now,
+  );
   return { ...membership, event: { id: data.id, name: data.name, restaurantId: data.restaurant_id } };
 }

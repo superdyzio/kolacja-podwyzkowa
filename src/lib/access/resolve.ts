@@ -1,5 +1,6 @@
 import type { DbClient } from "@/lib/supabase-client";
 import { effectiveModules, type EventModules } from "@/lib/modules/rules";
+import { enforceGuestRetention } from "@/lib/privacy/service";
 import { isWellFormedAccessKey } from "./keys";
 import { parseAccessPath, type AccessRole } from "./paths";
 
@@ -69,10 +70,30 @@ export function modulesOf(row: {
   });
 }
 
+// privacy-retention (S-26; NFR-019): every branch reads the event's date and its restaurant's retention term in the
+// same query; an event past its term is purged (enforceGuestRetention) BEFORE the access is returned, so nothing of
+// its guests is ever served. A guest's key then opens nothing (the guest no longer exists — the identical denial).
+const RETENTION_COLUMNS = "event_date, restaurant(guest_retention_days)";
+
+interface RetentionColumns {
+  id: number;
+  event_date: string;
+  restaurant: { guest_retention_days: number };
+}
+
+function retentionRow(event: RetentionColumns) {
+  return { eventId: event.id, eventDate: event.event_date, retentionDays: event.restaurant.guest_retention_days };
+}
+
 // Returns null only when no event matches the key. A DB error throws (→ 500), so a misconfigured service key never
 // masquerades as "brak dostępu". A venue template (venue-templates, S-15: an event row with is_template) has keys from
 // the column defaults but never opens: every branch filters it out, so its keys get the identical denial.
-export async function resolveAccess(db: DbClient, role: AccessRole, key: string): Promise<Access | null> {
+export async function resolveAccess(
+  db: DbClient,
+  role: AccessRole,
+  key: string,
+  now: Date = new Date(),
+): Promise<Access | null> {
   if (!isWellFormedAccessKey(key)) {
     return null;
   }
@@ -82,7 +103,7 @@ export async function resolveAccess(db: DbClient, role: AccessRole, key: string)
       const { data, error } = await db
         .from("event")
         .select(
-          "id, name, organizer_key, tv_key, restaurant_key, venue_leads, modules_available, modules_enabled, modules_unlocked",
+          `id, name, organizer_key, tv_key, restaurant_key, venue_leads, modules_available, modules_enabled, modules_unlocked, ${RETENTION_COLUMNS}`,
         )
         .eq("organizer_key", key)
         .eq("is_template", false)
@@ -93,6 +114,7 @@ export async function resolveAccess(db: DbClient, role: AccessRole, key: string)
       if (!data) {
         return null;
       }
+      await enforceGuestRetention(db, retentionRow(data), now);
       return {
         role: "organizer",
         event: {
@@ -109,7 +131,7 @@ export async function resolveAccess(db: DbClient, role: AccessRole, key: string)
     case "tv": {
       const { data, error } = await db
         .from("event")
-        .select("id, name, modules_available, modules_enabled, modules_unlocked")
+        .select(`id, name, modules_available, modules_enabled, modules_unlocked, ${RETENTION_COLUMNS}`)
         .eq("tv_key", key)
         .eq("is_template", false)
         .maybeSingle();
@@ -119,12 +141,13 @@ export async function resolveAccess(db: DbClient, role: AccessRole, key: string)
       if (!data) {
         return null;
       }
+      await enforceGuestRetention(db, retentionRow(data), now);
       return { role: "tv", event: { id: data.id, name: data.name, modules: modulesOf(data) } };
     }
     case "restaurant": {
       const { data, error } = await db
         .from("event")
-        .select("id, name, modules_available, modules_enabled, modules_unlocked")
+        .select(`id, name, modules_available, modules_enabled, modules_unlocked, ${RETENTION_COLUMNS}`)
         .eq("restaurant_key", key)
         .eq("is_template", false)
         .maybeSingle();
@@ -134,6 +157,7 @@ export async function resolveAccess(db: DbClient, role: AccessRole, key: string)
       if (!data) {
         return null;
       }
+      await enforceGuestRetention(db, retentionRow(data), now);
       return { role: "restaurant", event: { id: data.id, name: data.name, modules: modulesOf(data) } };
     }
     case "guest": {
@@ -141,7 +165,7 @@ export async function resolveAccess(db: DbClient, role: AccessRole, key: string)
       const { data, error } = await db
         .from("guest")
         .select(
-          "id, display_name, event(id, name, guest_access_enabled, is_template, modules_available, modules_enabled, modules_unlocked)",
+          `id, display_name, event(id, name, guest_access_enabled, is_template, modules_available, modules_enabled, modules_unlocked, ${RETENTION_COLUMNS})`,
         )
         .eq("access_key", key)
         .maybeSingle();
@@ -150,6 +174,11 @@ export async function resolveAccess(db: DbClient, role: AccessRole, key: string)
       }
       // venue-templates: a template never has guests (nor the switch, a DB check), and never opens anyway.
       if (!data?.event.guest_access_enabled || data.event.is_template) {
+        return null;
+      }
+      // privacy-retention: past its term the event's guests are deleted now — this one included.
+      const purge = await enforceGuestRetention(db, retentionRow(data.event), now);
+      if (purge && purge.status !== "kept") {
         return null;
       }
       return {

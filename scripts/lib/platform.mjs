@@ -301,6 +301,63 @@ export async function expireEventWaiter(env, waiterId) {
   }
 }
 
+// privacy-retention (S-26): the guests' data of events past their restaurant's term, over PostgREST — the same DB
+// functions the app's guards and lazy sweep call (`expired_guest_data_events`, then `purge_event_guest_data` per event,
+// one transaction each; the function itself refuses templates and events inside their term). `restaurantId` null =
+// every restaurant; `dryRun` only lists. Returns [{ id, name, date, restaurant, result }] (result null on a dry run).
+export async function purgeExpiredGuestData(
+  env,
+  { restaurantId = null, limit = 1000, dryRun = false, now = new Date() } = {},
+) {
+  const listed = await rest(env, "rpc/expired_guest_data_events", {
+    method: "POST",
+    body: { p_now: now.toISOString(), p_restaurant_id: restaurantId, p_limit: limit },
+  });
+  if (!listed.ok || !Array.isArray(listed.data)) {
+    throw new PlatformError(`Nie udało się odczytać wydarzeń po terminie (${describeFailure(listed)}).`);
+  }
+  const ids = listed.data.map((row) => Number(row.event_id));
+  const events = [];
+  for (const id of ids) {
+    const row = await rest(env, `event?id=eq.${String(id)}&select=id,name,event_date,restaurant(name)`);
+    const event = Array.isArray(row.data) ? row.data[0] : null;
+    let result = null;
+    if (!dryRun) {
+      const purged = await rest(env, "rpc/purge_event_guest_data", {
+        method: "POST",
+        body: { p_event_id: id, p_now: now.toISOString() },
+      });
+      if (!purged.ok || !purged.data || typeof purged.data.status !== "string") {
+        throw new PlatformError(
+          `Nie udało się usunąć danych gości wydarzenia ${String(id)} (${describeFailure(purged)}).`,
+        );
+      }
+      result = purged.data;
+    }
+    events.push({
+      id,
+      name: event?.name ?? "?",
+      date: event?.event_date ?? "?",
+      restaurant: event?.restaurant?.name ?? "?",
+      result,
+    });
+  }
+  return events;
+}
+
+// A test seam of the smoke (privacy-retention, S-26): moves an event row's date (a venue template's too, which no panel
+// route opens). Local databases only (the smoke refuses any other).
+export async function setEventDate(env, eventId, date) {
+  const result = await rest(env, `event?id=eq.${String(Number(eventId))}`, {
+    method: "PATCH",
+    body: { event_date: date },
+    prefer: "return=representation",
+  });
+  if (!result.ok || !Array.isArray(result.data) || result.data.length !== 1) {
+    throw new PlatformError(`Nie udało się zmienić daty wydarzenia ${String(eventId)} (${describeFailure(result)}).`);
+  }
+}
+
 // A one-time link for the account (`invite` or `reset`; its older unused links stop working). Returns the link, its
 // expiry and the token (scripts that redeem it over HTTP need it).
 export async function issueStaffLink(env, accountId, kind, baseUrl) {

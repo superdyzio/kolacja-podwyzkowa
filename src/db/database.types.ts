@@ -21,6 +21,8 @@ export interface Database {
           disabled_at: string | null;
           // event-branding (S-18): the owner's brand colour `#rrggbb`, null = none.
           brand_color: string | null;
+          // privacy-retention (S-26): days after the event until its guests' data is deleted (1–365, default 30).
+          guest_retention_days: number;
         };
         Insert: {
           id?: never;
@@ -28,6 +30,7 @@ export interface Database {
           created_at?: string;
           disabled_at?: string | null;
           brand_color?: string | null;
+          guest_retention_days?: number;
         };
         Update: {
           id?: never;
@@ -35,6 +38,7 @@ export interface Database {
           created_at?: string;
           disabled_at?: string | null;
           brand_color?: string | null;
+          guest_retention_days?: number;
         };
         Relationships: [];
       };
@@ -47,6 +51,8 @@ export interface Database {
           created_at: string;
           // S-05: guest links open nothing while false (default).
           guest_access_enabled: boolean;
+          // privacy-retention (S-26): when the guests' data was deleted after its term (null = never).
+          guest_data_purged_at: string | null;
           // S-06: guests may save or change their guess only while true (default).
           guess_intake_open: boolean;
           // S-06: the correct raise amount in grosze, null until entered.
@@ -85,6 +91,7 @@ export interface Database {
           tv_key?: string;
           created_at?: string;
           guest_access_enabled?: boolean;
+          guest_data_purged_at?: string | null;
           guess_intake_open?: boolean;
           correct_amount_grosze?: number | null;
           restaurant_key?: string;
@@ -108,6 +115,7 @@ export interface Database {
           tv_key?: string;
           created_at?: string;
           guest_access_enabled?: boolean;
+          guest_data_purged_at?: string | null;
           guess_intake_open?: boolean;
           correct_amount_grosze?: number | null;
           restaurant_key?: string;
@@ -211,6 +219,13 @@ export interface Database {
             referencedColumns: ["event_id", "id"];
           },
         ];
+      };
+      // privacy-retention (S-26): the lazy sweep's single row (claim_retention_sweep).
+      retention_sweep: {
+        Row: { id: number; last_run_at: string | null };
+        Insert: { id?: number; last_run_at?: string | null };
+        Update: { id?: number; last_run_at?: string | null };
+        Relationships: [];
       };
       // event-branding (S-18): one logo per restaurant / per event (PNG, JPEG or WebP by magic bytes, ≤ 512 KiB, base64).
       restaurant_logo: {
@@ -1442,6 +1457,33 @@ export interface Database {
     };
     Views: { [_ in never]: never };
     Functions: {
+      // privacy-retention (S-26): deletes the guests' data of one event past its term (never a template); returns
+      // { status: "not-found" | "kept" | "clean" | "purged", purgedAt, guests?, groups?, snapshots?, spotlight?,
+      // waiters?, notes? }.
+      purge_event_guest_data: {
+        Args: { p_event_id: number; p_now: string };
+        Returns: Json;
+      };
+      // privacy-retention: ids of events past their term with guest data still (or again) there, oldest first;
+      // p_restaurant_id null = every restaurant.
+      expired_guest_data_events: {
+        Args: { p_now: string; p_restaurant_id: number | null; p_limit: number };
+        Returns: { event_id: number }[];
+      };
+      // privacy-retention: true for exactly one caller per interval (the lazy sweep's claim).
+      claim_retention_sweep: {
+        Args: { p_now: string; p_interval_seconds: number };
+        Returns: boolean;
+      };
+      // privacy-retention: the rule (event_date + days < the Warsaw day of p_now) and the leftover check.
+      guest_data_expired: {
+        Args: { p_event_date: string; p_retention_days: number; p_now: string };
+        Returns: boolean;
+      };
+      event_has_guest_data: {
+        Args: { p_event_id: number };
+        Returns: boolean;
+      };
       // menu-catalog-courses: sets an event's menu mode and (reduced) its items in one transaction. Raises
       // EVENT_NOT_FOUND (also templates), INVALID_MODE, ITEM_NOT_FOUND (an item of another restaurant or unknown).
       // guest-rsvp-menu: the guest's own RSVP for the phone's poll (JSON; null while RSVP is off).

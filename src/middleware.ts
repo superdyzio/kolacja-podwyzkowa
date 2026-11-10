@@ -30,6 +30,7 @@ import {
 import { LOCALE_PARAM, isLocale, localeCookieName, resolveLocale } from "@/lib/i18n";
 import { clientMayWrite, isOrganizerApiPath, LEAD_CODES, leadMessages } from "@/lib/lead";
 import { keyedApiSubPath, MODULE_CODES, moduleForApiPath, modulesMessages, type ModuleKey } from "@/lib/modules";
+import { sweepGuestRetention } from "@/lib/privacy/service";
 
 // Link-key guard (PRD Access Control). Every path under /o/, /tv/, /g/, /r/ and /api/{o,tv,g,r}/ needs a valid key of the
 // matching role; anything else gets the same 404 "brak dostępu" response, whatever the reason (malformed, unknown or
@@ -108,6 +109,12 @@ async function guardStaffArea(context: APIContext, next: MiddlewareNext, area: A
   }
   if (locals.staff && area === "auth-page" && url.pathname.replace(/\/$/, "") === LOGIN_PATH) {
     return withHeaders(new Response(null, { status: 303, headers: { Location: PANEL_PATH } }), AUTH_AREA_HEADERS);
+  }
+  // privacy-retention (S-26): a staff page view runs the lazy sweep of events past their guest-data term (throttled:
+  // once per 10 minutes per instance and in the database; best effort, never fails the page). Never on API calls or
+  // the guests' and TV polls.
+  if (db && locals.staff && area === "panel" && request.method === "GET") {
+    await sweepGuestRetention(db, new Date());
   }
   return withHeaders(await next(), AUTH_AREA_HEADERS);
 }

@@ -1269,3 +1269,39 @@ export interface EventWaiterAnswerDto {
   waiters: EventWaitersDto;
   issued: EventWaiterIssuedDto;
 }
+
+// --- Guest data retention (privacy-retention, S-26) --------------------------------------------------------------
+
+// What purge_event_guest_data did to one event: not-found (unknown id or a venue template — never purged), kept
+// (inside its term), clean (purged before, nothing new since), purged (deleted now; the counts say what went).
+export type PurgeStatus = "not-found" | "kept" | "clean" | "purged";
+
+export interface PurgeResultDto {
+  eventId: number;
+  status: PurgeStatus;
+  // When the guests' data was deleted the first time (null = never).
+  purgedAt: string | null;
+  guests: number;
+  groups: number;
+  snapshots: number;
+  spotlight: number;
+  waiters: number;
+  notes: number;
+}
+
+// GET|PATCH /api/panel/restaurants/<id>/retention: the restaurant's term (owners change it, owners and managers read it).
+export interface RetentionSettingsDto {
+  restaurantId: number;
+  guestRetentionDays: number;
+  minDays: number;
+  maxDays: number;
+}
+
+// One event's retention as its pages show it: the last day the guests' data is kept ("YYYY-MM-DD", Europe/Warsaw)
+// and when it was deleted (null = not yet).
+export interface EventRetentionDto {
+  eventDate: string;
+  retentionDays: number;
+  deleteAfter: string;
+  purgedAt: string | null;
+}

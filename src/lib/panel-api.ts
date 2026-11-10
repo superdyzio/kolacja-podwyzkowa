@@ -10,6 +10,7 @@ import { STAFF_ROLES, type StaffRole, type StaffSession } from "@/lib/auth/types
 import { getDb } from "@/lib/db";
 import { FLOOR_ROLES, isFloorOpen } from "@/lib/floor/rules";
 import { httpMessages, jsonError, parseId } from "@/lib/http";
+import { purgeEventGuestData } from "@/lib/privacy/service";
 import { isReadMethod, SUPPORT_ROLE } from "@/lib/support/rules";
 import { recordSupportAccess, type SupportTarget } from "@/lib/support/service";
 import { findTemplateRow } from "@/lib/templates/service";
@@ -161,6 +162,9 @@ export async function findPanelEvent(
   if (!support?.event) {
     return null;
   }
+  // privacy-retention (S-26): support mode reads past findEventMembership, so it applies the retention itself — an
+  // event past its term loses its guests' data before the admin's read (the policy acts, not the admin).
+  await purgeEventGuestData(db, support.event.id, new Date());
   return {
     staff,
     db,
@@ -181,6 +185,43 @@ export async function panelEventApi(
     return api;
   }
   return (await findPanelEvent(locals, idParam, roles)) ?? denied(locals);
+}
+
+// privacy-retention (S-26): an event opened for its MEMBERS only — decided like findPanelEvent but WITHOUT the
+// platform administrator's support branch (like findFloorEvent), for what support mode must never do: the export of
+// an event's data (a bulk copy of guests' health data). The admin's request — in support mode too — is the identical
+// null / 404 and writes no log row. findEventMembership applies the retention before returning.
+export async function findMemberEvent(
+  locals: App.Locals,
+  idParam: string | undefined,
+  roles: readonly StaffRole[] = STAFF_ROLES,
+): Promise<PanelEvent | null> {
+  const db = getDb();
+  const staff = locals.staff;
+  if (!staff || !db) {
+    return null;
+  }
+  const id = parseIntId(idParam);
+  if (id === null) {
+    return null;
+  }
+  const membership = await findEventMembership(db, staff.accountId, id);
+  if (!membership || !roles.includes(membership.role)) {
+    return null;
+  }
+  return { staff, db, ...membership, support: null };
+}
+
+export async function panelMemberEventApi(
+  locals: App.Locals,
+  idParam: string | undefined,
+  roles: readonly StaffRole[] = STAFF_ROLES,
+): Promise<PanelEvent | Response> {
+  const api = panelApi(locals);
+  if (api instanceof Response) {
+    return api;
+  }
+  return (await findMemberEvent(locals, idParam, roles)) ?? denied(locals);
 }
 
 // The venue template of a panel page or route (venue-templates, S-15), or null. A template is an event row with
