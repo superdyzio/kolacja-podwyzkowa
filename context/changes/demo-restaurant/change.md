@@ -1,7 +1,7 @@
 ---
 change_id: demo-restaurant
 title: Stable demo restaurant prepared by the platform admin, with a demo script
-status: implementing
+status: implemented
 created: 2026-11-10
 updated: 2026-11-10
 archived_at: null

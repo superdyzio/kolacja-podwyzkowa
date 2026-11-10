@@ -255,10 +255,10 @@ None. Existing local databases keep the per-run demo restaurants of earlier vers
 
 #### Automated
 
-- [x] 3.1 `docs/scenariusz-pokazu.md` exists and every repository path it names exists
-- [x] 3.2 Full test suite: `AI_PROVIDER=mock npm test`
-- [x] 3.3 Linting, types and build: `npm run lint`, `npx astro check`, `npm run build`
-- [x] 3.4 Smoke and demo: `npm run smoke`, `npm run demo`
+- [x] 3.1 `docs/scenariusz-pokazu.md` exists and every repository path it names exists — c2d079a
+- [x] 3.2 Full test suite: `AI_PROVIDER=mock npm test` — c2d079a
+- [x] 3.3 Linting, types and build: `npm run lint`, `npx astro check`, `npm run build` — c2d079a
+- [x] 3.4 Smoke and demo: `npm run smoke`, `npm run demo` — c2d079a
 
 #### Manual
 
