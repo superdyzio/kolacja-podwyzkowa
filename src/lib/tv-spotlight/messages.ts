@@ -64,6 +64,8 @@ export const tvScreenMessages = defineMessages(
     planLabel: "Plan sali z miejscami gości",
     offline: "Brak połączenia — ponawiam…",
     updated: "Zaktualizowano",
+    // Every other update (TvSeatingView): a live region announces only a CHANGED text.
+    updatedAgain: "Zaktualizowano ponownie",
   },
   {
     pageTitle: (event: string) => `${event} — TV`,
@@ -72,5 +74,6 @@ export const tvScreenMessages = defineMessages(
     planLabel: "Floor plan with the guests' seats",
     offline: "No connection — retrying…",
     updated: "Updated",
+    updatedAgain: "Updated again",
   },
 );

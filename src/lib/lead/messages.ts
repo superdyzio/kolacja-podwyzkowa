@@ -22,6 +22,7 @@ export const leadMessages = defineMessages(
     supportBannerText: "Tryb wsparcia: praca klienta tylko do podglądu.",
     backToEvent: "Wróć do karty wydarzenia",
     readOnlyLabel: "Tylko do podglądu",
+    readOnlyNote: "Formularze, przyciski i plan poniżej są wyłączone — nie da się tu niczego zmienić.",
     // Event card switch
     switchHeading: "Kto prowadzi wydarzenie",
     clientLeads: "Prowadzi klient: edytuje przez link organizatora, a personel ma podgląd.",
@@ -52,6 +53,7 @@ export const leadMessages = defineMessages(
     supportBannerText: "Support mode: the client's work is view-only.",
     backToEvent: "Back to the event card",
     readOnlyLabel: "View only",
+    readOnlyNote: "The forms, buttons and plan below are switched off — nothing can be changed here.",
     switchHeading: "Who runs the event",
     clientLeads: "The client leads: they edit through the organizer link and the staff can view.",
     venueLeads: "Venue leads: the staff edit the client's work in the panel and the client can view.",

@@ -139,25 +139,53 @@ function wallClockOf(instantMs: number, timeZone: string): { date: string; time:
   return { date, time, wallMs: Date.parse(`${date}T${time}:00Z`) };
 }
 
-// The ISO instant of a local "YYYY-MM-DDTHH:MM" (years 2000–2100), or null for anything malformed or impossible.
-export function localInputToInstant(local: string, timeZone: string = PLATFORM_TIME_ZONE): string | null {
-  const match = LOCAL_INPUT.exec(local.trim());
-  if (!match) {
-    return null;
-  }
-  const [year, month, day, hour, minute] = match.slice(1).map(Number);
-  if (year < 2000 || year > 2100 || hour > 23 || minute > 59) {
+// The ISO instant of a wall-clock time in a time zone, or null for an impossible date or time. No year range: internal
+// computations may cross it (the floor window of an event on EVENT_DATE_MAX ends on 2101-01-01).
+function wallTimeToInstant(
+  year: number,
+  month: number,
+  day: number,
+  hour: number,
+  minute: number,
+  timeZone: string,
+): string | null {
+  if (hour > 23 || minute > 59) {
     return null;
   }
   const wall = Date.UTC(year, month - 1, day, hour, minute);
   const check = new Date(wall);
-  if (check.getUTCMonth() !== month - 1 || check.getUTCDate() !== day) {
+  if (check.getUTCFullYear() !== year || check.getUTCMonth() !== month - 1 || check.getUTCDate() !== day) {
     return null;
   }
   const offsetAt = (instant: number) => wallClockOf(instant, timeZone).wallMs - Math.floor(instant / 60_000) * 60_000;
   const first = wall - offsetAt(wall);
   const second = wall - offsetAt(first);
   return new Date(second).toISOString();
+}
+
+// The ISO instant of a local "YYYY-MM-DDTHH:MM" (years 2000–2100: what a person may type), or null for anything
+// malformed or impossible.
+export function localInputToInstant(local: string, timeZone: string = PLATFORM_TIME_ZONE): string | null {
+  const match = LOCAL_INPUT.exec(local.trim());
+  if (!match) {
+    return null;
+  }
+  const [year, month, day, hour, minute] = match.slice(1).map(Number);
+  if (year < 2000 || year > 2100) {
+    return null;
+  }
+  return wallTimeToInstant(year, month, day, hour, minute, timeZone);
+}
+
+// The ISO instant of a full hour on a "YYYY-MM-DD" day in the platform's time zone, without localInputToInstant's year
+// range (for computed days, e.g. the day after an event), or null for a malformed or impossible date.
+export function localHourToInstant(date: string, hour: number, timeZone: string = PLATFORM_TIME_ZONE): string | null {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date);
+  if (!match || !Number.isInteger(hour) || hour < 0) {
+    return null;
+  }
+  const [year, month, day] = match.slice(1).map(Number);
+  return wallTimeToInstant(year, month, day, hour, 0, timeZone);
 }
 
 // The local "YYYY-MM-DDTHH:MM" of an instant (the value of a datetime-local input).

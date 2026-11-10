@@ -64,7 +64,7 @@ async function rest(env, path, { method = "GET", body, prefer } = {}) {
   } catch {
     // not JSON
   }
-  return { ok: response.ok, status: response.status, data };
+  return { ok: response.ok, status: response.status, data, date: response.headers.get("date") };
 }
 
 function describeFailure(result) {
@@ -304,6 +304,47 @@ export async function expireEventWaiter(env, waiterId) {
   if (!result.ok || !Array.isArray(result.data) || result.data.length !== 1) {
     throw new PlatformError(`Nie udało się przeterminować kelnera ${String(waiterId)} (${describeFailure(result)}).`);
   }
+}
+
+// privacy-retention (S-26): `purge_event_guest_data` decides the term by the CALLER's clock (`p_now`), so
+// `npm run retention` against a hosted database first compares this machine's clock with the server's — the HTTP
+// `Date` header of a PostgREST answer (whole seconds) — and refuses a skew above MAX_CLOCK_SKEW_MS (a laptop with a
+// wrong date would purge events still inside their term). Pure: the skew in ms (local minus server), null when the
+// header is missing or unreadable.
+export const MAX_CLOCK_SKEW_MS = 5 * 60_000;
+
+export function clockSkewMs(localMs, dateHeader) {
+  if (typeof dateHeader !== "string" || dateHeader.trim() === "" || !Number.isFinite(localMs)) {
+    return null;
+  }
+  const serverMs = Date.parse(dateHeader);
+  return Number.isFinite(serverMs) ? localMs - serverMs : null;
+}
+
+// Pure: the Polish refusal for a skew (null = the clock is fine). An unknown skew is a refusal too: without the
+// server's time nothing proves the term.
+export function clockSkewProblem(skewMs, maxMs = MAX_CLOCK_SKEW_MS) {
+  const limit = `${String(Math.round(maxMs / 60_000))} min`;
+  if (skewMs === null || !Number.isFinite(skewMs)) {
+    return "Nie udało się odczytać czasu serwera bazy (nagłówek Date), więc nie da się sprawdzić zegara tego komputera — nic nie usunięto.";
+  }
+  if (Math.abs(skewMs) <= maxMs) {
+    return null;
+  }
+  const minutes = Math.round(Math.abs(skewMs) / 60_000);
+  const direction = skewMs > 0 ? "spieszy się" : "spóźnia się";
+  return `Zegar tego komputera ${direction} o ok. ${String(minutes)} min względem serwera bazy (dopuszczalne ${limit}). Termin danych gości liczy się według tego zegara — ustaw poprawny czas i uruchom ponownie; nic nie usunięto.`;
+}
+
+// One cheap read; the local instant is the middle of the request (the header is the server's time while answering).
+export async function serverClockSkew(env) {
+  const before = Date.now();
+  const result = await rest(env, "restaurant?select=id&limit=1");
+  const after = Date.now();
+  if (!result.ok) {
+    throw new PlatformError(`Nie udało się odczytać czasu serwera bazy (${describeFailure(result)}).`);
+  }
+  return clockSkewMs((before + after) / 2, result.date);
 }
 
 // privacy-retention (S-26): the guests' data of events past their restaurant's term, over PostgREST — the same DB

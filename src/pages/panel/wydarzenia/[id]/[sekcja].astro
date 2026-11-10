@@ -122,6 +122,15 @@ const data =
                     : { section, board: await getOrderBoard(db, eventId) }
     : null;
 const cardsPath = access && !support ? `${organizerPath(access.event.organizerKey)}/karteczki` : "";
+// A section whose module is off shows ModuleOff OUTSIDE the read-only frame, so its way back stays reachable.
+const moduleOff =
+  data?.section === "strzaly" && !gameOn
+    ? "guessing"
+    : data?.section === "pytania" && !questionsOn
+      ? "questions"
+      : data?.section === "quiz" && !data.quiz
+        ? "pubQuiz"
+        : null;
 ---
 
 {panel && access && data ? (
@@ -135,123 +144,121 @@ const cardsPath = access && !support ? `${organizerPath(access.event.organizerKe
       </header>
       {support && <SupportBanner support={support} locale={locale} />}
       <LeadBanner kind={mode} eventPath={eventPath} locale={locale} />
-      <ReadOnlyFrame readOnly={readOnly} locale={locale}>
-        {data.section === "goscie" &&
-          (hydrate ? (
-            <GuestManager client:load apiBase={apiBase} initialList={data.list} locale={locale} />
-          ) : (
-            <GuestManager apiBase={apiBase} initialList={data.list} locale={locale} />
-          ))}
-        {data.section === "sale" &&
-          (hydrate ? (
-            <VenueEditor
+      {moduleOff && <ModuleOff module={moduleOff} backPath={eventPath} locale={locale} />}
+      {!moduleOff && (
+        <ReadOnlyFrame readOnly={readOnly} locale={locale}>
+          {data.section === "goscie" &&
+            (hydrate ? (
+              <GuestManager client:load apiBase={apiBase} initialList={data.list} locale={locale} />
+            ) : (
+              <GuestManager apiBase={apiBase} initialList={data.list} locale={locale} />
+            ))}
+          {data.section === "sale" &&
+            (hydrate ? (
+              <VenueEditor
+                client:load
+                apiBase={apiBase}
+                initialVenue={data.venue}
+                initialOccupancy={data.occupancy}
+                locale={locale}
+              />
+            ) : (
+              <VenueEditor
+                apiBase={apiBase}
+                initialVenue={data.venue}
+                initialOccupancy={data.occupancy}
+                locale={locale}
+              />
+            ))}
+          {data.section === "rozsadzenie" &&
+            (hydrate ? (
+              <SeatingEditor
+                client:load
+                apiBase={apiBase}
+                panelPath={eventPath}
+                initialBoard={data.board}
+                initialHistory={data.history}
+                drawEnabled={drawEnabled}
+                locale={locale}
+              />
+            ) : (
+              <SeatingEditor
+                apiBase={apiBase}
+                panelPath={eventPath}
+                initialBoard={data.board}
+                initialHistory={data.history}
+                drawEnabled={drawEnabled}
+                locale={locale}
+              />
+            ))}
+          {data.section === "linki" && (
+            <GuestLinksManager
               client:load
               apiBase={apiBase}
-              initialVenue={data.venue}
-              initialOccupancy={data.occupancy}
-              locale={locale}
-            />
-          ) : (
-            <VenueEditor
-              apiBase={apiBase}
-              initialVenue={data.venue}
-              initialOccupancy={data.occupancy}
-              locale={locale}
-            />
-          ))}
-        {data.section === "rozsadzenie" &&
-          (hydrate ? (
-            <SeatingEditor
-              client:load
-              apiBase={apiBase}
-              panelPath={eventPath}
-              initialBoard={data.board}
-              initialHistory={data.history}
-              drawEnabled={drawEnabled}
-              locale={locale}
-            />
-          ) : (
-            <SeatingEditor
-              apiBase={apiBase}
-              panelPath={eventPath}
-              initialBoard={data.board}
-              initialHistory={data.history}
-              drawEnabled={drawEnabled}
-              locale={locale}
-            />
-          ))}
-        {data.section === "linki" && (
-          <GuestLinksManager
-            client:load
-            apiBase={apiBase}
-            origin={Astro.url.origin}
-            cardsPath={cardsPath}
-            guestsPath={`${eventPath}/goscie`}
-            initial={data.links}
-            locale={locale}
-          />
-        )}
-        {data.section === "potwierdzenia" &&
-          data.rsvp &&
-          (hydrate ? (
-            <RsvpManager client:load apiBase={apiBase} initial={data.rsvp} sectionsBase={eventPath} locale={locale} />
-          ) : (
-            <RsvpManager apiBase={apiBase} initial={data.rsvp} sectionsBase={eventPath} locale={locale} />
-          ))}
-        {data.section === "strzaly" && !gameOn && <ModuleOff module="guessing" backPath={eventPath} locale={locale} />}
-        {data.section === "strzaly" &&
-          gameOn &&
-          (hydrate ? (
-            <GuessManager
-              client:load
-              apiBase={apiBase}
+              origin={Astro.url.origin}
+              cardsPath={cardsPath}
               guestsPath={`${eventPath}/goscie`}
-              initial={data.board}
+              initial={data.links}
               locale={locale}
             />
-          ) : (
-            <GuessManager apiBase={apiBase} guestsPath={`${eventPath}/goscie`} initial={data.board} locale={locale} />
-          ))}
-        {data.section === "pytania" && !questionsOn && (
-          <ModuleOff module="questions" backPath={eventPath} locale={locale} />
-        )}
-        {data.section === "pytania" &&
-          questionsOn &&
-          (hydrate ? (
-            <QuestionManager
-              client:load
-              apiBase={apiBase}
-              initial={data.list}
-              aiInitial={data.ai}
-              tvInitial={data.tv}
-              modules={questionModules}
-              locale={locale}
-            />
-          ) : (
-            <QuestionManager
-              apiBase={apiBase}
-              initial={data.list}
-              aiInitial={data.ai}
-              tvInitial={data.tv}
-              modules={questionModules}
-              locale={locale}
-            />
-          ))}
-        {data.section === "quiz" && !data.quiz && <ModuleOff module="pubQuiz" backPath={eventPath} locale={locale} />}
-        {data.section === "quiz" &&
-          data.quiz &&
-          (hydrate ? (
-            <QuizManager client:load apiBase={apiBase} initial={data.quiz} locale={locale} />
-          ) : (
-            <QuizManager apiBase={apiBase} initial={data.quiz} locale={locale} />
-          ))}
-        {data.section === "zamowienia" &&
-          (hydrate ? (
-            <OrderManager client:load apiBase={apiBase} initial={data.board} locale={locale} />
-          ) : (
-            <OrderManager apiBase={apiBase} initial={data.board} locale={locale} />
-          ))}
-      </ReadOnlyFrame>
+          )}
+          {data.section === "potwierdzenia" &&
+            data.rsvp &&
+            (hydrate ? (
+              <RsvpManager client:load apiBase={apiBase} initial={data.rsvp} sectionsBase={eventPath} locale={locale} />
+            ) : (
+              <RsvpManager apiBase={apiBase} initial={data.rsvp} sectionsBase={eventPath} locale={locale} />
+            ))}
+          {data.section === "strzaly" &&
+            gameOn &&
+            (hydrate ? (
+              <GuessManager
+                client:load
+                apiBase={apiBase}
+                guestsPath={`${eventPath}/goscie`}
+                initial={data.board}
+                locale={locale}
+              />
+            ) : (
+              <GuessManager apiBase={apiBase} guestsPath={`${eventPath}/goscie`} initial={data.board} locale={locale} />
+            ))}
+          {data.section === "pytania" &&
+            questionsOn &&
+            (hydrate ? (
+              <QuestionManager
+                client:load
+                apiBase={apiBase}
+                initial={data.list}
+                aiInitial={data.ai}
+                tvInitial={data.tv}
+                modules={questionModules}
+                locale={locale}
+              />
+            ) : (
+              <QuestionManager
+                apiBase={apiBase}
+                initial={data.list}
+                aiInitial={data.ai}
+                tvInitial={data.tv}
+                modules={questionModules}
+                locale={locale}
+              />
+            ))}
+          {data.section === "quiz" &&
+            data.quiz &&
+            (hydrate ? (
+              <QuizManager client:load apiBase={apiBase} initial={data.quiz} locale={locale} />
+            ) : (
+              <QuizManager apiBase={apiBase} initial={data.quiz} locale={locale} />
+            ))}
+          {data.section === "zamowienia" &&
+            (hydrate ? (
+              <OrderManager client:load apiBase={apiBase} initial={data.board} locale={locale} />
+            ) : (
+              <OrderManager apiBase={apiBase} initial={data.board} locale={locale} />
+            ))}
+        </ReadOnlyFrame>
+      )}
       {
         // „Cennik wydarzenia” (FR-027): prices are always the venue's, whoever leads; members only (not support mode).
         data.section === "zamowienia" && hydrate && (

@@ -261,15 +261,51 @@ async function main() {
         console.log(`  Gość:        ${new URL(`/g/${event.guestKeys[0]}`, BASE_URL).href}`);
       }
     } else {
+      // Each DELETE must answer 2xx with exactly its one row (return=representation); anything else is reported with
+      // the ids left in the local database (never thrown here: it would hide the measurement's own error).
+      const headers = {
+        apikey: env.serviceRoleKey,
+        Authorization: `Bearer ${env.serviceRoleKey}`,
+        Prefer: "return=representation",
+      };
+      const removeRow = async (table, id) => {
+        try {
+          const response = await fetch(`${env.url}/rest/v1/${table}?id=eq.${String(id)}`, {
+            method: "DELETE",
+            headers,
+          });
+          const rows = await response.json().catch(() => null);
+          return response.ok && Array.isArray(rows) && rows.length === 1
+            ? null
+            : `${table} ${String(id)}: HTTP ${String(response.status)}${Array.isArray(rows) ? `, usunięto wierszy: ${String(rows.length)}` : ""}`;
+        } catch (error) {
+          return `${table} ${String(id)}: ${error instanceof Error ? error.message : String(error)}`;
+        }
+      };
+      const leftBehind = [];
       for (const event of events) {
-        const headers = { apikey: env.serviceRoleKey, Authorization: `Bearer ${env.serviceRoleKey}` };
-        await fetch(`${env.url}/rest/v1/event?id=eq.${String(event.event.id)}`, { method: "DELETE", headers });
-        await fetch(`${env.url}/rest/v1/restaurant?id=eq.${String(event.restaurant.id)}`, {
-          method: "DELETE",
-          headers,
-        });
+        // The event first: event.restaurant_id does not cascade, so its restaurant goes only after it.
+        const eventProblem = await removeRow("event", event.event.id);
+        if (eventProblem) {
+          leftBehind.push(
+            eventProblem,
+            `restaurant ${String(event.restaurant.id)}: pominięta (zostało jej wydarzenie)`,
+          );
+          continue;
+        }
+        const restaurantProblem = await removeRow("restaurant", event.restaurant.id);
+        if (restaurantProblem) {
+          leftBehind.push(restaurantProblem);
+        }
       }
-      console.log(`\nUsunięto ${String(events.length)} wydarzenie(a) skryptu.`);
+      if (leftBehind.length === 0) {
+        console.log(`\nUsunięto ${String(events.length)} wydarzenie(a) skryptu.`);
+      } else {
+        process.exitCode = 1;
+        console.error(
+          `\nNie udało się usunąć wszystkich danych skryptu z lokalnej bazy — zostały:\n- ${leftBehind.join("\n- ")}`,
+        );
+      }
     }
   }
 }

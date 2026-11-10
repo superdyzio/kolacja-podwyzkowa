@@ -101,7 +101,7 @@ export const privacyPolicyMessages = defineMessages<LegalDocument>(
           "imiona gości, obecność, grupy i miejsca przy stołach (także w opublikowanych rozsadzeniach);",
           "odpowiedzi na zaproszenie i wybrane danie;",
           "diety, alergie i uwagi dla kuchni — dane o zdrowiu (szczególna kategoria danych, art. 9 RODO);",
-          "zamówienia przypisane do miejsc, oznaczenia „Dotarło”, strzały w grze i odpowiedzi w pub quizie;",
+          "zamówienia przypisane do miejsc, oznaczenia „Dotarło”, strzały w grze oraz odpowiedzi, punkty i miejsca w pub quizie;",
           "osobiste linki gości.",
         ],
         closing: [
@@ -265,7 +265,7 @@ export const privacyPolicyMessages = defineMessages<LegalDocument>(
           "guests' names, attendance, groups and seats (also in the published seatings);",
           "replies to the invitation and the chosen dish;",
           "diets, allergies and notes for the kitchen — health data (a special category of data, GDPR Article 9);",
-          "orders assigned to seats, “Arrived” marks, guesses in the game and pub quiz answers;",
+          "orders assigned to seats, “Arrived” marks, guesses in the game, and pub quiz answers, points and places;",
           "the guests' personal links.",
         ],
         closing: [

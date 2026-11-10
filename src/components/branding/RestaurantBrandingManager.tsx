@@ -4,6 +4,7 @@ import { useBrandingApi } from "@/components/hooks/useBrandingApi";
 import { brandingMessages } from "@/lib/branding/messages";
 import { brandStyle, parseBrandColor, restaurantLogoUrl } from "@/lib/branding/rules";
 import type { Locale } from "@/lib/i18n/locale";
+import { RESTAURANT_NAME_MAX } from "@/lib/platform/rules";
 import type { RestaurantBrandingDto } from "@/types";
 import { LogoField } from "./LogoField";
 import { parseRestaurantBranding } from "./parse";
@@ -48,7 +49,7 @@ export function RestaurantBrandingManager({ initial, locale }: Props) {
           <input
             type="text"
             value={name}
-            maxLength={120}
+            maxLength={RESTAURANT_NAME_MAX}
             required
             onChange={(event) => {
               setName(event.currentTarget.value);

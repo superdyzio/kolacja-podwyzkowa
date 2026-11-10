@@ -26,6 +26,16 @@ export const staffOfflineMessages = defineMessages(
     liveSaved: (label: string) =>
       `${label} zapisany na tym urządzeniu; po odświeżeniu bez sieci otworzy się odczyt bez sieci.`,
     liveGone: "Ten dostęp przestał działać — zapisany stan usunięto z tego urządzenia. Odśwież stronę.",
+    // The floors once the app denies them (the floor window ended, the event archived, the session or the waiter's
+    // access ended): the board gives way to this, with the way back.
+    liveGoneTitle: "Obsługa sali jest już zamknięta",
+    liveGoneText:
+      "Ten widok sali przestał działać: dzień wydarzenia minął, wydarzenie zarchiwizowano albo Twój dostęp się skończył. Zapisany stan usunięto z tego urządzenia.",
+    liveGoneBack: {
+      tablet: "Odśwież stronę",
+      floor: "Wróć do panelu",
+      waiter: "Wróć do wejścia kelnera",
+    } satisfies Record<StaffReadoutArea, string>,
   },
   {
     pageTitle: (event: string) => `Offline readout — ${event}`,
@@ -47,5 +57,13 @@ export const staffOfflineMessages = defineMessages(
     liveSaved: (label: string) =>
       `${label} saved on this device; reloading without a network opens the offline readout.`,
     liveGone: "This access stopped working — the saved state was removed from this device. Reload the page.",
+    liveGoneTitle: "Floor service has closed",
+    liveGoneText:
+      "This floor view stopped working: the event's day is over, the event was archived or your access ended. The saved state was removed from this device.",
+    liveGoneBack: {
+      tablet: "Reload the page",
+      floor: "Back to the panel",
+      waiter: "Back to the waiter entry",
+    },
   },
 );

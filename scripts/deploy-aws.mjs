@@ -31,6 +31,7 @@ import {
   isValidRegion,
   layerArn,
   missingUrlPermissions,
+  nextSteps,
   parseEnvFile,
   redact,
   validateDeployEnv,
@@ -194,11 +195,7 @@ Gotowe. Adres aplikacji (Function URL — stały przy kolejnych wdrożeniach):
 Sprawdzenie ${base}/favicon.png: ${status === 200 ? "HTTP 200" : `jeszcze nie odpowiada (HTTP ${status}), spróbuj za chwilę`}.
 AI: ${environment.AI_PROVIDER}.
 
-Dalej (README, „Wdrożenie na AWS”):
-  1. Pierwsze wdrożenie na AI_PROVIDER=mock i pustej bazie: BASE_URL=${base} npm run smoke
-  2. Wyczyść dane smoke w Supabase (SQL Editor): delete from public.event;
-  3. AI: w ${ENV_FILE} AI_PROVIDER=anthropic i ANTHROPIC_API_KEY, potem znowu AWS_REGION=${region} npm run deploy:aws
-  4. Otwórz ${base}/, „Utwórz wydarzenie”, link organizatora do zakładek.`);
+${nextSteps({ base, region, aiProvider: environment.AI_PROVIDER })}`);
 } finally {
   removeTempDir();
 }

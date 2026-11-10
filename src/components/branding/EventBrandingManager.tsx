@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { useBrandingApi } from "@/components/hooks/useBrandingApi";
 import { brandingMessages } from "@/lib/branding/messages";
-import { logoUrl } from "@/lib/branding/rules";
+import { BRAND_NAME_MAX, logoUrl } from "@/lib/branding/rules";
 import type { Locale } from "@/lib/i18n/locale";
 import type { BrandingDto } from "@/types";
 import { LogoField } from "./LogoField";
@@ -43,7 +43,7 @@ export function EventBrandingManager({ apiBase, initial, locale }: Props) {
           <input
             type="text"
             value={name}
-            maxLength={120}
+            maxLength={BRAND_NAME_MAX}
             onChange={(event) => {
               setName(event.currentTarget.value);
             }}

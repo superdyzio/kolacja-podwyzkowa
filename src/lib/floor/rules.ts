@@ -1,6 +1,6 @@
 import type { StaffRole } from "@/lib/auth/types";
 import type { ClientRoutePattern } from "@/lib/client-routes/match";
-import { addDays, DAY_ROLLOVER_HOUR, eventTiming, localInputToInstant } from "@/lib/events/dates";
+import { addDays, DAY_ROLLOVER_HOUR, eventTiming, localHourToInstant } from "@/lib/events/dates";
 
 // The floor — the waiter's day view (waiter-day-and-refills, S-21; PRD v2 FR-029, US-08). Pure rules shared by the
 // guard, the floor dispatcher, the pages and the tests.
@@ -17,8 +17,9 @@ export function isFloorOpen(eventDate: string, archivedAt: string | null, now: D
 
 // The instant the floor window of an event dated `eventDate` closes: noon Europe/Warsaw of the next day (DST-correct).
 // staff-offline-readout (S-27): the staff's offline copies expire then, so nothing of the event day outlives it.
+// Any event date the rules allow works, the last one (2100-12-31 → 2101-01-01) included.
 export function floorWindowEnd(eventDate: string): string {
-  const instant = localInputToInstant(`${addDays(eventDate, 1)}T${String(DAY_ROLLOVER_HOUR).padStart(2, "0")}:00`);
+  const instant = localHourToInstant(addDays(eventDate, 1), DAY_ROLLOVER_HOUR);
   if (instant === null) {
     throw new Error(`Nieprawidłowa data wydarzenia: ${eventDate}`);
   }

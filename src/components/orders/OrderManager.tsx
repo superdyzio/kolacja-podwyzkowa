@@ -16,6 +16,8 @@ import { formatSavedAt } from "@/lib/offline/readout";
 import { staffReadoutFromBoard, type PlanAspect, type StaffReadoutScope } from "@/lib/offline/staff";
 import { staffOfflineMessages } from "@/lib/offline/staff-messages";
 import { describeLines, formatServedSummary } from "@/lib/orders/summary";
+import { PANEL_PATH } from "@/lib/auth/paths";
+import { WAITER_ENTRY_PATH } from "@/lib/event-waiters/paths";
 import { cn } from "@/lib/utils";
 import type { OrderBoardDto, OrderItemDto } from "@/types";
 import type { OrderRequest } from "@/components/hooks/useOrderBoard";
@@ -100,6 +102,24 @@ export function OrderManager({ apiBase, initial, locale, floor = false, readout 
   const serving = useServingSelection(placement, board.prep, lineKey);
   const byCourse = board.prep.some((line) => line.course !== null);
   const servingTables = useMemo(() => new Set(placement.tables.map((table) => table.name)), [placement.tables]);
+
+  // staff-offline-readout (S-27) + PR #4 review: once the app denies a floor (the window ended, the event archived, the
+  // session or the waiter's access ended) the board gives way to this, like the tablet's „gone” state — no form, box or
+  // chip offers a write that can only fail. The copy is already forgotten (useStaffReadout); a later 200 (the event
+  // restored) brings the board back.
+  if (readout && denied) {
+    const backPath =
+      readout.area === "waiter" ? WAITER_ENTRY_PATH : readout.area === "floor" ? PANEL_PATH : readout.livePath;
+    return (
+      <div role="alert" data-staff-readout-note="gone" className="flex flex-col gap-2 rounded-xl border p-4 sm:p-6">
+        <h2 className="text-2xl font-bold">{so.liveGoneTitle}</h2>
+        <p>{so.liveGoneText}</p>
+        <a href={backPath} className="self-start py-2 underline underline-offset-4">
+          {so.liveGoneBack[readout.area]}
+        </a>
+      </div>
+    );
+  }
 
   function body(values: OrderItemFormValues) {
     return { ...values, note: values.note.trim() === "" ? null : values.note };
@@ -188,26 +208,20 @@ export function OrderManager({ apiBase, initial, locale, floor = false, readout 
   return (
     <div className="grid gap-6 lg:grid-cols-2 lg:items-start">
       <div className="flex flex-col gap-6 lg:col-start-1 lg:row-start-1">
-        {readout && (offline || denied) && (
+        {readout && offline && (
           <p
             role="status"
-            data-staff-readout-note={denied ? "gone" : "offline"}
+            data-staff-readout-note="offline"
             className="rounded-lg border border-amber-500/50 bg-amber-500/10 p-3 text-sm"
           >
-            {denied ? (
-              so.liveGone
-            ) : (
-              <>
-                {so.liveOffline}
-                {saved && (
-                  <span className="block">
-                    {so.liveSaved(formatSavedAt(saved.savedAt, new Date(), locale))}{" "}
-                    <a href={readout.readoutPath} className="underline underline-offset-4">
-                      {so.readoutLink}
-                    </a>
-                  </span>
-                )}
-              </>
+            {so.liveOffline}
+            {saved && (
+              <span className="block">
+                {so.liveSaved(formatSavedAt(saved.savedAt, new Date(), locale))}{" "}
+                <a href={readout.readoutPath} className="underline underline-offset-4">
+                  {so.readoutLink}
+                </a>
+              </span>
             )}
           </p>
         )}

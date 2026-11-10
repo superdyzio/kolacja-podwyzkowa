@@ -176,8 +176,9 @@ export function TvSeatingView({ apiBase, initial, eventName, fixedRoom, locale }
           {t.offline}
         </p>
       )}
-      <p className="sr-only" aria-live="polite">
-        {updates > 0 ? t.updated : ""}
+      {/* The text alternates, so every update is announced (an unchanged text is not); nothing visible changes. */}
+      <p className="sr-only" aria-live="polite" aria-atomic="true">
+        {updates === 0 ? "" : updates % 2 === 1 ? t.updated : t.updatedAgain}
       </p>
     </div>
   );

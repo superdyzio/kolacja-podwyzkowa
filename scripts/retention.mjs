@@ -5,12 +5,13 @@
 // included), staff accounts or the administrator's support log.
 //
 // Works against the database of .env (or the SUPABASE_* variables given on the command line) and prints its host
-// first; a non-local database needs --remote.
+// first; a non-local database needs --remote, and there the run stops unless this machine's clock agrees with the
+// server's within MAX_CLOCK_SKEW_MS (the term is decided by the time this script sends).
 //
 // Usage: npm run retention -- [--dry-run] [--restaurant-id <id>] [--limit <n>] [--remote]
 
 import { parseArgs } from "node:util";
-import { PlatformError, purgeExpiredGuestData, readDbEnv } from "./lib/platform.mjs";
+import { clockSkewProblem, PlatformError, purgeExpiredGuestData, readDbEnv, serverClockSkew } from "./lib/platform.mjs";
 
 const USAGE = "Użycie: npm run retention -- [--dry-run] [--restaurant-id <id>] [--limit <liczba>] [--remote]";
 
@@ -55,6 +56,14 @@ try {
   console.log(`Baza: ${env.host}`);
   if (!env.local && !options.remote) {
     fail("To nie jest lokalna baza. Jeśli naprawdę chcesz usunąć dane gości w tej bazie, dodaj --remote.");
+  }
+  if (!env.local) {
+    // The database re-checks the term with the time this script sends: a hosted run trusts this machine's clock only
+    // when it agrees with the server's.
+    const problem = clockSkewProblem(await serverClockSkew(env));
+    if (problem) {
+      fail(problem);
+    }
   }
   const now = new Date();
   const events = await purgeExpiredGuestData(env, { restaurantId, limit, dryRun, now });

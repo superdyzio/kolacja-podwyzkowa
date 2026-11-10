@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { CLIENT_ROUTE_PATTERNS } from "@/lib/client-routes/match";
 import { FLOOR_ROLES, FLOOR_ROUTES, floorRouteAllows, floorWindowEnd, isFloorOpen } from "./rules";
 import { floorMessages } from "./messages";
+import { EVENT_DATE_MAX, EVENT_DATE_MIN } from "@/lib/events/rules";
 
 // Fixed instants only (never the real clock). 2026-11-14 is a Saturday in CET (UTC+1).
 const EVENT = "2026-11-14";
@@ -43,6 +44,13 @@ describe("floorWindowEnd (staff-offline-readout: when the staff's offline copies
     // 2026-10-25: winter time starts at 03:00 — noon of that day is CET.
     expect(floorWindowEnd("2026-10-24")).toBe("2026-10-25T11:00:00.000Z");
     expect(floorWindowEnd("2026-12-31")).toBe("2027-01-01T11:00:00.000Z");
+  });
+
+  it("works for every date the event rules allow, the last one included (the window ends in 2101)", () => {
+    expect(floorWindowEnd(EVENT_DATE_MIN)).toBe("2000-01-02T11:00:00.000Z");
+    expect(floorWindowEnd(EVENT_DATE_MAX)).toBe("2101-01-01T11:00:00.000Z");
+    expect(isFloorOpen(EVENT_DATE_MAX, null, new Date("2101-01-01T10:59:59Z"))).toBe(true);
+    expect(isFloorOpen(EVENT_DATE_MAX, null, new Date("2101-01-01T11:00:00Z"))).toBe(false);
   });
 
   it("is exactly where the floor closes", () => {

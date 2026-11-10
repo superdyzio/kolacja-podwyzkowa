@@ -9,6 +9,7 @@ import {
   isValidRegion,
   layerArn,
   missingUrlPermissions,
+  nextSteps,
   parseEnvFile,
   redact,
   validateDeployEnv,
@@ -285,5 +286,33 @@ describe("redaction and the dry-run plan", () => {
     expect(plan).toContain("aws lambda add-permission");
     expect(plan).toContain("--invoked-via-function-url");
     expect(plan).toContain("Profil mikusia, region eu-central-1.");
+  });
+});
+
+describe("the steps printed after a deploy", () => {
+  const base = "https://abc123.lambda-url.eu-central-1.on.aws";
+
+  it("start with the first platform administrator on the hosted database, through --remote", () => {
+    const text = nextSteps({ base, region: "eu-central-1", aiProvider: "mock" });
+    expect(text).toContain(`BASE_URL=${base}`);
+    expect(text).toContain("npm run platform:admin -- <twój e-mail> --remote");
+    expect(text).toContain(`${base}/logowanie`);
+    expect(text).toContain(`${base}/panel/platforma`);
+    expect(text).toContain("AWS_REGION=eu-central-1 npm run deploy:aws");
+  });
+
+  it("never print SQL for the hosted database, the smoke or the home page's old event creation", () => {
+    for (const aiProvider of ["mock", "anthropic"]) {
+      const text = nextSteps({ base, region: "eu-central-1", aiProvider });
+      // The hosted database holds every restaurant of the platform: no statement may touch it.
+      expect(text).not.toMatch(/\b(delete|truncate|drop|update)\s+(from\s+)?(table\s+)?public\./i);
+      expect(text).not.toMatch(/SQL Editor/i);
+      expect(text).not.toContain("npm run smoke");
+      expect(text).not.toContain("Utwórz wydarzenie");
+    }
+  });
+
+  it("leave out the AI step once the provider is already Anthropic", () => {
+    expect(nextSteps({ base, region: "eu-central-1", aiProvider: "anthropic" })).not.toContain("AI_PROVIDER=anthropic");
   });
 });

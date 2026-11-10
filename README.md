@@ -260,11 +260,13 @@ AWS_REGION=eu-central-1 npm run deploy:aws
 
 ### Pierwsze uruchomienie
 
-1. Pierwsze wdrożenie na `AI_PROVIDER=mock` (pusta baza).
-2. Smoke działa tylko lokalnie (zakłada wydarzenia bezpośrednio w lokalnej bazie), więc na prawdziwym adresie sprawdź ręcznie: załóż wydarzenie testowe jak w kroku 4, otwórz jego linki, potem usuń je w Supabase → SQL Editor: `delete from public.restaurant where id = <id>;` (wydarzenie i jego dane usuwają się kaskadowo).
-3. AI: w `.env.aws` ustaw `AI_PROVIDER=anthropic` i `ANTHROPIC_API_KEY` (z limitem wydatków w konsoli Anthropic) i wdroż ponownie tą samą komendą.
-4. Załóż wydarzenie w bazie produkcyjnej: `BASE_URL=https://<id>.lambda-url.<region>.on.aws SUPABASE_URL=<z .env.aws> SUPABASE_SERVICE_ROLE_KEY=<z .env.aws> npm run event:create -- --restaurant "<restauracja>" --name "<wydarzenie>"` (zmienne z wiersza poleceń mają pierwszeństwo przed `.env`; skrypt najpierw wypisuje host bazy). Link organizatora do zakładek. Linki gości i karteczki drukuj z adresu produkcyjnego (są `https://`).
-5. Pierwszy administrator platformy (po `npx supabase db push`, gdy baza ma migrację kont personelu): `BASE_URL=https://<id>.lambda-url.<region>.on.aws SUPABASE_URL=<z .env.aws> SUPABASE_SERVICE_ROLE_KEY=<z .env.aws> npm run platform:admin -- <twój e-mail> --remote`. Skrypt wypisuje host bazy (sprawdź, że to projekt platformy, nie archiwum kolacji) i link `https://…/haslo/<token>`; otwórz go, ustaw hasło i zaloguj się na `/logowanie`. Link jest sekretny i działa raz.
+Baza produkcyjna trzyma wszystkie restauracje platformy: nie usuwaj w niej niczego poleceniami SQL (SQL Editor) — `public.event` to wydarzenia wszystkich restauracji, a z wydarzeniem kaskadowo znikają jego goście, linki i reszta danych. Wydarzenie usuwa się w panelu, dane gości po terminie `npm run retention -- --remote`. `npm run smoke`, `npm run demo` i `npm run load:local` odmawiają nielokalnej bazy.
+
+1. Pierwsze wdrożenie na `AI_PROVIDER=mock` (pusta baza po `npx supabase db push`).
+2. Pierwszy administrator platformy: `BASE_URL=https://<id>.lambda-url.<region>.on.aws SUPABASE_URL=<z .env.aws> SUPABASE_SERVICE_ROLE_KEY=<z .env.aws> npm run platform:admin -- <twój e-mail> --remote` (zmienne z wiersza poleceń mają pierwszeństwo przed `.env`). Skrypt wypisuje host bazy (sprawdź, że to projekt platformy, nie archiwum kolacji) i link `https://…/haslo/<token>`; otwórz go, ustaw hasło i zaloguj się na `/logowanie`. Link jest sekretny i działa raz.
+3. Sprawdzenie ręczne (smoke działa tylko lokalnie): w `/panel/platforma` „Nowa restauracja” z Twoim e-mailem jako właściciela (restauracja testowa; konto z hasłem nie dostaje zaproszenia, restauracja jest od razu w `/panel`). Na jej stronie „Nowe wydarzenie”, na karcie wydarzenia otwórz linki klienta, TV i tabletu; po dodaniu gościa i włączeniu linków gości na `/o/<klucz>/linki` także jego link (linki i karteczki są `https://`). Potem „Usuń trwale” na karcie wydarzenia (znika z danymi gości i linkami) i „Wyłącz” restaurację testową na liście platformy (restauracji nie da się usunąć).
+4. AI: w `.env.aws` ustaw `AI_PROVIDER=anthropic` i `ANTHROPIC_API_KEY` (z limitem wydatków w konsoli Anthropic) i wdroż ponownie tą samą komendą.
+5. Restauracje: „Nowa restauracja” w `/panel/platforma` z e-mailem właściciela; jednorazowy link zaproszenia przekazujesz mu sam (aplikacja nie wysyła e-maili). Właściciel zakłada wydarzenia w swoim panelu („Nowe wydarzenie”) i zaprasza zespół; linki gości i karteczki drukuje się z adresu produkcyjnego.
 
 ### Koszty i limity
 

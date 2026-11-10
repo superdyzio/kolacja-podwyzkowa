@@ -388,3 +388,28 @@ export function dryRunPlan(target, environment) {
     "Nic nie jest usuwane (nowa funkcja albo nowy URL zmieniłyby adres i unieważniły wydrukowane karteczki).",
   ];
 }
+
+/**
+ * What to do after a deploy, printed at the end of `npm run deploy:aws` (README „Wdrożenie na AWS” → „Pierwsze
+ * uruchomienie”). The hosted database holds every restaurant of the platform: never print a SQL statement for it, never
+ * the smoke (it refuses anything but a local database) and never a way to start an event that no longer exists.
+ * @param {{ base: string, region: string, aiProvider: string }} options base = the Function URL without a trailing slash
+ * @returns {string}
+ */
+export function nextSteps({ base, region, aiProvider }) {
+  const lines = [
+    "Dalej (README, „Wdrożenie na AWS” → „Pierwsze uruchomienie”):",
+    `  1. Pierwszy administrator platformy (raz; zmienne z ${ENV_FILE}, skrypt najpierw wypisuje host bazy):`,
+    `     BASE_URL=${base} SUPABASE_URL=<z ${ENV_FILE}> SUPABASE_SERVICE_ROLE_KEY=<z ${ENV_FILE}> npm run platform:admin -- <twój e-mail> --remote`,
+    `     Otwórz wypisany link ${base}/haslo/…, ustaw hasło i zaloguj się na ${base}/logowanie.`,
+    `  2. Smoke działa tylko na lokalnej bazie — tu sprawdź ręcznie w ${base}/panel (README „Pierwsze uruchomienie”);`,
+    "     wydarzenie testowe usuwasz w panelu („Usuń trwale” na jego karcie), nigdy poleceniem SQL.",
+    `  3. Restauracje z właścicielami zakładasz w ${base}/panel/platforma („Nowa restauracja”), wydarzenia właściciel w swoim panelu.`,
+  ];
+  if (aiProvider !== "anthropic") {
+    lines.push(
+      `  4. AI: w ${ENV_FILE} AI_PROVIDER=anthropic i ANTHROPIC_API_KEY, potem znowu AWS_REGION=${region} npm run deploy:aws`,
+    );
+  }
+  return lines.join("\n");
+}
