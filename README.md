@@ -97,6 +97,16 @@ Wydarzenie przygotowuje klient (organizator) przez swój link `/o/<klucz>`, a pe
 
 Administrator platformy w trybie wsparcia widzi „Pracę klienta” i podglądy tylko do odczytu, bez linków gości. Na produkcji ta zmiana wymaga migracji bazy **przed** wdrożeniem kodu (każda strona i zapytanie z linku klienta czyta nową kolumnę); migracja tylko dodaje kolumnę z wartością domyślną, więc istniejące wydarzenia zostają prowadzone przez klienta.
 
+### Szablony sal
+
+Właściciel i menedżer zapisują układ sali lokalu raz i tworzą z niego wydarzenia z gotową salą. Sekcja „Szablony sal” w panelu lokalu `/panel/restauracje/<id>` ma listę szablonów (sale, stoliki, miejsca) i „Nowy szablon sali”; każdy szablon otwiera się w tym samym edytorze sali co u klienta (`/panel/szablony/<id>`: plan, sale, stoliki, kontury, obrót, skala krzeseł, odczyt planu przez AI), z nazwą do zmiany i „Usuń szablon”.
+
+1. „Zapisz jako szablon” na karcie wydarzenia kopiuje jego plan, sale, stoliki i rysunek (bez gości) do nowego szablonu.
+2. „Nowe wydarzenie” ma pole „Sala z szablonu”: nowe wydarzenie dostaje kopię sali szablonu. Późniejsze zmiany szablonu nie zmieniają istniejących wydarzeń, a usunięcie szablonu nie usuwa ich sal.
+3. „Zaktualizuj z szablonu” na karcie wydarzenia zastępuje salę wydarzenia salą szablonu. Sale i stoliki są dopasowywane po nazwie: goście przy stolikach, które zostają, zachowują miejsca. „Sprawdź zmiany” pokazuje najpierw, kto straci miejsce i które stoliki znikną, a potwierdzenie wymienia te osoby. TV i telefony gości zobaczą zmianę dopiero po „Opublikuj” w rozsadzeniu.
+
+Szablon nie ma gości ani linków i nie pojawia się na liście wydarzeń ani w licznikach panelu platformy. Na produkcji ta zmiana wymaga migracji bazy **przed** wdrożeniem kodu (każde czytanie wydarzenia sprawdza nową kolumnę); migracja dodaje kolumnę z wartością domyślną i funkcje, więc istniejące wydarzenia się nie zmieniają.
+
 ## Języki
 
 Cała aplikacja działa po polsku i po angielsku. Przełącznik **PL / EN** jest w prawym górnym rogu każdej strony (poza TV i karteczkami do druku); wybór zapamiętuje ciasteczko na rok. Domyślnie wszystko jest po polsku, a link restauracji po angielsku — restauracja ma własne ciasteczko, więc wybór organizatora nie zmienia jej tabletu i odwrotnie. Język da się też ustawić linkiem: dopisz `?lang=en` albo `?lang=pl` (np. dla TV: `/tv/<klucz>?lang=en`). Nie tłumaczą się treści z bazy: imiona, nazwy sal, stolików i dań, uwagi oraz pytania (także baza startowa). Tematy AI powstają w języku osoby, która je losuje.

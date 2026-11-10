@@ -11,7 +11,7 @@ editor, create new events from them with the room ready, and push a template int
 
 - The venue lives in `venue_plan` (singleton per event, holds `chair_pitch`), `venue_room`, `venue_table`, all keyed by
   `event_id` with composite FKs; the editor (`VenueEditor`, `useVenue`) talks to `/api/o/<key>/{venue,plan,plan/image,
-  rooms,tables,venue/layout,venue/layout-proposal}` and reads `${apiBase}/seating` for occupancy
+rooms,tables,venue/layout,venue/layout-proposal}` and reads `${apiBase}/seating` for occupancy
   (`src/components/venue/VenueEditor.tsx:122`).
 - S-14 built a panel dispatcher (`src/pages/api/panel/events/[id]/klient/[...path].ts`) that runs the organizer route
   modules for an event the panel guard opened (`CLIENT_ROUTE_MODULES`, `getClientAccess`). Reusing it for templates
@@ -63,6 +63,7 @@ restaurants and the admin's logged support mode behave identically). The templat
 an allowlist of venue route patterns. Copies and the update are DB functions (`set search_path = ''`, revoked).
 
 **Decisions** (logged in `overnight-log.md`):
+
 1. Matching rule of the update: rooms and tables by `lower(name)` (the unique key). A matched table keeps its row id
    (its seats, pins and order lines stay; seats above a lower seat count go), an event table missing from the template
    is deleted (its seats go, order lines lose the table), a template table missing from the event is added; rooms
@@ -76,21 +77,21 @@ an allowlist of venue route patterns. Copies and the update are DB functions (`s
 
 ### Reader checklist (event table)
 
-| Reader | Treatment |
-|---|---|
-| `src/lib/access/resolve.ts` organizer / tv / restaurant branches | filter `is_template = false` |
-| `src/lib/access/resolve.ts` guest branch | embed `is_template`, deny when true (+ DB check: a template never has `guest_access_enabled`) |
-| `src/lib/auth/service.ts` `findEventMembership` | filter (closes every `/api/panel/events/<id>/…` route, the event pages, reset, links, delete, dispatcher) |
-| `src/lib/client-routes/access.ts` `getClientAccess` | parameter `template` (event dispatcher false, template dispatcher true) |
-| `src/lib/events/service.ts` `listRestaurantEvents` | filter (the ONE list query) |
-| `src/lib/events/service.ts` `getEventCard`, `updateEvent`, `rotateEventKey`, `deleteEvent` | filter (defence in depth) |
-| DB `platform_restaurant_list()` `event_count` | `create or replace` with `not e.is_template` |
-| DB `record_support_access` event lookup | `create or replace` with `not e.is_template` |
-| `scripts/lib/platform.mjs` `listEvents` (`npm run links`) | `is_template=eq.false` |
-| `src/lib/guest-links/service.ts`, `src/lib/guesses/service.ts`, `src/lib/orders/service.ts:322`, `reset_counts` / `reset_event`, every per-event service | fine by construction: reached only through a key or an event guard that already refuses templates |
-| `src/lib/event.ts:50` (`createEvent` insert) | fine: inserts `is_template` default false; never used for templates |
-| smoke / demo counters | smoke checks `eventCount` and the lists after creating templates |
-| S-26 retention / export | hook: must filter `is_template = false` (migration comment + CLAUDE.md) |
+| Reader                                                                                                                                                   | Treatment                                                                                                 |
+| -------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| `src/lib/access/resolve.ts` organizer / tv / restaurant branches                                                                                         | filter `is_template = false`                                                                              |
+| `src/lib/access/resolve.ts` guest branch                                                                                                                 | embed `is_template`, deny when true (+ DB check: a template never has `guest_access_enabled`)             |
+| `src/lib/auth/service.ts` `findEventMembership`                                                                                                          | filter (closes every `/api/panel/events/<id>/…` route, the event pages, reset, links, delete, dispatcher) |
+| `src/lib/client-routes/access.ts` `getClientAccess`                                                                                                      | parameter `template` (event dispatcher false, template dispatcher true)                                   |
+| `src/lib/events/service.ts` `listRestaurantEvents`                                                                                                       | filter (the ONE list query)                                                                               |
+| `src/lib/events/service.ts` `getEventCard`, `updateEvent`, `rotateEventKey`, `deleteEvent`                                                               | filter (defence in depth)                                                                                 |
+| DB `platform_restaurant_list()` `event_count`                                                                                                            | `create or replace` with `not e.is_template`                                                              |
+| DB `record_support_access` event lookup                                                                                                                  | `create or replace` with `not e.is_template`                                                              |
+| `scripts/lib/platform.mjs` `listEvents` (`npm run links`)                                                                                                | `is_template=eq.false`                                                                                    |
+| `src/lib/guest-links/service.ts`, `src/lib/guesses/service.ts`, `src/lib/orders/service.ts:322`, `reset_counts` / `reset_event`, every per-event service | fine by construction: reached only through a key or an event guard that already refuses templates         |
+| `src/lib/event.ts:50` (`createEvent` insert)                                                                                                             | fine: inserts `is_template` default false; never used for templates                                       |
+| smoke / demo counters                                                                                                                                    | smoke checks `eventCount` and the lists after creating templates                                          |
+| S-26 retention / export                                                                                                                                  | hook: must filter `is_template = false` (migration comment + CLAUDE.md)                                   |
 
 ## Phase 1: Data, exclusion and template service
 
@@ -108,6 +109,7 @@ Migration, types, every reader filtered, the template service and guards, unit +
 transaction each.
 
 **Contract**:
+
 - `alter table public.event add column is_template boolean not null default false`, check
   `event_template_no_guest_access (not is_template or not guest_access_enabled)`, index
   `event_restaurant_template_idx (restaurant_id) where is_template`; comment with the S-26 hook.
@@ -121,7 +123,7 @@ transaction each.
 - `create_event_from_template(p_restaurant_id, p_template_id, p_name, p_date date, p_expected_guests integer)` → new
   event id; `TEMPLATE_NOT_FOUND`.
 - `apply_venue_template(p_event_id integer, p_template_id integer)` → jsonb `{ seatsBefore, seatsAfter, tablesAdded,
-  tablesRemoved, tablesKept, roomsAdded, roomsRemoved }`; locks `(3003, event)`; event must be a non-template, the
+tablesRemoved, tablesKept, roomsAdded, roomsRemoved }`; locks `(3003, event)`; event must be a non-template, the
   template a template of the same restaurant (else `EVENT_NOT_FOUND` / `TEMPLATE_NOT_FOUND`); order: upsert rooms by
   `lower(name)` → delete unmatched event tables → update matched tables in place → insert new tables → delete
   unmatched rooms → replace `venue_plan` 1:1.
@@ -143,9 +145,10 @@ venue/layout-proposal, plan, plan/image, rooms, rooms/:id, tables, tables/:id, s
 texts, zod bodies and the DB service.
 
 **Contract**:
+
 - `VenueTemplateSummaryDto { id, name, roomCount, tableCount, seatCount, hasPlan }`, `TemplateListAnswerDto
-  { templates }`, `TemplateUpdatePreviewDto { templateName, lost: SeatOccupantDto-like { guestName, table, seat }[],
-  tablesAdded: string[], tablesRemoved: string[], tablesResized: string[], roomsRemoved: string[], planReplaced }`.
+{ templates }`, `TemplateUpdatePreviewDto { templateName, lost: SeatOccupantDto-like { guestName, table, seat }[],
+tablesAdded: string[], tablesRemoved: string[], tablesResized: string[], roomsRemoved: string[], planReplaced }`.
 - `templateUpdatePreview(eventVenue, occupancy, templateVenue)` (pure, same name rule as the DB).
 - Service: `listVenueTemplates(db, restaurantId)`, `getVenueTemplate(db, restaurantId, id)`,
   `createVenueTemplate(db, restaurantId, name, sourceEventId | null)` → `created | source-not-found`,
@@ -200,10 +203,11 @@ szablonu”.
 `src/pages/api/panel/restaurants/[id]/events.ts`, `src/lib/events/api.ts`
 
 **Contract**:
+
 - `GET|POST /api/panel/restaurants/<id>/templates` (EVENT_STAFF_ROLES; `POST { name, sourceEventId? }` strict → 201
   `{ template, templates }`; 400 name message; a source of another restaurant / unknown / malformed → 404).
 - `GET|PATCH|DELETE /api/panel/templates/<id>` (`PATCH { name }` → `{ template }`; DELETE → `{ deleted: true,
-  restaurantId }`).
+restaurantId }`).
 - `/api/panel/templates/<id>/sala/<sub-path>`: runs the organizer route of an allowed pattern with the template's
   organizer access (`getClientAccess(…, true)`); `seating` GET only; anything else → 404; support reads only (guard).
 - `GET|POST /api/panel/events/<id>/from-template/<templateId>` → `{ preview }` / `{ result, preview }`; event or
@@ -304,16 +308,16 @@ lookup and panel page is a 500).
 
 #### Automated
 
-- [x] 2.1 `npm run lint`, `npx astro check`, `npm run build` pass
-- [x] 2.2 `AI_PROVIDER=mock npm test` passes
+- [x] 2.1 `npm run lint`, `npx astro check`, `npm run build` pass — 9fc08d3
+- [x] 2.2 `AI_PROVIDER=mock npm test` passes — 9fc08d3
 
 ### Phase 3: Smoke, demo and documentation
 
 #### Automated
 
-- [ ] 3.1 `npm run smoke` against `AI_PROVIDER=mock npm run preview` passes
-- [ ] 3.2 `npm run demo` passes and prints the template
-- [ ] 3.3 `AI_PROVIDER=mock npm test`, `npm run lint`, `npx astro check`, `npm run build` pass
+- [x] 3.1 `npm run smoke` against `AI_PROVIDER=mock npm run preview` passes
+- [x] 3.2 `npm run demo` passes and prints the template
+- [x] 3.3 `AI_PROVIDER=mock npm test`, `npm run lint`, `npx astro check`, `npm run build` pass
 
 #### Manual
 

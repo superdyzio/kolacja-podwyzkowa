@@ -576,6 +576,41 @@ for (const { name, date, expectedGuests, archived } of MORE_EVENTS) {
     });
   }
 }
+
+// --- 7b. A venue template (venue-templates, S-15): the main event's room saved as a template, and an event created from
+// it with the room ready (the template's rows are its own; it is in no event list or counter) ----------------------
+
+const TEMPLATE_NAME = "Sala główna (szablon demo)";
+const TEMPLATE_EVENT = "Rocznica firmy (demo)";
+const savedTemplate = await step(
+  `szablon sali ${TEMPLATE_NAME}`,
+  `/api/panel/restaurants/${String(restaurantId)}/templates`,
+  { method: "POST", json: { name: TEMPLATE_NAME, sourceEventId: event.id }, cookie: ownerCookie },
+  201,
+);
+const templateId = savedTemplate.template.id;
+const fromTemplate = await step(
+  `wydarzenie z szablonu ${TEMPLATE_EVENT}`,
+  eventsApi,
+  {
+    method: "POST",
+    json: { name: TEMPLATE_EVENT, date: shiftDate(today, 20), expectedGuests: 60, templateId },
+    cookie: ownerCookie,
+  },
+  201,
+);
+const templateEventVenue = await step(
+  `sala wydarzenia z szablonu`,
+  `/api/panel/events/${String(fromTemplate.event.id)}/klient/venue`,
+  { cookie: ownerCookie },
+);
+if (
+  templateEventVenue.tables.length !== savedTemplate.template.tableCount ||
+  templateEventVenue.rooms.length !== savedTemplate.template.roomCount
+) {
+  fail(`Wydarzenie „${TEMPLATE_EVENT}” nie dostało sali z szablonu „${TEMPLATE_NAME}”.`);
+}
+
 const eventLists = await step("listy wydarzeń lokalu", eventsApi, { cookie: ownerCookie });
 if (eventLists.upcoming.length === 0 || eventLists.past.length === 0 || eventLists.archived.length === 0) {
   fail("Lista wydarzeń lokalu demo nie ma wszystkich trzech zakładek (nadchodzące, minione, archiwum).");
@@ -675,6 +710,7 @@ Dane demo gotowe („${RESTAURANT_NAME}” · „${EVENT_NAME}”, id ${String(e
 - zespół lokalu: ${String(team.team.members.length)} osoby (właściciel, menedżer, kelner)
 - dziennik wejść administratora: wejście jako wsparcie z powodem, 2 otwarte strony, wyjście (widzi go właściciel na stronie restauracji)
 - ceny zamówienia ustawione przez lokal („Cennik wydarzenia”); „${VENUE_LED_EVENT}”: lokal prowadzi, ${String(VENUE_LED_GUESTS.length)} gości dodanych w panelu
+- szablon sali „${TEMPLATE_NAME}” (${String(savedTemplate.template.roomCount)} sale, ${String(savedTemplate.template.tableCount)} stolików) i wydarzenie z niego „${TEMPLATE_EVENT}”
 
 Organizator: ${organizerUrl}
 TV:          ${new URL(`/tv/${event.tvKey}`, BASE_URL).href}
@@ -686,5 +722,7 @@ Panel lokalu: ${new URL("/logowanie", BASE_URL).href} — e-mail ${owner.email},
 Wydarzenia lokalu: ${new URL(`/panel/restauracje/${String(restaurantId)}`, BASE_URL).href} (po zalogowaniu)
 Praca klienta:   ${new URL(`/panel/wydarzenia/${String(event.id)}`, BASE_URL).href} (prowadzi klient: podgląd)
                  ${new URL(`/panel/wydarzenia/${String(venueLedEventId)}`, BASE_URL).href} (lokal prowadzi: edycja w panelu)
+Szablon sali:    ${new URL(`/panel/szablony/${String(templateId)}`, BASE_URL).href} („Zaktualizuj z szablonu” na karcie wydarzenia)
+                 ${new URL(`/panel/wydarzenia/${String(fromTemplate.event.id)}`, BASE_URL).href} (wydarzenie z szablonu)
 Panel platformy: ${new URL("/logowanie", BASE_URL).href} — e-mail ${ADMIN_EMAIL}, hasło ${ADMIN_PASSWORD}
 Linki są sekretne: nie wklejaj ich publicznie.`);

@@ -17,9 +17,11 @@ import {
   createRestaurant,
   ensureStaffAccount,
   issueStaffLink,
+  listEvents,
   listRestaurants,
   PlatformError,
   readDbEnv,
+  readEventKeys,
   removeMembership,
 } from "./lib/platform.mjs";
 
@@ -75,8 +77,8 @@ async function request(
 }
 
 // Raw bytes in and out (plan image upload and download).
-async function requestBytes(path, { method = "GET", body, contentType } = {}) {
-  const headers = { Origin: BASE_URL };
+async function requestBytes(path, { method = "GET", body, contentType, cookie } = {}) {
+  const headers = { Origin: BASE_URL, ...(cookie ? { Cookie: cookie } : {}) };
   if (contentType) {
     headers["Content-Type"] = contentType;
   }
@@ -6763,6 +6765,422 @@ check(
     staffWriteOffAgain.status === 409 &&
     leadCode(staffWriteOffAgain) === "client-leads",
   `${clientWriteOffAgain.status} ${staffWriteOffAgain.status}`,
+);
+
+// 31. Venue templates (venue-templates, S-15; FR-030, US-06, US-09). A template is an event row with is_template: the
+// manager creates one from scratch and draws it with the client's editor through the template dispatcher, the owner
+// saves event A's room as another, an event is created from a template with its room ready, and „Zaktualizuj z
+// szablonu” first names who loses a seat and then unseats exactly them. A template never opens through any link key,
+// never shows in the event lists or the platform counter, never opens through event routes (and an event never through
+// template routes); a waiter, owner B, the admin outside support mode, unknown and malformed ids → the identical 404;
+// no session → 401; a foreign Origin → 403; support mode reads only. Uses the sessions of 25–30.
+const templatesApiOf = (restaurantId) => `/api/panel/restaurants/${String(restaurantId)}/templates`;
+const templateApi = (id) => `/api/panel/templates/${String(id)}`;
+const templateSala = (id) => `${templateApi(id)}/sala`;
+const templatePage = (id) => `/panel/szablony/${String(id)}`;
+const TPL_NAME = `Sala smoke ${RUN_TAG}`;
+const listedCountA = async () => findListed(await platformCall(sessionAdmin), restaurantA.id)?.eventCount ?? -1;
+const eventCountBefore = await listedCountA();
+
+const tplCreated = await staffCall(sessionManager, templatesApiOf(restaurantA.id), {
+  method: "POST",
+  json: { name: `  ${TPL_NAME}  ` },
+});
+const tplId = tplCreated.data?.template?.id ?? 0;
+const tplEmpty = await staffCall(sessionOwner, `${templateSala(tplId)}/venue`);
+const tplPlan = await requestBytes(`${templateSala(tplId)}/plan`, {
+  method: "PUT",
+  body: TINY_PNG,
+  contentType: "image/png",
+  cookie: asStaff(sessionOwner),
+});
+const tplRoom = await staffCall(sessionManager, `${templateSala(tplId)}/rooms`, {
+  method: "POST",
+  json: { name: "Sala A" },
+});
+const tplRoomId = tplRoom.data?.rooms?.find((room) => room.name === "Sala A")?.id ?? 0;
+const tplT1 = await staffCall(sessionManager, `${templateSala(tplId)}/tables`, {
+  method: "POST",
+  json: { roomId: tplRoomId, name: "T1", seatCount: 4, shape: "round", x: 0.3, y: 0.3 },
+});
+const tplT2 = await staffCall(sessionManager, `${templateSala(tplId)}/tables`, {
+  method: "POST",
+  json: { roomId: tplRoomId, name: "T2", seatCount: 6, shape: "rectangular", x: 0.6, y: 0.6, rotation: 90 },
+});
+const tplImage = await requestBytes(`${templateSala(tplId)}/plan/image?v=1`, { cookie: asStaff(sessionOwner) });
+check(
+  "templates: a manager creates an empty template (name normalized) → 201; the client's editor routes draw it through the template dispatcher (plan, room, two tables, the image back)",
+  tplCreated.status === 201 &&
+    tplCreated.data?.template?.name === TPL_NAME &&
+    tplCreated.data.template.tableCount === 0 &&
+    tplCreated.data.template.hasPlan === false &&
+    Array.isArray(tplCreated.data.templates) &&
+    tplEmpty.status === 200 &&
+    tplEmpty.data?.tables?.length === 0 &&
+    tplPlan.status === 200 &&
+    tplRoom.status === 201 &&
+    tplT1.status === 201 &&
+    tplT2.status === 201 &&
+    tplT2.data?.tables?.length === 2 &&
+    tplImage.status === 200 &&
+    sameBytes(tplImage.bytes, TINY_PNG),
+  `${tplCreated.status} ${tplEmpty.status} ${tplPlan.status} ${tplRoom.status} ${tplT1.status} ${tplT2.status} ${tplImage.status}`,
+);
+
+const tplSeating = await staffCall(sessionOwner, `${templateSala(tplId)}/seating`);
+const tplRefused = [];
+for (const [method, sub] of [
+  ["GET", "guests"],
+  ["GET", "guest-links"],
+  ["GET", "orders"],
+  ["GET", "questions"],
+  ["POST", "seating/publish"],
+  ["POST", "seating"],
+  ["GET", "nie-ma-takiej"],
+  ["GET", "reset"],
+]) {
+  const res = await staffCall(sessionOwner, `${templateSala(tplId)}/${sub}`, { method });
+  if (!noAccessJson(res)) tplRefused.push(`${method} ${sub}: ${String(res.status)}`);
+}
+check(
+  "templates: the dispatcher runs only the venue routes and a read of the (empty) seating board; guests, links, orders, questions, publishing and unknown sub-paths → the identical 404",
+  tplSeating.status === 200 && tplSeating.data?.guestList?.guests?.length === 0 && tplRefused.length === 0,
+  `${tplSeating.status} ${tplRefused.join(", ")}`,
+);
+
+const tplList = await staffCall(sessionOwner, templatesApiOf(restaurantA.id));
+const tplListed = tplList.data?.templates?.find((template) => template.id === tplId);
+const eventsWithTpl = await staffCall(sessionOwner, eventsApiOf(restaurantA.id));
+const restaurantPageTpl = await staffCall(sessionManager, restaurantPageOf(restaurantA.id));
+const restaurantPageArchive = await staffCall(sessionOwner, restaurantPageOf(restaurantA.id, "archiwum"));
+const eventCountWithTpl = await listedCountA();
+const linksListed = (await listEvents(platformEnv)).some((event) => event.id === tplId);
+check(
+  "templates: listed with their counters for the restaurant and on its page („Szablony sal”), never in the event lists, tabs, the platform's event counter or npm run links",
+  tplList.status === 200 &&
+    JSON.stringify(tplListed) ===
+      JSON.stringify({ id: tplId, name: TPL_NAME, roomCount: 1, tableCount: 2, seatCount: 10, hasPlan: true }) &&
+    eventsWithTpl.status === 200 &&
+    !["upcoming", "past", "archived"].some((list) => listIds(eventsWithTpl, list).includes(tplId)) &&
+    restaurantPageTpl.status === 200 &&
+    restaurantPageTpl.body.includes("data-templates-section") &&
+    restaurantPageTpl.body.includes(`data-template-id="${String(tplId)}"`) &&
+    eventRow(restaurantPageTpl, tplId) === "" &&
+    eventRow(restaurantPageArchive, tplId) === "" &&
+    eventCountBefore >= 1 &&
+    eventCountWithTpl === eventCountBefore &&
+    !linksListed,
+  `${tplList.status} ${JSON.stringify(tplListed)} ${eventCountBefore}/${eventCountWithTpl} ${String(linksListed)}`,
+);
+
+const tplKeys = await readEventKeys(platformEnv, tplId);
+const tplKeyDenied = [];
+for (const kind of LINK_KINDS) {
+  const key = kind === "organizer" ? tplKeys.organizerKey : kind === "tv" ? tplKeys.tvKey : tplKeys.restaurantKey;
+  if (!(await linkDenied(kind, key))) tplKeyDenied.push(kind);
+}
+const tplKeyVenue = await request(`/api/o/${tplKeys.organizerKey}/venue`);
+const tplKeyPlan = await request(`/api/tv/${tplKeys.tvKey}/plan/image`);
+check(
+  "templates: a template's keys (from the database) open nothing — /o/, /tv/, /r/ pages and APIs, its venue and plan image give the identical denial of an unknown key",
+  tplKeys.isTemplate === true && tplKeyDenied.length === 0 && noAccessJson(tplKeyVenue) && noAccessJson(tplKeyPlan),
+  `${String(tplKeys.isTemplate)} ${tplKeyDenied.join(",")} ${tplKeyVenue.status} ${tplKeyPlan.status}`,
+);
+
+const swapRefused = [];
+for (const [method, path] of [
+  ["GET", eventApi(tplId)],
+  ["PATCH", eventApi(tplId)],
+  ["DELETE", eventApi(tplId)],
+  ["GET", `${eventApi(tplId)}/klient/venue`],
+  ["GET", `${eventApi(tplId)}/reset`],
+  ["GET", `${eventApi(tplId)}/ai-topics`],
+  ["POST", `${eventApi(tplId)}/links/tv`],
+  ["GET", `${eventApi(tplId)}/from-template/${String(tplId)}`],
+  ["GET", templateApi(eventA.id)],
+  ["DELETE", templateApi(eventA.id)],
+  ["GET", `${templateSala(eventA.id)}/venue`],
+  ["GET", `${eventApi(eventA.id)}/from-template/${String(eventA.id)}`],
+  ["GET", templateApi("abc")],
+  ["GET", templateApi(2_000_000_000)],
+  ["GET", `${templateSala("abc")}/venue`],
+  ["GET", `${eventApi(eventA.id)}/from-template/abc`],
+]) {
+  const res = await staffCall(sessionOwner, path, method === "PATCH" ? { method, json: { name: "x" } } : { method });
+  if (!noAccessJson(res)) swapRefused.push(`${method} ${path}: ${String(res.status)}`);
+}
+const tplAsEventPage = await staffCall(sessionOwner, eventPage(tplId));
+const tplAsPreview = await staffCall(sessionOwner, `${eventPage(tplId)}/sale`);
+const eventAsTplPage = await staffCall(sessionOwner, templatePage(eventA.id));
+check(
+  "templates: a template id through every event route and page, an event id through the template routes and page, malformed and unknown ids → the identical 404 / no-access page",
+  swapRefused.length === 0 &&
+    isNoAccessPage(tplAsEventPage) &&
+    isNoAccessPage(tplAsPreview) &&
+    isNoAccessPage(eventAsTplPage),
+  swapRefused.join("; "),
+);
+
+const outsiders = [];
+for (const [who, token] of [
+  ["waiter", sessionWaiter],
+  ["owner B", sessionB],
+  ["admin", sessionAdmin],
+]) {
+  for (const [method, path, json] of [
+    ["GET", templatesApiOf(restaurantA.id)],
+    ["POST", templatesApiOf(restaurantA.id), { name: "Obcy" }],
+    ["GET", templateApi(tplId)],
+    ["PATCH", templateApi(tplId), { name: "Obcy" }],
+    ["DELETE", templateApi(tplId)],
+    ["GET", `${templateSala(tplId)}/venue`],
+    ["POST", `${templateSala(tplId)}/rooms`, { name: "Obca" }],
+    ["GET", `${eventApi(eventA.id)}/from-template/${String(tplId)}`],
+    ["POST", `${eventApi(eventA.id)}/from-template/${String(tplId)}`],
+  ]) {
+    const res = await staffCall(token, path, json ? { method, json } : { method });
+    if (!noAccessJson(res)) outsiders.push(`${who} ${method} ${path}: ${String(res.status)}`);
+  }
+  const page = await staffCall(token, templatePage(tplId));
+  if (!isNoAccessPage(page)) outsiders.push(`${who} page: ${String(page.status)}`);
+}
+const ownerBFromA = await staffCall(sessionB, templatesApiOf(restaurantB.id), {
+  method: "POST",
+  json: { name: "Z cudzego", sourceEventId: eventA.id },
+});
+const noSessionTpl = await staffCall(null, templateApi(tplId));
+const noSessionSala = await staffCall(null, `${templateSala(tplId)}/venue`);
+const foreignTpl = await staffCall(sessionOwner, templatesApiOf(restaurantA.id), {
+  method: "POST",
+  json: { name: "Obcy Origin" },
+  extraHeaders: FOREIGN,
+});
+const foreignSala = await staffCall(sessionOwner, `${templateSala(tplId)}/rooms`, {
+  method: "POST",
+  json: { name: "Obcy Origin" },
+  extraHeaders: FOREIGN,
+});
+const badName = await staffCall(sessionOwner, templatesApiOf(restaurantA.id), { method: "POST", json: { name: "  " } });
+const extraField = await staffCall(sessionOwner, templatesApiOf(restaurantA.id), {
+  method: "POST",
+  json: { name: "x", guests: [] },
+});
+const tplUntouched = await staffCall(sessionOwner, templateApi(tplId));
+check(
+  "templates: a waiter, owner B and the admin outside support mode → the identical 404 on every template route and page; owner B cannot copy event A's room (404); no session → 401; a foreign Origin → 403; an empty name or an unknown field → 400; the template is unchanged",
+  outsiders.length === 0 &&
+    noAccessJson(ownerBFromA) &&
+    noSessionTpl.status === 401 &&
+    noSessionSala.status === 401 &&
+    foreignTpl.status === 403 &&
+    foreignSala.status === 403 &&
+    badName.status === 400 &&
+    errorOf(badName) === "Podaj nazwę szablonu." &&
+    extraField.status === 400 &&
+    tplUntouched.status === 200 &&
+    tplUntouched.data?.template?.name === TPL_NAME &&
+    tplUntouched.data.template.roomCount === 1,
+  `${outsiders.join("; ")} | ${ownerBFromA.status} ${noSessionTpl.status} ${foreignTpl.status} ${foreignSala.status} ${badName.status} ${extraField.status}`,
+);
+
+const tplPageOwner = await staffCall(sessionOwner, templatePage(tplId));
+const tplPageEn = await staffCall(sessionOwner, templatePage(tplId), {
+  extraHeaders: { Cookie: `${asStaff(sessionOwner)}; kp-lang=en` },
+});
+check(
+  "templates: the template page renders the name form and the venue editor (PL and EN)",
+  tplPageOwner.status === 200 &&
+    tplPageOwner.body.includes(`data-template-page="${String(tplId)}"`) &&
+    tplPageOwner.body.includes("data-template-header") &&
+    tplPageOwner.body.includes("Szablon sali") &&
+    tplPageEn.status === 200 &&
+    tplPageEn.body.includes("Venue template"),
+  `${tplPageOwner.status} ${tplPageEn.status}`,
+);
+
+// Event A's room → a template (a copy: the same tables, other rows).
+const venueA31 = await staffCall(sessionOwner, `${eventApi(eventA.id)}/klient/venue`);
+const fromEvent = await staffCall(sessionOwner, templatesApiOf(restaurantA.id), {
+  method: "POST",
+  json: { name: `Sala A smoke ${RUN_TAG}`, sourceEventId: eventA.id },
+});
+const fromEventId = fromEvent.data?.template?.id ?? 0;
+const fromEventVenue = await staffCall(sessionOwner, `${templateSala(fromEventId)}/venue`);
+const tableNamesOf = (res) => (res.data?.tables ?? []).map((table) => table.name).join("|");
+check(
+  "templates: „Zapisz salę jako szablon” copies event A's room (same tables, own rows); the event is unchanged",
+  venueA31.status === 200 &&
+    fromEvent.status === 201 &&
+    fromEvent.data?.template?.tableCount === venueA31.data?.tables?.length &&
+    fromEventVenue.status === 200 &&
+    tableNamesOf(fromEventVenue) === tableNamesOf(venueA31) &&
+    !(fromEventVenue.data?.tables ?? []).some((table) => venueA31.data.tables.some((other) => other.id === table.id)) &&
+    tableNamesOf(await staffCall(sessionOwner, `${eventApi(eventA.id)}/klient/venue`)) === tableNamesOf(venueA31),
+  `${venueA31.status} ${fromEvent.status} ${fromEventVenue.status}`,
+);
+
+// A new event from the template: its room is ready; another restaurant's template → 404.
+const tplBCreated = await staffCall(sessionB, templatesApiOf(restaurantB.id), {
+  method: "POST",
+  json: { name: `Sala B smoke ${RUN_TAG}` },
+});
+const tplBId = tplBCreated.data?.template?.id ?? 0;
+const fromTemplateEvent = await staffCall(sessionManager, eventsApiOf(restaurantA.id), {
+  method: "POST",
+  json: { name: `Z szablonu smoke ${RUN_TAG}`, date: shiftDate(today, 40), templateId: tplId },
+});
+const fromForeignTemplate = await staffCall(sessionOwner, eventsApiOf(restaurantA.id), {
+  method: "POST",
+  json: { name: `Z cudzego szablonu ${RUN_TAG}`, date: shiftDate(today, 40), templateId: tplBId },
+});
+const fromEventAsTemplate = await staffCall(sessionOwner, eventsApiOf(restaurantA.id), {
+  method: "POST",
+  json: { name: `Z wydarzenia ${RUN_TAG}`, date: shiftDate(today, 40), templateId: eventA.id },
+});
+const nEvent = fromTemplateEvent.data?.event;
+const nVenue = nEvent ? await staffCall(sessionOwner, `${eventApi(nEvent.id)}/klient/venue`) : null;
+const tplVenueNow = await staffCall(sessionOwner, `${templateSala(tplId)}/venue`);
+const eventCountAfter = await listedCountA();
+check(
+  "templates: a manager creates an event from the template — the client's link opens a copy of its room (T1, T2, own rows); another restaurant's template or an event id as the template → 404; the platform counter grows by the event only",
+  tplBCreated.status === 201 &&
+    fromTemplateEvent.status === 201 &&
+    hasFreshLinks(nEvent) &&
+    nVenue?.status === 200 &&
+    tableNamesOf(nVenue) === "T1|T2" &&
+    nVenue.data?.plan?.byteSize === TINY_PNG.length &&
+    !(nVenue.data?.tables ?? []).some((table) => tplVenueNow.data?.tables?.some((other) => other.id === table.id)) &&
+    noAccessJson(fromForeignTemplate) &&
+    noAccessJson(fromEventAsTemplate) &&
+    eventCountAfter === eventCountBefore + 1,
+  `${tplBCreated.status} ${fromTemplateEvent.status} ${nVenue?.status} ${tableNamesOf(nVenue ?? {})} ${fromForeignTemplate.status} ${fromEventAsTemplate.status} ${eventCountBefore}→${eventCountAfter}`,
+);
+
+// „Zaktualizuj z szablonu”: two guests seated by the client; the template loses T2 and T1 shrinks to 2 seats.
+const nClientApi = `/api/o/${keyOfPath(nEvent?.links?.organizer)}`;
+const S15_GUESTS = [`Ula S15 ${RUN_TAG}`, `Iza S15 ${RUN_TAG}`, `Ewa S15 ${RUN_TAG}`];
+const nGuests = await request(`${nClientApi}/guests`, { method: "POST", json: { text: S15_GUESTS.join("\n") } });
+const guestIdOf = (name) => nGuests.data?.guests?.find((guest) => guest.displayName === name)?.id ?? 0;
+const nTableId = (name) => nVenue?.data?.tables?.find((table) => table.name === name)?.id ?? 0;
+const seatsN = [];
+for (const [guest, table, seat] of [
+  [S15_GUESTS[0], "T1", 3],
+  [S15_GUESTS[1], "T2", 5],
+  [S15_GUESTS[2], "T1", 1],
+]) {
+  const res = await request(`${nClientApi}/seating/guests/${String(guestIdOf(guest))}`, {
+    method: "PUT",
+    json: { tableId: nTableId(table), seat },
+  });
+  seatsN.push(res.status);
+}
+const tplT2Id = tplVenueNow.data?.tables?.find((table) => table.name === "T2")?.id ?? 0;
+const tplT1Id = tplVenueNow.data?.tables?.find((table) => table.name === "T1")?.id ?? 0;
+const tplDropT2 = await staffCall(sessionOwner, `${templateSala(tplId)}/tables/${String(tplT2Id)}`, {
+  method: "DELETE",
+});
+const tplShrinkT1 = await staffCall(sessionOwner, `${templateSala(tplId)}/tables/${String(tplT1Id)}`, {
+  method: "PATCH",
+  json: { seatCount: 2 },
+});
+const nVenueUnchanged = await staffCall(sessionOwner, `${eventApi(nEvent?.id ?? 0)}/klient/venue`);
+check(
+  "templates: changing the template (delete T2, shrink T1) never touches the event created from it",
+  nGuests.status === 201 &&
+    seatsN.every((status) => status === 200) &&
+    tplDropT2.status === 200 &&
+    tplShrinkT1.status === 200 &&
+    tableNamesOf(nVenueUnchanged) === "T1|T2" &&
+    nVenueUnchanged.data?.tables?.find((table) => table.name === "T1")?.seatCount === 4,
+  `${nGuests.status} ${seatsN.join(",")} ${tplDropT2.status} ${tplShrinkT1.status}`,
+);
+
+const updateApi = `${eventApi(nEvent?.id ?? 0)}/from-template/${String(tplId)}`;
+const preview31 = await staffCall(sessionManager, updateApi);
+const lost31 = (preview31.data?.preview?.lost ?? []).map(
+  (seat) => `${seat.guestName}@${seat.table}:${String(seat.seat)}`,
+);
+const foreignApply = await staffCall(sessionManager, updateApi, { method: "POST", extraHeaders: FOREIGN });
+const applied31 = await staffCall(sessionManager, updateApi, { method: "POST" });
+const boardN = await request(`${nClientApi}/seating`);
+const seatedNames = (boardN.data?.assignments ?? []).map(
+  (row) => boardN.data.guestList.guests.find((guest) => guest.id === row.guestId)?.displayName,
+);
+const nVenueUpdated = await staffCall(sessionOwner, `${eventApi(nEvent?.id ?? 0)}/klient/venue`);
+check(
+  "templates: „Zaktualizuj z szablonu” previews who loses a seat (the guests at T2 and above T1's new size), a foreign Origin → 403, then the manager's apply unseats exactly them, keeps the rest and the room becomes the template's",
+  preview31.status === 200 &&
+    JSON.stringify(lost31) === JSON.stringify([`${S15_GUESTS[0]}@T1:3`, `${S15_GUESTS[1]}@T2:5`]) &&
+    JSON.stringify(preview31.data.preview.tablesRemoved) === JSON.stringify(["T2"]) &&
+    JSON.stringify(preview31.data.preview.tablesResized) === JSON.stringify(["T1"]) &&
+    foreignApply.status === 403 &&
+    applied31.status === 200 &&
+    applied31.data?.result?.seatsBefore === 3 &&
+    applied31.data.result.seatsAfter === 1 &&
+    applied31.data.result.tablesRemoved === 1 &&
+    applied31.data.preview?.lost?.length === 0 &&
+    JSON.stringify(seatedNames) === JSON.stringify([S15_GUESTS[2]]) &&
+    tableNamesOf(nVenueUpdated) === "T1" &&
+    nVenueUpdated.data?.tables?.[0]?.seatCount === 2,
+  `${preview31.status} ${JSON.stringify(lost31)} ${foreignApply.status} ${applied31.status} ${JSON.stringify(applied31.data?.result)} ${JSON.stringify(seatedNames)}`,
+);
+
+// The admin in support mode reads templates, never writes; then leaves.
+const enter31 = await enterSupport(sessionAdmin, restaurantA.id);
+const supportTplApi = await staffCall(sessionAdmin, templateApi(tplId));
+const supportTplList = await staffCall(sessionAdmin, templatesApiOf(restaurantA.id));
+const supportTplVenue = await staffCall(sessionAdmin, `${templateSala(tplId)}/venue`);
+const supportTplPage = await staffCall(sessionAdmin, templatePage(tplId));
+const supportTplWrites = [];
+for (const [method, path, json] of [
+  ["PATCH", templateApi(tplId), { name: "Wsparcie" }],
+  ["DELETE", templateApi(tplId)],
+  ["POST", `${templateSala(tplId)}/rooms`, { name: "Wsparcie" }],
+  ["POST", templatesApiOf(restaurantA.id), { name: "Wsparcie" }],
+  ["POST", updateApi],
+]) {
+  const res = await staffCall(sessionAdmin, path, json ? { method, json } : { method });
+  if (!noAccessJson(res)) supportTplWrites.push(`${method} ${path}: ${String(res.status)}`);
+}
+const exit31 = await endSupportOf(sessionAdmin, restaurantA.id);
+check(
+  "templates: the admin in support mode reads the templates, their room and the page (static, read-only, no name form); every write → the identical 404",
+  enter31.status === 201 &&
+    supportTplApi.status === 200 &&
+    supportTplList.status === 200 &&
+    supportTplVenue.status === 200 &&
+    supportTplPage.status === 200 &&
+    supportTplPage.body.includes("data-read-only") &&
+    !supportTplPage.body.includes("data-template-header") &&
+    supportTplWrites.length === 0 &&
+    exit31.status === 200,
+  `${enter31.status} ${supportTplApi.status} ${supportTplVenue.status} ${supportTplPage.status} ${supportTplWrites.join("; ")} ${exit31.status}`,
+);
+
+// Rename and delete: the events created from it keep their own rooms.
+const renamed31 = await staffCall(sessionManager, templateApi(tplId), {
+  method: "PATCH",
+  json: { name: `${TPL_NAME} 2` },
+});
+const deleted31 = await staffCall(sessionManager, templateApi(tplId), { method: "DELETE" });
+const goneTpl = await staffCall(sessionOwner, templateApi(tplId));
+const goneTplSala = await staffCall(sessionOwner, `${templateSala(tplId)}/venue`);
+const nAfterDelete = await staffCall(sessionOwner, `${eventApi(nEvent?.id ?? 0)}/klient/venue`);
+const fromEventDeleted = await staffCall(sessionOwner, templateApi(fromEventId), { method: "DELETE" });
+const tplBDeleted = await staffCall(sessionB, templateApi(tplBId), { method: "DELETE" });
+check(
+  "templates: the manager renames and deletes the template; afterwards it is the identical 404 and the event made from it keeps its room",
+  renamed31.status === 200 &&
+    renamed31.data?.template?.name === `${TPL_NAME} 2` &&
+    deleted31.status === 200 &&
+    deleted31.data?.deleted === true &&
+    deleted31.data.restaurantId === restaurantA.id &&
+    noAccessJson(goneTpl) &&
+    noAccessJson(goneTplSala) &&
+    tableNamesOf(nAfterDelete) === "T1" &&
+    fromEventDeleted.status === 200 &&
+    tplBDeleted.status === 200,
+  `${renamed31.status} ${deleted31.status} ${goneTpl.status} ${nAfterDelete.status} ${fromEventDeleted.status} ${tplBDeleted.status}`,
 );
 
 finish();

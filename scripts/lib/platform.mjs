@@ -151,6 +151,25 @@ export async function listEvents(env) {
   }));
 }
 
+// One event row's keys and template flag (venue-templates, S-15: the smoke proves a template's keys open nothing).
+export async function readEventKeys(env, eventId) {
+  const result = await rest(
+    env,
+    `event?select=id,organizer_key,tv_key,restaurant_key,is_template&id=eq.${String(eventId)}`,
+  );
+  if (!result.ok || !Array.isArray(result.data) || !result.data[0]) {
+    throw new PlatformError(`Nie udało się odczytać wydarzenia ${String(eventId)} (${describeFailure(result)}).`);
+  }
+  const [row] = result.data;
+  return {
+    id: row.id,
+    organizerKey: row.organizer_key,
+    tvKey: row.tv_key,
+    restaurantKey: row.restaurant_key,
+    isTemplate: row.is_template,
+  };
+}
+
 export function eventLinks(baseUrl, event) {
   return {
     organizer: new URL(`/o/${event.organizerKey}`, baseUrl).href,
