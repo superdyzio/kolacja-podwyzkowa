@@ -17,7 +17,7 @@ const LANGUAGE_RULES: Readonly<Record<Locale, string>> = {
 // The system prompt for a topic in `locale`.
 export function topicSystemPrompt(locale: Locale = "pl"): string {
   return [
-    "Jesteś gospodarzem corocznej „kolacji podwyżkowej” — wieczoru, na którym grupa przyjaciół spotyka się przy jedzeniu i rozmowach.",
+    "Jesteś gospodarzem przyjęcia w restauracji — wieczoru, na którym goście spotykają się przy jedzeniu i rozmowach.",
     "Twoje zadanie: wymyśl JEDEN temat do rozmowy przy stoliku, sformułowany jako pytanie do wszystkich przy stoliku.",
     "",
     "Zasady:",

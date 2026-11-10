@@ -30,7 +30,7 @@ export const modulesMessages = defineMessages(
     hints: {
       questions: "Goście losują pytania na telefonach, a Ty prowadzisz bazę pytań.",
       aiTopics: "Goście i Ty generujecie tematy rozmowy z AI (z limitem na wieczór).",
-      guessing: "Goście zgadują, ile kosztowała cała kolacja; Ty czytasz ranking.",
+      guessing: "Goście zgadują, ile wyniósł cały rachunek; Ty czytasz ranking.",
       seatingDraw: "„Wylosuj projekt” rozsadza gości z jak najmniejszą liczbą powtórzonych sąsiadów.",
       tvSpotlight: "Pytanie, temat albo wylosowana osoba na ekranie TV nad rozsadzeniem.",
       pubQuiz: "Quiz prowadzony na TV, odpowiedzi na telefonach (wkrótce).",
@@ -89,7 +89,7 @@ export const modulesMessages = defineMessages(
     hints: {
       questions: "Guests draw questions on their phones; you keep the question base.",
       aiTopics: "Guests and you generate conversation topics with AI (with an evening limit).",
-      guessing: "Guests guess what the whole dinner cost; you read out the ranking.",
+      guessing: "Guests guess what the whole bill was; you read out the ranking.",
       seatingDraw: "“Draw a plan” seats guests with as few repeated neighbours as possible.",
       tvSpotlight: "A question, a topic or a drawn person on the TV over the seating.",
       pubQuiz: "A quiz run on the TV, answered on phones (coming soon).",

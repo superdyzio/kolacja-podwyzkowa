@@ -19,18 +19,22 @@ export interface Database {
           created_at: string;
           // platform-restaurants: null = active, set = switched off by the platform administrator.
           disabled_at: string | null;
+          // event-branding (S-18): the owner's brand colour `#rrggbb`, null = none.
+          brand_color: string | null;
         };
         Insert: {
           id?: never;
           name: string;
           created_at?: string;
           disabled_at?: string | null;
+          brand_color?: string | null;
         };
         Update: {
           id?: never;
           name?: string;
           created_at?: string;
           disabled_at?: string | null;
+          brand_color?: string | null;
         };
         Relationships: [];
       };
@@ -62,6 +66,8 @@ export interface Database {
           modules_available: string[];
           modules_enabled: string[];
           modules_unlocked: string[];
+          // event-branding (S-18): the client's company or event name (1–80), null = none.
+          brand_name: string | null;
           // venue-templates: true = a restaurant's venue template (never opens through a key, never listed or counted).
           is_template: boolean;
           // menu-catalog-courses: off = free-text orders (v1; every event from before), full = the whole catalog,
@@ -87,6 +93,7 @@ export interface Database {
           modules_available?: string[];
           modules_enabled?: string[];
           modules_unlocked?: string[];
+          brand_name?: string | null;
           is_template?: boolean;
           menu_mode?: string;
         };
@@ -108,6 +115,7 @@ export interface Database {
           modules_available?: string[];
           modules_enabled?: string[];
           modules_unlocked?: string[];
+          brand_name?: string | null;
           is_template?: boolean;
           menu_mode?: string;
         };
@@ -190,6 +198,53 @@ export interface Database {
             isOneToOne: false;
             referencedRelation: "guest_group";
             referencedColumns: ["event_id", "id"];
+          },
+        ];
+      };
+      // event-branding (S-18): one logo per restaurant / per event (PNG, JPEG or WebP by magic bytes, ≤ 512 KiB, base64).
+      restaurant_logo: {
+        Row: { restaurant_id: number; mime_type: string; byte_size: number; image_base64: string; updated_at: string };
+        Insert: {
+          restaurant_id: number;
+          mime_type: string;
+          byte_size: number;
+          image_base64: string;
+          updated_at?: string;
+        };
+        Update: {
+          restaurant_id?: number;
+          mime_type?: string;
+          byte_size?: number;
+          image_base64?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "restaurant_logo_restaurant_id_fkey";
+            columns: ["restaurant_id"];
+            isOneToOne: true;
+            referencedRelation: "restaurant";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      event_logo: {
+        Row: { event_id: number; mime_type: string; byte_size: number; image_base64: string; updated_at: string };
+        Insert: { event_id: number; mime_type: string; byte_size: number; image_base64: string; updated_at?: string };
+        Update: {
+          event_id?: number;
+          mime_type?: string;
+          byte_size?: number;
+          image_base64?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "event_logo_event_id_fkey";
+            columns: ["event_id"];
+            isOneToOne: true;
+            referencedRelation: "event";
+            referencedColumns: ["id"];
           },
         ];
       };

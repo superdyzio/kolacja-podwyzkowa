@@ -1,5 +1,7 @@
 import type { APIRoute } from "astro";
 import * as aiTopics from "@/pages/api/o/[key]/ai-topics";
+import * as branding from "@/pages/api/o/[key]/branding";
+import * as brandingLogo from "@/pages/api/o/[key]/branding/logo";
 import * as drinks from "@/pages/api/o/[key]/drinks";
 import * as drinksById from "@/pages/api/o/[key]/drinks/[id]";
 import * as groups from "@/pages/api/o/[key]/groups";
@@ -48,6 +50,8 @@ export type ClientRouteModule = Partial<Record<RouteMethod, APIRoute>>;
 
 export const CLIENT_ROUTE_MODULES: Readonly<Record<ClientRoutePattern, ClientRouteModule>> = {
   "ai-topics": aiTopics,
+  branding: branding,
+  "branding/logo": brandingLogo,
   drinks: drinks,
   "drinks/:id": drinksById,
   groups: groups,

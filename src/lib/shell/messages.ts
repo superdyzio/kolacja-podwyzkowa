@@ -4,8 +4,6 @@ import { defineMessages } from "@/lib/i18n/locale";
 // on the shell cards come from each domain's own format*Summary(…, locale).
 export const shellMessages = defineMessages(
   {
-    // The home page (index.astro).
-    appName: "Kolacja podwyżkowa",
     noDatabase: "Baza danych nie jest skonfigurowana.",
     linkOnly: "Dostęp tylko przez link od organizatora.",
     staffLogin: "Logowanie dla personelu",
@@ -48,7 +46,6 @@ export const shellMessages = defineMessages(
       "Po próbie generalnej wyczyść rozsadzenie (z historią publikacji) i strzały; goście, sala, zamówienia i pytania zostają. Pełny reset danych prowadzi lokal.",
   },
   {
-    appName: "Raise dinner",
     noDatabase: "The database is not configured.",
     linkOnly: "Access only through a link from the organizer.",
     staffLogin: "Staff login",

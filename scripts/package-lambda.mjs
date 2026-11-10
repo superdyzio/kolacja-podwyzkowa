@@ -185,7 +185,7 @@ async function smokeUnpacked(dir) {
       favicon.status === 200 &&
       favicon.headers.get("content-type") === "image/png" &&
       home.status === 200 &&
-      homeText.includes("Kolacja podwyżkowa");
+      homeText.includes("Stolik");
     if (!ok) fail(`serwer z run.sh odpowiada źle: favicon ${favicon.status}, strona główna ${home.status}`);
   } finally {
     server.kill();

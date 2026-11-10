@@ -17,7 +17,7 @@ interface Props {
   locale: Locale;
 }
 
-// The guest's guess of what the whole dinner cost (the bill, tip included) on the phone (S-06, FR-017, NFR-001): enter it, change it until the
+// The guest's guess of the whole bill (tip included) on the phone (S-06, FR-017, NFR-001): enter it, change it until the
 // organizer closes intake, and see ONLY the own guess. Reads the page's shared live state (one poll per phone), so a
 // close, a reopen or the organizer typing the guess in for this guest shows up within one poll; a refreshed state
 // never overwrites what the guest is typing. Without access (switched off, link revoked) it shows nothing: the seat

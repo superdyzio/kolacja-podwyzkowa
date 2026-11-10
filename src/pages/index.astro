@@ -1,9 +1,10 @@
 ---
 import Layout from "@/layouts/Layout.astro";
 import { getDb } from "@/lib/db";
+import { PRODUCT_NAME } from "@/lib/i18n/product";
 import { shellMessages } from "@/lib/shell/messages";
 
-// Public entry: the app name and that everything opens only through a link (multi-tenant-events: events are created
+// Public entry: the product name (staff-facing, event-branding) and that everything opens only through a link (multi-tenant-events: events are created
 // by the platform — `npm run event:create` until the restaurant panel, S-11 — never from here). No DB query. Staff
 // log in through the link to /logowanie (staff-accounts).
 const t = shellMessages(Astro.locals.locale);
@@ -14,7 +15,7 @@ Astro.response.headers.set("Cache-Control", "no-store");
 
 <Layout>
   <main class="mx-auto flex min-h-screen max-w-xl flex-col justify-center gap-4 p-6">
-    <h1 class="text-3xl font-bold">{t.appName}</h1>
+    <h1 class="text-3xl font-bold">{PRODUCT_NAME}</h1>
     <p class="text-muted-foreground">{configured ? t.linkOnly : t.noDatabase}</p>
     <a href="/logowanie" class="text-sm font-medium underline underline-offset-4">
       {t.staffLogin}

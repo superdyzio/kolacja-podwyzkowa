@@ -6,6 +6,8 @@
 
 export const CLIENT_ROUTE_PATTERNS = [
   "ai-topics",
+  "branding",
+  "branding/logo",
   "drinks",
   "drinks/:id",
   "groups",

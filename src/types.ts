@@ -1082,3 +1082,26 @@ export interface EventModuleDto {
 export interface EventModulesDto {
   modules: EventModuleDto[];
 }
+
+// event-branding (S-18): a logo's metadata (never the bytes); `version` = epoch ms of the upload, put into the URL.
+export interface LogoDto {
+  mimeType: PlanImageType;
+  byteSize: number;
+  version: number;
+}
+
+// The brand of one event as every page of its links shows it: the restaurant's (name, colour with its readable text
+// colour, logo) and the client's (company or event name, logo). No ids, no keys.
+export interface BrandingDto {
+  restaurant: { name: string; color: string | null; textColor: "#000000" | "#ffffff" | null; logo: LogoDto | null };
+  client: { name: string | null; logo: LogoDto | null };
+}
+
+// The restaurant's brand in the panel (owner edits, manager reads).
+export interface RestaurantBrandingDto {
+  restaurantId: number;
+  name: string;
+  color: string | null;
+  textColor: "#000000" | "#ffffff" | null;
+  logo: LogoDto | null;
+}
