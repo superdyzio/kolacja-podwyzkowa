@@ -390,7 +390,8 @@ try {
   env = readDbEnv({ requireLocal: true });
   const restaurant = await createRestaurant(env, RESTAURANT_NAME);
   restaurantId = restaurant.id;
-  event = await createEvent(env, restaurant.id, EVENT_NAME, { allModules: true });
+  // pub-quiz (S-28): every module on, but only AI topics unlocked — the platform admin unlocks the pub quiz in step 9.
+  event = await createEvent(env, restaurant.id, EVENT_NAME, { allModules: true, unlocked: ["aiTopics"] });
   console.log(
     `Baza ${env.host}: restauracja „${restaurant.name}” (id ${String(restaurant.id)}), wydarzenie „${event.name}” (id ${String(event.id)}).`,
   );
@@ -992,6 +993,15 @@ const unlocked = await step(
 if (unlocked.modules.find((module) => module.key === "aiTopics")?.unlocked !== true) {
   fail("Administrator nie odblokował tematów AI dla „Wigilii firmowej (demo)”.");
 }
+// pub-quiz (S-28): in the same visit the admin unlocks the paid pub quiz for the main event (the client has it on).
+const quizUnlocked = await step(
+  "odblokowanie pub quizu (administrator)",
+  `/api/panel/platform/events/${String(event.id)}/modules/pubQuiz`,
+  { method: "PUT", json: { unlocked: true }, cookie: adminCookie },
+);
+if (quizUnlocked.modules.find((module) => module.key === "pubQuiz")?.active !== true) {
+  fail(`Administrator nie odblokował pub quizu dla „${EVENT_NAME}”.`);
+}
 const supportEnded = await step("koniec trybu wsparcia", supportApi, { method: "DELETE", cookie: adminCookie });
 for (const module of ["aiTopics", "guessing"]) {
   await step(`moduł ${module}: ${VENUE_LED_EVENT}`, `/api/panel/events/${String(venueLedEventId)}/klient/modules`, {
@@ -1009,9 +1019,86 @@ const supportLog = await step(
   { cookie: ownerCookie },
 );
 const supportKinds = supportLog.entries.map((entry) => entry.kind).join(",");
-if (supportKinds !== "exit,unlock,access,access,enter" || supportLog.entries[4].reason !== SUPPORT_REASON) {
+if (supportKinds !== "exit,unlock,unlock,access,access,enter" || supportLog.entries[5].reason !== SUPPORT_REASON) {
   fail(`Dziennik wejść administratora demo ma nieoczekiwane wpisy: ${supportKinds || "brak"}.`);
 }
+
+// --- 9a. Pub quiz (pub-quiz, S-28): the client prepares three questions, starts the quiz on the TV, asks two of them;
+// four guests answer through their links (switched on for the round, then off again, like the RSVP); each question is
+// closed and the results are left on the TV (places 1–3 by name); the third question stays for a manual round --------
+
+const QUIZ = [
+  { text: "W którym roku Polska wstąpiła do Unii Europejskiej?", options: ["1999", "2004", "2007"], correct: 1 },
+  { text: "Nad jaką rzeką leży Gdańsk?", options: ["Motława", "Warta", "Odra", "Wisłok"], correct: 0 },
+  { text: "Ile minut trwa mecz piłki nożnej bez doliczonego czasu?", options: ["80", "90", "100"], correct: 1 },
+];
+// Who answers what (option index) per asked question: Tomek misses the first, Kasia and Tomek the second.
+const QUIZ_ANSWERS = [
+  { Ania: 1, Bartek: 1, Kasia: 1, Tomek: 0 },
+  { Ania: 0, Bartek: 0, Kasia: 2, Tomek: 3 },
+];
+const QUIZ_RESULTS = [
+  ["Ania", 1, 2],
+  ["Bartek", 1, 2],
+  ["Kasia", 3, 1],
+  ["Tomek", 4, 0],
+];
+let quizBoard;
+for (const question of QUIZ) {
+  quizBoard = await step(
+    `pub quiz: pytanie „${question.text}”`,
+    `${api}/quiz/questions`,
+    {
+      method: "POST",
+      json: question,
+    },
+    201,
+  );
+}
+await step("pub quiz: start na TV", `${api}/quiz/run`, { method: "POST", json: { action: "start" } });
+const quizLinks = await step("linki gości: włączenie na pub quiz", `${api}/guest-links`, {
+  method: "PATCH",
+  json: { enabled: true },
+});
+const quizKeyOf = (name) => quizLinks.guests.find((guest) => guest.displayName === name)?.key ?? "";
+for (const [index, answers] of QUIZ_ANSWERS.entries()) {
+  const questionId = quizBoard.questions[index].id;
+  await step(`pub quiz: pytanie ${String(index + 1)} na TV`, `${api}/quiz/run`, {
+    method: "POST",
+    json: { action: "ask", questionId },
+  });
+  for (const [name, option] of Object.entries(answers)) {
+    const state = await step(`pub quiz: odpowiedź gościa ${name}`, `/api/g/${quizKeyOf(name)}/quiz`, {
+      method: "PUT",
+      json: { questionId, option },
+    });
+    if (state?.quiz?.answer !== option) {
+      fail(`Telefon gościa ${name} nie pokazuje jego odpowiedzi w pub quizie.`);
+    }
+  }
+  await step(`pub quiz: zamknięcie pytania ${String(index + 1)}`, `${api}/quiz/run`, {
+    method: "POST",
+    json: { action: "close" },
+  });
+}
+quizBoard = await step("pub quiz: wyniki na TV", `${api}/quiz/run`, { method: "POST", json: { action: "results" } });
+const quizStandings = quizBoard.standings.map((row) => [row.name, row.place, row.points]);
+if (JSON.stringify(quizStandings) !== JSON.stringify(QUIZ_RESULTS)) {
+  fail(`Wyniki pub quizu demo są inne niż oczekiwane: ${JSON.stringify(quizStandings)}.`);
+}
+const quizTv = await step("pub quiz: ekran TV", `/api/tv/${event.tvKey}/seating`);
+const quizTvNames = (quizTv?.quiz?.results?.entries ?? []).map((entry) => `${String(entry.place)}. ${entry.name}`);
+if (quizTv?.quiz?.phase !== "results" || quizTvNames.join(", ") !== "1. Ania, 1. Bartek, 3. Kasia") {
+  fail(`TV nie pokazuje wyników pub quizu (${quizTvNames.join(", ") || "brak"}).`);
+}
+const quizPhone = await step("pub quiz: telefon gościa Tomek", `/api/g/${quizKeyOf("Tomek")}/state`);
+if (quizPhone?.quiz?.result?.place !== 4 || quizPhone.quiz.result.players !== 4) {
+  fail(`Telefon gościa Tomek nie pokazuje jego miejsca w pub quizie (${JSON.stringify(quizPhone?.quiz ?? null)}).`);
+}
+await step("linki gości: wyłączenie po pub quizie", `${api}/guest-links`, {
+  method: "PATCH",
+  json: { enabled: false },
+});
 
 // --- 9b. Branding (event-branding, S-18): the restaurant's colour and logo (owner), the client's name and logo -------
 
@@ -1116,12 +1203,13 @@ Dane demo gotowe („${RESTAURANT_NAME}” · „${EVENT_NAME}”, id ${String(e
 - bez zmian: przyjmowanie strzałów otwarte, prawidłowa kwota niewpisana, dostęp gości wyłączony, pytania startowe
 - wydarzenia lokalu: nadchodzące ${String(eventLists.upcoming.length)}, minione ${String(eventLists.past.length)}, archiwum ${String(eventLists.archived.length)}
 - zespół lokalu: ${String(team.team.members.length)} osoby (właściciel, menedżer, kelner)
-- dziennik wejść administratora: wejście jako wsparcie z powodem, 2 otwarte strony, odblokowanie tematów AI, wyjście (widzi go właściciel na stronie restauracji)
-- moduły: „${EVENT_NAME}” ma wszystkie gry włączone; „${VENUE_LED_EVENT}” — tematy AI odblokowane przez administratora i włączone z grą przez lokal; „Urodziny Ani (demo)” — domyślne (tematy AI i gra wyłączone)
+- dziennik wejść administratora: wejście jako wsparcie z powodem, 2 otwarte strony, odblokowanie tematów AI i pub quizu, wyjście (widzi go właściciel na stronie restauracji)
+- moduły: „${EVENT_NAME}” ma wszystkie gry włączone (pub quiz odblokowany przez administratora); „${VENUE_LED_EVENT}” — tematy AI odblokowane przez administratora i włączone z grą przez lokal; „Urodziny Ani (demo)” — domyślne (tematy AI i gra wyłączone)
 - menu lokalu: ${String(catalog.items.length)} pozycji w 5 kursach; menu „${EVENT_NAME}” okrojone do ${String(eventMenu.items.filter((item) => item.available).length)} pozycji, zamówienie z niego (ceny i kursy z menu, kuchnia na tablecie po kursach)
 - „${VENUE_LED_EVENT}”: lokal prowadzi, ${String(VENUE_LED_GUESTS.length)} gości dodanych w panelu
 - marka: lokal w kolorze ${BRAND_COLOR} z logo, klient „${CLIENT_BRAND}” z logo (telefony gości, TV, tablet, karteczki, panel)
 - szablon sali „${TEMPLATE_NAME}” (${String(savedTemplate.template.roomCount)} sale, ${String(savedTemplate.template.tableCount)} stolików) i wydarzenie z niego „${TEMPLATE_EVENT}”
+- pub quiz: ${String(QUIZ.length)} pytania, 2 zadane, ${String(QUIZ_RESULTS.length)} gości odpowiedziało przez swoje linki; wyniki na TV (1. Ania i Bartek, 3. Kasia), trzecie pytanie czeka
 - retencja danych gości: ${String(retention.guestRetentionDays)} dni po wydarzeniu; „${PURGED_EVENT}” — dane gości usunięte (po terminie), eksport bez gości
 
 Organizator: ${organizerUrl}
@@ -1129,6 +1217,8 @@ TV:          ${new URL(`/tv/${event.tvKey}`, BASE_URL).href}
 TV jednej sali (${PINNED_TV_ROOM}): ${pinnedTvUrl}
 Restauracja: ${new URL(`/r/${event.restaurantKey}`, BASE_URL).href}
 Linki gości: włącz dostęp na ${organizerUrl}/linki
+Pub quiz:    ${organizerUrl}/quiz (wyniki są na TV; „Zadaj pytanie 3”, potem „Zakończ quiz” zdejmuje quiz z TV)
+             telefon gościa (po włączeniu dostępu gości): ${new URL(`/g/${quizKeyOf("Tomek")}`, BASE_URL).href} (Tomek: 4. miejsce z 4)
 Potwierdzenia: ${organizerUrl}/potwierdzenia (karta „Potwierdzenia i wybór dania” także w „Praca klienta” w panelu)
 Panel lokalu: ${new URL("/logowanie", BASE_URL).href} — e-mail ${owner.email}, hasło ${OWNER_PASSWORD} (rola: właściciel)
              e-mail ${TEAM[0].email}, hasło ${MANAGER_PASSWORD} (rola: menedżer)

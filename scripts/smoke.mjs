@@ -879,8 +879,10 @@ check(
 );
 check(
   "TV draws the published venue: rotations, outlined rooms, each table's room name and the chair pitch, nothing else",
+  // pub-quiz (S-28) added `quiz` (null while no quiz runs; event A has every module on); section 43 checks it.
   JSON.stringify(Object.keys(tvFirst.data ?? {}).sort()) ===
-    JSON.stringify(["chairPitch", "planVersion", "publishedAt", "rooms", "spotlight", "tables", "version"]) &&
+    JSON.stringify(["chairPitch", "planVersion", "publishedAt", "quiz", "rooms", "spotlight", "tables", "version"]) &&
+    tvFirst.data.quiz === null &&
     tvFirst.data.chairPitch === 0.04 &&
     tvFirst.data.rooms.some((room) => room.width === OUTLINE.width && room.height === OUTLINE.height) &&
     tvFirst.data.rooms.every((room) => Object.keys(room).sort().join(",") === "height,name,width,x,y") &&
@@ -4032,7 +4034,8 @@ check(
 // questions.
 const resetApi = `${opsPanel}/reset`;
 const trialResetApi = `${api}/trial-reset`;
-const RESET_PARTS = ["guesses", "aiUsage", "seating", "guests", "venue", "orders", "questions", "guestLinks"];
+// pub-quiz (S-28) added the part `quiz` (last; implied by `guests`) and its counts `quizAnswers`, `quizAsked`.
+const RESET_PARTS = ["guesses", "aiUsage", "seating", "guests", "venue", "orders", "questions", "guestLinks", "quiz"];
 const COUNT_KEYS = [
   "guesses",
   "correctAmountSet",
@@ -4050,6 +4053,8 @@ const COUNT_KEYS = [
   "orders",
   "questions",
   "guestAccessEnabled",
+  "quizAnswers",
+  "quizAsked",
 ]
   .sort()
   .join(",");
@@ -4315,6 +4320,8 @@ check(
       orders: 0,
       questions: 90,
       guestAccessEnabled: false,
+      quizAnswers: 0,
+      quizAsked: 0,
     }),
   previewAfterReset.body,
 );
@@ -9206,8 +9213,9 @@ const drawingTable38 = state38.data?.drawing?.tables?.[0];
 check(
   "map search: no new data — the guest's state and the tablet's view keep exactly their fields (state, seat, drawing table and seat; view and its seating)",
   state38.status === 200 &&
-    // guest-rsvp-menu (S-25) added `rsvp` (null while RSVP is off); section 40 checks it.
-    fieldsOf38(state38.data) === "drawing guess modules name orders planVersion rsvp seat status version" &&
+    // guest-rsvp-menu (S-25) added `rsvp` (null while RSVP is off); section 40 checks it. pub-quiz (S-28) added
+    // `quiz` (null while no quiz runs or the module is off); section 43 checks it.
+    fieldsOf38(state38.data) === "drawing guess modules name orders planVersion quiz rsvp seat status version" &&
     fieldsOf38(state38.data?.seat) === "room seat seatCount shape table tablemates x y" &&
     fieldsOf38(drawingTable38) === "name room rotation seatCount seats shape x y" &&
     fieldsOf38(drawingTable38?.seats?.[0]) === "name seat" &&
@@ -10560,5 +10568,483 @@ check(
   deleted42.every((status) => status === 200),
   deleted42.join(" "),
 );
+
+// 43. Pub quiz (pub-quiz, S-28; FR-049, NFR-023). A new event of A (panel) has the paid quiz offered, off and locked:
+// its organizer API (link and dispatcher) → 409 module-off, the guest's answer route the identical 404 of a wrong key,
+// the client's switch → 409 module-locked, the TV token keeps its 3 parts. The admin unlocks it inside a support visit
+// (the owner's log names it), the client switches it on (the TV token gains a 4th part, 0 while no quiz runs) and
+// prepares three questions (invalid ones → 400). A run: start (the intro on the TV and the phones), a question (two
+// guests answer, one changes; the TV counts answers without names, the correct option or per-option counts, its HTML
+// carries no correct option; each phone sees only its own answer; the asked question is locked), close (a late answer
+// 409 quiz-closed; the TV reveals the correct option and the counts), event B's guest naming A's open question → the
+// identical 409, A's key on B's question → the identical 404 of an unknown id, a second question, the results (places,
+// names and points on the TV; the own place on each phone; a guest who did not play has none). The lead rule, the
+// module off (409 / 404 / no quiz on the TV and the phones) and on again (the run is back), „Reset prób” `quiz`
+// (answers gone, questions editable again), the panel's preview; the event is deleted.
+const e43 = await staffCall(sessionOwner, eventsApiOf(restaurantA.id), {
+  method: "POST",
+  json: { name: `Pub quiz smoke ${RUN_TAG}`, date: futureDate },
+});
+const e43Id = e43.data?.event?.id ?? 0;
+const e43Key = keyOfPath(e43.data?.event?.links?.organizer);
+const e43Tv = keyOfPath(e43.data?.event?.links?.tv);
+const e43Api = `/api/o/${e43Key}`;
+const quizApi43 = `${e43Api}/quiz`;
+const tvApi43 = `/api/tv/${e43Tv}/seating`;
+const klientRun43 = `${eventApi(e43Id)}/klient/quiz/run`;
+const partsOf43 = (res) => (typeof res.data?.version === "string" ? res.data.version.split(".").length : 0);
+const enable43 = (enabled) => request(`${e43Api}/modules`, { method: "PUT", json: { module: "pubQuiz", enabled } });
+const run43 = (json) => request(`${quizApi43}/run`, { method: "POST", json });
+const answer43 = (key, questionId, option) =>
+  request(`/api/g/${key}/quiz`, { method: "PUT", json: { questionId, option } });
+const stateOf43 = (key) => request(`/api/g/${key}/state`);
+// Astro's island props in the HTML: a correct option the page knows shows as `"correct":[0,<n>]`.
+const CORRECT_IN_HTML = /&quot;correct&quot;:\[0,\d/;
+
+await request(`${e43Api}/guests`, { method: "POST", json: { text: "Kasia Quiz\nBartek Quiz\nCelina Quiz" } });
+await request(`${e43Api}/guest-links`, { method: "PATCH", json: { enabled: true } });
+const links43 = await request(`${e43Api}/guest-links`);
+const keyOf43 = (name) => links43.data?.guests?.find((guest) => guest.displayName === name)?.key ?? "";
+const kasia43 = keyOf43("Kasia Quiz");
+const bartek43 = keyOf43("Bartek Quiz");
+const celina43 = keyOf43("Celina Quiz");
+
+const modules43 = await request(`${e43Api}/modules`);
+const quizEntry43 = modules43.data?.modules?.find((m) => m.key === "pubQuiz");
+const boardOff43 = await request(quizApi43);
+const staffOff43 = await staffCall(sessionOwner, `${eventApi(e43Id)}/klient/quiz`);
+const wrongKey43 = await request(`/api/g/${"A".repeat(24)}/quiz`, {
+  method: "PUT",
+  json: { questionId: 1, option: 0 },
+});
+const guestOff43 = await answer43(kasia43, 1, 0);
+const stateOff43 = await stateOf43(kasia43);
+const locked43 = await enable43(true);
+const tvOff43 = await request(tvApi43);
+const pageOff43 = await request(`/o/${e43Key}/quiz`);
+const shellOff43 = await request(`/o/${e43Key}`);
+const cardOff43 = await staffCall(sessionOwner, eventPage(e43Id));
+check(
+  "pub quiz: a new event has the paid quiz offered, off and locked — its organizer API (link and dispatcher) 409 module-off, the guest's answer route the identical 404 of a wrong key, the client's switch 409 module-locked; no quiz on the phone or the TV (3-part token), the page says it is off, no quiz card on the shell or the panel's event card",
+  e43.status === 201 &&
+    [kasia43, bartek43, celina43].every((key) => key.length === 24) &&
+    quizEntry43?.available === true &&
+    quizEntry43.enabled === false &&
+    quizEntry43.paid === true &&
+    quizEntry43.unlocked === false &&
+    quizEntry43.active === false &&
+    isModuleOff(boardOff43, "pubQuiz") &&
+    isModuleOff(staffOff43, "pubQuiz") &&
+    noAccessJson(wrongKey43) &&
+    guestOff43.status === 404 &&
+    guestOff43.body === wrongKey43.body &&
+    stateOff43.status === 200 &&
+    stateOff43.data?.quiz === null &&
+    stateOff43.data.modules?.pubQuiz === false &&
+    locked43.status === 409 &&
+    locked43.data?.code === "module-locked" &&
+    tvOff43.status === 200 &&
+    tvOff43.data?.quiz === null &&
+    partsOf43(tvOff43) === 3 &&
+    pageOff43.status === 200 &&
+    pageOff43.body.includes('data-module-off="pubQuiz"') &&
+    !pageOff43.body.includes("data-quiz-manager") &&
+    shellOff43.status === 200 &&
+    !shellOff43.body.includes("data-quiz-card") &&
+    cardOff43.status === 200 &&
+    !cardOff43.body.includes(`/panel/wydarzenia/${String(e43Id)}/quiz`),
+  `${e43.status} ${JSON.stringify(quizEntry43)} ${boardOff43.status} ${staffOff43.status} ${guestOff43.status} ${stateOff43.status} ${locked43.status} ${locked43.body} ${tvOff43.status} ${String(tvOff43.data?.version)} ${pageOff43.status} ${cardOff43.status}`,
+);
+
+const enter43 = await enterSupport(sessionAdmin, restaurantA.id);
+const unlocked43 = await staffCall(sessionAdmin, unlockApi(e43Id, "pubQuiz"), {
+  method: "PUT",
+  json: { unlocked: true },
+});
+const exit43 = await endSupportOf(sessionAdmin, restaurantA.id);
+const unlockEntry43 = logOf(await readLogA()).find((entry) => entry.kind === "unlock" && entry.event?.id === e43Id);
+const on43 = await enable43(true);
+const tvOn43 = await request(tvApi43);
+const stateOn43 = await stateOf43(kasia43);
+const pagePl43 = await request(`/o/${e43Key}/quiz`);
+const pageEn43 = await request(`/o/${e43Key}/quiz`, { cookie: "kp-lang=en" });
+const shellOn43 = await request(`/o/${e43Key}`);
+const cardOn43 = await staffCall(sessionOwner, eventPage(e43Id));
+check(
+  "pub quiz: the admin unlocks it inside a support visit (the owner's log names it), the client switches it on; the page runs the quiz (PL / EN), the shell and the panel's event card link it; the TV token gains a 4th part (0 while no quiz runs), no quiz on the TV or the phone yet",
+  enter43.status === 201 &&
+    unlocked43.status === 200 &&
+    unlocked43.data?.modules?.find((m) => m.key === "pubQuiz")?.unlocked === true &&
+    exit43.status === 200 &&
+    unlockEntry43?.module === "pubQuiz" &&
+    on43.status === 200 &&
+    activeOf(on43).pubQuiz === true &&
+    tvOn43.status === 200 &&
+    tvOn43.data?.quiz === null &&
+    partsOf43(tvOn43) === 4 &&
+    tvOn43.data.version.endsWith(".0") &&
+    stateOn43.status === 200 &&
+    stateOn43.data?.quiz === null &&
+    stateOn43.data.modules?.pubQuiz === true &&
+    stateOn43.data.version !== stateOff43.data?.version &&
+    pagePl43.status === 200 &&
+    pagePl43.body.includes("data-quiz-manager") &&
+    pagePl43.body.includes("Prowadzenie quizu") &&
+    pageEn43.status === 200 &&
+    pageEn43.body.includes("data-quiz-manager") &&
+    pageEn43.body.includes("Running the quiz") &&
+    shellOn43.status === 200 &&
+    shellOn43.body.includes("data-quiz-card") &&
+    cardOn43.status === 200 &&
+    cardOn43.body.includes(`/panel/wydarzenia/${String(e43Id)}/quiz`),
+  `${enter43.status} ${unlocked43.status} ${exit43.status} ${JSON.stringify(unlockEntry43)} ${on43.status} ${tvOn43.status} ${String(tvOn43.data?.version)} ${stateOn43.status} ${pagePl43.status} ${pageEn43.status} ${shellOn43.status} ${cardOn43.status}`,
+);
+
+const invalid43 = [];
+for (const [label, json] of [
+  ["one option", { text: "Pytanie?", options: ["Tak"], correct: 0 }],
+  ["five options", { text: "Pytanie?", options: ["A1", "B1", "C1", "D1", "E1"], correct: 0 }],
+  ["duplicate options", { text: "Pytanie?", options: ["Tak", " TAK "], correct: 0 }],
+  ["the correct option out of range", { text: "Pytanie?", options: ["Tak", "Nie"], correct: 2 }],
+  ["a gap between options", { text: "Pytanie?", options: ["Tak", "", "Nie"], correct: 0 }],
+  ["an empty text", { text: "   ", options: ["Tak", "Nie"], correct: 0 }],
+  ["an extra field", { text: "Pytanie?", options: ["Tak", "Nie"], correct: 0, guestId: 1 }],
+]) {
+  const res = await request(`${quizApi43}/questions`, { method: "POST", json });
+  if (res.status !== 400 || typeof res.data?.error !== "string") invalid43.push(`${label}: ${String(res.status)}`);
+}
+const QUIZ43 = [
+  { text: "Stolica Polski?", options: ["Kraków", "Warszawa", "Gdańsk"], correct: 1 },
+  { text: "Ile nóg ma pająk?", options: ["6", "8"], correct: 1 },
+  { text: "Kolor nieba w pogodny dzień?", options: ["Niebieski", "Zielony", "Czerwony", "Żółty"], correct: 0 },
+];
+const added43 = [];
+for (const json of QUIZ43) added43.push(await request(`${quizApi43}/questions`, { method: "POST", json }));
+const board43 = added43[2]?.data;
+const [q1Id43, q2Id43, q3Id43] = (board43?.questions ?? []).map((question) => question.id);
+check(
+  "pub quiz: invalid questions → 400 with a message (one or five options, duplicates in any letter case, the correct option out of range, a gap, an empty text, an extra field); three questions prepared (201, numbered in order, nothing asked)",
+  invalid43.length === 0 &&
+    added43.every((res) => res.status === 201) &&
+    board43?.questions?.length === 3 &&
+    board43.questions.map((question) => question.number).join(",") === "1,2,3" &&
+    board43.questions.every((question) => question.askedAt === null && question.answers === 0) &&
+    board43.run === null &&
+    board43.guestCount === 3,
+  `${invalid43.join("; ")} ${added43.map((res) => res.status).join(",")} ${added43[2]?.body.slice(0, 200)}`,
+);
+
+const start43 = await run43({ action: "start" });
+const tvIntro43 = await request(`${tvApi43}?since=${encodeURIComponent(tvOn43.data?.version ?? "")}`);
+const kasiaIntro43 = await stateOf43(kasia43);
+const early43 = await answer43(kasia43, q1Id43, 1);
+check(
+  "pub quiz: start → the intro on the TV (new 4-part token) and the phones; an answer before any question → 409 quiz-closed",
+  start43.status === 200 &&
+    start43.data?.run?.phase === "intro" &&
+    tvIntro43.status === 200 &&
+    tvIntro43.data?.quiz?.phase === "intro" &&
+    tvIntro43.data.quiz.total === 3 &&
+    tvIntro43.data.quiz.question === null &&
+    tvIntro43.data.quiz.results === null &&
+    partsOf43(tvIntro43) === 4 &&
+    tvIntro43.data.version !== tvOn43.data?.version &&
+    kasiaIntro43.data?.quiz?.phase === "intro" &&
+    kasiaIntro43.data.quiz.total === 3 &&
+    kasiaIntro43.data.quiz.question === null &&
+    early43.status === 409 &&
+    early43.data?.code === "quiz-closed",
+  `${start43.status} ${tvIntro43.status} ${JSON.stringify(tvIntro43.data?.quiz)} ${JSON.stringify(kasiaIntro43.data?.quiz)} ${early43.status} ${early43.body}`,
+);
+
+const bGuestState43 = await request(guestStateApi(bGuestKey));
+const ask43 = await run43({ action: "ask", questionId: q1Id43 });
+const kasiaAnswer43 = await answer43(kasia43, q1Id43, 1);
+const bartekFirst43 = await answer43(bartek43, q1Id43, 1);
+const bartekChange43 = await answer43(bartek43, q1Id43, 0);
+const outOfRange43 = await answer43(kasia43, q1Id43, 3);
+const bOnA43 = await answer43(bGuestKey, q1Id43, 0);
+const tvQuestion43 = await request(tvApi43);
+const tvPageQuestion43 = await request(`/tv/${e43Tv}`);
+const kasiaQuestion43 = await stateOf43(kasia43);
+const kasiaPage43 = await request(`/g/${kasia43}`);
+const boardQuestion43 = await request(quizApi43);
+const tvQuiz43 = tvQuestion43.data?.quiz;
+check(
+  "pub quiz: a question → two guests answer, one changes (each answer 200 with the phone's own state); the TV shows the question with `answered: 2` and no names, ids, correct option or counts, nor does its HTML; a phone sees only its own answer (no correct option, in its HTML neither); the client's board counts per option; an option the question lacks → 400",
+  ask43.status === 200 &&
+    ask43.data?.run?.phase === "question" &&
+    ask43.data.run.questionId === q1Id43 &&
+    kasiaAnswer43.status === 200 &&
+    kasiaAnswer43.data?.quiz?.answer === 1 &&
+    bartekFirst43.status === 200 &&
+    bartekChange43.status === 200 &&
+    bartekChange43.data?.quiz?.answer === 0 &&
+    outOfRange43.status === 400 &&
+    tvQuestion43.status === 200 &&
+    tvQuiz43?.phase === "question" &&
+    tvQuiz43.question?.number === 1 &&
+    tvQuiz43.question.text === "Stolica Polski?" &&
+    tvQuiz43.question.options.join("|") === "Kraków|Warszawa|Gdańsk" &&
+    tvQuiz43.question.answered === 2 &&
+    tvQuiz43.question.correct === null &&
+    tvQuiz43.question.counts === null &&
+    tvQuiz43.results === null &&
+    !/"(id|questionId|guestId)"/.test(JSON.stringify(tvQuiz43)) &&
+    !tvQuestion43.body.includes("Kasia") &&
+    !tvQuestion43.body.includes("Bartek") &&
+    tvPageQuestion43.status === 200 &&
+    tvPageQuestion43.body.includes("Stolica Polski?") &&
+    !CORRECT_IN_HTML.test(tvPageQuestion43.body) &&
+    kasiaQuestion43.data?.quiz?.phase === "question" &&
+    kasiaQuestion43.data.quiz.question?.id === q1Id43 &&
+    kasiaQuestion43.data.quiz.question.correct === null &&
+    kasiaQuestion43.data.quiz.answer === 1 &&
+    kasiaQuestion43.data.version.length <= 64 &&
+    !kasiaQuestion43.body.includes("Bartek") &&
+    kasiaPage43.status === 200 &&
+    kasiaPage43.body.includes('data-guest-quiz="question"') &&
+    !CORRECT_IN_HTML.test(kasiaPage43.body) &&
+    !kasiaPage43.body.includes("Bartek") &&
+    JSON.stringify(boardQuestion43.data?.questions?.[0]?.counts) === "[1,1,0]",
+  `${ask43.status} ${kasiaAnswer43.status} ${bartekFirst43.status} ${bartekChange43.status} ${outOfRange43.status} ${JSON.stringify(tvQuiz43)} ${tvPageQuestion43.status} ${JSON.stringify(kasiaQuestion43.data?.quiz)} ${kasiaPage43.status}`,
+);
+
+const editAsked43 = await request(`${quizApi43}/questions/${String(q1Id43)}`, {
+  method: "PATCH",
+  json: { text: "Zmiana?" },
+});
+const deleteOnTv43 = await request(`${quizApi43}/questions/${String(q1Id43)}`, { method: "DELETE" });
+const askWhileOpen43 = await run43({ action: "ask", questionId: q2Id43 });
+const resultsWhileOpen43 = await run43({ action: "results" });
+check(
+  "pub quiz: the asked question is locked (edit 409 quiz-question-locked, delete 409 quiz-question-on-tv) and nothing else goes on the TV while it is open (409 quiz-question-open); event B's guest naming A's open question → the identical 409 of a closed one",
+  editAsked43.status === 409 &&
+    editAsked43.data?.code === "quiz-question-locked" &&
+    deleteOnTv43.status === 409 &&
+    deleteOnTv43.data?.code === "quiz-question-on-tv" &&
+    askWhileOpen43.status === 409 &&
+    askWhileOpen43.data?.code === "quiz-question-open" &&
+    resultsWhileOpen43.status === 409 &&
+    resultsWhileOpen43.data?.code === "quiz-question-open" &&
+    bGuestState43.status === 200 &&
+    bOnA43.status === 409 &&
+    bOnA43.body === early43.body,
+  `${editAsked43.status} ${editAsked43.body} ${deleteOnTv43.status} ${askWhileOpen43.status} ${resultsWhileOpen43.status} ${bGuestState43.status} ${bOnA43.status} ${bOnA43.body}`,
+);
+
+const close43 = await run43({ action: "close" });
+const late43 = await answer43(celina43, q1Id43, 1);
+const tvReveal43 = await request(tvApi43);
+const tvPageReveal43 = await request(`/tv/${e43Tv}`);
+const kasiaReveal43 = await stateOf43(kasia43);
+const bartekReveal43 = await stateOf43(bartek43);
+const closeAgain43 = await run43({ action: "close" });
+const askAgain43 = await run43({ action: "ask", questionId: q1Id43 });
+check(
+  "pub quiz: close → a late answer 409 quiz-closed (the same body); the TV reveals the correct option with the counts (its HTML too); each phone gets the correct option, its own verdict and points; closing again 409 quiz-no-open-question, asking the closed question again 409 quiz-question-asked",
+  close43.status === 200 &&
+    close43.data?.run?.phase === "reveal" &&
+    late43.status === 409 &&
+    late43.body === early43.body &&
+    tvReveal43.data?.quiz?.phase === "reveal" &&
+    tvReveal43.data.quiz.question?.correct === 1 &&
+    JSON.stringify(tvReveal43.data.quiz.question.counts) === "[1,1,0]" &&
+    tvReveal43.data.quiz.question.answered === 2 &&
+    tvReveal43.data.quiz.closed === 1 &&
+    !tvReveal43.body.includes("Kasia") &&
+    CORRECT_IN_HTML.test(tvPageReveal43.body) &&
+    kasiaReveal43.data?.quiz?.phase === "reveal" &&
+    kasiaReveal43.data.quiz.question?.correct === 1 &&
+    kasiaReveal43.data.quiz.answer === 1 &&
+    kasiaReveal43.data.quiz.points === 1 &&
+    kasiaReveal43.data.quiz.closed === 1 &&
+    bartekReveal43.data?.quiz?.answer === 0 &&
+    bartekReveal43.data.quiz.points === 0 &&
+    closeAgain43.status === 409 &&
+    closeAgain43.data?.code === "quiz-no-open-question" &&
+    askAgain43.status === 409 &&
+    askAgain43.data?.code === "quiz-question-asked",
+  `${close43.status} ${late43.status} ${late43.body} ${JSON.stringify(tvReveal43.data?.quiz)} ${JSON.stringify(kasiaReveal43.data?.quiz)} ${closeAgain43.status} ${askAgain43.status}`,
+);
+
+const bQuestion43 = await request(`/api/o/${eventB.organizerKey}/quiz/questions`, {
+  method: "POST",
+  json: { text: "Pytanie wydarzenia B?", options: ["Tak", "Nie"], correct: 0 },
+});
+const bQuestionId43 = bQuestion43.data?.questions?.at(-1)?.id ?? 0;
+const crossEdit43 = await request(`${quizApi43}/questions/${String(bQuestionId43)}`, {
+  method: "PATCH",
+  json: { text: "Cudze?" },
+});
+const unknownEdit43 = await request(`${quizApi43}/questions/${String(UNKNOWN_ID)}`, {
+  method: "PATCH",
+  json: { text: "Cudze?" },
+});
+const crossDelete43 = await request(`${quizApi43}/questions/${String(bQuestionId43)}`, { method: "DELETE" });
+const unknownDelete43 = await request(`${quizApi43}/questions/${String(UNKNOWN_ID)}`, { method: "DELETE" });
+const crossAsk43 = await run43({ action: "ask", questionId: bQuestionId43 });
+const unknownAsk43 = await run43({ action: "ask", questionId: UNKNOWN_ID });
+const bAfter43 = await request(`/api/o/${eventB.organizerKey}/quiz`);
+const bCleanup43 = await request(`/api/o/${eventB.organizerKey}/quiz/questions/${String(bQuestionId43)}`, {
+  method: "DELETE",
+});
+check(
+  "pub quiz: A's organizer key on event B's question (edit, delete, ask) → the identical 404 of an unknown id, B's question untouched (then deleted by B)",
+  bQuestion43.status === 201 &&
+    bQuestionId43 > 0 &&
+    crossEdit43.status === 404 &&
+    crossEdit43.body === unknownEdit43.body &&
+    crossDelete43.status === 404 &&
+    crossDelete43.body === unknownDelete43.body &&
+    crossAsk43.status === 404 &&
+    crossAsk43.body === unknownAsk43.body &&
+    bAfter43.data?.questions?.find((question) => question.id === bQuestionId43)?.text === "Pytanie wydarzenia B?" &&
+    bAfter43.data.questions.find((question) => question.id === bQuestionId43)?.askedAt === null &&
+    bCleanup43.status === 200,
+  `${bQuestion43.status} ${crossEdit43.status} ${crossEdit43.body} ${unknownEdit43.body} ${crossDelete43.status} ${crossAsk43.status} ${crossAsk43.body} ${unknownAsk43.body} ${bCleanup43.status}`,
+);
+
+const askSecond43 = await run43({ action: "ask", questionId: q2Id43 });
+const secondAnswers43 = [await answer43(kasia43, q2Id43, 1), await answer43(bartek43, q2Id43, 1)];
+const closeSecond43 = await run43({ action: "close" });
+const results43 = await run43({ action: "results" });
+const tvResults43 = await request(tvApi43);
+const kasiaResults43 = await stateOf43(kasia43);
+const bartekResults43 = await stateOf43(bartek43);
+const celinaResults43 = await stateOf43(celina43);
+check(
+  "pub quiz: a second question, then the results — the client's standings (1. Kasia 2 pts, 2. Bartek 1 pt), the TV names places 1–3 with points (no ids), each phone its own place among the players and points, a guest who did not play gets no place",
+  askSecond43.status === 200 &&
+    secondAnswers43.every((res) => res.status === 200) &&
+    closeSecond43.status === 200 &&
+    results43.status === 200 &&
+    results43.data?.run?.phase === "results" &&
+    JSON.stringify(results43.data.standings.map((row) => [row.place, row.name, row.points])) ===
+      JSON.stringify([
+        [1, "Kasia Quiz", 2],
+        [2, "Bartek Quiz", 1],
+      ]) &&
+    tvResults43.data?.quiz?.phase === "results" &&
+    tvResults43.data.quiz.question === null &&
+    JSON.stringify(tvResults43.data.quiz.results) ===
+      JSON.stringify({
+        players: 2,
+        entries: [
+          { place: 1, name: "Kasia Quiz", points: 2 },
+          { place: 2, name: "Bartek Quiz", points: 1 },
+        ],
+        more: 0,
+      }) &&
+    !/"(id|guestId)"/.test(JSON.stringify(tvResults43.data.quiz)) &&
+    JSON.stringify(kasiaResults43.data?.quiz?.result) === JSON.stringify({ place: 1, players: 2 }) &&
+    kasiaResults43.data.quiz.points === 2 &&
+    !kasiaResults43.body.includes("Bartek") &&
+    JSON.stringify(bartekResults43.data?.quiz?.result) === JSON.stringify({ place: 2, players: 2 }) &&
+    bartekResults43.data.quiz.points === 1 &&
+    celinaResults43.data?.quiz?.phase === "results" &&
+    celinaResults43.data.quiz.result === null &&
+    celinaResults43.data.quiz.points === 0,
+  `${askSecond43.status} ${secondAnswers43.map((res) => res.status).join(",")} ${closeSecond43.status} ${results43.status} ${JSON.stringify(results43.data?.standings)} ${JSON.stringify(tvResults43.data?.quiz)} ${JSON.stringify(kasiaResults43.data?.quiz)} ${JSON.stringify(celinaResults43.data?.quiz)}`,
+);
+
+const leadOn43 = await staffCall(sessionOwner, eventApi(e43Id), { method: "PATCH", json: { venueLeads: true } });
+const clientLed43 = await run43({ action: "ask", questionId: q3Id43 });
+const staffAsk43 = await staffCall(sessionOwner, klientRun43, {
+  method: "POST",
+  json: { action: "ask", questionId: q3Id43 },
+});
+const guestLed43 = await answer43(kasia43, q3Id43, 0);
+const staffClose43 = await staffCall(sessionManager, klientRun43, { method: "POST", json: { action: "close" } });
+const leadOff43 = await staffCall(sessionOwner, eventApi(e43Id), { method: "PATCH", json: { venueLeads: false } });
+const staffNotLed43 = await staffCall(sessionOwner, klientRun43, { method: "POST", json: { action: "results" } });
+const clientResults43 = await run43({ action: "results" });
+check(
+  "pub quiz: while the venue leads the client's step → 409 venue-leads and the staff run it through the dispatcher (owner and manager), guests still answer; the client leads again → the staff's step 409 client-leads, the client's results count the new answer",
+  leadOn43.status === 200 &&
+    clientLed43.status === 409 &&
+    clientLed43.data?.code === "venue-leads" &&
+    staffAsk43.status === 200 &&
+    staffAsk43.data?.run?.questionId === q3Id43 &&
+    guestLed43.status === 200 &&
+    staffClose43.status === 200 &&
+    staffClose43.data?.run?.phase === "reveal" &&
+    leadOff43.status === 200 &&
+    staffNotLed43.status === 409 &&
+    staffNotLed43.data?.code === "client-leads" &&
+    clientResults43.status === 200 &&
+    clientResults43.data?.standings?.[0]?.points === 3,
+  `${leadOn43.status} ${clientLed43.status} ${staffAsk43.status} ${guestLed43.status} ${staffClose43.status} ${leadOff43.status} ${staffNotLed43.status} ${clientResults43.status} ${JSON.stringify(clientResults43.data?.standings)}`,
+);
+
+const tvBeforeOff43 = await request(tvApi43);
+const off43 = await enable43(false);
+const boardModuleOff43 = await request(quizApi43);
+const guestModuleOff43 = await answer43(kasia43, q3Id43, 0);
+const tvModuleOff43 = await request(`${tvApi43}?since=${encodeURIComponent(tvBeforeOff43.data?.version ?? "")}`);
+const kasiaModuleOff43 = await stateOf43(kasia43);
+const kasiaPageOff43 = await request(`/g/${kasia43}`);
+const back43 = await enable43(true);
+const boardBack43 = await request(quizApi43);
+const tvBack43 = await request(tvApi43);
+check(
+  "pub quiz: the module off → its organizer API 409 module-off, the guest's route the identical 404, the TV's next poll and the phone drop the quiz (3-part token, the phone's section hidden); on again → the same run and standings are back",
+  off43.status === 200 &&
+    isModuleOff(boardModuleOff43, "pubQuiz") &&
+    guestModuleOff43.status === 404 &&
+    guestModuleOff43.body === wrongKey43.body &&
+    tvModuleOff43.status === 200 &&
+    tvModuleOff43.data?.quiz === null &&
+    partsOf43(tvModuleOff43) === 3 &&
+    kasiaModuleOff43.data?.quiz === null &&
+    kasiaModuleOff43.data.modules?.pubQuiz === false &&
+    /<div hidden=""[^>]*data-guest-module="pubQuiz"/.test(kasiaPageOff43.body) &&
+    back43.status === 200 &&
+    boardBack43.data?.run?.phase === "results" &&
+    boardBack43.data.standings.length === 2 &&
+    tvBack43.data?.quiz?.phase === "results",
+  `${off43.status} ${boardModuleOff43.status} ${guestModuleOff43.status} ${tvModuleOff43.status} ${String(tvModuleOff43.data?.version)} ${JSON.stringify(kasiaModuleOff43.data?.quiz)} ${back43.status} ${boardBack43.status} ${tvBack43.status}`,
+);
+
+const trialPreview43 = await request(`${e43Api}/trial-reset`);
+const trial43 = await request(`${e43Api}/trial-reset`, { method: "POST", json: { parts: ["quiz"] } });
+const boardReset43 = await request(quizApi43);
+const editReset43 = await request(`${quizApi43}/questions/${String(q1Id43)}`, {
+  method: "PATCH",
+  json: { text: "Stolica Polski to?" },
+});
+const tvReset43 = await request(tvApi43);
+const kasiaReset43 = await stateOf43(kasia43);
+check(
+  "pub quiz: „Reset prób” with the part quiz (its counts in the preview) takes the answers, scores and the run — the questions stay and are editable again; no quiz on the TV or the phone",
+  trialPreview43.status === 200 &&
+    trialPreview43.data?.counts?.quizAnswers === 5 &&
+    trialPreview43.data.counts.quizAsked === 3 &&
+    trial43.status === 200 &&
+    JSON.stringify(trial43.data?.parts) === JSON.stringify(["quiz"]) &&
+    boardReset43.data?.run === null &&
+    boardReset43.data.questions.length === 3 &&
+    boardReset43.data.questions.every((question) => question.askedAt === null && question.answers === 0) &&
+    boardReset43.data.standings.length === 0 &&
+    editReset43.status === 200 &&
+    editReset43.data?.questions?.[0]?.text === "Stolica Polski to?" &&
+    tvReset43.data?.quiz === null &&
+    kasiaReset43.data?.quiz === null,
+  `${trialPreview43.status} ${JSON.stringify(trialPreview43.data?.counts)} ${trial43.status} ${trial43.body.slice(0, 200)} ${boardReset43.status} ${editReset43.status}`,
+);
+
+const preview43 = await staffCall(sessionManager, `${eventPage(e43Id)}/quiz`);
+const previewWaiter43 = await staffCall(sessionWaiter, `${eventPage(e43Id)}/quiz`);
+check(
+  "pub quiz: the panel's preview /panel/wydarzenia/<id>/quiz opens for the manager (the client leads: a preview), not for a waiter",
+  preview43.status === 200 &&
+    preview43.body.includes("data-quiz-manager") &&
+    preview43.body.includes('data-lead-banner="staff-preview"') &&
+    previewWaiter43.status === 404,
+  `${preview43.status} ${previewWaiter43.status}`,
+);
+
+const deleted43 = await staffCall(sessionOwner, eventApi(e43Id), { method: "DELETE" });
+check("pub quiz: the section's event is deleted", deleted43.status === 200, String(deleted43.status));
 
 finish();

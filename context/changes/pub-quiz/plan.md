@@ -336,10 +336,10 @@ HTTP coverage, the demo round, CLAUDE.md.
 
 #### Automated
 
-- [x] 2.1 Unit and integration tests pass: `AI_PROVIDER=mock npm test`
-- [x] 2.2 Lint passes: `npm run lint`
-- [x] 2.3 Type check passes: `npx astro check`
-- [x] 2.4 Production build passes: `npm run build`
+- [x] 2.1 Unit and integration tests pass: `AI_PROVIDER=mock npm test` — 4fbea9e
+- [x] 2.2 Lint passes: `npm run lint` — 4fbea9e
+- [x] 2.3 Type check passes: `npx astro check` — 4fbea9e
+- [x] 2.4 Production build passes: `npm run build` — 4fbea9e
 
 #### Manual
 
@@ -351,9 +351,9 @@ HTTP coverage, the demo round, CLAUDE.md.
 
 #### Automated
 
-- [ ] 3.1 Smoke passes against the production preview: `npm run smoke` (with `AI_PROVIDER=mock npm run preview`)
-- [ ] 3.2 Demo fills the local app: `npm run demo`
-- [ ] 3.3 Full suite, lint, type check, build: `AI_PROVIDER=mock npm test`, `npm run lint`, `npx astro check`, `npm run build`
+- [x] 3.1 Smoke passes against the production preview: `npm run smoke` (with `AI_PROVIDER=mock npm run preview`)
+- [x] 3.2 Demo fills the local app: `npm run demo`
+- [x] 3.3 Full suite, lint, type check, build: `AI_PROVIDER=mock npm test`, `npm run lint`, `npx astro check`, `npm run build`
 
 #### Manual
 

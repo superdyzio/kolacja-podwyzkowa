@@ -90,11 +90,16 @@ export async function createRestaurant(env, name) {
 export const ALL_MODULES = ["questions", "aiTopics", "guessing", "seatingDraw", "tvSpotlight", "pubQuiz"];
 export const PAID_MODULES = ["aiTopics", "pubQuiz"];
 
-// A new event of the restaurant; its organizer, TV and restaurant keys come from the database. `allModules` switches
-// every module on (see ALL_MODULES).
-export async function createEvent(env, restaurantId, name, { allModules = false } = {}) {
+// A new event of the restaurant; its organizer, TV and restaurant keys come from the database. `allModules` offers and
+// switches every module on (see ALL_MODULES) and unlocks the paid ones listed in `unlocked` (default: all of them;
+// pub-quiz: the demo leaves the pub quiz for the platform admin's unlock).
+export async function createEvent(env, restaurantId, name, { allModules = false, unlocked = PAID_MODULES } = {}) {
   const modules = allModules
-    ? { modules_available: ALL_MODULES, modules_enabled: ALL_MODULES, modules_unlocked: PAID_MODULES }
+    ? {
+        modules_available: ALL_MODULES,
+        modules_enabled: ALL_MODULES,
+        modules_unlocked: PAID_MODULES.filter((module) => unlocked.includes(module)),
+      }
     : {};
   const result = await rest(env, "event?select=id,name,organizer_key,tv_key,restaurant_key", {
     method: "POST",
