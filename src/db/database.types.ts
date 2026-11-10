@@ -73,6 +73,8 @@ export interface Database {
           // menu-catalog-courses: off = free-text orders (v1; every event from before), full = the whole catalog,
           // reduced = the items in event_menu_item. Default for new rows: full.
           menu_mode: string;
+          // guest-rsvp-menu: null = RSVP off; set = guests answer until this instant (read-only for them afterwards).
+          rsvp_deadline: string | null;
         };
         Insert: {
           id?: never;
@@ -96,6 +98,7 @@ export interface Database {
           brand_name?: string | null;
           is_template?: boolean;
           menu_mode?: string;
+          rsvp_deadline?: string | null;
         };
         Update: {
           id?: never;
@@ -118,6 +121,7 @@ export interface Database {
           brand_name?: string | null;
           is_template?: boolean;
           menu_mode?: string;
+          rsvp_deadline?: string | null;
         };
         Relationships: [
           {
@@ -948,6 +952,91 @@ export interface Database {
           },
         ];
       };
+      // guest-rsvp-menu: the dishes guests pick from (items of the event's restaurant; shown while the menu offers them).
+      event_rsvp_option: {
+        Row: {
+          event_id: number;
+          restaurant_id: number;
+          menu_item_id: number;
+        };
+        Insert: {
+          event_id: number;
+          restaurant_id: number;
+          menu_item_id: number;
+        };
+        Update: {
+          event_id?: number;
+          restaurant_id?: number;
+          menu_item_id?: number;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "event_rsvp_option_event_fkey";
+            columns: ["event_id", "restaurant_id"];
+            isOneToOne: false;
+            referencedRelation: "event";
+            referencedColumns: ["id", "restaurant_id"];
+          },
+          {
+            foreignKeyName: "event_rsvp_option_menu_item_fkey";
+            columns: ["restaurant_id", "menu_item_id"];
+            isOneToOne: false;
+            referencedRelation: "menu_item";
+            referencedColumns: ["restaurant_id", "id"];
+          },
+        ];
+      };
+      // guest-rsvp-menu: that a guest answered, the dish (null = none or deleted), who and when; attendance itself is
+      // guest.is_absent. Written only by save_guest_rsvp.
+      guest_rsvp: {
+        Row: {
+          guest_id: number;
+          event_id: number;
+          restaurant_id: number;
+          menu_item_id: number | null;
+          answered_by: string;
+          answered_at: string;
+        };
+        Insert: {
+          guest_id: number;
+          event_id: number;
+          restaurant_id: number;
+          menu_item_id?: number | null;
+          answered_by: string;
+          answered_at?: string;
+        };
+        Update: {
+          guest_id?: number;
+          event_id?: number;
+          restaurant_id?: number;
+          menu_item_id?: number | null;
+          answered_by?: string;
+          answered_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "guest_rsvp_guest_fkey";
+            columns: ["event_id", "guest_id"];
+            isOneToOne: true;
+            referencedRelation: "guest";
+            referencedColumns: ["event_id", "id"];
+          },
+          {
+            foreignKeyName: "guest_rsvp_event_fkey";
+            columns: ["event_id", "restaurant_id"];
+            isOneToOne: false;
+            referencedRelation: "event";
+            referencedColumns: ["id", "restaurant_id"];
+          },
+          {
+            foreignKeyName: "guest_rsvp_menu_item_fkey";
+            columns: ["restaurant_id", "menu_item_id"];
+            isOneToOne: false;
+            referencedRelation: "menu_item";
+            referencedColumns: ["restaurant_id", "id"];
+          },
+        ];
+      };
       drink_item: {
         Row: {
           id: number;
@@ -1355,6 +1444,33 @@ export interface Database {
     Functions: {
       // menu-catalog-courses: sets an event's menu mode and (reduced) its items in one transaction. Raises
       // EVENT_NOT_FOUND (also templates), INVALID_MODE, ITEM_NOT_FOUND (an item of another restaurant or unknown).
+      // guest-rsvp-menu: the guest's own RSVP for the phone's poll (JSON; null while RSVP is off).
+      guest_rsvp_state: {
+        Args: { p_event_id: number; p_guest_id: number };
+        Returns: Json;
+      };
+      // guest-rsvp-menu: the one writer of answers; raises INVALID_ANSWER, EVENT_NOT_FOUND, GUEST_NOT_FOUND,
+      // RSVP_CLOSED (a guest after the deadline or while off) or DISH_NOT_OFFERED.
+      save_guest_rsvp: {
+        Args: {
+          p_event_id: number;
+          p_guest_id: number;
+          p_attending: boolean | null;
+          p_dish: string | null;
+          p_by: string;
+        };
+        Returns: undefined;
+      };
+      // guest-rsvp-menu: „Zamknij teraz” — deadline = the earlier of p_now and the DB's now(); false = no such event.
+      close_event_rsvp: {
+        Args: { p_event_id: number; p_now: string };
+        Returns: boolean;
+      };
+      // guest-rsvp-menu: replaces the client's options; raises EVENT_NOT_FOUND or ITEM_NOT_FOUND.
+      set_event_rsvp_options: {
+        Args: { p_event_id: number; p_item_ids: number[] };
+        Returns: undefined;
+      };
       set_event_menu: {
         Args: { p_event_id: number; p_mode: string; p_item_ids: number[] };
         Returns: undefined;

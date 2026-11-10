@@ -434,6 +434,62 @@ export interface GuestStateDto {
   orders: GuestOrderLineDto[];
   // event-modules: which of the phone's sections are on (questions, AI topics, the guess); in the token's hashed part.
   modules: GuestModules;
+  // guest-rsvp-menu: the guest's OWN attendance answer and dish choice, null while the client has RSVP off; in the
+  // token's hashed part. Never other guests' answers, counts, prices or ids.
+  rsvp: GuestRsvpDto | null;
+}
+
+// guest-rsvp-menu (S-25): a dish guests may pick — a menu item the event's menu offers, by name (no price, no id).
+export interface RsvpOptionDto {
+  name: string;
+  course: MenuCourse;
+}
+
+// guest-rsvp-menu: what the guest's phone shows. `open` = before the deadline (decided by the database's clock);
+// `attending` = the derived attendance (absent → false, answered → true, else null); `byOrganizer` = the client or the
+// venue decided it (an absence marked without an answer counts as theirs).
+export interface GuestRsvpDto {
+  open: boolean;
+  deadline: string;
+  attending: boolean | null;
+  dish: string | null;
+  byOrganizer: boolean;
+  options: RsvpOptionDto[];
+}
+
+// guest-rsvp-menu: one guest on the client's board.
+export interface RsvpGuestDto {
+  id: number;
+  displayName: string;
+  attending: boolean | null;
+  dish: string | null;
+  byOrganizer: boolean;
+  answeredAt: string | null;
+}
+
+// guest-rsvp-menu: not coming = absent; coming = present and answered; no answer = present without an answer;
+// dishes count the coming guests' choices (`offered` false = no longer an option the menu offers), `noDish` the
+// coming guests without one. total = coming + notComing + noAnswer.
+export interface RsvpCountsDto {
+  total: number;
+  coming: number;
+  notComing: number;
+  noAnswer: number;
+  noDish: number;
+  dishes: { name: string; course: MenuCourse; count: number; offered: boolean }[];
+}
+
+// guest-rsvp-menu: GET /api/o/<key>/rsvp (and every change) — the client's (and the staff's) whole RSVP view.
+// `options` = the client's choice (available = the event's menu offers it now); `menu` = what may be chosen.
+export interface RsvpBoardDto {
+  deadline: string | null;
+  open: boolean;
+  eventDate: string;
+  guestLinksOn: boolean;
+  options: (RsvpOptionDto & { available: boolean })[];
+  menu: RsvpOptionDto[];
+  counts: RsvpCountsDto;
+  guests: RsvpGuestDto[];
 }
 
 // guest-delivered: an order line as a guest's phone shows it — no price, no ids of people. lineId addresses the line

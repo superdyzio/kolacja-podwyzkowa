@@ -108,3 +108,66 @@ export function formatEventDate(date: string, locale: Locale = "pl"): string {
   }
   return `${weekday}, ${day}.${month}.${year}`;
 }
+
+// guest-rsvp-menu (S-25): a date-time typed in the platform's time zone (an <input type="datetime-local">,
+// "YYYY-MM-DDTHH:MM") and the instant it means. The offset comes from Intl (DST-correct, no library): a local time
+// inside the spring-forward gap resolves to the instant after the gap, a repeated autumn hour to its later occurrence.
+
+const LOCAL_INPUT = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/;
+
+const minuteFormatters = new Map<string, Intl.DateTimeFormat>();
+
+function wallClockOf(instantMs: number, timeZone: string): { date: string; time: string; wallMs: number } {
+  let formatter = minuteFormatters.get(timeZone);
+  if (!formatter) {
+    formatter = new Intl.DateTimeFormat("en-CA", {
+      timeZone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      hourCycle: "h23",
+    });
+    minuteFormatters.set(timeZone, formatter);
+  }
+  const parts = formatter.formatToParts(new Date(instantMs));
+  const part = (type: Intl.DateTimeFormatPartTypes) => parts.find((p) => p.type === type)?.value ?? "";
+  const hour = String(Number(part("hour")) % 24).padStart(2, "0");
+  const date = `${part("year")}-${part("month")}-${part("day")}`;
+  const time = `${hour}:${part("minute")}`;
+  return { date, time, wallMs: Date.parse(`${date}T${time}:00Z`) };
+}
+
+// The ISO instant of a local "YYYY-MM-DDTHH:MM" (years 2000–2100), or null for anything malformed or impossible.
+export function localInputToInstant(local: string, timeZone: string = PLATFORM_TIME_ZONE): string | null {
+  const match = LOCAL_INPUT.exec(local.trim());
+  if (!match) {
+    return null;
+  }
+  const [year, month, day, hour, minute] = match.slice(1).map(Number);
+  if (year < 2000 || year > 2100 || hour > 23 || minute > 59) {
+    return null;
+  }
+  const wall = Date.UTC(year, month - 1, day, hour, minute);
+  const check = new Date(wall);
+  if (check.getUTCMonth() !== month - 1 || check.getUTCDate() !== day) {
+    return null;
+  }
+  const offsetAt = (instant: number) => wallClockOf(instant, timeZone).wallMs - Math.floor(instant / 60_000) * 60_000;
+  const first = wall - offsetAt(wall);
+  const second = wall - offsetAt(first);
+  return new Date(second).toISOString();
+}
+
+// The local "YYYY-MM-DDTHH:MM" of an instant (the value of a datetime-local input).
+export function instantToLocalInput(iso: string, timeZone: string = PLATFORM_TIME_ZONE): string {
+  const { date, time } = wallClockOf(Date.parse(iso), timeZone);
+  return `${date}T${time}`;
+}
+
+// „pt., 11.12.2026, 18:00” / „Fri, 11 Dec 2026, 18:00” — an instant in the platform's time zone.
+export function formatDateTime(iso: string, locale: Locale = "pl"): string {
+  const { date, time } = wallClockOf(Date.parse(iso), PLATFORM_TIME_ZONE);
+  return `${formatEventDate(date, locale)}, ${time}`;
+}

@@ -28,6 +28,7 @@ function state(overrides: Partial<GuestStateDto> = {}): GuestStateDto {
     drawing: null,
     orders: [],
     modules: { questions: true, aiTopics: true, guessing: true },
+    rsvp: null,
     ...overrides,
   };
 }

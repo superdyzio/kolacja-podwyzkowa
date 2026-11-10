@@ -31,6 +31,8 @@ export const CLIENT_ROUTE_PATTERNS = [
   "questions/starter",
   "rooms",
   "rooms/:id",
+  "rsvp",
+  "rsvp/guests/:id",
   "seating",
   "seating/draft",
   "seating/guests/:id",
