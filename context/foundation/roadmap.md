@@ -281,6 +281,7 @@ Fundamenty poniżej zakładają, że to istnieje, i NIE budują tego od nowa.
 - **Blockers:** —
 - **Unknowns:** —
 - **Risk:** Drugi sposób wejścia personelu, bez hasła, musi mieć ten sam zakres co konto kelnera, wygasać sam i nie otwierać niczego poza dzisiejszymi wydarzeniami lokalu.
+- **Note:** kelner „na imprezę” (część FR-023: imię + jednorazowy link lub kod do końca okna, bez hasła) wycięty 2026-11-10 z waiter-day-and-refills (czas) — otwarty, do osobnej zmiany; projekt w CLAUDE.md („The floor”) i `overnight-log.md` („Decyzje”).
 - **Status:** in-progress
 
 ### S-22: Wyszukiwanie gościa na mapie sali

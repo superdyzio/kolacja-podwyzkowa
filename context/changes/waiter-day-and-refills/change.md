@@ -1,7 +1,7 @@
 ---
 change_id: waiter-day-and-refills
 title: Waiter's day view, floor marking and refills (S-21)
-status: implementing
+status: implemented
 created: 2026-11-10
 updated: 2026-11-10
 archived_at: null

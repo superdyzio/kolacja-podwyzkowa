@@ -143,7 +143,7 @@ Unit: window edges with fixed clocks, allowlist. HTTP: smoke section 36 (cross-t
 
 #### Automated
 
-- [x] 2.1 `npm run build`; `npm run smoke` passes against `AI_PROVIDER=mock npm run preview`; `npm run demo` passes
+- [x] 2.1 `npm run build`; `npm run smoke` passes against `AI_PROVIDER=mock npm run preview`; `npm run demo` passes — e3056fc
 
 #### Manual
 
