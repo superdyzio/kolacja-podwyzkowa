@@ -71,7 +71,7 @@ Restauracja, która gościła kolację 2026-11-08, chce tego narzędzia do włas
 | S-25  | guest-rsvp-menu         | gość potwierdza obecność i wybiera danie do terminu, klient wpisuje za gościa, a klient i lokal widzą zliczenia                              | S-16             | FR-039, US-07                                                                                 | done        |
 | S-26  | privacy-retention       | dane gości znikają N dni po imprezie, menedżer eksportuje dane wydarzenia, a gość czyta informację o prywatności                             | S-11             | FR-040, US-09, NFR-019                                                                        | done        |
 | S-27  | staff-offline-readout   | tablet obsługi i kelner bez sieci widzą ostatni stan zamówień i rozsadzenia, także po odświeżeniu                                            | S-21             | FR-047, US-08, NFR-017                                                                        | done        |
-| S-28  | pub-quiz                | klient przygotowuje pub quiz i prowadzi go na TV, a goście odpowiadają na telefonach                                                         | S-17             | FR-049                                                                                        | in-progress |
+| S-28  | pub-quiz                | klient przygotowuje pub quiz i prowadzi go na TV, a goście odpowiadają na telefonach                                                         | S-17             | FR-049                                                                                        | done        |
 | S-29  | demo-restaurant         | administrator platformy przygotowuje restaurację demo na prawdziwym planie i menu z przykładową imprezą firmową                              | S-15, S-16, S-21 | FR-042, US-05, US-06, US-07, US-08, US-09                                                     | proposed |
 | S-30  | landing-legal           | odwiedzający widzi publiczną stronę produktu z logowaniem oraz szkice regulaminu i polityki prywatności                                      | S-29             | FR-041                                                                                        | proposed |
 
@@ -383,7 +383,7 @@ Fundamenty poniżej zakładają, że to istnieje, i NIE budują tego od nowa.
 - **Unknowns:**
   - Wynik quizu na TV jako wyjątek od zasady v1 „ranking tylko u prowadzącego” (PRD v2, Poza zakresem: „szczegóły należą do planu modułu”). — Owner: planer S-28. Block: no.
 - **Risk:** Największy nowy moduł gry. Wspólne odpytywanie telefonu gościa ma pomieścić quiz bez drugiego kanału.
-- **Status:** in-progress
+- **Status:** done
 
 ### S-29: Restauracja demo
 
@@ -495,3 +495,4 @@ Fundamenty poniżej zakładają, że to istnieje, i NIE budują tego od nowa.
 - **S-25: Gość przed imprezą potwierdza obecność i wybiera danie z opcji ustawionych dla wydarzenia, do terminu. Klient wpisuje wybór za gościa. Klient i lokal widzą zliczenia.** — Archived 2026-11-10 → `context/archive/2026-11-10-guest-rsvp-menu/`. Lesson: —.
 - **S-26: Właściciel ustawia, po ilu dniach od imprezy dane gości są usuwane (domyślnie 30), a dane faktycznie znikają po tym terminie. Menedżer eksportuje dane wydarzenia przed usunięciem. Gość czyta informację o prywatności z linku na swoim telefonie.** — Archived 2026-11-10 → `context/archive/2026-11-10-privacy-retention/`. Bez harmonogramu (usuwanie przy odczycie, leniwe sprzątanie przy stronach panelu, `npm run retention`); informacja o prywatności to szkic do przeglądu prawnika (Otwarte pytanie 6). Lesson: —.
 - **S-27: Bez sieci tablet obsługi i kelner widzą ostatni stan zamówień i rozsadzenia swojego wydarzenia, także po odświeżeniu strony (tylko odczyt).** — Archived 2026-11-10 → `context/archive/2026-11-10-staff-offline-readout/`. Kopia na urządzeniu (localStorage) bez cen, z dietami, z twardym terminem = koniec okna sali; strony odczytu `/r/<klucz>/odczyt`, `/panel/obsluga/<id>/odczyt`, `/kelner/sala/<id>/odczyt`; worker tylko na https/localhost. Lesson: —.
+- **S-28: Klient przygotowuje pub quiz (np. o jubilacie) i prowadzi go na TV, a goście odpowiadają na telefonach.** — Archived 2026-11-10 → `context/archive/2026-11-10-pub-quiz/`. Lesson: —.
