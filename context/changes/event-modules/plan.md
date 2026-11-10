@@ -260,15 +260,15 @@ Additive; the code reads the new columns in the access resolver, so the migratio
 
 #### Automated
 
-- [x] 1.1 Migration applies on the current local data and every pre-existing event keeps the v1 modules on
-- [x] 1.2 Unit and integration tests pass
-- [x] 1.3 Lint and types
+- [x] 1.1 Migration applies on the current local data and every pre-existing event keeps the v1 modules on — b45397a
+- [x] 1.2 Unit and integration tests pass — b45397a
+- [x] 1.3 Lint and types — b45397a
 
 ### Phase 2: UI
 
 #### Automated
 
-- [ ] 2.1 Lint, types and build
+- [x] 2.1 Lint, types and build
 
 #### Manual
 

@@ -1,6 +1,7 @@
 ---
 import NoAccess from "@/components/NoAccess.astro";
 import { GuestGuessView } from "@/components/guest/GuestGuessView";
+import { GuestModuleGate } from "@/components/guest/GuestModuleGate";
 import { GuestOrderView } from "@/components/guest/GuestOrderView";
 import { GuestQuestionDraw } from "@/components/guest/GuestQuestionDraw";
 import { GuestSeatView } from "@/components/guest/GuestSeatView";
@@ -59,32 +60,38 @@ const view =
 
       <GuestOrderView client:load apiBase={view.apiBase} initial={view.initial} locale={locale} />
 
-      <section aria-labelledby="guess-heading" class="flex flex-col gap-3">
-        <h2 id="guess-heading" class="text-xl font-semibold">
-          {t.guessHeading}
-        </h2>
-        <GuestGuessView client:load apiBase={view.apiBase} initial={view.initial} locale={locale} />
-      </section>
+      <GuestModuleGate client:load apiBase={view.apiBase} initial={view.initial} module="guessing">
+        <section aria-labelledby="guess-heading" class="flex flex-col gap-3">
+          <h2 id="guess-heading" class="text-xl font-semibold">
+            {t.guessHeading}
+          </h2>
+          <GuestGuessView client:load apiBase={view.apiBase} initial={view.initial} locale={locale} />
+        </section>
+      </GuestModuleGate>
 
-      <section aria-labelledby="question-heading" class="flex flex-col gap-3">
-        <h2 id="question-heading" class="text-xl font-semibold">
-          {t.questionHeading}
-        </h2>
-        <GuestQuestionDraw client:load apiBase={view.apiBase} initial={view.initial} locale={locale} />
-      </section>
+      <GuestModuleGate client:load apiBase={view.apiBase} initial={view.initial} module="questions">
+        <section aria-labelledby="question-heading" class="flex flex-col gap-3">
+          <h2 id="question-heading" class="text-xl font-semibold">
+            {t.questionHeading}
+          </h2>
+          <GuestQuestionDraw client:load apiBase={view.apiBase} initial={view.initial} locale={locale} />
+        </section>
+      </GuestModuleGate>
 
-      <section aria-labelledby="topic-heading" class="flex flex-col gap-3">
-        <h2 id="topic-heading" class="text-xl font-semibold">
-          {t.topicHeading}
-        </h2>
-        <GuestTopicView
-          client:load
-          apiBase={view.apiBase}
-          initial={view.initial}
-          initialQuota={view.initialQuota}
-          locale={locale}
-        />
-      </section>
+      <GuestModuleGate client:load apiBase={view.apiBase} initial={view.initial} module="aiTopics">
+        <section aria-labelledby="topic-heading" class="flex flex-col gap-3">
+          <h2 id="topic-heading" class="text-xl font-semibold">
+            {t.topicHeading}
+          </h2>
+          <GuestTopicView
+            client:load
+            apiBase={view.apiBase}
+            initial={view.initial}
+            initialQuota={view.initialQuota}
+            locale={locale}
+          />
+        </section>
+      </GuestModuleGate>
     </main>
   </Layout>
 ) : (

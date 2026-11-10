@@ -82,6 +82,7 @@ export const modulesMessages = defineMessages(
     pageOffText: (name: string) =>
       `Moduł „${name}” jest wyłączony w tym wydarzeniu. Włączysz go w karcie „Moduły” na stronie wydarzenia; dane modułu czekają.`,
     backToEvent: "Wróć do wydarzenia",
+    dismiss: "Zamknij",
   },
   {
     names: namesEn,
@@ -132,5 +133,6 @@ export const modulesMessages = defineMessages(
     pageOffText: (name: string) =>
       `The module “${name}” is switched off for this event. Switch it on in the “Modules” card on the event page; its data is waiting.`,
     backToEvent: "Back to the event",
+    dismiss: "Close",
   },
 );

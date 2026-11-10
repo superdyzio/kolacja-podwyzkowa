@@ -3,6 +3,7 @@ import NoAccess from "@/components/NoAccess.astro";
 import LeadBanner from "@/components/lead/LeadBanner.astro";
 import ReadOnlyFrame from "@/components/lead/ReadOnlyFrame.astro";
 import { GuessManager } from "@/components/guesses/GuessManager";
+import ModuleOff from "@/components/modules/ModuleOff.astro";
 import Layout from "@/layouts/Layout.astro";
 import { accessFor, organizerPath } from "@/lib/access";
 import { getDb } from "@/lib/db";
@@ -29,7 +30,9 @@ const view =
         panelPath: organizerPath(access.event.organizerKey),
         apiBase: `/api${organizerPath(access.event.organizerKey)}`,
         guestsPath: `${organizerPath(access.event.organizerKey)}/goscie`,
-        board: await getGuessBoard(db, access.event.id),
+        // event-modules: the game switched off shows a note instead (its data stays, nothing is read).
+        gameOn: access.event.modules.guessing,
+        board: access.event.modules.guessing ? await getGuessBoard(db, access.event.id) : null,
       }
     : null;
 ---
@@ -48,15 +51,19 @@ const view =
         <p class="text-sm text-muted-foreground">{t.intro}</p>
       </header>
       {view.venueLeads && <LeadBanner kind="client" locale={locale} />}
-      <ReadOnlyFrame readOnly={view.venueLeads} locale={locale}>
-        <GuessManager
-          client:load
-          apiBase={view.apiBase}
-          guestsPath={view.guestsPath}
-          initial={view.board}
-          locale={locale}
-        />
-      </ReadOnlyFrame>
+      {view.board ? (
+        <ReadOnlyFrame readOnly={view.venueLeads} locale={locale}>
+          <GuessManager
+            client:load
+            apiBase={view.apiBase}
+            guestsPath={view.guestsPath}
+            initial={view.board}
+            locale={locale}
+          />
+        </ReadOnlyFrame>
+      ) : (
+        <ModuleOff module="guessing" backPath={view.panelPath} locale={locale} />
+      )}
     </main>
   </Layout>
 ) : (

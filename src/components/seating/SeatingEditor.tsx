@@ -24,6 +24,8 @@ interface Props {
   panelPath: string;
   initialBoard: SeatingBoardDto;
   initialHistory: NeighbourHistoryDto;
+  // event-modules (S-17): the seating draw module is on (default).
+  drawEnabled?: boolean;
   locale: Locale;
 }
 
@@ -35,7 +37,7 @@ function seatKey(tableId: number, seat: number): string {
 // and free seats; publish to the TV; discard changes or go back to the previous arrangement. Warnings (split groups,
 // absent guests with a seat) never block. A publish also refreshes this device's offline copy of the published seating
 // (S-09).
-export function SeatingEditor({ apiBase, panelPath, initialBoard, initialHistory, locale }: Props) {
+export function SeatingEditor({ apiBase, panelPath, initialBoard, initialHistory, drawEnabled = true, locale }: Props) {
   const t = seatingEditorMessages(locale);
   const {
     board,
@@ -222,6 +224,7 @@ export function SeatingEditor({ apiBase, panelPath, initialBoard, initialHistory
         upToDate={board.upToDate}
         drawn={origin === "draw"}
         canDraw={venue.tables.length > 0 && guestList.guests.length > 0}
+        drawEnabled={drawEnabled}
         pending={pending}
         drawing={drawing}
         onDraw={handleDraw}

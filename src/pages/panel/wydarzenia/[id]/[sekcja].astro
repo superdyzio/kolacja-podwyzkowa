@@ -8,6 +8,7 @@ import LeadBanner from "@/components/lead/LeadBanner.astro";
 import ReadOnlyFrame from "@/components/lead/ReadOnlyFrame.astro";
 import { OrderManager } from "@/components/orders/OrderManager";
 import { PriceListEditor } from "@/components/orders/PriceListEditor";
+import ModuleOff from "@/components/modules/ModuleOff.astro";
 import { QuestionManager } from "@/components/questions/QuestionManager";
 import { SeatingEditor } from "@/components/seating/SeatingEditor";
 import SupportBanner from "@/components/support/SupportBanner.astro";
@@ -65,6 +66,16 @@ const readOnly = mode !== "staff-leads";
 const hydrate = support === null;
 const apiBase = panelClientApiBase(eventId);
 const eventPath = panelEventPath(eventId);
+// event-modules (S-17): the client's sections follow the event's modules here too.
+const modules = access?.event.modules;
+const questionModules = {
+  questions: modules?.questions ?? true,
+  aiTopics: modules?.aiTopics ?? true,
+  tvSpotlight: modules?.tvSpotlight ?? true,
+};
+const drawEnabled = modules?.seatingDraw ?? true;
+const gameOn = modules?.guessing ?? true;
+const questionsOn = questionModules.questions || questionModules.aiTopics || questionModules.tvSpotlight;
 const titles = {
   goscie: shell.guestsTitle,
   sale: shell.venueTitle,
@@ -144,6 +155,7 @@ const cardsPath = access && !support ? `${organizerPath(access.event.organizerKe
               panelPath={eventPath}
               initialBoard={data.board}
               initialHistory={data.history}
+              drawEnabled={drawEnabled}
               locale={locale}
             />
           ) : (
@@ -152,6 +164,7 @@ const cardsPath = access && !support ? `${organizerPath(access.event.organizerKe
               panelPath={eventPath}
               initialBoard={data.board}
               initialHistory={data.history}
+              drawEnabled={drawEnabled}
               locale={locale}
             />
           ))}
@@ -166,7 +179,9 @@ const cardsPath = access && !support ? `${organizerPath(access.event.organizerKe
             locale={locale}
           />
         )}
+        {data.section === "strzaly" && !gameOn && <ModuleOff module="guessing" backPath={eventPath} locale={locale} />}
         {data.section === "strzaly" &&
+          gameOn &&
           (hydrate ? (
             <GuessManager
               client:load
@@ -178,7 +193,11 @@ const cardsPath = access && !support ? `${organizerPath(access.event.organizerKe
           ) : (
             <GuessManager apiBase={apiBase} guestsPath={`${eventPath}/goscie`} initial={data.board} locale={locale} />
           ))}
+        {data.section === "pytania" && !questionsOn && (
+          <ModuleOff module="questions" backPath={eventPath} locale={locale} />
+        )}
         {data.section === "pytania" &&
+          questionsOn &&
           (hydrate ? (
             <QuestionManager
               client:load
@@ -186,6 +205,7 @@ const cardsPath = access && !support ? `${organizerPath(access.event.organizerKe
               initial={data.list}
               aiInitial={data.ai}
               tvInitial={data.tv}
+              modules={questionModules}
               locale={locale}
             />
           ) : (
@@ -194,6 +214,7 @@ const cardsPath = access && !support ? `${organizerPath(access.event.organizerKe
               initial={data.list}
               aiInitial={data.ai}
               tvInitial={data.tv}
+              modules={questionModules}
               locale={locale}
             />
           ))}

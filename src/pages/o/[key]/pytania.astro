@@ -3,6 +3,7 @@ import NoAccess from "@/components/NoAccess.astro";
 import LeadBanner from "@/components/lead/LeadBanner.astro";
 import ReadOnlyFrame from "@/components/lead/ReadOnlyFrame.astro";
 import { OfflineSync } from "@/components/offline/OfflineSync";
+import ModuleOff from "@/components/modules/ModuleOff.astro";
 import { QuestionManager } from "@/components/questions/QuestionManager";
 import Layout from "@/layouts/Layout.astro";
 import { accessFor, organizerPath } from "@/lib/access";
@@ -47,6 +48,12 @@ const view =
         // client-restaurant-split: the counts only; the provider and the cost are the venue's.
         aiUsage: clientAiUsage(loaded[1]),
         tv: loaded[2],
+        // event-modules: the page's three modules (the TV screen, questions, AI topics).
+        modules: {
+          questions: access.event.modules.questions,
+          aiTopics: access.event.modules.aiTopics,
+          tvSpotlight: access.event.modules.tvSpotlight,
+        },
       }
     : null;
 ---
@@ -66,16 +73,21 @@ const view =
       </header>
       {view.venueLeads && <LeadBanner kind="client" locale={locale} />}
       <OfflineSync client:load apiBase={view.apiBase} locale={locale} />
-      <ReadOnlyFrame readOnly={view.venueLeads} locale={locale}>
-        <QuestionManager
-          client:load
-          apiBase={view.apiBase}
-          initial={view.list}
-          aiInitial={view.aiUsage}
-          tvInitial={view.tv}
-          locale={locale}
-        />
-      </ReadOnlyFrame>
+      {view.modules.questions || view.modules.aiTopics || view.modules.tvSpotlight ? (
+        <ReadOnlyFrame readOnly={view.venueLeads} locale={locale}>
+          <QuestionManager
+            client:load
+            apiBase={view.apiBase}
+            initial={view.list}
+            aiInitial={view.aiUsage}
+            tvInitial={view.tv}
+            modules={view.modules}
+            locale={locale}
+          />
+        </ReadOnlyFrame>
+      ) : (
+        <ModuleOff module="questions" backPath={view.panelPath} locale={locale} />
+      )}
     </main>
   </Layout>
 ) : (

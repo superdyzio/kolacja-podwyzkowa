@@ -10,7 +10,9 @@ import SupportEventSummary from "@/components/support/SupportEventSummary.astro"
 import { getAiProviderStatus } from "@/lib/ai";
 import { getAiTopicUsage } from "@/lib/ai-topics/service";
 import { clientWorkMessages } from "@/lib/client-routes/messages";
-import { CLIENT_SECTIONS, KEY_SECTIONS, panelEventApiBase } from "@/lib/client-routes/sections";
+import { CLIENT_SECTIONS, KEY_SECTIONS, panelClientApiBase, panelEventApiBase } from "@/lib/client-routes/sections";
+import { EventModulesManager } from "@/components/modules/EventModulesManager";
+import { getEventModules, modulesMessages } from "@/lib/modules";
 import { EVENT_STAFF_ROLES, eventPanelMessages, getEventCard } from "@/lib/events";
 import { formatGuestLinksSummary, getGuestAccessEnabled } from "@/lib/guest-links";
 import { formatGuessSummary, getGuessBoard } from "@/lib/guesses";
@@ -44,6 +46,7 @@ const locale = Astro.locals.locale;
 const t = eventPanelMessages(locale);
 const lead = leadMessages(locale);
 const clientWork = clientWorkMessages(locale);
+const tmod = modulesMessages(locale);
 const tmenu = menuMessages(locale);
 const panel = await findPanelEvent(Astro.locals, Astro.params.id, EVENT_STAFF_ROLES);
 const loaded = panel
@@ -59,6 +62,8 @@ const loaded = panel
       panel.support ? Promise.resolve([]) : listVenueTemplates(panel.db, panel.event.restaurantId),
       // menu-catalog-courses (S-16): „Menu wydarzenia”.
       getEventMenu(panel.db, panel.event.restaurantId, panel.event.id),
+      // event-modules (S-17): „Moduły wydarzenia”.
+      getEventModules(panel.db, panel.event.id),
     ])
   : null;
 const card = loaded?.[0] ?? null;
@@ -67,10 +72,12 @@ if (!panel || !card) {
 }
 const work = loaded
   ? (() => {
-      const [, board, guestAccessEnabled, guessBoard, questionList, orderItems, aiUsage, templates, menu] = loaded;
+      const [, board, guestAccessEnabled, guessBoard, questionList, orderItems, aiUsage, templates, menu, modules] =
+        loaded;
       return {
         templates,
         menu,
+        modules,
         ai: { usage: aiUsage, provider: getAiProviderStatus(locale) },
         sections: panel?.support
           ? CLIENT_SECTIONS.filter((section) => !KEY_SECTIONS.includes(section))
@@ -159,6 +166,34 @@ const work = loaded
               eventId={card.id}
               restaurantId={card.restaurantId}
               initial={work.menu}
+              locale={locale}
+            />
+          )}
+        </section>
+      )}
+      {work.modules && (
+        <section
+          aria-labelledby="event-modules-heading"
+          class="flex flex-col gap-3 rounded-xl border p-4 sm:p-6"
+          data-event-modules-section
+        >
+          <h2 id="event-modules-heading" class="text-xl font-semibold">
+            {panel.support ? tmod.adminHeading : tmod.venueHeading}
+          </h2>
+          <p class="text-sm text-muted-foreground">{panel.support ? tmod.adminIntro : tmod.venueIntro}</p>
+          {panel.support ? (
+            <EventModulesManager
+              client:load
+              initial={work.modules}
+              adminApi={`/api/panel/platform/events/${String(card.id)}/modules`}
+              locale={locale}
+            />
+          ) : (
+            <EventModulesManager
+              client:load
+              initial={work.modules}
+              venueApi={`${panelEventApiBase(card.id)}/modules`}
+              clientApi={card.venueLeads ? `${panelClientApiBase(card.id)}/modules` : null}
               locale={locale}
             />
           )}
