@@ -61,7 +61,7 @@ Restauracja, która gościła kolację 2026-11-08, chce tego narzędzia do włas
 | S-16 | menu-catalog-courses    | menedżer prowadzi katalog menu z kursami i menu wydarzenia; klient zamawia z niego bez zmiany cen; kuchnia widzi kursy    | S-14             | FR-037, FR-027, US-07                                                                         | done |
 | S-17 | event-modules           | lokal oznacza dostępne moduły, klient je włącza, administrator odblokowuje płatne; wyłączony moduł znika wszędzie         | S-14             | FR-031, US-07, NFR-023                                                                        | done |
 | S-18 | event-branding          | właściciel ustawia markę lokalu, klient markę wydarzenia; gość, TV, karteczki i panel pokazują je bez nazwy platformy     | S-11             | FR-032                                                                                        | done |
-| S-19 | scale-150               | klient prowadzi wydarzenie do 150 gości, stołów do 30 miejsc i ok. 60 stolików w dotychczasowych czasach reakcji          | F-02             | FR-033, US-08, NFR-011, NFR-015                                                               | proposed |
+| S-19 | scale-150               | klient prowadzi wydarzenie do 150 gości, stołów do 30 miejsc i ok. 60 stolików w dotychczasowych czasach reakcji          | F-02             | FR-033, US-08, NFR-011, NFR-015                                                               | in-progress |
 | S-20 | tv-room-rotation        | TV przy wejściu pokazuje cały lokal i sam przechodzi po salach, gdy imiona byłyby nieczytelne; TV da się przypiąć do sali | S-19             | FR-034, US-08, NFR-018                                                                        | proposed |
 | S-21 | waiter-day-and-refills  | kelner (konto albo dostęp „na imprezę”) widzi dzisiejsze imprezy, oznacza wydane sztuki i dopisuje dokładki               | S-12, S-14       | FR-029, FR-023, US-08                                                                         | proposed |
 | S-22 | guest-map-search        | gość, klient, personel i tablet wyszukują gościa po imieniu, a mapa podświetla jego miejsce                               | S-21             | FR-048, US-08                                                                                 | proposed |
@@ -257,7 +257,7 @@ Fundamenty poniżej zakładają, że to istnieje, i NIE budują tego od nowa.
 - **Unknowns:**
   - Rzeczywiste obciążenie odpytywania przez 200 telefonów na wybranym hostingu (Otwarte pytanie 4). — Owner: planer S-19 (szacunek) + user (pomiar po wdrożeniu). Block: no.
 - **Risk:** Limity siedzą w bazie, snapshotach, losowaniu i rysunku sali naraz. Losowanie z twardymi regułami musi zostać tak samo poprawne przy 150 osobach.
-- **Status:** proposed
+- **Status:** in-progress
 
 ### S-20: TV z rotacją sal i przypięciem do sali
 

@@ -133,7 +133,7 @@ async function guestSeat(db: DbClient, snapshotId: number, guestId: number): Pro
 // The drawing of snapshot `snapshotId` as a guest may see it (venue-drawing): every table's geometry and name, the
 // outlined rooms and the pitch — never who sits where.
 async function guestDrawing(db: DbClient, snapshotId: number): Promise<GuestDrawingDto> {
-  // At most MAX_GUESTS (100) seats per snapshot: one page, no paging needed.
+  // At most MAX_GUESTS (150) seats per snapshot: one page (max_rows 1000), no paging needed.
   const [snapshot, tables, seats, rooms] = await Promise.all([
     db.from("seating_snapshot").select("chair_pitch").eq("id", snapshotId).maybeSingle(),
     db

@@ -12,11 +12,11 @@ import { venueMessages } from "./messages";
 // plan, so two tables must never look the same.
 
 export const MAX_ROOMS = 10;
-export const MAX_TABLES = 40;
+export const MAX_TABLES = 60;
 export const MAX_ROOM_NAME_LENGTH = 40;
 export const MAX_TABLE_NAME_LENGTH = 24;
 export const MIN_SEATS = 2;
-export const MAX_SEATS = 20;
+export const MAX_SEATS = 30;
 export const DEFAULT_SEATS = 8;
 
 export const TABLE_SHAPES = ["round", "rectangular"] as const satisfies readonly TableShape[];

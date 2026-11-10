@@ -3,7 +3,8 @@
 // pick how wide.
 
 // Width of the plan as a multiple of the phone's column.
-export const VENUE_ZOOM_STEPS: readonly number[] = [1, 1.5, 2, 3, 4, 6];
+// scale-150: 8× for dense venues of up to 60 tables (MAX_TABLES).
+export const VENUE_ZOOM_STEPS: readonly number[] = [1, 1.5, 2, 3, 4, 6, 8];
 
 // A name drawn at least this tall (CSS pixels) reads comfortably on a phone.
 export const READABLE_NAME_PX = 13;

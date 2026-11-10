@@ -154,14 +154,14 @@ describe.skipIf(!hasLocalDb)("guess schema", () => {
     return data;
   }
 
-  it("keeps a place prediction within 1 … 100 or none", async () => {
+  it("keeps a place prediction within 1 … 150 (MAX_GUESTS, scale-150) or none", async () => {
     const [guest] = await guests(1);
     expect((await db.from("guess").insert({ event_id: event.id, guest_id: guest, amount_grosze: 1 })).error).toBeNull();
-    for (const place of [0, 101, -1]) {
+    for (const place of [0, 151, -1]) {
       const { error } = await db.from("guess").update({ predicted_place: place }).eq("guest_id", guest);
       expect(error?.code).toBe("23514");
     }
-    for (const place of [1, 100, null]) {
+    for (const place of [1, 100, 150, null]) {
       expect((await db.from("guess").update({ predicted_place: place }).eq("guest_id", guest)).error).toBeNull();
     }
   });
@@ -196,7 +196,7 @@ describe.skipIf(!hasLocalDb)("guess schema", () => {
     });
     expect(unknown.error?.message).toBe("GUEST_NOT_FOUND");
     await setIntake(true);
-    expect((await save(1, 101)).error?.code).toBe("23514");
+    expect((await save(1, 151)).error?.code).toBe("23514");
   });
 
   it("keeps the correct amount within the same bounds", async () => {

@@ -40,7 +40,7 @@ describe("parseLayoutText", () => {
     // Out of range → no scale proposed: the venue keeps its own.
     expect(layout?.chairPitch).toBeNull();
     expect(layout?.rooms).toEqual([{ name: "Sala A", outline: { x: 0, y: 0.9, width: 1, height: 0.1 } }]);
-    expect(layout?.tables[0]).toMatchObject({ name: "Bardzo długa nazwa stoli", seatCount: 20, x: 1, y: 0 });
+    expect(layout?.tables[0]).toMatchObject({ name: "Bardzo długa nazwa stoli", seatCount: 30, x: 1, y: 0 });
     expect(layout?.tables[1]).toMatchObject({ seatCount: 2, rotation: 270 });
     // An unknown shape reads as round, and a round table has no rotation.
     expect(layout?.tables[2]).toMatchObject({ shape: "round", rotation: 0 });

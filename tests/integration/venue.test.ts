@@ -179,7 +179,7 @@ describe.skipIf(!hasLocalDb)("venue service", () => {
       const hall = await room(`Sala ${tag}`);
       const invalid = (extra: Partial<TableFields>) => addTable(db, event.id, fields(hall.id, `T ${tag}`, extra));
       expect(await invalid({ seatCount: 1 })).toEqual({ status: "invalid", problem: { field: "seatCount" } });
-      expect(await invalid({ seatCount: 21 })).toEqual({ status: "invalid", problem: { field: "seatCount" } });
+      expect(await invalid({ seatCount: 31 })).toEqual({ status: "invalid", problem: { field: "seatCount" } });
       expect(await invalid({ x: -0.1 })).toEqual({ status: "invalid", problem: { field: "position" } });
       expect(await invalid({ y: 1.1 })).toEqual({ status: "invalid", problem: { field: "position" } });
       expect(await invalid({ x: Number.NaN })).toEqual({ status: "invalid", problem: { field: "position" } });

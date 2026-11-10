@@ -20,6 +20,7 @@ import {
   viewBoxOf,
   type Chair,
 } from "./drawing";
+import { MAX_SEATS, MIN_SEATS } from "./rules";
 import { oppositeSeat, sideALength, sideNeighbours } from "./seats";
 
 const PITCH = 0.035;
@@ -117,9 +118,9 @@ describe("rotation", () => {
 });
 
 describe("chairs agree with the seat contract (seats.ts)", () => {
-  it("places side neighbours next to each other and opposite seats across, for 2..20 seats", () => {
+  it("places side neighbours next to each other and opposite seats across, for MIN_SEATS..MAX_SEATS (2..30) seats", () => {
     for (const shape of ["round", "rectangular"] as const) {
-      for (let n = 2; n <= 20; n++) {
+      for (let n = MIN_SEATS; n <= MAX_SEATS; n++) {
         const chairs = chairPositions(table(shape, n, 30), PITCH, ASPECT);
         const bySeat = new Map(chairs.map((chair) => [chair.seat, chair]));
         // Seats 1 and 2 are side neighbours everywhere except at a rectangular table for two.
@@ -284,5 +285,21 @@ describe("layoutDrawing", () => {
     };
     const mixed = layoutDrawing([{ ...a, x: 0.1, y: 0.8 }, dense], PITCH, ASPECT, estimateTextWidth);
     expect(mixed[0].font / mixed[1].font).toBeLessThanOrEqual(1.6 + 1e-9);
+  });
+
+  it("fits long names at the largest tables (scale-150: MAX_SEATS = 30), round and rectangular", () => {
+    for (const shape of ["round", "rectangular"] as const) {
+      const full = {
+        ...table(shape, MAX_SEATS),
+        x: 0.5,
+        y: 0.5,
+        name: "Duży",
+        seats: seats(Array.from({ length: MAX_SEATS }, () => "Maksymilian")),
+      };
+      const [laid] = layoutDrawing([full], PITCH, ASPECT, estimateTextWidth);
+      // Every seated name gets a label with a usable font (the same lower bound as smaller tables).
+      expect(laid.labels).toHaveLength(MAX_SEATS);
+      expect(laid.font).toBeGreaterThan(0);
+    }
   });
 });
