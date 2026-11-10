@@ -23,6 +23,9 @@ interface Props {
   apiBase: string;
   initial: OrderBoardDto;
   locale: Locale;
+  // waiter-day-and-refills (S-21): the floor (/panel/obsluga/<id>) — lines are marked and added, never edited or
+  // deleted; drinks are added only.
+  floor?: boolean;
 }
 
 function sum(items: readonly OrderItemDto[]): number {
@@ -39,7 +42,7 @@ function lineKey(item: OrderItemDto): string {
 // delete. serving-highlight: the plan beside the lists (above them on narrow screens, pinned while something is picked)
 // lights up where a dish, one piece of it or a line goes. bill-drinks: „Napoje do rachunku” at the bottom (the
 // organizer's own list) and the bill total (dishes + drinks) at the top.
-export function OrderManager({ apiBase, initial, locale }: Props) {
+export function OrderManager({ apiBase, initial, locale, floor = false }: Props) {
   const t = orderMessages(locale);
   const s = servingMessages(locale);
   const d = drinkMessages(locale);
@@ -98,9 +101,13 @@ export function OrderManager({ apiBase, initial, locale }: Props) {
             dishes={dishes}
             menu={board.menu}
             locale={locale}
-            onEdit={() => {
-              setEditingId(item.id);
-            }}
+            onEdit={
+              floor
+                ? null
+                : () => {
+                    setEditingId(item.id);
+                  }
+            }
             onCancel={() => {
               setEditingId(null);
             }}
@@ -111,9 +118,13 @@ export function OrderManager({ apiBase, initial, locale }: Props) {
             onPiece={(piece, delivered) =>
               send({ method: "PUT", path: `/orders/${String(item.id)}/pieces`, body: { piece, delivered } })
             }
-            onDelete={() => {
-              deleteLine(item);
-            }}
+            onDelete={
+              floor
+                ? null
+                : () => {
+                    deleteLine(item);
+                  }
+            }
             selected={serving.selectedSpot === lineKey(item)}
             onSelect={
               onPlan
@@ -359,6 +370,7 @@ export function OrderManager({ apiBase, initial, locale }: Props) {
           pending={pending}
           locale={locale}
           send={sendDrink}
+          addOnly={floor}
         />
       </div>
     </div>

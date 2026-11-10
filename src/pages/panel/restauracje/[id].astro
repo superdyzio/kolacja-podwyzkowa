@@ -5,6 +5,7 @@ import { NewEventForm } from "@/components/events/NewEventForm";
 import { authMessages } from "@/lib/auth/messages";
 import { canManageEvents, eventPanelMessages, formatEventDate, listRestaurantEvents } from "@/lib/events";
 import { findPanelRestaurant } from "@/lib/panel-api";
+import { FLOOR_ROLES, floorMessages, floorPath } from "@/lib/floor";
 import { restaurantPanelMessages } from "@/lib/restaurants";
 import { TeamManager } from "@/components/team/TeamManager";
 import SupportBanner from "@/components/support/SupportBanner.astro";
@@ -49,6 +50,16 @@ const team =
     : null;
 const manages = panel ? canManageEvents(panel.role) : false;
 const lists = panel && manages ? await listRestaurantEvents(panel.db, panel.restaurant.id, new Date()) : null;
+// waiter-day-and-refills (S-21; FR-029): every member (never support mode) sees „Dziś na sali” — the events running
+// today (until noon of the next day), each linking to its floor page; for a waiter it is the whole event list.
+const floorLists =
+  panel && !support && FLOOR_ROLES.includes(panel.role)
+    ? (lists ?? (await listRestaurantEvents(panel.db, panel.restaurant.id, new Date())))
+    : null;
+const floorEvents = floorLists
+  ? [...floorLists.upcoming, ...floorLists.past].filter((event) => !event.archived && event.timing === "today")
+  : null;
+const tf = floorMessages(locale);
 const templates = panel && manages ? await listVenueTemplates(panel.db, panel.restaurant.id) : null;
 const tv = templateMessages(locale);
 // menu-catalog-courses (S-16): owners and managers (and support) see the „Menu lokalu” section with a link.
@@ -156,6 +167,38 @@ if (!panel) {
           templates={(templates ?? []).map(({ id, name }) => ({ id, name }))}
           locale={locale}
         />
+      )}
+
+      {floorEvents && (
+        <section aria-labelledby="floor-heading" class="flex flex-col gap-3 rounded-xl border p-4 sm:p-6">
+          <h2 id="floor-heading" class="text-xl font-semibold">
+            {tf.todayHeading}
+          </h2>
+          <p class="text-sm text-muted-foreground">{tf.todayIntro}</p>
+          {floorEvents.length === 0 ? (
+            <p class="text-muted-foreground" data-floor-list="empty">
+              {tf.todayEmpty}
+            </p>
+          ) : (
+            <ul class="flex flex-col divide-y" data-floor-list>
+              {floorEvents.map((event) => (
+                <li class="flex flex-wrap items-center justify-between gap-2 py-3" data-floor-event={event.id}>
+                  <span class="flex flex-col">
+                    <span class="font-medium">{event.name}</span>
+                    <span class="text-sm text-muted-foreground">{formatEventDate(event.date, locale)}</span>
+                  </span>
+                  <a
+                    href={floorPath(event.id)}
+                    class="rounded-md border px-3 py-2 text-sm font-medium hover:bg-muted"
+                    aria-label={tf.openFloorFor(event.name)}
+                  >
+                    {tf.openFloor}
+                  </a>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
       )}
 
       <section aria-labelledby="events-heading" class="flex flex-col gap-3 rounded-xl border p-4 sm:p-6">

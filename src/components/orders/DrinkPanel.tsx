@@ -150,12 +150,14 @@ interface Props {
   menuDrinks: readonly OrderMenuItemDto[];
   // useOrderBoard's queue: every answer is the whole board.
   send: (request: OrderRequest) => Promise<boolean>;
+  // waiter-day-and-refills (S-21): the floor adds drinks only (the venue corrects and deletes them).
+  addOnly?: boolean;
 }
 
 // „Napoje do rachunku” on the organizer's order page (bill-drinks): the drinks on the restaurant's bill — name, price
 // per item, quantity — for nobody in particular and seen by nobody but the organizer; their sum goes into the bill
 // total at the top of the page.
-export function DrinkPanel({ drinks, totals, pending, locale, menuDrinks, send }: Props) {
+export function DrinkPanel({ drinks, totals, pending, locale, menuDrinks, send, addOnly = false }: Props) {
   const t = drinkMessages(locale);
   const [editingId, setEditingId] = useState<number | null>(null);
   const suggestions = useMemo(() => {
@@ -229,32 +231,34 @@ export function DrinkPanel({ drinks, totals, pending, locale, menuDrinks, send }
                     {drink.quantity} × {formatAmount(drink.unitPriceGrosze)}
                   </span>
                 </span>
-                <span className="flex gap-1">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="h-10"
-                    disabled={pending}
-                    onClick={() => {
-                      setEditingId(drink.id);
-                    }}
-                    aria-label={t.editLabel(drink.name)}
-                  >
-                    {t.edit}
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    className="text-destructive h-10"
-                    disabled={pending}
-                    onClick={() => {
-                      remove(drink);
-                    }}
-                    aria-label={t.removeLabel(drink.name)}
-                  >
-                    {t.remove}
-                  </Button>
-                </span>
+                {!addOnly && (
+                  <span className="flex gap-1">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="h-10"
+                      disabled={pending}
+                      onClick={() => {
+                        setEditingId(drink.id);
+                      }}
+                      aria-label={t.editLabel(drink.name)}
+                    >
+                      {t.edit}
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      className="text-destructive h-10"
+                      disabled={pending}
+                      onClick={() => {
+                        remove(drink);
+                      }}
+                      aria-label={t.removeLabel(drink.name)}
+                    >
+                      {t.remove}
+                    </Button>
+                  </span>
+                )}
               </li>
             ),
           )}

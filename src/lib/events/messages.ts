@@ -26,7 +26,8 @@ export const eventPanelMessages = defineMessages(
     emptyArchived: "Archiwum jest puste.",
     guestsExpected: (count: number) => `gości: ${String(count)}`,
     openCardFor: (name: string) => `Otwórz kartę wydarzenia ${name}`,
-    waiterNote: "Dzisiejsze wydarzenia dla kelnerów pojawią się tu wkrótce.",
+    waiterNote:
+      "Wydarzeniami lokalu zarządzają właściciel i menedżer; Twoje dzisiejsze wydarzenia są w „Dziś na sali”.",
     // Restaurant page: new event
     newHeading: "Nowe wydarzenie",
     newIntro: "Po utworzeniu zobaczysz kartę wydarzenia z linkiem dla klienta do skopiowania.",
@@ -126,7 +127,8 @@ export const eventPanelMessages = defineMessages(
     emptyArchived: "The archive is empty.",
     guestsExpected: (count: number) => `guests: ${String(count)}`,
     openCardFor: (name: string) => `Open the event card of ${name}`,
-    waiterNote: "Today's events for waiters will appear here soon.",
+    waiterNote:
+      "The owner and managers manage the restaurant's events; your events today are under „On the floor today”.",
     newHeading: "New event",
     newIntro: "Once it is created you will see the event card with the client's link to copy.",
     nameLabel: "Event name",

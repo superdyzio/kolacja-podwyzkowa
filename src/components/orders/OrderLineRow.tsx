@@ -19,14 +19,15 @@ interface Props {
   // menu-catalog-courses: the event's available menu (an active one turns the dish field into a list).
   menu: OrderMenuDto;
   locale: Locale;
-  onEdit: () => void;
+  // waiter-day-and-refills (S-21): null on the floor (no edit, no delete).
+  onEdit: (() => void) | null;
   onCancel: () => void;
   onSave: (values: OrderItemFormValues) => Promise<boolean>;
   // Resolves once the answer has replaced the board.
   onDelivered: (delivered: boolean) => Promise<unknown>;
   // guest-delivered: one piece (1-based) of a line with more than one.
   onPiece: (piece: number, delivered: boolean) => Promise<unknown>;
-  onDelete: () => void;
+  onDelete: (() => void) | null;
   // serving-highlight: lines with a place on the published plan light it up (null: no place there).
   selected?: boolean;
   onSelect?: (() => void) | null;
@@ -172,28 +173,30 @@ export function OrderLineRow({
           </span>
         )}
       </div>
-      <div className="flex gap-1">
-        <Button
-          type="button"
-          variant="outline"
-          className="h-10"
-          disabled={pending}
-          onClick={onEdit}
-          aria-label={t.editLabel(item.name)}
-        >
-          {t.edit}
-        </Button>
-        <Button
-          type="button"
-          variant="ghost"
-          className="text-destructive h-10"
-          disabled={pending}
-          onClick={onDelete}
-          aria-label={t.removeLabel(item.name)}
-        >
-          {t.remove}
-        </Button>
-      </div>
+      {onEdit && onDelete && (
+        <div className="flex gap-1">
+          <Button
+            type="button"
+            variant="outline"
+            className="h-10"
+            disabled={pending}
+            onClick={onEdit}
+            aria-label={t.editLabel(item.name)}
+          >
+            {t.edit}
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            className="text-destructive h-10"
+            disabled={pending}
+            onClick={onDelete}
+            aria-label={t.removeLabel(item.name)}
+          >
+            {t.remove}
+          </Button>
+        </div>
+      )}
       {item.quantity > 1 && (
         <ul aria-label={t.piecesLabel(item.name)} className="flex basis-full flex-wrap gap-1.5">
           {pieces.map((piece) => {

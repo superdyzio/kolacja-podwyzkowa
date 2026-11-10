@@ -8,6 +8,7 @@ import {
 } from "@/lib/auth/service";
 import { STAFF_ROLES, type StaffRole, type StaffSession } from "@/lib/auth/types";
 import { getDb } from "@/lib/db";
+import { FLOOR_ROLES, isFloorOpen } from "@/lib/floor/rules";
 import { httpMessages, jsonError, parseId } from "@/lib/http";
 import { isReadMethod, SUPPORT_ROLE } from "@/lib/support/rules";
 import { recordSupportAccess, type SupportTarget } from "@/lib/support/service";
@@ -41,6 +42,8 @@ export interface PanelApi {
 // platform administrator reads it in support mode (null for members).
 export type PanelRestaurant = PanelApi & RestaurantMembership & { support: SupportAccessDto | null };
 export type PanelEvent = PanelApi & EventMembership & { support: SupportAccessDto | null };
+// waiter-day-and-refills (S-21): an event opened for the floor, with its day ("YYYY-MM-DD").
+export type PanelFloorEvent = PanelEvent & { date: string };
 // venue-templates (S-15): a venue template with its restaurant, opened like the restaurant itself.
 export type PanelTemplate = PanelRestaurant & { template: { id: number; name: string } };
 
@@ -217,4 +220,55 @@ export async function panelTemplateApi(
     return api;
   }
   return (await findPanelTemplate(locals, idParam, roles)) ?? denied(locals);
+}
+
+// The floor — the waiter's day view (waiter-day-and-refills, S-21; FR-029): the event of a floor page or route, or
+// null. A MEMBER of the event's restaurant with a role in FLOOR_ROLES (owner, manager, waiter), and only while the
+// event runs today (isFloorOpen: its day until noon of the next one in Europe/Warsaw, not archived). There is NO
+// support branch: the platform administrator never works the floor, so its request — in support mode too — is the
+// identical null / 404 and writes no log row. Malformed, unknown and foreign ids, templates, a switched-off restaurant
+// and an event outside the window are all the same null.
+export async function findFloorEvent(
+  locals: App.Locals,
+  idParam: string | undefined,
+  now: Date = new Date(),
+): Promise<PanelFloorEvent | null> {
+  const db = getDb();
+  const staff = locals.staff;
+  if (!staff || !db) {
+    return null;
+  }
+  const id = parseIntId(idParam);
+  if (id === null) {
+    return null;
+  }
+  const membership = await findEventMembership(db, staff.accountId, id);
+  if (!membership || !FLOOR_ROLES.includes(membership.role)) {
+    return null;
+  }
+  const { data, error } = await db
+    .from("event")
+    .select("event_date, archived_at")
+    .eq("id", id)
+    .eq("restaurant_id", membership.event.restaurantId)
+    .eq("is_template", false)
+    .maybeSingle();
+  if (error) {
+    throw new Error(`Nie udało się odczytać dnia wydarzenia: ${error.message}`);
+  }
+  if (!data || !isFloorOpen(data.event_date, data.archived_at, now)) {
+    return null;
+  }
+  return { staff, db, ...membership, support: null, date: data.event_date };
+}
+
+export async function panelFloorApi(
+  locals: App.Locals,
+  idParam: string | undefined,
+): Promise<PanelFloorEvent | Response> {
+  const api = panelApi(locals);
+  if (api instanceof Response) {
+    return api;
+  }
+  return (await findFloorEvent(locals, idParam)) ?? denied(locals);
 }
