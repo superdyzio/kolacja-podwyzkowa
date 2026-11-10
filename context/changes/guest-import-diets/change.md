@@ -1,7 +1,7 @@
 ---
 change_id: guest-import-diets
 title: Guest import from CSV or a spreadsheet paste, and diets at the seat (S-23)
-status: implementing
+status: implemented
 created: 2026-11-10
 updated: 2026-11-10
 archived_at: null

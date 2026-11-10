@@ -457,9 +457,9 @@ Additive (two columns with defaults/null and three CHECKs); old code ignores the
 
 #### Automated
 
-- [x] 3.1 Smoke passes
-- [x] 3.2 Demo passes
-- [x] 3.3 Full suite, lint, type check and build stay green
+- [x] 3.1 Smoke passes — c07fea3
+- [x] 3.2 Demo passes — c07fea3
+- [x] 3.3 Full suite, lint, type check and build stay green — c07fea3
 
 #### Manual
 
