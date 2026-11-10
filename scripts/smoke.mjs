@@ -5507,9 +5507,11 @@ check(
 );
 const waiterRestaurantPage = await staffCall(sessionWaiter, restaurantPageOf(restaurantA.id));
 check(
-  "events: the waiter's restaurant page shows no events, no create form and no links, only the note",
+  "events: the waiter's restaurant page shows no event list, no create form and no links — the note and (waiter-day-and-refills) „Dziś na sali” with today's event A only",
   waiterRestaurantPage.status === 200 &&
-    waiterRestaurantPage.body.includes("Dzisiejsze wydarzenia dla kelnerów") &&
+    waiterRestaurantPage.body.includes("Twoje dzisiejsze wydarzenia są w „Dziś na sali”") &&
+    waiterRestaurantPage.body.includes(`data-floor-event="${String(eventA.id)}"`) &&
+    !waiterRestaurantPage.body.includes(organizerKey) &&
     !waiterRestaurantPage.body.includes("Nowe wydarzenie") &&
     !waiterRestaurantPage.body.includes("data-event-id") &&
     !waiterRestaurantPage.body.includes(party.name),
@@ -8268,5 +8270,260 @@ check(
 
 const deleted35 = await staffCall(sessionOwner, eventApi(e35Id), { method: "DELETE" });
 check("scale: the smoke's full-size event is deleted", deleted35.status === 200, String(deleted35.status));
+
+// 36. The floor — the waiter's day view (waiter-day-and-refills, S-21; FR-029, US-08). Events of A created for it:
+// one today (a guest and a line through the client's key), one tomorrow, one two days ago and one today but archived
+// (the noon edge is covered by unit tests with a fixed clock — the smoke runs at any hour). The waiter of A reads the
+// board with prices and the bill, adds a refill (priced by the venue; a body price → 400), marks a piece and a whole
+// line; edits, deletes and every other client route → the identical 404; outside the window, event B, malformed ids,
+// the platform admin (also in support mode, with no log row) → the identical 404; no session 401; foreign Origin 403;
+// „Lokal prowadzi” changes nothing for the floor. The pages: the floor page and „Dziś na sali”. Events deleted.
+const floorApiOf = (id) => `/api/panel/events/${String(id)}/obsluga`;
+const floorPageOf = (id) => `/panel/obsluga/${String(id)}`;
+const makeEvent36 = async (name, date) => {
+  const res = await staffCall(sessionOwner, eventsApiOf(restaurantA.id), {
+    method: "POST",
+    json: { name: `${name} ${RUN_TAG}`, date },
+  });
+  return res.data?.event ?? null;
+};
+const today36 = await makeEvent36("Sala dziś", today);
+const tomorrow36 = await makeEvent36("Sala jutro", shiftDate(today, 1));
+const past36 = await makeEvent36("Sala przedwczoraj", shiftDate(today, -2));
+const archived36 = await makeEvent36("Sala archiwum", today);
+const archivedPatch36 = await staffCall(sessionOwner, eventApi(archived36?.id ?? 0), {
+  method: "PATCH",
+  json: { archived: true },
+});
+const t36Id = today36?.id ?? 0;
+const t36Api = `/api/o/${keyOfPath(today36?.links?.organizer)}`;
+const guest36 = await request(`${t36Api}/guests`, { method: "POST", json: { text: `Gość sali ${RUN_TAG}` } });
+const guest36Id = guest36.data?.guests?.[0]?.id ?? 0;
+const clientBoard36 = await request(`${t36Api}/orders`);
+const dish36 = clientBoard36.data?.menu?.active ? (clientBoard36.data.menu.items[0]?.name ?? "") : "Zupa sali";
+const line36 = await request(`${t36Api}/orders`, {
+  method: "POST",
+  json: { name: dish36, quantity: 2, assignment: { guestId: guest36Id } },
+});
+const line36Id = line36.data?.items?.[0]?.id ?? 0;
+check(
+  "floor: four events of A for the floor (today, tomorrow, two days ago, archived today) and a line of 2 on today's",
+  [today36, tomorrow36, past36, archived36].every((event) => (event?.id ?? 0) > 0) &&
+    archivedPatch36.status === 200 &&
+    guest36Id > 0 &&
+    line36.status === 201 &&
+    line36Id > 0,
+  `${archivedPatch36.status} ${guest36.status} ${line36.status} ${line36.body.slice(0, 120)}`,
+);
+
+const floorRead36 = await staffCall(sessionWaiter, `${floorApiOf(t36Id)}/orders`);
+check(
+  "floor: the waiter of A reads today's board — lines with prices, the bill, the guests — with no keys",
+  floorRead36.status === 200 &&
+    floorRead36.cacheControl.includes("no-store") &&
+    Array.isArray(floorRead36.data?.items) &&
+    floorRead36.data.items.some((item) => item.id === line36Id && typeof item.unitPriceGrosze === "number") &&
+    typeof floorRead36.data?.totals?.totalGrosze === "number" &&
+    typeof floorRead36.data?.drinkTotals?.totalGrosze === "number" &&
+    ![today36?.links?.organizer, today36?.links?.tv, today36?.links?.restaurant].some(
+      (path) => typeof path === "string" && floorRead36.body.includes(keyOfPath(path)),
+    ),
+  `${floorRead36.status} ${floorRead36.body.slice(0, 160)}`,
+);
+
+const refill36 = await staffCall(sessionWaiter, `${floorApiOf(t36Id)}/orders`, {
+  method: "POST",
+  json: { name: dish36, quantity: 1, assignment: { guestId: guest36Id } },
+});
+const refillPriced36 = await staffCall(sessionWaiter, `${floorApiOf(t36Id)}/orders`, {
+  method: "POST",
+  json: { name: dish36, quantity: 1, price: "1" },
+});
+const drink36 = await staffCall(sessionWaiter, `${floorApiOf(t36Id)}/drinks`, {
+  method: "POST",
+  json: { name: "Woda sali", quantity: 2 },
+});
+const firstPrice36 = floorRead36.data?.items?.find((item) => item.id === line36Id)?.unitPriceGrosze;
+check(
+  "floor: the waiter adds a refill (201, the venue's price of the dish) and drinks on the bill (201); a body price → 400",
+  refill36.status === 201 &&
+    (refill36.data?.items?.length ?? 0) === 2 &&
+    refill36.data.items.every((item) => item.unitPriceGrosze === firstPrice36) &&
+    refillPriced36.status === 400 &&
+    drink36.status === 201 &&
+    (drink36.data?.drinks?.length ?? 0) === 1,
+  `${refill36.status} ${refillPriced36.status} ${drink36.status}`,
+);
+
+const piece36 = await staffCall(sessionWaiter, `${floorApiOf(t36Id)}/orders/${String(line36Id)}/pieces`, {
+  method: "PUT",
+  json: { piece: 1, delivered: true },
+});
+const pieceItem36 = piece36.data?.items?.find((item) => item.id === line36Id);
+const wholeLine36 = await staffCall(sessionWaiter, `${floorApiOf(t36Id)}/orders/${String(line36Id)}`, {
+  method: "PATCH",
+  json: { delivered: true },
+});
+const wholeItem36 = wholeLine36.data?.items?.find((item) => item.id === line36Id);
+const rename36 = await staffCall(sessionWaiter, `${floorApiOf(t36Id)}/orders/${String(line36Id)}`, {
+  method: "PATCH",
+  json: { name: "Inna nazwa" },
+});
+const mixed36 = await staffCall(sessionWaiter, `${floorApiOf(t36Id)}/orders/${String(line36Id)}`, {
+  method: "PATCH",
+  json: { delivered: false, quantity: 5 },
+});
+check(
+  "floor: the waiter marks one piece (the venue's mark), then the whole line „Wydane”; a rename or any other field → 400",
+  piece36.status === 200 &&
+    JSON.stringify(pieceItem36?.deliveredPieces) === "[1]" &&
+    pieceItem36?.marks?.[0]?.by === "organizer" &&
+    wholeLine36.status === 200 &&
+    JSON.stringify(wholeItem36?.deliveredPieces) === "[1,2]" &&
+    rename36.status === 400 &&
+    mixed36.status === 400,
+  `${piece36.status} ${JSON.stringify(pieceItem36?.deliveredPieces)} ${wholeLine36.status} ${rename36.status} ${mixed36.status}`,
+);
+
+const floorDenied36 = [];
+for (const [name, token, path, options] of [
+  ["delete a line", sessionWaiter, `${floorApiOf(t36Id)}/orders/${String(line36Id)}`, { method: "DELETE" }],
+  ["edit a drink", sessionWaiter, `${floorApiOf(t36Id)}/drinks/1`, { method: "PATCH", json: { quantity: 1 } }],
+  ["guests", sessionWaiter, `${floorApiOf(t36Id)}/guests`, {}],
+  ["guest links", sessionWaiter, `${floorApiOf(t36Id)}/guest-links`, {}],
+  ["seating", sessionWaiter, `${floorApiOf(t36Id)}/seating`, {}],
+  ["publish", sessionWaiter, `${floorApiOf(t36Id)}/seating/publish`, { method: "POST" }],
+  ["reset", sessionWaiter, `${floorApiOf(t36Id)}/reset`, {}],
+  ["unknown sub-path", sessionWaiter, `${floorApiOf(t36Id)}/nie-ma`, {}],
+  ["no sub-path", sessionWaiter, floorApiOf(t36Id), {}],
+  ["the event card", sessionWaiter, eventApi(t36Id), {}],
+  ["the event's links", sessionWaiter, `${eventApi(t36Id)}/links/tv`, { method: "POST" }],
+  ["the client dispatcher", sessionWaiter, `${eventApi(t36Id)}/klient/orders`, {}],
+  ["the team", sessionWaiter, `/api/panel/restaurants/${String(restaurantA.id)}/team`, {}],
+  ["tomorrow's event", sessionWaiter, `${floorApiOf(tomorrow36?.id ?? 0)}/orders`, {}],
+  ["the event of two days ago", sessionWaiter, `${floorApiOf(past36?.id ?? 0)}/orders`, {}],
+  ["today's archived event", sessionWaiter, `${floorApiOf(archived36?.id ?? 0)}/orders`, {}],
+  [
+    "tomorrow's event, a refill",
+    sessionWaiter,
+    `${floorApiOf(tomorrow36?.id ?? 0)}/orders`,
+    { method: "POST", json: { name: "X", quantity: 1 } },
+  ],
+  ["event B", sessionWaiter, `${floorApiOf(eventB.id)}/orders`, {}],
+  ["event A, owner B", sessionB, `${floorApiOf(t36Id)}/orders`, {}],
+  [
+    "event A, owner B, a mark",
+    sessionB,
+    `${floorApiOf(t36Id)}/orders/${String(line36Id)}/pieces`,
+    { method: "PUT", json: { piece: 2, delivered: false } },
+  ],
+  ["malformed id", sessionWaiter, `${floorApiOf("abc")}/orders`, {}],
+  ["out-of-int4 id", sessionWaiter, `${floorApiOf(99999999999)}/orders`, {}],
+  ["unknown id", sessionWaiter, `${floorApiOf(2147483000)}/orders`, {}],
+  ["the platform admin", sessionAdmin, `${floorApiOf(t36Id)}/orders`, {}],
+]) {
+  const res = await staffCall(token, path, options);
+  if (!noAccessJson(res)) floorDenied36.push(`${name}: ${String(res.status)}`);
+}
+check(
+  "floor: edits, deletes, other client routes, the event card, links, team, events outside the window, event B, owner B, malformed / unknown ids and the platform admin → the identical 404",
+  floorDenied36.length === 0,
+  floorDenied36.join("; "),
+);
+
+const noSession36 = await request(`${floorApiOf(t36Id)}/orders`);
+const foreign36 = await staffCall(sessionWaiter, `${floorApiOf(t36Id)}/orders`, {
+  method: "POST",
+  json: { name: dish36, quantity: 1 },
+  extraHeaders: FOREIGN,
+});
+check(
+  "floor: no session → 401, a foreign Origin → 403",
+  noSession36.status === 401 && foreign36.status === 403,
+  `${noSession36.status} ${foreign36.status}`,
+);
+
+const leads36 = await staffCall(sessionOwner, eventApi(t36Id), { method: "PATCH", json: { venueLeads: true } });
+const leadPiece36 = await staffCall(sessionWaiter, `${floorApiOf(t36Id)}/orders/${String(line36Id)}/pieces`, {
+  method: "PUT",
+  json: { piece: 2, delivered: false },
+});
+const clientLeadsOn36 = await request(`${t36Api}/orders/${String(line36Id)}/pieces`, {
+  method: "PUT",
+  json: { piece: 2, delivered: true },
+});
+const leadsOff36 = await staffCall(sessionOwner, eventApi(t36Id), { method: "PATCH", json: { venueLeads: false } });
+const managerFloor36 = sessionManager ? await staffCall(sessionManager, `${floorApiOf(t36Id)}/orders`) : null;
+check(
+  "floor: while „Lokal prowadzi” is on the waiter still marks (200; the client's link gets 409), and the owner works the floor too",
+  leads36.status === 200 &&
+    leadPiece36.status === 200 &&
+    clientLeadsOn36.status === 409 &&
+    leadsOff36.status === 200 &&
+    (await staffCall(sessionOwner, `${floorApiOf(t36Id)}/orders`)).status === 200 &&
+    (managerFloor36 === null || managerFloor36.status === 200 || noAccessJson(managerFloor36)),
+  `${leads36.status} ${leadPiece36.status} ${clientLeadsOn36.status} ${leadsOff36.status} ${managerFloor36?.status ?? "-"}`,
+);
+
+const logBefore36 = logOf(await readLogA()).length;
+const enter36 = await enterSupport(sessionAdmin, restaurantA.id);
+const supportFloor36 = await staffCall(sessionAdmin, `${floorApiOf(t36Id)}/orders`);
+const supportFloorPage36 = await staffCall(sessionAdmin, floorPageOf(t36Id));
+const supportMark36 = await staffCall(sessionAdmin, `${floorApiOf(t36Id)}/orders/${String(line36Id)}/pieces`, {
+  method: "PUT",
+  json: { piece: 2, delivered: true },
+});
+const exit36 = await endSupportOf(sessionAdmin, restaurantA.id);
+const logAfter36 = logOf(await readLogA());
+check(
+  "floor: the platform admin in support mode gets the identical 404 on the floor (API, page, a mark) and no access row",
+  enter36.status === 201 &&
+    noAccessJson(supportFloor36) &&
+    isNoAccessPage(supportFloorPage36) &&
+    noAccessJson(supportMark36) &&
+    exit36.status === 200 &&
+    logAfter36.length === logBefore36 + 2 &&
+    logAfter36[0]?.kind === "exit" &&
+    logAfter36[1]?.kind === "enter",
+  `${enter36.status} ${supportFloor36.status} ${supportFloorPage36.status} ${supportMark36.status} ${exit36.status} log +${String(logAfter36.length - logBefore36)} ${logAfter36[0]?.kind ?? "-"} ${logAfter36[1]?.kind ?? "-"}`,
+);
+
+const floorPage36 = await staffCall(sessionWaiter, floorPageOf(t36Id));
+const floorPageEn36 = await staffCall(sessionWaiter, `${floorPageOf(t36Id)}?lang=en`);
+const floorPageTomorrow36 = await staffCall(sessionWaiter, floorPageOf(tomorrow36?.id ?? 0));
+const floorPageB36 = await staffCall(sessionWaiter, floorPageOf(eventB.id));
+const restaurantPage36 = await staffCall(sessionWaiter, `/panel/restauracje/${String(restaurantA.id)}`);
+const floorRow36 = (id) => restaurantPage36.body.includes(`data-floor-event="${String(id)}"`);
+check(
+  "floor: the waiter's floor page (200, the event, „Obsługa sali”, the floor island) and „Dziś na sali” with today's events only; tomorrow and B → the no-access page",
+  floorPage36.status === 200 &&
+    floorPage36.body.includes(`data-floor-page="${String(t36Id)}"`) &&
+    floorPage36.body.includes("Obsługa sali") &&
+    floorPage36.body.includes(today36?.name ?? "-") &&
+    floorPage36.body.includes(floorApiOf(t36Id)) &&
+    !floorPage36.body.includes(keyOfPath(today36?.links?.organizer)) &&
+    floorPageEn36.status === 303 &&
+    isNoAccessPage(floorPageTomorrow36) &&
+    isNoAccessPage(floorPageB36) &&
+    restaurantPage36.status === 200 &&
+    restaurantPage36.body.includes("data-floor-list") &&
+    floorRow36(t36Id) &&
+    floorRow36(eventA.id) &&
+    !floorRow36(tomorrow36?.id ?? 0) &&
+    !floorRow36(past36?.id ?? 0) &&
+    !floorRow36(archived36?.id ?? 0) &&
+    restaurantPage36.body.includes(floorPageOf(t36Id)),
+  `${floorPage36.status} ${floorPageEn36.status} ${floorPageTomorrow36.status} ${floorPageB36.status} ${restaurantPage36.status}`,
+);
+
+const deleted36 = [];
+for (const event of [today36, tomorrow36, past36, archived36]) {
+  deleted36.push((await staffCall(sessionOwner, eventApi(event?.id ?? 0), { method: "DELETE" })).status);
+}
+check(
+  "floor: the smoke's floor events are deleted",
+  deleted36.every((status) => status === 200),
+  deleted36.join(" "),
+);
 
 finish();

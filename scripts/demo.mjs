@@ -712,11 +712,42 @@ for (const person of TEAM) {
   if (!toPanel(redeemed)) {
     fail(`Nie udało się ustawić hasła ${person.email} (HTTP ${redeemed.status} → ${redeemed.location || "-"}).`);
   }
+  person.cookie = `kp-session=${/(?:^|[\s,])kp-session=([A-Za-z0-9_-]{43});/.exec(redeemed.setCookie)?.[1] ?? ""}`;
 }
 const team = await step("zespół lokalu", teamApi, { cookie: ownerCookie });
 if (team.team?.members?.length !== 3 || !team.team.members.every((member) => member.hasPassword)) {
   fail("Zespół lokalu demo nie ma trzech osób z ustawionym hasłem (właściciel, menedżer, kelner).");
 }
+
+// --- 8b. The floor (waiter-day-and-refills, S-21): the main event runs today, so the waiter sees it under „Dziś na
+// sali”, adds a refill on the floor (priced by the venue from the menu) and serves it -------------------------------
+
+const floorApi = `/api/panel/events/${String(event.id)}/obsluga`;
+const waiter = TEAM[1];
+const waiterPage = await request(`/panel/restauracje/${String(restaurantId)}`, { cookie: waiter.cookie });
+if (waiterPage.status !== 200 || !waiterPage.text.includes(`data-floor-event="${String(event.id)}"`)) {
+  fail(`Kelner demo nie widzi „${EVENT_NAME}” w „Dziś na sali” (HTTP ${String(waiterPage.status)}).`);
+}
+const REFILL = "Dzbanek kompotu";
+const refilled = await step(
+  `dokładka kelnera: ${REFILL}`,
+  `${floorApi}/orders`,
+  {
+    method: "POST",
+    json: { name: REFILL, quantity: 1, note: "dokładka", assignment: { tableId: tableByName.get("Długi stół").id } },
+    cookie: waiter.cookie,
+  },
+  201,
+);
+const refill = refilled.items.at(-1);
+if (refill?.name !== REFILL || formatGrosze(refill.unitPriceGrosze) !== "24,00") {
+  fail(`Dokładka kelnera nie wzięła ceny z menu (${JSON.stringify(refill)}).`);
+}
+await step(`kelner wydaje dokładkę`, `${floorApi}/orders/${String(refill.id)}/pieces`, {
+  method: "PUT",
+  json: { piece: 1, delivered: true },
+  cookie: waiter.cookie,
+});
 
 // --- 9. A support visit of the platform admin (admin-support-log): enter with a reason, two pages, exit -----------
 
@@ -833,6 +864,7 @@ Panel lokalu: ${new URL("/logowanie", BASE_URL).href} — e-mail ${owner.email},
              e-mail ${TEAM[0].email}, hasło ${MANAGER_PASSWORD} (rola: menedżer)
              e-mail ${TEAM[1].email}, hasło ${WAITER_PASSWORD} (rola: kelner)
 Wydarzenia lokalu: ${new URL(`/panel/restauracje/${String(restaurantId)}`, BASE_URL).href} (po zalogowaniu)
+Obsługa sali:    ${new URL(`/panel/obsluga/${String(event.id)}`, BASE_URL).href} (kelner ${TEAM[1].email} / ${WAITER_PASSWORD}: dziś do południa jutra; dokładka „${REFILL}” dopisana i wydana)
 Menu lokalu:     ${new URL(`/panel/restauracje/${String(restaurantId)}/menu`, BASE_URL).href} („Menu wydarzenia” na karcie wydarzenia)
 Praca klienta:   ${new URL(`/panel/wydarzenia/${String(event.id)}`, BASE_URL).href} (prowadzi klient: podgląd)
                  ${new URL(`/panel/wydarzenia/${String(venueLedEventId)}`, BASE_URL).href} (lokal prowadzi: edycja w panelu)

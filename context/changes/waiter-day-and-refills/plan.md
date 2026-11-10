@@ -132,8 +132,8 @@ Unit: window edges with fixed clocks, allowlist. HTTP: smoke section 36 (cross-t
 
 #### Automated
 
-- [x] 1.1 `npm test` passes (floor unit tests included)
-- [x] 1.2 `npm run lint` and `npx astro check` pass
+- [x] 1.1 `npm test` passes (floor unit tests included) — db3a5db
+- [x] 1.2 `npm run lint` and `npx astro check` pass — db3a5db
 
 #### Manual
 
@@ -143,7 +143,7 @@ Unit: window edges with fixed clocks, allowlist. HTTP: smoke section 36 (cross-t
 
 #### Automated
 
-- [ ] 2.1 `npm run build`; `npm run smoke` passes against `AI_PROVIDER=mock npm run preview`; `npm run demo` passes
+- [x] 2.1 `npm run build`; `npm run smoke` passes against `AI_PROVIDER=mock npm run preview`; `npm run demo` passes
 
 #### Manual
 
