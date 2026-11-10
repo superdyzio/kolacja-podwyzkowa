@@ -50,6 +50,23 @@ Testy regresji: smoke sekcje 25 i 33 (zakodowane ścieżki, przełącznik język
 7. **„Nowy link” administratora**: po poprawce #3 jest widoczny w dzienniku. Dalsze ograniczenie, np. reset tylko w trakcie wizyty wsparcia albo tylko zaproszenia, jest Twoją decyzją. Decyzje S-10, S-12 i S-13 w `overnight-log.md` o „Nowym linku” są przez to częściowo nieaktualne.
 8. **`inert` w podglądach**: czytnik ekranu nie odczyta treści podglądu tylko do odczytu (podgląd personelu, tryb wsparcia, strony klienta przy „Lokal prowadzi”). Naprawione tylko etykiety i link powrotu. Pełne rozwiązanie wymaga innego mechanizmu niż `inert`.
 
+## Decyzje użytkownika (2026-11-10, po review) — wszystkie rekomendacje przyjęte
+
+1. Usunięcie gościa czyści jego imię z opublikowanych rozsadzeń i z wpisu „osoba na TV” — **do zrobienia**.
+2. Tryb wsparcia admina nie widzi diet: podgląd i wydruk bez diet, spójnie z eksportem — **do zrobienia**.
+3. Harmonogram retencji: codzienna reguła EventBridge Scheduler w `deploy:aws` (zgoda na zmianę architektury), do tego czasu ostrożniejszy tekst — **do zrobienia**.
+4. Uwagi „na środek stołu” widoczne przy stole — zostaje bez zmian.
+5. Bez furtki do cofnięcia daty wydarzenia z danymi gości — zostaje bez zmian.
+6. Skrócenie terminu przechowywania pokazuje ostrzeżenie z liczbą wydarzeń, które stracą dane — **do zrobienia**.
+7. „Nowy link” administratora z wpisem w dzienniku — zostaje bez zmian (decyzje S-10/S-12/S-13 w logu są przez to uzupełnione).
+8. `inert` w podglądach (czytnik ekranu) — odłożone na później.
+
+Punkty z raportu przebiegu 2:
+- ryzyka kelnera „na imprezę” (S-21b) — zaakceptowane;
+- tablet zapisuje odczyt bez sieci tylko w dniu imprezy (S-27) — **do zrobienia**;
+- RSVP poza zakresem S-25: liczby wyborów na tablecie kuchni, „Przenieś wybory do zamówień”, część resetu RSVP — **do zrobienia**;
+- tryb wsparcia widzi diety (S-23) — rozstrzygnięte punktem 2.
+
 ## Co recenzenci sprawdzili i uznali za poprawne (skrót; szczegóły w raportach)
 
 - **Dostęp (1):** każde id przechodzi przez centralne strażniki. Listy ról zgadzają się z tabelą PRD (menedżer nie zmienia ustawień lokalu i nie usuwa wydarzeń). `is_template` jest filtrowane przy każdym otwarciu wydarzenia, a wyłączone restauracje są zamknięte w każdym strażniku. Tryb wsparcia jest tylko do odczytu, daje jeden wpis na odczyt i nigdy nie pokazuje kluczy. Jednorazowe linki i kody są odporne na wyścig. Ciasteczka `kp-session` i `kp-waiter` są rozdzielone. Origin jest sprawdzany przed każdym odczytem bazy przy zmianach. Identyfikatory drugiego poziomu są zawężone do restauracji i wydarzenia.
