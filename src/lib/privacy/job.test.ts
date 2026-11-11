@@ -1,12 +1,15 @@
 import { describe, expect, it } from "vitest";
 import type { PurgeResultDto, PurgeStatus } from "@/types";
 import {
+  describeRetentionDryRun,
   describeRetentionJob,
   MIN_RETENTION_TOKEN_LENGTH,
+  RETENTION_DRY_RUN_LIMIT,
   RETENTION_JOB_NAME,
   RetentionJobBody,
   retentionTokenMatches,
   runRetentionBatches,
+  runRetentionDryRun,
   usableRetentionToken,
 } from "./job";
 
@@ -69,6 +72,65 @@ describe("the clean-up's token", () => {
     ]) {
       expect(RetentionJobBody.safeParse(bad).success, JSON.stringify(bad).slice(0, 60)).toBe(false);
     }
+  });
+
+  it("takes the deploy's self-check { job, token, dryRun: true }, and nothing else with dryRun", () => {
+    expect(RetentionJobBody.parse({ job: RETENTION_JOB_NAME, token: TOKEN, dryRun: true })).toEqual({
+      job: RETENTION_JOB_NAME,
+      token: TOKEN,
+      dryRun: true,
+    });
+    // The schedule's own input is a real run: no dryRun at all.
+    expect(RetentionJobBody.parse({ job: RETENTION_JOB_NAME, token: TOKEN }).dryRun).toBeUndefined();
+    // dryRun: false is not a way to ask for a real run, and no other value is a dry run: the identical 404.
+    for (const dryRun of [false, "true", 1, null, {}]) {
+      expect(
+        RetentionJobBody.safeParse({ job: RETENTION_JOB_NAME, token: TOKEN, dryRun }).success,
+        JSON.stringify(dryRun),
+      ).toBe(false);
+    }
+    expect(RetentionJobBody.safeParse({ job: RETENTION_JOB_NAME, token: TOKEN, dryRun: true, extra: 1 }).success).toBe(
+      false,
+    );
+    expect(RetentionJobBody.safeParse({ job: "other", token: TOKEN, dryRun: true }).success).toBe(false);
+    expect(RetentionJobBody.safeParse({ job: RETENTION_JOB_NAME, dryRun: true }).success).toBe(false);
+  });
+});
+
+describe("the clean-up's self-check (dryRun)", () => {
+  it("only lists — one read of at most limit + 1 ids, never a purge — and answers counts only", async () => {
+    const limits: number[] = [];
+    const result = await runRetentionDryRun({
+      list: (limit) => {
+        limits.push(limit);
+        return Promise.resolve([4, 5, 6]);
+      },
+    });
+    expect(limits).toEqual([RETENTION_DRY_RUN_LIMIT + 1]);
+    expect(result).toEqual({ dryRun: true, events: 3, complete: true });
+    expect(Object.keys(result).sort()).toEqual(["complete", "dryRun", "events"]);
+    expect(describeRetentionDryRun(result)).toBe(
+      "Retencja danych gości (sprawdzenie bez usuwania, dryRun): po terminie wydarzenia 3, nic nie usunięto",
+    );
+  });
+
+  it("is exact up to the limit and says „or more” above it", async () => {
+    const ids = (count: number) => Array.from({ length: count }, (_, index) => index + 1);
+    expect(await runRetentionDryRun({ list: () => Promise.resolve([]) }, 2)).toEqual({
+      dryRun: true,
+      events: 0,
+      complete: true,
+    });
+    expect(await runRetentionDryRun({ list: (limit) => Promise.resolve(ids(2).slice(0, limit)) }, 2)).toEqual({
+      dryRun: true,
+      events: 2,
+      complete: true,
+    });
+    const over = await runRetentionDryRun({ list: (limit) => Promise.resolve(ids(9).slice(0, limit)) }, 2);
+    expect(over).toEqual({ dryRun: true, events: 2, complete: false });
+    expect(describeRetentionDryRun(over)).toBe(
+      "Retencja danych gości (sprawdzenie bez usuwania, dryRun): po terminie wydarzenia 2 lub więcej, nic nie usunięto",
+    );
   });
 });
 

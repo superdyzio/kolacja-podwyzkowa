@@ -245,10 +245,10 @@ Aplikacja działa jako jedna funkcja AWS Lambda (arm64, Node.js 24, 1024 MB, 30 
    AI_PROVIDER=mock
    # ANTHROPIC_API_KEY=<klucz>          # wymagany przy AI_PROVIDER=anthropic
    # AI_MODEL=claude-haiku-5-5          # opcjonalnie
-   RETENTION_TOKEN=<wynik: openssl rand -hex 32>   # codzienne usuwanie danych gości po terminie (zalecane)
+   RETENTION_TOKEN=<wynik: openssl rand -hex 32>   # codzienne usuwanie danych gości po terminie (wymagany)
    ```
 
-   Skrypt przyjmuje tylko te nazwy i odmawia lokalnego albo nie-https `SUPABASE_URL` oraz `RETENTION_TOKEN` krótszego niż 32 znaki. Token wygeneruj raz (`openssl rand -hex 32`) i trzymaj tylko w `.env.aws`.
+   Skrypt przyjmuje tylko te nazwy i odmawia lokalnego albo nie-https `SUPABASE_URL` oraz brakującego albo krótszego niż 32 znaki `RETENTION_TOKEN` (strona restauracji i informacja dla gości obiecują codzienne usuwanie danych po terminie, więc wdrożenie bez niego się nie zaczyna; `--dry-run` zgłasza brak tak samo). Token wygeneruj raz (`openssl rand -hex 32`) i trzymaj tylko w `.env.aws`. Lokalnie (`npm run preview`) token jest opcjonalny: bez niego ścieżka sprzątania odpowiada 404.
 
 ### Wdrożenie
 
@@ -257,7 +257,7 @@ AWS_REGION=eu-central-1 npm run deploy:aws -- --dry-run   # sam plan komend aws,
 AWS_REGION=eu-central-1 npm run deploy:aws
 ```
 
-`AWS_REGION` jest wymagany (bez wartości domyślnej). Skrypt buduje paczkę (`npm run package:lambda`), a potem tworzy brakujące albo aktualizuje istniejące: rolę IAM `kolacja-podwyzkowa-lambda` (tylko logi), funkcję `kolacja-podwyzkowa`, Function URL z publicznym dostępem i grupę logów `/aws/lambda/kolacja-podwyzkowa` (7 dni), a gdy w `.env.aws` jest `RETENTION_TOKEN` — także rolę `kolacja-podwyzkowa-scheduler` i harmonogram `kolacja-podwyzkowa-retention` (niżej, „Codzienne usuwanie danych gości”). Niczego nie usuwa, więc adres się nie zmienia i wydrukowane karteczki QR działają po każdym kolejnym wdrożeniu. Sekrety idą do AWS przez plik tymczasowy (0600, usuwany) i nie są wypisywane. Na końcu skrypt podaje adres i sprawdza, czy odpowiada.
+`AWS_REGION` jest wymagany (bez wartości domyślnej). Skrypt buduje paczkę (`npm run package:lambda`), a potem tworzy brakujące albo aktualizuje istniejące: rolę IAM `kolacja-podwyzkowa-lambda` (tylko logi), funkcję `kolacja-podwyzkowa`, Function URL z publicznym dostępem i grupę logów `/aws/lambda/kolacja-podwyzkowa` (7 dni), rolę `kolacja-podwyzkowa-scheduler` i harmonogram `kolacja-podwyzkowa-retention` (niżej, „Codzienne usuwanie danych gości”). Potem raz sprawdza ścieżkę harmonogramu: wywołuje funkcję tak jak harmonogram, z dopiskiem `dryRun` (nic nie usuwa; niżej, „Samosprawdzenie”). Niczego nie usuwa, więc adres się nie zmienia i wydrukowane karteczki QR działają po każdym kolejnym wdrożeniu. Sekrety idą do AWS przez pliki tymczasowe (0600, usuwane) i nie są wypisywane. Na końcu skrypt podaje adres, sprawdza, czy odpowiada, i wypisuje dalsze kroki; gdy samosprawdzenie nie przeszło, pod nimi wyjaśnia, co się stało, i kończy się kodem 1.
 
 ### Pierwsze uruchomienie
 
@@ -273,25 +273,38 @@ Baza produkcyjna trzyma wszystkie restauracje platformy: nie usuwaj w niej nicze
 
 Restauracja ustawia, ile dni po wydarzeniu przechowywać dane gości (domyślnie 30). Po tym terminie aplikacja usuwa je przed każdym otwarciem wydarzenia, ale wydarzenia, których nikt już nie otwiera, czyści dopiero codzienne zadanie: harmonogram EventBridge Scheduler `kolacja-podwyzkowa-retention` uruchamia funkcję codziennie o 4:15 czasu polskiego (`cron(15 4 * * ? *)`, strefa `Europe/Warsaw`, bez okna elastycznego). Wysyła jej `{"job":"guest-data-retention","token":"<RETENTION_TOKEN>"}`; Lambda Web Adapter przekazuje takie zdarzenie jako `POST` z treścią JSON na ścieżkę z `AWS_LWA_PASS_THROUGH_PATH` (`npm run deploy:aws` ustawia ją na `/api/jobs/retention`), a aplikacja usuwa dane gości wszystkich wydarzeń po terminie (do 20 s na przebieg; resztę bierze kolejna noc) i odpowiada samymi liczbami. Function URL jest publiczny, więc bez właściwego tokenu ta ścieżka odpowiada 404 jak każdy zły link. Harmonogram jest bezpłatny (darmowy próg EventBridge Scheduler to 14 mln wywołań miesięcznie, tu jedno dziennie); rola `kolacja-podwyzkowa-scheduler` może tylko wywołać tę jedną funkcję. Token jest zapisany w funkcji i w celu harmonogramu (widzą go osoby z dostępem do konta AWS); nowy token = zmiana w `.env.aws` i ponowne wdrożenie (podmienia oba naraz).
 
-Po pierwszym wdrożeniu z tokenem (i po każdej zmianie tokenu) sprawdź raz ręcznie (profil i region jak przy wdrożeniu; `npm run deploy:aws` wypisuje te komendy na końcu):
+Rola harmonogramu ufa tylko EventBridge Scheduler tego konta i grupie harmonogramów `default` w tym regionie (`aws:SourceAccount` i `aws:SourceArn` w zasadzie zaufania — AWS każe zawężać `aws:SourceArn` do grupy, nie do pojedynczego harmonogramu); każde wdrożenie nadpisuje tę zasadę, więc rola z wcześniejszego wdrożenia też ją dostaje.
+
+#### Samosprawdzenie przy każdym wdrożeniu
+
+Ścieżka harmonogramu stoi na zachowaniu Lambda Web Adapter: zdarzenie spoza HTTP przekazuje on jako `POST` z nagłówkiem `Content-Type: application/json` (bez niego Astro odrzuca `POST` bez nagłówka `Origin` jako „Cross-site POST form submissions are forbidden”), a treść odpowiedzi aplikacji oddaje jako wynik wywołania (JSON; odpowiedź, która nie jest JSON-em, zamienia na `null`, status odrzuca). Tak wynika z kodu adaptera (`lambda_http`, tryb `pass_through`), ale sprawdzić da się to tylko na AWS — dlatego robi to każde wdrożenie: gdy funkcja jest już zaktualizowana, a harmonogram zapisany, skrypt raz wywołuje funkcję (`aws lambda invoke`, nigdy przez Function URL) z wejściem harmonogramu i dopiskiem `"dryRun":true` (z pliku tymczasowego 0600, token nigdy nie trafia do wiersza poleceń). Aplikacja wtedy tylko liczy wydarzenia po terminie i nic nie usuwa; w logach zostaje linia „Retencja danych gości (sprawdzenie bez usuwania, dryRun): …”.
+
+- Poprawnie: odpowiedź to `{"dryRun":true,"events":<liczba>,"complete":true}` — skrypt pisze „samosprawdzenie usuwania danych gości: OK”, a w dalszych krokach podaje, jak po pierwszej nocy znaleźć w logach linię „Retencja danych gości (codzienne sprzątanie): wydarzenia …” (bez imion i identyfikatorów).
+- Każda inna odpowiedź: na końcu, pod dalszymi krokami, skrypt wypisuje głośne wyjaśnienie i kończy się kodem 1 (funkcja, URL i harmonogram są już wdrożone). Najważniejsze przypadki:
+  - `null`: aplikacja nie odpowiedziała JSON-em — najpewniej adapter wysłał zdarzenie bez `Content-Type: application/json` i Astro je odrzucił (403); wtedy harmonogram nie działa i potrzebna jest zmiana w kodzie. Rzadziej: `AWS_LWA_PASS_THROUGH_PATH` nie wskazuje `/api/jobs/retention` albo serwer odpowiedział błędem 5xx (logi).
+  - `{"error":"Brak dostępu"}`: funkcja nie ma tego samego tokenu co wywołanie (albo działa na niej starszy kod bez `dryRun`) — sprawdź `RETENTION_TOKEN` w `.env.aws` i wdroż ponownie.
+  - błąd funkcji (`FunctionError`) albo nieudane wywołanie (np. profil bez `lambda:InvokeFunction`).
+- Dopóki samosprawdzenie nie przechodzi, nocny harmonogram nie usuwa danych gości. Dane po terminie dalej usuwa: otwarcie wydarzenia (każdy jego link i panel), przeglądanie panelu (sprzątanie co 10 minut, do 25 wydarzeń) i ręcznie `npm run retention -- --remote`.
+
+To samo sprawdzenie ręcznie (profil i region jak przy wdrożeniu; po nieudanym samosprawdzeniu skrypt wypisuje te komendy):
 
 ```bash
 # 1. Harmonogram istnieje i jest włączony:
 aws scheduler get-schedule --name kolacja-podwyzkowa-retention --profile mikusia --region eu-central-1 \
   --query '{State:State,Expression:ScheduleExpression,TimeZone:ScheduleExpressionTimezone}'
-# 2. Jedno wywołanie z wejściem samego harmonogramu (token trafia tylko do prywatnego katalogu tymczasowego):
+# 2. Jedno wywołanie z wejściem samego harmonogramu i dopiskiem dryRun (nic nie usuwa; token trafia tylko do prywatnego katalogu tymczasowego):
 d="$(mktemp -d)"
-aws scheduler get-schedule --name kolacja-podwyzkowa-retention --query Target.Input --output text --profile mikusia --region eu-central-1 > "$d/input.json"
-aws lambda invoke --function-name kolacja-podwyzkowa --payload "fileb://$d/input.json" --profile mikusia --region eu-central-1 "$d/output.json"
-cat "$d/output.json"; rm -r "$d"
+aws scheduler get-schedule --name kolacja-podwyzkowa-retention --group-name default --query Target.Input --output text --profile mikusia --region eu-central-1 > "$d/input.json"
+sed 's/}$/,"dryRun":true}/' "$d/input.json" > "$d/check.json"
+aws lambda invoke --function-name kolacja-podwyzkowa --payload "fileb://$d/check.json" --profile mikusia --region eu-central-1 "$d/output.json"
+cat "$d/output.json"; echo; rm -r "$d"
 # 3. Linia w logach:
 aws logs tail /aws/lambda/kolacja-podwyzkowa --since 15m --filter-pattern Retencja --profile mikusia --region eu-central-1
 ```
 
-- Poprawnie: `get-schedule` pokazuje `ENABLED`, `cron(15 4 * * ? *)`, `Europe/Warsaw`; odpowiedź funkcji to liczby, np. `{"events":0,"guests":0,…,"skipped":0,"complete":true}` (bez imion i identyfikatorów); w logach jest linia „Retencja danych gości (codzienne sprzątanie): wydarzenia …”. Kolejne noce: ta sama linia w logach około 4:15.
-- `{"error":"Brak dostępu"}`: funkcja nie ma tego samego tokenu co harmonogram (albo token jest za krótki) — sprawdź `RETENTION_TOKEN` w `.env.aws` i wdroż ponownie.
-- `Cross-site POST form submissions are forbidden`: adapter wysłał zdarzenie bez nagłówka `Content-Type: application/json` (założenie z dokumentacji Lambda Web Adapter, którego nie dało się sprawdzić bez AWS) — wtedy harmonogram nie działa i potrzebna jest zmiana w kodzie; dane gości dalej usuwa otwarcie wydarzenia, panel i `npm run retention -- --remote`.
-- Bez `RETENTION_TOKEN` wdrożenie pomija harmonogram (i wypisuje, jak wygenerować token); harmonogram z wcześniejszego wdrożenia zostaje, ale aplikacja mu odmawia.
+- Poprawnie: `get-schedule` pokazuje `ENABLED`, `cron(15 4 * * ? *)`, `Europe/Warsaw`; odpowiedź to `{"dryRun":true,"events":…,"complete":true}`; w logach jest linia „Retencja danych gości (sprawdzenie bez usuwania, dryRun): …”. Kolejne noce: linia „Retencja danych gości (codzienne sprzątanie): wydarzenia …” około 4:15.
+- Prawdziwe sprzątanie od razu (usuwa to samo, co usunęłaby najbliższa noc): to samo wywołanie z `"fileb://$d/input.json"` zamiast `check.json` (bez linii `sed`) — odpowiedź to same liczby, np. `{"events":0,"guests":0,…,"skipped":0,"complete":true}`.
+- `null` albo `{"error":"Brak dostępu"}`: jak wyżej przy samosprawdzeniu.
 
 ### Koszty i limity
 

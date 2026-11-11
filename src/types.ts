@@ -1449,6 +1449,14 @@ export interface RetentionJobResultDto {
   complete: boolean;
 }
 
+// The clean-up's self-check (POST /api/jobs/retention with `dryRun: true`, invoked once by `npm run deploy:aws`): how
+// many events a run would purge now (`complete` false = at least that many). Nothing is deleted. Counts only.
+export interface RetentionDryRunResultDto {
+  dryRun: true;
+  events: number;
+  complete: boolean;
+}
+
 // One event's retention as its pages show it: the last day the guests' data is kept ("YYYY-MM-DD", Europe/Warsaw)
 // and when it was deleted (null = not yet).
 export interface EventRetentionDto {

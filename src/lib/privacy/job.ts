@@ -1,7 +1,7 @@
 import { createHash, timingSafeEqual } from "node:crypto";
 import { z } from "astro/zod";
 import type { DbClient } from "@/lib/supabase-client";
-import type { PurgeResultDto, RetentionJobResultDto } from "@/types";
+import type { PurgeResultDto, RetentionDryRunResultDto, RetentionJobResultDto } from "@/types";
 import { listExpiredGuestDataEvents, purgeEventGuestData } from "./service";
 
 // The daily guest data clean-up (retention-schedule, the PR #4 review's decision 3). On AWS an EventBridge Scheduler
@@ -12,6 +12,11 @@ import { listExpiredGuestDataEvents, purgeEventGuestData } from "./service";
 // well under the Lambda timeout. The Function URL is public, so the route opens only for the secret RETENTION_TOKEN
 // (in the function's environment and in the schedule's input), compared in constant time; anything else gets the
 // app's identical 404. Server only (node:crypto).
+//
+// The self-check (the PR #4 review's second round): the same body with `dryRun: true` only counts what a run would
+// purge (one `expired_guest_data_events` read, no `purge_event_guest_data`, nothing deleted) and answers
+// RetentionDryRunResultDto. `npm run deploy:aws` invokes the function once with it, exactly the way the schedule does,
+// so a deploy proves the whole path (the adapter's POST, Astro's origin check, the token) without deleting anything.
 
 // The route's path (src/pages/api/jobs/retention.ts) and the schedule input's `job` (scripts/lib/aws-deploy.mjs keeps
 // the same values; tests/scripts/aws-deploy.test.ts compares them).
@@ -30,9 +35,18 @@ export const MAX_RETENTION_JOB_BODY_BYTES = 4096;
 export const RETENTION_JOB_BUDGET_MS = 20_000;
 export const RETENTION_JOB_BATCH = 25;
 
-// The schedule's input, exactly: { job, token } and nothing else.
+// How many expired events a dry run counts at most (one read of ids that never leave the server).
+export const RETENTION_DRY_RUN_LIMIT = 1000;
+
+// The schedule's input, exactly: { job, token } and nothing else — or the deploy's self-check { job, token, dryRun:
+// true }. `dryRun: false` is not a way to ask for a real run (the schedule never sends the field): like any other odd
+// body it gets the identical 404.
 export const RetentionJobBody = z
-  .object({ job: z.literal(RETENTION_JOB_NAME), token: z.string().min(1).max(512) })
+  .object({
+    job: z.literal(RETENTION_JOB_NAME),
+    token: z.string().min(1).max(512),
+    dryRun: z.literal(true).optional(),
+  })
   .strict();
 
 // The configured token when it is usable (long enough, base64 / hex characters only), else null (the route stays shut).
@@ -114,6 +128,24 @@ export function describeRetentionJob(result: RetentionJobResultDto): string {
   );
 }
 
+// The self-check: how many events a run would purge now (listed oldest first, at most `limit`; `complete` = the count is
+// exact, i.e. fewer than `limit + 1` were listed). Purges nothing. Counts only — no ids or names.
+export async function runRetentionDryRun(
+  steps: { list: (limit: number) => Promise<number[]> },
+  limit: number = RETENTION_DRY_RUN_LIMIT,
+): Promise<RetentionDryRunResultDto> {
+  const listed = await steps.list(limit + 1);
+  return { dryRun: true, events: Math.min(listed.length, limit), complete: listed.length <= limit };
+}
+
+// The self-check's log line (CloudWatch): counts only, and plainly not a nightly run.
+export function describeRetentionDryRun(result: RetentionDryRunResultDto): string {
+  return (
+    `Retencja danych gości (sprawdzenie bez usuwania, dryRun): po terminie wydarzenia ${String(result.events)}` +
+    `${result.complete ? "" : " lub więcej"}, nic nie usunięto`
+  );
+}
+
 // The route's run against the database with the server's clock: every restaurant (switched-off ones too — retention
 // does not pause), templates never (the DB functions exclude them). `restaurantId` narrows it for tests only.
 export async function runGuestRetentionJob(
@@ -132,5 +164,17 @@ export async function runGuestRetentionJob(
       budgetMs: options.budgetMs ?? RETENTION_JOB_BUDGET_MS,
       elapsedMs: options.elapsedMs ?? (() => Date.now() - started),
     },
+  );
+}
+
+// The route's self-check against the database with the server's clock: what tonight's run would purge, nothing deleted.
+export async function runGuestRetentionDryRun(
+  db: DbClient,
+  now: Date,
+  options: { restaurantId?: number; limit?: number } = {},
+): Promise<RetentionDryRunResultDto> {
+  return runRetentionDryRun(
+    { list: (limit) => listExpiredGuestDataEvents(db, now, { restaurantId: options.restaurantId ?? null, limit }) },
+    options.limit ?? RETENTION_DRY_RUN_LIMIT,
   );
 }

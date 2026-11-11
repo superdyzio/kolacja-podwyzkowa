@@ -11,6 +11,7 @@ import {
   ALLOWED_KEYS,
   awsArgs,
   awsCommands,
+  classifyRetentionSelfCheck,
   dryRunPlan,
   formatCommand,
   functionEnvironment,
@@ -24,9 +25,12 @@ import {
   RETENTION_JOB_NAME,
   RETENTION_JOB_PATH,
   retentionCheckCommands,
+  retentionDryRunInput,
   retentionScheduleInput,
   retentionScheduleTarget,
+  retentionSelfCheckFailure,
   SCHEDULE_NAME,
+  scheduleGroupArn,
   schedulerCommands,
   SECRET_KEYS,
   validateDeployEnv,
@@ -44,6 +48,7 @@ SUPABASE_SERVICE_ROLE_KEY="${SERVICE_KEY}"
 export AI_PROVIDER=anthropic   # Claude
 ANTHROPIC_API_KEY='${ANTHROPIC_KEY}'
 AI_MODEL=
+RETENTION_TOKEN=${RETENTION_TOKEN}
 `;
 const FILES = { zipPath: "dist-lambda/function.zip", envFile: "/tmp/kolacja-deploy-x/env.json", roleArn: "arn:role" };
 
@@ -67,6 +72,7 @@ describe("parseEnvFile", () => {
         AI_PROVIDER: "anthropic",
         ANTHROPIC_API_KEY: ANTHROPIC_KEY,
         AI_MODEL: "",
+        RETENTION_TOKEN,
       },
       errors: [],
     });
@@ -80,7 +86,11 @@ describe("parseEnvFile", () => {
 });
 
 describe("validateDeployEnv", () => {
-  const base = { SUPABASE_URL: "https://abcdefghijklmnop.supabase.co", SUPABASE_SERVICE_ROLE_KEY: SERVICE_KEY };
+  const base = {
+    SUPABASE_URL: "https://abcdefghijklmnop.supabase.co",
+    SUPABASE_SERVICE_ROLE_KEY: SERVICE_KEY,
+    RETENTION_TOKEN,
+  };
 
   it("defaults the AI provider to the mock and drops empty values", () => {
     expect(valid({ ...base, AI_MODEL: "" })).toEqual({ ...base, AI_PROVIDER: "mock" });
@@ -109,20 +119,23 @@ describe("validateDeployEnv", () => {
       "SUPABASE_URL musi zaczynać się od https://.",
     ]);
     expect(errorsOf({ ...base, SUPABASE_URL: "abc.supabase.co" })).toEqual(["SUPABASE_URL nie jest adresem URL."]);
-    expect(errorsOf({ SUPABASE_URL: base.SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY: "" })).toEqual([
-      "Brak SUPABASE_SERVICE_ROLE_KEY.",
-    ]);
+    expect(errorsOf({ ...base, SUPABASE_SERVICE_ROLE_KEY: "" })).toEqual(["Brak SUPABASE_SERVICE_ROLE_KEY."]);
     expect(errorsOf({ ...base, ANTHROPIC_KEY: "x" })).toEqual([
       `Nieznana zmienna ANTHROPIC_KEY (dozwolone: ${ALLOWED_KEYS.join(", ")}).`,
     ]);
   });
 
-  it("takes an optional RETENTION_TOKEN of at least 32 base64 / hex characters (the daily clean-up)", () => {
-    expect(valid({ ...base, RETENTION_TOKEN })).toMatchObject({ RETENTION_TOKEN });
+  it("requires a RETENTION_TOKEN of at least 32 base64 / hex characters (the daily clean-up the texts promise)", () => {
+    expect(valid(base)).toMatchObject({ RETENTION_TOKEN });
     expect(valid({ ...base, RETENTION_TOKEN: "Ab0+/=_-".repeat(4) })).toMatchObject({
       RETENTION_TOKEN: "Ab0+/=_-".repeat(4),
     });
-    expect(valid({ ...base, RETENTION_TOKEN: "" })).not.toHaveProperty("RETENTION_TOKEN");
+    // Missing or empty: refused like any required name, with the way to make one.
+    const missing =
+      "Brak RETENTION_TOKEN (codzienne usuwanie danych gości po terminie) — wygeneruj: openssl rand -hex 32.";
+    expect(errorsOf({ SUPABASE_URL: base.SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY: SERVICE_KEY })).toEqual([missing]);
+    expect(errorsOf({ ...base, RETENTION_TOKEN: "" })).toEqual([missing]);
+    expect(errorsOf({ SUPABASE_URL: base.SUPABASE_URL })).toEqual(["Brak SUPABASE_SERVICE_ROLE_KEY.", missing]);
     for (const bad of ["x".repeat(31), `${"x".repeat(32)}!`, `${"x".repeat(16)} ${"x".repeat(16)}`]) {
       expect(errorsOf({ ...base, RETENTION_TOKEN: bad }), bad).toEqual([
         "RETENTION_TOKEN: co najmniej 32 znaki (litery, cyfry, + / = _ -) — wygeneruj: openssl rand -hex 32.",
@@ -151,6 +164,7 @@ describe("functionEnvironment", () => {
       SUPABASE_SERVICE_ROLE_KEY: SERVICE_KEY,
       AI_PROVIDER: "anthropic",
       ANTHROPIC_API_KEY: ANTHROPIC_KEY,
+      RETENTION_TOKEN,
     });
   });
 });
@@ -261,6 +275,8 @@ describe("the daily clean-up's schedule", () => {
     account: "123456789012",
     functionArn: FUNCTION_ARN,
     targetFile: "/tmp/kolacja-deploy-x/schedule-target.json",
+    checkFile: "/tmp/kolacja-deploy-x/retention-check.json",
+    checkOutputFile: "/tmp/kolacja-deploy-x/retention-check-output.json",
   });
   const flag = (args: string[], name: string) => args[args.indexOf(name) + 1];
 
@@ -275,7 +291,14 @@ describe("the daily clean-up's schedule", () => {
     });
   });
 
-  it("gives Scheduler of this account a role that may only invoke this function", () => {
+  it("gives Scheduler of this account, for the schedule's group in this region, a role that may only invoke this function", () => {
+    expect(scheduleGroupArn("eu-central-1", "123456789012")).toBe(
+      "arn:aws:scheduler:eu-central-1:123456789012:schedule-group/default",
+    );
+    // aws:SourceAccount AND aws:SourceArn (confused deputy). Scheduler assumes the role with the schedule GROUP's ARN —
+    // AWS: "Do not scope the aws:SourceArn statement to a specific schedule" — so the group the schedule lives in.
+    expect(flag(commands.createSchedule, "--group-name")).toBe("default");
+    expect(flag(commands.getSchedule, "--group-name")).toBe("default");
     expect(JSON.parse(flag(commands.createSchedulerRole, "--assume-role-policy-document"))).toEqual({
       Version: "2012-10-17",
       Statement: [
@@ -283,10 +306,22 @@ describe("the daily clean-up's schedule", () => {
           Effect: "Allow",
           Principal: { Service: "scheduler.amazonaws.com" },
           Action: "sts:AssumeRole",
-          Condition: { StringEquals: { "aws:SourceAccount": "123456789012" } },
+          Condition: {
+            StringEquals: {
+              "aws:SourceAccount": "123456789012",
+              "aws:SourceArn": "arn:aws:scheduler:eu-central-1:123456789012:schedule-group/default",
+            },
+          },
         },
       ],
     });
+    // An existing role (from a deploy before aws:SourceArn) gets exactly the same policy on every deploy.
+    expect(commands.updateSchedulerTrust.slice(0, 4)).toEqual([
+      "iam",
+      "update-assume-role-policy",
+      "--role-name",
+      "kolacja-podwyzkowa-scheduler",
+    ]);
     expect(flag(commands.updateSchedulerTrust, "--policy-document")).toBe(
       flag(commands.createSchedulerRole, "--assume-role-policy-document"),
     );
@@ -321,6 +356,36 @@ describe("the daily clean-up's schedule", () => {
     expect(Object.values(commands).flat().join(" ")).not.toContain(RETENTION_TOKEN);
   });
 
+  it("self-checks with ONE invocation of the function shaped like the schedule's, plus dryRun, through the temp files", () => {
+    // The app's route accepts it as a dry run (counts only, nothing deleted).
+    expect(RetentionJobBody.parse(JSON.parse(retentionDryRunInput(RETENTION_TOKEN)))).toEqual({
+      job: "guest-data-retention",
+      token: RETENTION_TOKEN,
+      dryRun: true,
+    });
+    // The schedule's own input stays a real run.
+    expect(JSON.parse(retentionScheduleInput(RETENTION_TOKEN))).not.toHaveProperty("dryRun");
+    expect(commands.invokeSelfCheck).toEqual([
+      "lambda",
+      "invoke",
+      "--function-name",
+      "kolacja-podwyzkowa",
+      "--payload",
+      "fileb:///tmp/kolacja-deploy-x/retention-check.json",
+      "/tmp/kolacja-deploy-x/retention-check-output.json",
+      "--profile",
+      "mikusia",
+      "--region",
+      "eu-central-1",
+      "--output",
+      "json",
+      "--no-cli-pager",
+    ]);
+    // Never the Function URL, never the token.
+    expect(commands.invokeSelfCheck.join(" ")).not.toMatch(/lambda-url|https?:/);
+    expect(commands.invokeSelfCheck.join(" ")).not.toContain(RETENTION_TOKEN);
+  });
+
   it("always passes the profile and the region, and never deletes anything", () => {
     for (const args of Object.values(commands)) {
       expect(flag(args, "--profile")).toBe("mikusia");
@@ -333,15 +398,19 @@ describe("the daily clean-up's schedule", () => {
     ).toEqual([]);
   });
 
-  it("checks by hand with the schedule's own input from a private temp directory, never the token itself", () => {
+  it("checks by hand with the schedule's own input plus dryRun from a private temp directory, never the token itself", () => {
     const lines = retentionCheckCommands(TARGET);
     expect(lines[0]).toBe('d="$(mktemp -d)"');
     expect(lines.join("\n")).toContain(
-      'aws scheduler get-schedule --name kolacja-podwyzkowa-retention --query Target.Input --output text --profile mikusia --region eu-central-1 > "$d/input.json"',
+      'aws scheduler get-schedule --name kolacja-podwyzkowa-retention --group-name default --query Target.Input --output text --profile mikusia --region eu-central-1 > "$d/input.json"',
     );
+    expect(lines.join("\n")).toContain(`sed 's/}$/,"dryRun":true}/' "$d/input.json" > "$d/check.json"`);
     expect(lines.join("\n")).toContain(
-      'aws lambda invoke --function-name kolacja-podwyzkowa --payload "fileb://$d/input.json"',
+      'aws lambda invoke --function-name kolacja-podwyzkowa --payload "fileb://$d/check.json"',
     );
+    // The sed line turns the schedule's one-line input into exactly the deploy's self-check input.
+    const scheduleInput = `${retentionScheduleInput(RETENTION_TOKEN)}\n`;
+    expect(scheduleInput.replace(/}$/m, ',"dryRun":true}').trim()).toBe(retentionDryRunInput(RETENTION_TOKEN));
     expect(lines.join("\n")).toContain(
       "aws logs tail /aws/lambda/kolacja-podwyzkowa --since 15m --filter-pattern Retencja",
     );
@@ -413,14 +482,12 @@ describe("redaction and the dry-run plan", () => {
     expect(plan).toContain("aws lambda add-permission");
     expect(plan).toContain("--invoked-via-function-url");
     expect(plan).toContain("Profil mikusia, region eu-central-1.");
-    // Without a token the clean-up is skipped, with the way to make one.
-    expect(plan).toContain("7. Codzienne usuwanie danych gości po terminie — POMINIĘTE: brak RETENTION_TOKEN");
-    expect(plan).toContain("openssl rand -hex 32");
-    expect(plan).not.toContain("aws scheduler create-schedule");
+    // The token is required, so the clean-up is never skipped.
+    expect(plan).not.toContain("POMINIĘTE");
   });
 
-  it("plans the role and the schedule with a token, and never shows the token", () => {
-    const environment = functionEnvironment(valid({ ...parseEnvFile(ENV_AWS).values, RETENTION_TOKEN }));
+  it("plans the role, the schedule and the self-check, and never shows the token", () => {
+    const environment = functionEnvironment(valid(parseEnvFile(ENV_AWS).values));
     expect(environment.RETENTION_TOKEN).toBe(RETENTION_TOKEN);
     const plan = dryRunPlan(TARGET, environment).join("\n");
     expect(plan).not.toContain(RETENTION_TOKEN);
@@ -432,6 +499,13 @@ describe("redaction and the dry-run plan", () => {
       "aws scheduler create-schedule --name kolacja-podwyzkowa-retention --group-name default --schedule-expression 'cron(15 4 * * ? *)' --schedule-expression-timezone Europe/Warsaw",
     );
     expect(plan).toContain("aws scheduler update-schedule --name kolacja-podwyzkowa-retention");
+    expect(plan).toContain("aws iam update-assume-role-policy --role-name kolacja-podwyzkowa-scheduler");
+    expect(plan).toContain("aws:SourceArn");
+    expect(plan).toContain("8. Samosprawdzenie");
+    expect(plan).toContain("aws lambda wait function-updated-v2 --function-name kolacja-podwyzkowa");
+    expect(plan).toContain(
+      "aws lambda invoke --function-name kolacja-podwyzkowa --payload 'fileb://<plik tymczasowy 0600 z wejściem harmonogramu i dryRun>'",
+    );
     expect(redact(`x ${RETENTION_TOKEN} y`, [RETENTION_TOKEN])).toBe("x *** y");
   });
 });
@@ -467,15 +541,132 @@ describe("the steps printed after a deploy", () => {
     expect(nextSteps({ base, region: "eu-central-1", aiProvider: "anthropic" })).not.toContain("AI_PROVIDER=anthropic");
   });
 
-  it("show the clean-up's manual check once scheduled, else how to switch it on", () => {
-    const scheduled = nextSteps({ base, region: "eu-central-1", aiProvider: "anthropic", retention: "scheduled" });
-    expect(scheduled).toContain("harmonogram kolacja-podwyzkowa-retention (cron(15 4 * * ? *), Europe/Warsaw)");
-    expect(scheduled).toContain("aws lambda invoke --function-name kolacja-podwyzkowa");
-    const missing = nextSteps({ base, region: "eu-central-1", aiProvider: "anthropic", retention: "missing-token" });
-    expect(missing).toContain("RETENTION_TOKEN=<wynik: openssl rand -hex 32>");
-    expect(missing).not.toContain("aws lambda invoke");
-    const inactive = nextSteps({ base, region: "eu-central-1", aiProvider: "mock", retention: "inactive-schedule" });
-    expect(inactive).toContain("UWAGA: harmonogram kolacja-podwyzkowa-retention istnieje, ale bez RETENTION_TOKEN");
-    expect(inactive).toContain("5. AI:");
+  it("report the clean-up's self-check: passed (with the next morning's log line), failed (details below) or the manual check", () => {
+    const passed = nextSteps({
+      base,
+      region: "eu-central-1",
+      aiProvider: "anthropic",
+      selfCheck: { ok: true, events: 3, complete: true },
+    });
+    expect(passed).toContain("harmonogram kolacja-podwyzkowa-retention (cron(15 4 * * ? *), Europe/Warsaw)");
+    expect(passed).toContain("samosprawdzenie przeszło");
+    expect(passed).toContain("po terminie 3 wydarzeń, nic nie usunięto");
+    expect(passed).toContain(
+      "aws logs tail /aws/lambda/kolacja-podwyzkowa --since 24h --filter-pattern Retencja --profile mikusia --region eu-central-1",
+    );
+    expect(passed).not.toContain("aws lambda invoke");
+    expect(
+      nextSteps({
+        base,
+        region: "eu-central-1",
+        aiProvider: "anthropic",
+        selfCheck: { ok: true, events: 1000, complete: false },
+      }),
+    ).toContain("po terminie 1000 lub więcej wydarzeń");
+    const failed = nextSteps({
+      base,
+      region: "eu-central-1",
+      aiProvider: "mock",
+      selfCheck: { ok: false, kind: "not-json", detail: "null" },
+    });
+    expect(failed).toContain("4. UWAGA: samosprawdzenie codziennego usuwania danych gości NIE przeszło");
+    expect(failed).toContain("5. AI:");
+    const unchecked = nextSteps({ base, region: "eu-central-1", aiProvider: "anthropic" });
+    expect(unchecked).toContain(
+      'aws lambda invoke --function-name kolacja-podwyzkowa --payload "fileb://$d/check.json"',
+    );
+    // RETENTION_TOKEN is required: no step tells how to switch the clean-up on any more.
+    for (const text of [passed, failed, unchecked]) {
+      expect(text).not.toContain("RETENTION_TOKEN=<wynik");
+    }
+  });
+});
+
+describe("the clean-up's self-check after a deploy", () => {
+  const ok = JSON.stringify({ dryRun: true, events: 2, complete: true });
+
+  it("passes only on the app's dryRun counts (the adapter's raw JSON body, or an HTTP-shaped wrapper of it)", () => {
+    expect(classifyRetentionSelfCheck({ payload: ok })).toEqual({ ok: true, events: 2, complete: true });
+    expect(classifyRetentionSelfCheck({ payload: `${ok}\n`, functionError: null, invokeError: null })).toEqual({
+      ok: true,
+      events: 2,
+      complete: true,
+    });
+    expect(
+      classifyRetentionSelfCheck({ payload: JSON.stringify({ dryRun: true, events: 0, complete: false }) }),
+    ).toEqual({ ok: true, events: 0, complete: false });
+    expect(classifyRetentionSelfCheck({ payload: JSON.stringify({ statusCode: 200, body: ok }) })).toEqual({
+      ok: true,
+      events: 2,
+      complete: true,
+    });
+    expect(classifyRetentionSelfCheck({ payload: JSON.stringify({ body: JSON.parse(ok) as unknown }) })).toMatchObject({
+      ok: true,
+    });
+  });
+
+  it("names every other answer", () => {
+    const kind = (invocation: Parameters<typeof classifyRetentionSelfCheck>[0]) => {
+      const result = classifyRetentionSelfCheck(invocation);
+      return result.ok ? "ok" : result.kind;
+    };
+    // Astro's 403 text (no Content-Type: application/json) or any non-JSON page: the adapter makes it null.
+    expect(kind({ payload: "null" })).toBe("not-json");
+    expect(kind({ payload: "Cross-site POST form submissions are forbidden" })).toBe("not-json");
+    expect(kind({ payload: JSON.stringify("Cross-site POST form submissions are forbidden") })).toBe("not-json");
+    expect(
+      kind({ payload: JSON.stringify({ statusCode: 403, body: "Cross-site POST form submissions are forbidden" }) }),
+    ).toBe("not-json");
+    // A wrong token, a body the deployed code does not take: the app's identical 404.
+    expect(kind({ payload: '{"error":"Brak dostępu"}' })).toBe("denied");
+    expect(kind({ payload: JSON.stringify({ statusCode: 404, body: '{"error":"No access"}' }) })).toBe("denied");
+    expect(kind({ payload: JSON.stringify({ statusCode: 500, body: ok }) })).toBe("unexpected");
+    // A real run's answer, a broken count, an extra field, an array: not the self-check's answer.
+    const realRun = {
+      events: 0,
+      guests: 0,
+      groups: 0,
+      snapshots: 0,
+      spotlight: 0,
+      waiters: 0,
+      notes: 0,
+      skipped: 0,
+      complete: true,
+    };
+    expect(kind({ payload: JSON.stringify(realRun) })).toBe("unexpected");
+    expect(kind({ payload: JSON.stringify({ dryRun: true, events: -1, complete: true }) })).toBe("unexpected");
+    expect(kind({ payload: JSON.stringify({ dryRun: true, events: 1.5, complete: true }) })).toBe("unexpected");
+    expect(kind({ payload: JSON.stringify({ dryRun: true, events: 1, complete: true, id: 7 }) })).toBe("unexpected");
+    expect(kind({ payload: "[]" })).toBe("unexpected");
+    // The function failed, the call failed, nothing came back.
+    expect(
+      kind({ functionError: "Unhandled", payload: '{"errorType":"Runtime.ExitError","errorMessage":"exit"}' }),
+    ).toBe("function-error");
+    expect(kind({ functionError: "Unhandled", payload: ok })).toBe("function-error");
+    expect(kind({ invokeError: "An error occurred (AccessDeniedException)", payload: null })).toBe("invoke-failed");
+    expect(kind({ payload: null })).toBe("no-answer");
+    expect(kind({ payload: "  " })).toBe("no-answer");
+  });
+
+  it("explains a failure loudly: what came back, what it means, what still deletes, how to check again", () => {
+    const check = classifyRetentionSelfCheck({ payload: "null" });
+    if (check.ok) throw new Error("expected a failure");
+    const text = retentionSelfCheckFailure(check, TARGET).join("\n");
+    expect(text).toContain("SAMOSPRAWDZENIE CODZIENNEGO USUWANIA DANYCH GOŚCI NIE PRZESZŁO");
+    expect(text).toContain("zwróciło: null");
+    expect(text).toContain("Cross-site POST form submissions are forbidden");
+    expect(text).toContain("Content-Type: application/json");
+    expect(text).toContain("otwarcie wydarzenia");
+    expect(text).toContain("przeglądanie");
+    expect(text).toContain("npm run retention -- --remote");
+    expect(text).toContain('aws lambda invoke --function-name kolacja-podwyzkowa --payload "fileb://$d/check.json"');
+    expect(text).not.toMatch(/token/i);
+    const denied = classifyRetentionSelfCheck({ payload: '{"error":"Brak dostępu"}' });
+    if (denied.ok) throw new Error("expected a failure");
+    expect(retentionSelfCheckFailure(denied, TARGET).join("\n")).toContain("RETENTION_TOKEN");
+    // Every kind has its explanation.
+    for (const kind of ["invoke-failed", "function-error", "no-answer", "not-json", "denied", "unexpected"] as const) {
+      expect(retentionSelfCheckFailure({ ok: false, kind, detail: "x" }, TARGET).length, kind).toBeGreaterThan(8);
+    }
   });
 });

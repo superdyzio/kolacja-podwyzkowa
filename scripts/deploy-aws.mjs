@@ -1,16 +1,17 @@
 // Deploys the app to AWS Lambda behind a Function URL with the `aws` CLI. Idempotent and update-in-place: it creates
-// what is missing (IAM role, function, Function URL, its public permissions, log group — and, when .env.aws has
-// RETENTION_TOKEN, the daily guest data clean-up: an EventBridge Scheduler role and schedule) and otherwise updates the
-// code and the whole configuration. It NEVER deletes anything — a new function or URL would change the address and
-// kill every printed QR card.
+// what is missing (IAM role, function, Function URL, its public permissions, log group and the daily guest data
+// clean-up: an EventBridge Scheduler role and schedule) and otherwise updates the code and the whole configuration. It
+// NEVER deletes anything — a new function or URL would change the address and kill every printed QR card. Then it
+// proves the clean-up's path once: one invocation shaped like the schedule's, with `dryRun: true` (nothing deleted);
+// any answer but the app's dryRun counts is explained after the next steps and the deploy exits 1.
 //
 // Usage:  AWS_REGION=eu-central-1 npm run deploy:aws            (AWS_PROFILE overrides the default profile "mikusia")
 //         AWS_REGION=eu-central-1 npm run deploy:aws -- --dry-run   (prints the planned aws commands, calls nothing)
 //
 // Config and secrets come from .env.aws (gitignored): SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, AI_PROVIDER (default
-// mock), ANTHROPIC_API_KEY, AI_MODEL, RETENTION_TOKEN. They reach AWS only through temp JSON files (mode 0600, deleted
-// afterwards: the function's environment and the schedule's target, whose input carries the token); values are never
-// printed. Pure parts (validation, commands, redaction) live in scripts/lib/aws-deploy.mjs.
+// mock), ANTHROPIC_API_KEY, AI_MODEL, RETENTION_TOKEN (required). They reach AWS only through temp JSON files (mode
+// 0600, deleted afterwards: the function's environment, the schedule's target and the self-check's input — all three
+// carry the token); values are never printed. Pure parts (validation, commands, redaction) live in scripts/lib/aws-deploy.mjs.
 
 import { execFileSync, spawnSync } from "node:child_process";
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -19,6 +20,7 @@ import path from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 import {
+  classifyRetentionSelfCheck,
   DEFAULT_PROFILE,
   ENV_FILE,
   FUNCTION_NAME,
@@ -36,8 +38,9 @@ import {
   nextSteps,
   parseEnvFile,
   redact,
+  retentionDryRunInput,
   retentionScheduleTarget,
-  RETENTION_TOKEN_HINT,
+  retentionSelfCheckFailure,
   SCHEDULE_NAME,
   schedulerCommands,
   validateDeployEnv,
@@ -121,6 +124,8 @@ console.log("");
 const tempDir = mkdtempSync(path.join(tmpdir(), "kolacja-deploy-"));
 const envFile = path.join(tempDir, "env.json");
 const targetFile = path.join(tempDir, "schedule-target.json");
+const checkFile = path.join(tempDir, "retention-check.json");
+const checkOutputFile = path.join(tempDir, "retention-check-output.json");
 const removeTempDir = () => rmSync(tempDir, { recursive: true, force: true });
 process.on("exit", removeTempDir);
 for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"]) process.on(signal, () => process.exit(130));
@@ -186,47 +191,62 @@ try {
   if (missing.url) must(commands.addUrlPermission, cliHint);
   if (missing.invoke) must(commands.addInvokePermission, cliHint);
 
-  // The daily guest data clean-up (retention-schedule): only with a token (the app's route answers 404 without one).
+  // The daily guest data clean-up (retention-schedule): RETENTION_TOKEN is required, so it is always set up.
   const functionArn = String((existing ?? must(commands.getFunction)).FunctionArn);
-  const scheduler = schedulerCommands(target, { account: String(identity.Account), functionArn, targetFile });
-  let retention = "missing-token";
-  if (environment.RETENTION_TOKEN) {
-    let schedulerRole = find(scheduler.getSchedulerRole, "NoSuchEntity");
-    if (!schedulerRole) {
-      schedulerRole = must(scheduler.createSchedulerRole);
-      console.log("  utworzono rolę IAM harmonogramu");
-    } else {
-      must(scheduler.updateSchedulerTrust);
-    }
-    must(scheduler.putSchedulerPolicy);
-    writeFileSync(
-      targetFile,
-      JSON.stringify(
-        retentionScheduleTarget({ functionArn, roleArn: schedulerRole.Role.Arn, token: environment.RETENTION_TOKEN }),
-      ),
-      { mode: 0o600 },
-    );
-    const schedule = find(scheduler.getSchedule, "ResourceNotFoundException");
-    // A just-created role takes a few seconds before Scheduler may assume it.
-    for (let attempt = 1; ; attempt++) {
-      const written = run(schedule ? scheduler.updateSchedule : scheduler.createSchedule);
-      if (written.ok) break;
-      const roleNotReady = written.code === "ValidationException" && /role/i.test(written.stderr);
-      if (!roleNotReady || attempt === 12) fail(written.stderr);
-      console.log("  rola harmonogramu jeszcze niegotowa — ponawiam za 5 s");
-      await sleep(5000);
-    }
-    console.log(
-      `  ${schedule ? "zaktualizowano" : "utworzono"} harmonogram ${SCHEDULE_NAME} (codzienne usuwanie danych gości)`,
-    );
-    retention = "scheduled";
+  const scheduler = schedulerCommands(target, {
+    account: String(identity.Account),
+    functionArn,
+    targetFile,
+    checkFile,
+    checkOutputFile,
+  });
+  let schedulerRole = find(scheduler.getSchedulerRole, "NoSuchEntity");
+  if (!schedulerRole) {
+    schedulerRole = must(scheduler.createSchedulerRole);
+    console.log("  utworzono rolę IAM harmonogramu");
   } else {
-    // Only a hint: without a token the deploy never needs Scheduler (a profile without its permissions still deploys).
-    if (run(scheduler.getSchedule).ok) retention = "inactive-schedule";
-    console.log(
-      `  bez RETENTION_TOKEN: harmonogram usuwania danych gości pominięty (wygeneruj: ${RETENTION_TOKEN_HINT})`,
-    );
+    // An existing role gets today's trust policy too (aws:SourceArn added after the first version).
+    must(scheduler.updateSchedulerTrust);
   }
+  must(scheduler.putSchedulerPolicy);
+  writeFileSync(
+    targetFile,
+    JSON.stringify(
+      retentionScheduleTarget({ functionArn, roleArn: schedulerRole.Role.Arn, token: environment.RETENTION_TOKEN }),
+    ),
+    { mode: 0o600 },
+  );
+  const schedule = find(scheduler.getSchedule, "ResourceNotFoundException");
+  // A just-created role takes a few seconds before Scheduler may assume it.
+  for (let attempt = 1; ; attempt++) {
+    const written = run(schedule ? scheduler.updateSchedule : scheduler.createSchedule);
+    if (written.ok) break;
+    const roleNotReady = written.code === "ValidationException" && /role/i.test(written.stderr);
+    if (!roleNotReady || attempt === 12) fail(written.stderr);
+    console.log("  rola harmonogramu jeszcze niegotowa — ponawiam za 5 s");
+    await sleep(5000);
+  }
+  console.log(
+    `  ${schedule ? "zaktualizowano" : "utworzono"} harmonogram ${SCHEDULE_NAME} (codzienne usuwanie danych gości)`,
+  );
+
+  // The self-check: once the function's update has finished, ONE synchronous invocation with the schedule's input plus
+  // dryRun (the app counts what a run would purge and deletes nothing) — the same way the schedule invokes it, so the
+  // adapter's POST, Astro's origin check and the token are all on the path. Never the Function URL; the token goes
+  // through the 0600 file only. Any other answer is explained at the very end and the deploy exits 1.
+  must(commands.waitUpdated);
+  writeFileSync(checkFile, retentionDryRunInput(environment.RETENTION_TOKEN), { mode: 0o600 });
+  const invoked = run(scheduler.invokeSelfCheck);
+  const selfCheck = classifyRetentionSelfCheck({
+    invokeError: invoked.ok ? null : invoked.stderr,
+    functionError: invoked.ok && invoked.json?.FunctionError ? String(invoked.json.FunctionError) : null,
+    payload: invoked.ok && existsSync(checkOutputFile) ? readFileSync(checkOutputFile, "utf8") : null,
+  });
+  console.log(
+    selfCheck.ok
+      ? `  samosprawdzenie usuwania danych gości: OK (po terminie ${String(selfCheck.events)}${selfCheck.complete ? "" : " lub więcej"} wydarzeń, nic nie usunięto)`
+      : "  samosprawdzenie usuwania danych gości: BŁĄD — wyjaśnienie na końcu",
+  );
 
   const base = String(url.FunctionUrl).replace(/\/$/, "");
   // Permissions and a cold start take a moment; a static file answers without touching the database.
@@ -244,7 +264,11 @@ Gotowe. Adres aplikacji (Function URL — stały przy kolejnych wdrożeniach):
 Sprawdzenie ${base}/favicon.png: ${status === 200 ? "HTTP 200" : `jeszcze nie odpowiada (HTTP ${status}), spróbuj za chwilę`}.
 AI: ${environment.AI_PROVIDER}.
 
-${nextSteps({ base, region, aiProvider: environment.AI_PROVIDER, profile: target.profile, retention })}`);
+${nextSteps({ base, region, aiProvider: environment.AI_PROVIDER, profile: target.profile, selfCheck })}`);
+  if (!selfCheck.ok) {
+    console.error(redact(retentionSelfCheckFailure(selfCheck, target).join("\n"), secrets));
+    process.exitCode = 1;
+  }
 } finally {
   removeTempDir();
 }
