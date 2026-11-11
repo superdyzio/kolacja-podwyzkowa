@@ -43,6 +43,11 @@ jobs:
       - name: Unit and DB integration tests
         run: npm test
       - run: npm run build
+      # One throwaway RETENTION_TOKEN for this job's preview AND smoke (the next step's two commands get it through $GITHUB_ENV), so
+      # smoke section 46 runs the daily clean-up's positive path (the dryRun self-check and the real run) instead of
+      # printing SKIP. Not a secret: it only opens the route of this job's local, throwaway server and database.
+      - name: Generate a throwaway RETENTION_TOKEN for the preview and the smoke
+        run: echo "RETENTION_TOKEN=$(openssl rand -hex 32)" >> "$GITHUB_ENV"
       # The smoke creates its own two restaurants and events in the local database from .env (the tests above leave
       # theirs behind; no empty database needed) and refuses any non-local SUPABASE_URL.
       - name: Run the access smoke test against the production preview

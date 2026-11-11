@@ -10143,7 +10143,9 @@ check(
 
 // „Przenieś wybory do zamówień” (the PR #4 review's RSVP extras): Ania (Schabowy) and Celina (Pierogi, entered by the
 // client) are coming with a dish, Bartek is not. The preview writes nothing; the move adds one line per guest at their
-// own seat with the menu's spelling, course and price (no body); again → 200 and nothing added.
+// own seat with the menu's spelling, course and price (no body); again → 200 and nothing added. The price is the one a
+// new line of that dish cost BEFORE the move (the board's `menu.items[].priceGrosze` with no lines yet = the catalog's
+// price): after the move that field is the moved line's own price, so comparing with it could never fail.
 const menuPrice40 = (board, name) => board?.menu?.items?.find((item) => item.name === name)?.priceGrosze;
 const lineOf40 = (board, name) => board?.items?.find((item) => item.guestId === idOf40(name));
 const movePreview40 = await request(`${e40Api}/rsvp/orders`);
@@ -10168,10 +10170,12 @@ check(
     aniaLine40?.quantity === 1 &&
     aniaLine40?.note === null &&
     aniaLine40?.tableId === null &&
-    typeof menuPrice40(moved40.data?.board, "Schabowy") === "number" &&
-    aniaLine40?.unitPriceGrosze === menuPrice40(moved40.data?.board, "Schabowy") &&
+    menuPrice40(ordersBefore40.data, "Schabowy") > 0 &&
+    menuPrice40(ordersBefore40.data, "Pierogi") > 0 &&
+    menuPrice40(ordersBefore40.data, "Schabowy") !== menuPrice40(ordersBefore40.data, "Pierogi") &&
+    aniaLine40?.unitPriceGrosze === menuPrice40(ordersBefore40.data, "Schabowy") &&
     celinaLine40?.name === "Pierogi" &&
-    celinaLine40?.unitPriceGrosze === menuPrice40(moved40.data?.board, "Pierogi") &&
+    celinaLine40?.unitPriceGrosze === menuPrice40(ordersBefore40.data, "Pierogi") &&
     !moved40.data?.board?.items?.some((item) => item.guestId === idOf40(BARTEK40)) &&
     movedAgain40.status === 200 &&
     JSON.stringify(movedAgain40.data?.summary) === JSON.stringify({ added: 0, skipped: 2, notOnMenu: [] }) &&
@@ -10180,7 +10184,7 @@ check(
     movePage40.body.includes("data-rsvp-move") &&
     movePage40.body.includes("Przenieś wybory do zamówień") &&
     movePageEn40.body.includes("Move choices to orders"),
-  `${movePreview40.status} ${movePreview40.body.slice(0, 120)} ${moved40.status} ${JSON.stringify(moved40.data?.summary ?? null)} ${JSON.stringify(aniaLine40 ?? null).slice(0, 200)} ${movedAgain40.status} ${movePage40.status}`,
+  `${movePreview40.status} ${movePreview40.body.slice(0, 120)} ${moved40.status} ${JSON.stringify(moved40.data?.summary ?? null)} ${JSON.stringify(aniaLine40 ?? null).slice(0, 200)} ${String(celinaLine40?.unitPriceGrosze)} before ${String(menuPrice40(ordersBefore40.data, "Schabowy"))}/${String(menuPrice40(ordersBefore40.data, "Pierogi"))} ${movedAgain40.status} ${movePage40.status}`,
 );
 
 const leadOn40 = await staffCall(sessionOwner, eventApi(e40Id), { method: "PATCH", json: { venueLeads: true } });
@@ -12125,12 +12129,16 @@ check(
 // 46. The daily guest data clean-up (retention-schedule; the PR #4 review's decision 3). POST /api/jobs/retention is
 // the Lambda Web Adapter's pass-through path for the EventBridge Scheduler's input; the Function URL is public, so
 // without the right RETENTION_TOKEN everything gets the identical 404 with no-store — no body, a wrong token (of the
-// same length and a long one), malformed JSON, another job, an extra field, GET, PUT — and a JSON POST without an Origin
-// reaches the route (the adapter sends no Origin: not Astro's 403 for cross-site forms). With RETENTION_TOKEN set for
-// the server AND this smoke, the right token runs the job: event S of A (one guest) moved 40 days back (past A's 30) is
-// purged by that run (it leaves the expired list without any read of S; the answer has counts only), a second run finds
-// nothing; S is deleted. Without the token the positive part is skipped (printed). The job is global: it purges every
-// expired event of the local database, exactly like the panel's lazy sweep the smoke's page views already run.
+// same length and a long one), malformed JSON, another job, an extra field, the deploy's dryRun self-check with a wrong
+// token (without RETENTION_TOKEN: any dryRun), `dryRun: false` (not a way to ask for a real run), `dryRun: "true"`, GET,
+// PUT — and a JSON POST without an Origin reaches the route (the adapter sends no Origin: not Astro's 403 for
+// cross-site forms). With RETENTION_TOKEN set for the server AND this smoke, the right token runs the job: event S of A
+// (one guest) moved 40 days back (past A's 30); first the dryRun self-check answers `{ dryRun, events, complete }` only
+// (events = what the DB lists as expired, S among them) and S still holds its data afterwards (still listed — checked
+// over PostgREST, never through the app, whose guards would purge S); then the real run purges it (it leaves the expired
+// list without any read of S; the answer has counts only), a second run finds nothing; S is deleted. Without the token
+// the positive part is skipped (printed). The job is global: it purges every expired event of the local database,
+// exactly like the panel's lazy sweep the smoke's page views already run.
 const JOB46 = "/api/jobs/retention";
 const JOB_NAME46 = "guest-data-retention";
 const jobToken46 = process.env.RETENTION_TOKEN ?? "";
@@ -12145,6 +12153,12 @@ for (const [name, options] of [
   ["malformed JSON", { method: "POST", rawBody: "{" }],
   ["another job", { method: "POST", json: { job: "other", token: anyToken46 } }],
   ["an extra field", { method: "POST", json: { job: JOB_NAME46, token: anyToken46, extra: 1 } }],
+  [
+    jobToken46 ? "a dryRun with a wrong token" : "a dryRun (no RETENTION_TOKEN)",
+    { method: "POST", json: { job: JOB_NAME46, token: wrongToken46, dryRun: true } },
+  ],
+  ["dryRun: false", { method: "POST", json: { job: JOB_NAME46, token: anyToken46, dryRun: false } }],
+  ['dryRun: "true"', { method: "POST", json: { job: JOB_NAME46, token: anyToken46, dryRun: "true" } }],
   ["GET", { method: "GET" }],
   ["PUT", { method: "PUT", json: { job: JOB_NAME46, token: anyToken46 } }],
 ]) {
@@ -12154,7 +12168,7 @@ for (const [name, options] of [
   }
 }
 check(
-  "retention job: POST /api/jobs/retention without the right token — no body, a wrong token (same length, long), malformed JSON, another job, an extra field, GET, PUT — is the identical 404 with no-store; a JSON POST without an Origin reaches the route",
+  'retention job: POST /api/jobs/retention without the right token — no body, a wrong token (same length, long), malformed JSON, another job, an extra field, the dryRun self-check with a wrong token (or without RETENTION_TOKEN), dryRun: false, dryRun: "true", GET, PUT — is the identical 404 with no-store; a JSON POST without an Origin reaches the route',
   denied46.length === 0,
   denied46.join("; "),
 );
@@ -12173,13 +12187,42 @@ if (!jobToken46) {
   const sGuest46 = await request(`${s46Api}/guests`, { method: "POST", json: { text: `Nocny Gość ${RUN_TAG}` } });
   let moved46 = "";
   let listedBefore46 = [];
+  let listedGlobal46 = [];
+  let listedAfterDry46 = [];
   let listedAfter46 = [];
   try {
     await setEventDate(platformEnv, s46Id, shiftDate(today, -40));
     listedBefore46 = await purgeExpiredGuestData(platformEnv, { restaurantId: restaurantA.id, dryRun: true });
+    listedGlobal46 = await purgeExpiredGuestData(platformEnv, { dryRun: true });
   } catch (error) {
     moved46 = error instanceof Error ? error.message : String(error);
   }
+  // The deploy's self-check: the schedule's input plus dryRun — counts only, nothing deleted.
+  const dry46 = await job46({ method: "POST", json: { job: JOB_NAME46, token: jobToken46, dryRun: true } });
+  try {
+    listedAfterDry46 = await purgeExpiredGuestData(platformEnv, { restaurantId: restaurantA.id, dryRun: true });
+  } catch (error) {
+    moved46 = error instanceof Error ? error.message : String(error);
+  }
+  check(
+    "retention job: the dryRun self-check with the right token answers { dryRun: true, events, complete } only (events = the expired events the DB lists, S among them; no id or name) and deletes nothing — S still holds its guest's data afterwards",
+    s46.status === 201 &&
+      sGuest46.status === 201 &&
+      moved46 === "" &&
+      listedBefore46.some((event) => event.id === s46Id) &&
+      dry46.status === 200 &&
+      dry46.cacheControl.includes("no-store") &&
+      Object.keys(dry46.data ?? {})
+        .sort()
+        .join(",") === "complete,dryRun,events" &&
+      dry46.data.dryRun === true &&
+      dry46.data.complete === true &&
+      dry46.data.events >= 1 &&
+      dry46.data.events === listedGlobal46.length &&
+      !dry46.body.includes(`Nocny Gość ${RUN_TAG}`) &&
+      listedAfterDry46.some((event) => event.id === s46Id),
+    `${s46.status} ${sGuest46.status} ${moved46} ${dry46.status} ${dry46.body.slice(0, 200)} ${String(listedGlobal46.length)} ${JSON.stringify(listedAfterDry46.map((event) => event.id))}`,
+  );
   const run46 = await job46({ method: "POST", json: { job: JOB_NAME46, token: jobToken46 } });
   try {
     listedAfter46 = await purgeExpiredGuestData(platformEnv, { restaurantId: restaurantA.id, dryRun: true });
