@@ -78,3 +78,39 @@ Punkty z raportu przebiegu 2:
 - **Logika (4):** strefa Europe/Warsaw i reguła południa są spójne w TS i SQL, także przy zmianie czasu. Granice terminu retencji są takie same w aplikacji i bazie. RSVP, quiz, menu z cenami w groszach, moduły, reguła „kto prowadzi”, szablony i import CSV działają zgodnie z PRD. Tokeny odpytywania budują ścieżki 204 i 200 z tych samych odczytów.
 - **Frontend (5):** hooki odpytywania sprzątają timery i anulują zapytania. Akcje nie dają się kliknąć dwa razy. Nie ma tekstów tylko w jednym języku. Strony robią jedno wywołanie strażnika. White-label jest zachowany. Nie ma rozjazdów hydracji. CSS wydruków jest poprawny.
 - **Rzetelność (6):** smoke (634 sprawdzenia w 45 sekcjach w chwili review) nie ma sprawdzeń, które nie mogą się wywrócić. Testy nie mają `.skip` ani `.only`, a `skipIf` są uzasadnione. Każdy skrypt ma strażnika lokalnej bazy albo jawne `--remote`, i nic nie może dosięgnąć wydarzenia 1. Paczka Lambdy sprawdza sekrety, nie ma nowych zależności. 12 sprawdzonych twierdzeń z CLAUDE.md zgadza się z kodem.
+
+## Druga runda review (2026-11-11, zakres `163803b..586c86e`)
+
+Trzy recenzje Fable 5.1 zmian po pierwszym review: bezpieczeństwo i prywatność (`m2-review/review-7-security.md`), baza (`review-8-db.md`), funkcje, frontend i skrypty (`review-9-features.md`). Nic krytycznego ani wysokiego. Poprawki Opus 5.5 w dwóch partiach.
+
+### Naprawione
+
+| # | Waga | Kąt | Co | Commit |
+|---|------|-----|----|--------|
+| 1 | niska | 7 | „Nowy link” dla właściciela, który sam jest administratorem platformy, pozwalał przejąć konto innego administratora. Teraz to ten sam 404. | `ac79526` (migracja `20261111110000_review2_fixes`) |
+| 2 | niska | 8 | Zaproszenia z „Nowa restauracja” i „Dodaj właściciela” nie trafiały do dziennika właściciela. Teraz dają wpis `link`, jak „Nowy link”. | `ac79526` |
+| 3 | niska | 8 | Usunięcie gościa w trakcie resetu albo czyszczenia po terminie mogło się zakleszczyć (błąd 500). Teraz `delete_guest` najpierw bierze blokadę rozsadzenia wydarzenia, w tej samej kolejności co reset i czyszczenie. | `ac79526` |
+| 4 | niska | 9 | „Przenieś wybory do zamówień” po zmianie nazwy dania w menu dodawało linię drugi raz. Teraz rozpoznaje istniejącą linię także po pozycji menu. | `ac2160f` |
+| 5 | niska | 7 | Nocne czyszczenie zależało od niesprawdzonego założenia o adapterze Lambdy. Teraz każde `deploy:aws` wywołuje funkcję raz z `dryRun: true` (tylko liczy, nic nie usuwa). Gdy odpowiedź nie jest liczbami, wdrożenie kończy się błędem z wyjaśnieniem. | `d02716f` |
+| 6 | niska | 7 | Rola harmonogramu ma dodatkowo warunek `aws:SourceArn`. Wskazuje grupę harmonogramów `default`, bo AWS odradza wskazywanie pojedynczego harmonogramu: takie zawężenie blokowałoby każde nocne uruchomienie. Istniejąca rola dostaje nową politykę przy każdym wdrożeniu. | `d02716f` |
+| 7 | niska | 9 | `RETENTION_TOKEN` jest teraz wymagany w `.env.aws`, bo teksty prywatności obiecują codzienne czyszczenie (decyzja 3). Lokalnie dalej jest opcjonalny. | `d02716f` |
+| 8 | niska | 9 | CI uruchamia smoke z tymczasowym tokenem, więc sekcja 46 sprawdza prawdziwe czyszczenie. Sekcja 40 porównuje teraz ceny z menu sprzed przeniesienia. Wcześniej to sprawdzenie nie mogło się wywrócić; teraz potwierdzone celowym zepsuciem. | `e57e329` |
+
+### Nie potwierdzone
+
+- Kąt 8: „Usuń trwale” wydarzenia z trwającym quizem miało kończyć się błędem 500. Nie odtworzyło się ani przy pytaniu na TV, ani przy wynikach (3–5 pytań). Postgres pomija odroczone sprawdzenie klucza, gdy wiersz quizu znika w tym samym poleceniu. Na przyszłość pilnuje tego test integracyjny, trigger bez zmian (`08102ae`).
+
+### Przyjęte bez zmian
+
+- Kąt 9: o linku „Odczyt bez sieci” na tablecie decyduje chwila załadowania strony. Tablet otwarty przed północą pokaże go dopiero po odświeżeniu; kopia i tak zapisuje się od północy.
+- Przeniesienie RSVP do zamówień nadal nie ma blokady w bazie, jak w pierwszej rundzie.
+
+### Do Twojej wiadomości
+
+- Administrator może dodać jako właściciela swoje własne konto z hasłem. Staje się wtedy członkiem restauracji bez wpisu w dzienniku, bo link nie powstaje; widać go tylko na liście zespołu. Zamknięcie tej furtki, np. zakazem dodawania kont administratorów jako członków, zmieniłoby macierz dostępu, więc to Twoja decyzja.
+- „Nowy link” dla właściciela, który jest administratorem platformy, pokazuje tylko ogólne „Brak dostępu”. To zawęża decyzję 7.
+- Przy wdrożeniu: M-2 ma teraz 22 migracje. Nowa `20261111110000_review2_fixes` musi wejść przed kodem, inaczej usuwanie gości daje 500; stary kod działa na zmigrowanej bazie. `deploy:aws`, także z `--dry-run`, nie wystartuje bez `RETENTION_TOKEN` w `.env.aws`. Po wdrożeniu skrypt sam sprawdza ścieżkę nocnego czyszczenia.
+
+### Weryfikacja końcowa (HEAD `e57e329`)
+
+Testy: 154 pliki, 1664 passed, 6 skipped. Lint bez uwag, `astro check` 0 błędów, build OK. Smoke: 892 PASS + 1 SKIP bez tokenu, 894 PASS / 0 SKIP z tokenem. Demo dwa razy OK.
