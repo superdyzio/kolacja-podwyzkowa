@@ -1753,6 +1753,12 @@ export interface Database {
         };
         Returns: undefined;
       };
+      // review2-fixes: deletes one guest of the event under the seating lock (3003, event), taken before the guest
+      // row (no deadlock with reset_event / purge_event_guest_data); true when a row went.
+      delete_guest: {
+        Args: { p_event_id: number; p_guest_id: number };
+        Returns: boolean;
+      };
       // Atomic creation of an inseparable group (2–5 existing, ungrouped guests of the event); returns the group id.
       // Raises GROUP_SIZE, GUEST_NOT_FOUND (also another event's guest) or GUEST_ALREADY_GROUPED.
       create_guest_group: {
@@ -1942,7 +1948,8 @@ export interface Database {
         };
         Returns: { link_kind: string; link_expires_at: string }[];
       };
-      // review-fixes: the platform administrator's one-time link for an owner, logged as 'link' for the owner.
+      // review-fixes: the platform administrator's one-time link for an owner, logged as 'link' for the owner
+      // (also the invitation of a new restaurant / owner; never for a platform administrator's account: review2-fixes).
       issue_owner_link: {
         Args: {
           p_restaurant_id: number;

@@ -64,16 +64,25 @@ export interface OwnerInput {
 }
 
 // An invitation for an owner who has no password yet; none for an account that already has one (the restaurant
-// shows up in their panel after logging in — a working password is never reset just to add a restaurant).
+// shows up in their panel after logging in — a working password is never reset just to add a restaurant). The
+// platform administrator's invitation goes through issueOwnerLink (DB function issue_owner_link: the account is an
+// owner there by now), so the owner's support log gets the same 'link' row as for „Nowy link” (review2-fixes; PRD
+// FR-021, NFR-012). A platform administrator's own account gets no link from it (`link: null` while it has no
+// password: its link comes from the operator, npm run platform:admin). `createdBy` null = the operator or a test: a
+// plain invitation without a log row, like every operator link (created_by null).
 async function ownerResult(
   db: DbClient,
+  restaurantId: number,
   row: OwnerRow,
   email: string,
   createdBy: number | null,
 ): Promise<OwnerResultDto> {
   let link: StaffLinkDto | null = null;
-  if (!row.owner_has_password) {
-    const issued = await issueStaffToken(db, row.owner_account_id, "invite", createdBy);
+  if (!row.owner_has_password && createdBy !== null) {
+    const issued = await issueOwnerLink(db, restaurantId, row.owner_account_id, createdBy);
+    link = issued.status === "issued" ? issued.link : null;
+  } else if (!row.owner_has_password) {
+    const issued = await issueStaffToken(db, row.owner_account_id, "invite", null);
     if (issued.status !== "issued") {
       throw new PlatformError("zaproszenie", "konto właściciela zniknęło");
     }
@@ -116,7 +125,7 @@ export async function createRestaurantWithOwner(
   return {
     status: "created",
     restaurantId: row.new_restaurant_id,
-    owner: await ownerResult(db, row, input.owner.email, createdBy),
+    owner: await ownerResult(db, row.new_restaurant_id, row, input.owner.email, createdBy),
   };
 }
 
@@ -144,7 +153,7 @@ export async function addRestaurantOwner(
   if (!row) {
     throw new PlatformError("dodawanie właściciela", "brak odpowiedzi bazy");
   }
-  return { status: "added", owner: await ownerResult(db, row, owner.email, createdBy) };
+  return { status: "added", owner: await ownerResult(db, restaurantId, row, owner.email, createdBy) };
 }
 
 // Switches a restaurant off (its staff lose access; an earlier switch-off time is kept) or on again.

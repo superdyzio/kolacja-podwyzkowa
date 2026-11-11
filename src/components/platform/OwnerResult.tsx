@@ -11,7 +11,8 @@ interface Props {
 }
 
 // What happened to the owner after „Załóż restaurację” or „Dodaj właściciela”: their one-time invitation, or — for an
-// account that already has a password — the note that the restaurant shows up after they log in.
+// account that already has a password — the note that the restaurant shows up after they log in. No link without a
+// password = a platform administrator's account (review2-fixes: the panel never issues it one).
 export function OwnerResult({ owner, origin, locale, onDismiss }: Props) {
   const t = platformMessages(locale);
   if (owner.link) {
@@ -21,7 +22,7 @@ export function OwnerResult({ owner, origin, locale, onDismiss }: Props) {
   }
   return (
     <p role="status" className="bg-muted rounded-lg border p-3 text-sm">
-      {t.alreadyHasPassword(owner.email)}
+      {owner.hasPassword ? t.alreadyHasPassword(owner.email) : t.adminAccountNoLink(owner.email)}
     </p>
   );
 }

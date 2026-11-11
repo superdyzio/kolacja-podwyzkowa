@@ -5236,10 +5236,10 @@ check(
   `${resetC.status} ${resetC.data?.link?.kind} ${redeemedResetC.status} ${meCAfterReset.status} ${oldPasswordC.location} ${newPasswordC.location}`,
 );
 
-// review-fixes (PRD FR-021, NFR-012): both „Nowy link” of the admin for C's owner are in C's support log, newest first
-// — the reset (which logs whoever opens it in as the owner) and the invitation — with the admin's e-mail, the account
-// and the expiry; the owner's restaurant page shows them. The non-admins' attempts above wrote nothing (A's log stays
-// empty, section 29).
+// review-fixes (PRD FR-021, NFR-012): every one-time link of the admin for C's owner is in C's support log, newest first
+// — the reset (which logs whoever opens it in as the owner), the „Nowy link” invitation and (review2-fixes) the
+// invitation of „Nowa restauracja” — with the admin's e-mail, the account and the expiry; the owner's restaurant page
+// shows them. The non-admins' attempts above wrote nothing (A's log stays empty, section 29).
 const sessionCAfterReset = sessionOf(newPasswordC);
 const linkLogC = await request(`/api/panel/restaurants/${String(restaurantCId)}/support-log`, {
   cookie: asStaff(sessionCAfterReset),
@@ -5249,15 +5249,17 @@ const linkLogPageC = await request(`/panel/restauracje/${String(restaurantCId)}`
 });
 const linkEntriesC = Array.isArray(linkLogC.data?.entries) ? linkLogC.data.entries : [];
 check(
-  "platform: C's owner sees both links of the admin in the support log (reset, then invitation; admin, account, expiry), also on the restaurant page",
+  "platform: C's owner sees the admin's three links in the support log (reset, „Nowy link” invitation, the creation's invitation; admin, account, expiry), also on the restaurant page",
   linkLogC.status === 200 &&
-    linkEntriesC.map((entry) => `${entry.kind}:${entry.link?.kind}`).join(",") === "link:reset,link:invite" &&
+    linkEntriesC.map((entry) => `${entry.kind}:${entry.link?.kind}`).join(",") ===
+      "link:reset,link:invite,link:invite" &&
     linkEntriesC.every(
       (entry) => entry.link?.email === emailC && entry.admin?.email === staff.admin.email && entry.expiresAt !== null,
     ) &&
     Date.parse(linkEntriesC[0]?.expiresAt ?? "") === Date.parse(resetC.data?.link?.expiresAt ?? "x") &&
+    Date.parse(linkEntriesC[2]?.expiresAt ?? "") === Date.parse(ownerC?.link?.expiresAt ?? "x") &&
     linkLogPageC.status === 200 &&
-    (linkLogPageC.body.match(/data-support-entry="link"/g) ?? []).length === 2 &&
+    (linkLogPageC.body.match(/data-support-entry="link"/g) ?? []).length === 3 &&
     linkLogPageC.body.includes(`Wydanie linku do resetu hasła konta ${emailC}`) &&
     linkLogPageC.body.includes(`Wydanie linku z zaproszeniem dla konta ${emailC}`),
   `${linkLogC.status} ${linkLogC.body.slice(0, 300)} ${linkLogPageC.status}`,
@@ -6799,7 +6801,7 @@ const exitC = await endSupportOf(sessionAdmin, restaurantCId);
 const enableC = await platformCall(sessionAdmin, idPath(restaurantCId), { method: "PATCH", json: { disabled: false } });
 const logC = await staffCall(sessionCNow, supportLogApiOf(restaurantCId));
 check(
-  "support: the admin enters switched-off C (its owner stays out), the banner notes it; after enabling C its owner's log shows enter, two reads and exit (after section 26's two „Nowy link” entries)",
+  "support: the admin enters switched-off C (its owner stays out), the banner notes it; after enabling C its owner's log shows enter, two reads and exit (after section 26's three link entries)",
   redirectsTo(loginC, "/panel") &&
     findListed(disableC, restaurantCId)?.disabled === true &&
     enteredC.status === 201 &&
@@ -6814,7 +6816,7 @@ check(
     logC.status === 200 &&
     logOf(logC)
       .map((entry) => entry.kind)
-      .join(",") === "exit,access,access,enter,link,link" &&
+      .join(",") === "exit,access,access,enter,link,link,link" &&
     logOf(logC)[3]?.reason === C_REASON,
   `${loginC.status} ${enteredC.status} ${apiCInSupport.status} ${pageCInSupport.status} ${ownerCWhileOff.status} ${logC.body.slice(0, 160)}`,
 );

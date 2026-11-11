@@ -216,6 +216,92 @@ describe.skipIf(!hasLocalDb)("platform restaurants (integration)", () => {
     ]);
   });
 
+  it("never issues an owner link for a platform administrator's account (review2-fixes)", async () => {
+    const admin = await createStaffAccount(db, { email: email("admin-a"), isPlatformAdmin: true });
+    if (admin.status !== "created") throw new Error(admin.status);
+    accountIds.push(admin.id);
+    // A peer administrator who is also an owner (with a password, and another without one yet).
+    const peer = await createStaffAccount(db, { email: email("admin-b"), isPlatformAdmin: true });
+    if (peer.status !== "created") throw new Error(peer.status);
+    accountIds.push(peer.id);
+    const link = await issueStaffToken(db, peer.id, "invite");
+    if (link.status !== "issued") throw new Error("link");
+    expect((await redeemStaffToken(db, link.token, { password: PASSWORD, repeat: PASSWORD })).status).toBe("ok");
+    const pending = await createStaffAccount(db, { email: email("admin-c"), isPlatformAdmin: true });
+    if (pending.status !== "created") throw new Error(pending.status);
+    accountIds.push(pending.id);
+    const result = await created("admin-wlasciciel", "wlasciciel-zwykly");
+    await addRestaurantMember(db, result.restaurantId, peer.id, "owner");
+    await addRestaurantMember(db, result.restaurantId, pending.id, "owner");
+
+    expect(await issueOwnerLink(db, result.restaurantId, peer.id, admin.id)).toEqual({ status: "not-found" });
+    expect(await issueOwnerLink(db, result.restaurantId, pending.id, admin.id)).toEqual({ status: "not-found" });
+    // Even for themself: an administrator's own link comes from the operator (npm run platform:admin).
+    expect(await issueOwnerLink(db, result.restaurantId, peer.id, peer.id)).toEqual({ status: "not-found" });
+    const { count } = await db
+      .from("staff_token")
+      .select("id", { count: "exact", head: true })
+      .in("account_id", [peer.id, pending.id])
+      .is("used_at", null);
+    expect(count).toBe(0);
+    expect((await getSupportLog(db, result.restaurantId)).entries).toEqual([]);
+    // The ordinary owner of the same restaurant still gets one.
+    expect(await issueOwnerLink(db, result.restaurantId, result.owner.accountId, admin.id)).toMatchObject({
+      status: "issued",
+      link: { kind: "invite" },
+    });
+  });
+
+  it("logs the administrator's invitation of „Nowa restauracja” and „Dodaj właściciela” for the owner (review2-fixes)", async () => {
+    const admin = await createStaffAccount(db, { email: email("admin-zaproszenia"), isPlatformAdmin: true });
+    if (admin.status !== "created") throw new Error(admin.status);
+    accountIds.push(admin.id);
+    const result = await createRestaurantWithOwner(
+      db,
+      { name: `Restauracja zaproszeń ${tag}`, owner: { email: email("zaproszony"), displayName: null } },
+      admin.id,
+    );
+    restaurantIds.push(result.restaurantId);
+    accountIds.push(result.owner.accountId);
+    expect(result.owner).toMatchObject({ created: true, hasPassword: false, link: { kind: "invite" } });
+    const token = tokenOf(result.owner.link?.path ?? "");
+    expect(await getTokenInfo(db, token)).toEqual({ kind: "invite", email: email("zaproszony") });
+
+    const second = await addRestaurantOwner(
+      db,
+      result.restaurantId,
+      { email: email("drugi-zaproszony"), displayName: null },
+      admin.id,
+    );
+    if (second.status !== "added") throw new Error(second.status);
+    accountIds.push(second.owner.accountId);
+    expect(second.owner).toMatchObject({ created: true, hasPassword: false, link: { kind: "invite" } });
+
+    // An owner with a password gets no link and no row; an administrator's account without one gets no link either.
+    const person = await activeAccount("z-haslem-zaproszenia");
+    expect(
+      await addRestaurantOwner(db, result.restaurantId, { email: person.email, displayName: null }, admin.id),
+    ).toMatchObject({ status: "added", owner: { hasPassword: true, link: null } });
+    const pendingAdmin = await createStaffAccount(db, { email: email("admin-bez-hasla"), isPlatformAdmin: true });
+    if (pendingAdmin.status !== "created") throw new Error(pendingAdmin.status);
+    accountIds.push(pendingAdmin.id);
+    expect(
+      await addRestaurantOwner(
+        db,
+        result.restaurantId,
+        { email: email("admin-bez-hasla"), displayName: null },
+        admin.id,
+      ),
+    ).toMatchObject({ status: "added", owner: { accountId: pendingAdmin.id, hasPassword: false, link: null } });
+
+    const log = await getSupportLog(db, result.restaurantId);
+    expect(log.entries.map((entry) => [entry.kind, entry.link, entry.admin.email])).toEqual([
+      ["link", { kind: "invite", email: email("drugi-zaproszony") }, email("admin-zaproszenia")],
+      ["link", { kind: "invite", email: email("zaproszony") }, email("admin-zaproszenia")],
+    ]);
+    expect(new Date(log.entries[1]?.expiresAt ?? 0).toISOString()).toBe(result.owner.link?.expiresAt);
+  });
+
   it("a disabled restaurant opens nothing through the membership lookups and is listed as disabled", async () => {
     if (!event) throw new Error("event");
     const owner = await activeAccount("wlasciciel-wylaczanej");

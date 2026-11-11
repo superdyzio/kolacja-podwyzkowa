@@ -225,13 +225,16 @@ export async function updateGuest(
   return data ? { status: "updated", guest: toGuestDto(data) } : { status: "not-found" };
 }
 
-// Deletes a guest. If that leaves their group with fewer than 2 members, the DB dissolves the group.
+// Deletes a guest. If that leaves their group with fewer than 2 members, the DB dissolves the group; their name leaves
+// every published snapshot and the TV (guest-erasure). Through the DB function delete_guest, which takes the event's
+// seating lock (3003, event) before the guest row — the order of the reset and the retention purge, so a delete during
+// a reset queues instead of deadlocking (review2-fixes). Another event's guest or an unknown id → not-found.
 export async function deleteGuest(db: DbClient, eventId: number, id: number): Promise<DeleteGuestResult> {
-  const { data, error } = await db.from("guest").delete().eq("id", id).eq("event_id", eventId).select("id");
+  const { data, error } = await db.rpc("delete_guest", { p_event_id: eventId, p_guest_id: id });
   if (error) {
     fail("usunąć gościa", error.message);
   }
-  return data.length > 0 ? { status: "deleted" } : { status: "not-found" };
+  return data ? { status: "deleted" } : { status: "not-found" };
 }
 
 const GROUP_ERRORS: Record<string, CreateGroupResult> = {

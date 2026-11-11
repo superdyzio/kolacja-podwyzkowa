@@ -58,6 +58,8 @@ export const platformMessages = defineMessages(
       "Link widać tylko teraz — po odświeżeniu strony zniknie. W razie potrzeby wygeneruj nowy przyciskiem „Nowy link”.",
     alreadyHasPassword: (email: string) =>
       `Konto ${email} ma już hasło: ta osoba zobaczy restaurację w swoim panelu po zalogowaniu. Jeśli nie pamięta hasła, użyj „Nowy link”.`,
+    adminAccountNoLink: (email: string) =>
+      `Konto ${email} należy do administratora platformy: ten panel nie wydaje dla niego jednorazowych linków. Link do ustawienia hasła daje operator (npm run platform:admin).`,
     copy: "Kopiuj",
     copied: "Skopiowano.",
     copySelected: "Link zaznaczony — skopiuj go (Ctrl+C / ⌘C).",
@@ -115,6 +117,8 @@ export const platformMessages = defineMessages(
       "The link is visible only now — it disappears when the page is reloaded. If needed, make a new one with „New link”.",
     alreadyHasPassword: (email: string) =>
       `The account ${email} already has a password: this person sees the restaurant in their panel after logging in. If they forgot the password, use „New link”.`,
+    adminAccountNoLink: (email: string) =>
+      `The account ${email} belongs to a platform administrator: this panel issues no one-time links for it. The operator gives the link to set a password (npm run platform:admin).`,
     copy: "Copy",
     copied: "Copied.",
     copySelected: "Link selected — copy it (Ctrl+C / ⌘C).",
