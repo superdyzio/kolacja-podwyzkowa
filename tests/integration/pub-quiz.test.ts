@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { deleteEvent } from "@/lib/events/service";
 import { getGuestState, getGuestStateVersion } from "@/lib/guest-links";
 import { addGuests, deleteGuest } from "@/lib/guests";
 import { ALL_GUEST_MODULES } from "@/lib/modules/rules";
@@ -296,6 +297,63 @@ describe.skipIf(!hasLocalDb)("pub quiz (integration)", () => {
     expect(await getTvScreenVersion(db, a.id, true, true)).toBe(idle);
     expect((await deleteQuizQuestion(db, a.id, later)).status).toBe("deleted");
     expect((await getQuizBoard(db, b.id))?.questions).toHaveLength(1);
+  });
+
+  // review2-fixes (review 8, finding 1 — not reproduced): the owner's „Usuń trwale” of an event whose quiz was never
+  // ended. The event's cascade deletes the questions while the run row still exists, so quiz_question_bump_run updates
+  // it once per question (and the question's `on delete set null` once more); the delete must still succeed and leave
+  // nothing behind — with a question on the TV and with the results shown.
+  it("deletes an event whose quiz still runs (a question on the TV; the results shown) and leaves no quiz rows", async () => {
+    const events: TestEvent[] = [];
+    try {
+      for (const phase of ["question", "results"] as const) {
+        const event = await createTestEvent(db, `quiz delete ${phase}`);
+        events.push(event);
+        const added = await addGuests(db, event.id, ["Ola Usuń", "Piotr Usuń"]);
+        if (added.status !== "added") {
+          throw new Error(added.status);
+        }
+        const ids = [
+          await add(event.id, "Pierwsze?", ["A", "B"], 0),
+          await add(event.id, "Drugie?", ["A", "B", "C"], 1),
+          await add(event.id, "Trzecie?", ["A", "B"], 1),
+          await add(event.id, "Czwarte?", ["A", "B"], 0),
+        ];
+        expect((await runQuizAction(db, event.id, { action: "start" })).status).toBe("done");
+        const asked = phase === "question" ? ids.slice(0, 2) : ids.slice(0, 3);
+        for (const [index, id] of asked.entries()) {
+          expect((await runQuizAction(db, event.id, { action: "ask", questionId: id })).status).toBe("done");
+          for (const row of added.added) {
+            expect((await answerQuiz(db, event.id, row.id, id, index % 2)).status).toBe("saved");
+          }
+          if (phase === "results" || index < asked.length - 1) {
+            expect((await runQuizAction(db, event.id, { action: "close" })).status).toBe("done");
+          }
+        }
+        if (phase === "results") {
+          expect((await runQuizAction(db, event.id, { action: "results" })).status).toBe("done");
+        }
+        const { data: run } = await db.from("quiz_run").select("phase, question_id").eq("event_id", event.id).single();
+        expect(run).toEqual(
+          phase === "question" ? { phase: "question", question_id: ids[1] } : { phase: "results", question_id: null },
+        );
+
+        expect(await deleteEvent(db, event.restaurantId, event.id)).toBe("deleted");
+        const head = { count: "exact", head: true } as const;
+        const left = await Promise.all([
+          db.from("event").select("id", head).eq("id", event.id),
+          db.from("quiz_run").select("event_id", head).eq("event_id", event.id),
+          db.from("quiz_question").select("id", head).eq("event_id", event.id),
+          db.from("quiz_answer").select("event_id", head).eq("event_id", event.id),
+          db.from("quiz_score").select("event_id", head).eq("event_id", event.id),
+        ]);
+        expect(left.map(({ count, error }) => [count, error])).toEqual(Array.from(left, () => [0, null]));
+      }
+    } finally {
+      for (const event of events) {
+        await releaseTestEvent(db, event);
+      }
+    }
   });
 
   it("frees a run whose question was deleted from under it (no stuck phase)", async () => {
