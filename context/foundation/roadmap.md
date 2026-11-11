@@ -3,13 +3,13 @@ project: kolacja-podwyzkowa
 version: 2
 status: draft
 created: 2026-10-27
-updated: 2026-11-10
+updated: 2026-11-11
 prd_version: 2
 main_goal: speed
 top_blocker: time
 milestone_id: restaurant-platform
 milestone_seq: 2
-milestone_status: open
+milestone_status: done
 ---
 
 # Roadmap: kolacja-podwyzkowa
@@ -22,7 +22,7 @@ milestone_status: open
 
 ## Milestone
 
-**M-2: Platforma dla restauracji** — Status: open
+**M-2: Platforma dla restauracji** — Status: done
 
 - **Intent:** restauracja sama prowadzi w aplikacji swoje imprezy. Zakłada wydarzenia z szablonu sali i przekazuje klientowi link do przygotowania gości i rozsadzenia. W dniu imprezy prowadzi zamówienia, obsługę i TV. Wiele restauracji działa obok siebie, a ich dane są od siebie odizolowane.
 - **Source materials:**
@@ -472,6 +472,7 @@ Fundamenty poniżej zakładają, że to istnieje, i NIE budują tego od nowa.
 ## Milestone History
 
 - **M-1: Cały wieczór w apce** (`full-evening-in-app`) — closed 2026-11-09. Kolacja 2026-11-08 przeszła w całości w apce (36 gości, 4 stoły): F-01 i S-01..S-09 done, plus dodatki po M-1 (venue-drawing, restaurant-orders, guest-delivered, guess-place, guest-venue-names, draw-neighbour, bill-drinks).
+- **M-2: Platforma dla restauracji** (`restaurant-platform`) — closed 2026-11-11. Wszystkie 24 pozycje (F-02, F-03, S-10..S-30 z S-21b) done na branchu `overnight/m2` (PR #4), po dwóch rundach review z poprawkami (`context/foundation/m2-review.md`). Przepływ 1–7 z PRD v2 przechodzi lokalnie w `npm run demo` (przez HTTP aplikacji) i w smoke; ręczna checklista, przegląd prawnika i wdrożenie na nowy projekt Supabase zostają po scaleniu PR-a.
 
 ## Done
 
