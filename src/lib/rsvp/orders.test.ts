@@ -34,8 +34,8 @@ describe("planRsvpOrders", () => {
 
   it("takes the event's newest price of the dish before the menu's (FR-027)", () => {
     const lines: RsvpOrderLineSource[] = [
-      { id: 1, name: "schab", guestId: null, unitPriceGrosze: 6_500 },
-      { id: 7, name: "SCHAB", guestId: null, unitPriceGrosze: 7_000 },
+      { id: 1, name: "schab", guestId: null, unitPriceGrosze: 6_500, menuItemId: null },
+      { id: 7, name: "SCHAB", guestId: null, unitPriceGrosze: 7_000, menuItemId: 11 },
     ];
     const plan = planRsvpOrders(guests, lines, menu);
     expect(plan.lines.filter((line) => line.name === "Schab").map((line) => line.unitPriceGrosze)).toEqual([
@@ -50,19 +50,42 @@ describe("planRsvpOrders", () => {
       name: line.name.toUpperCase(),
       guestId: line.guestId,
       unitPriceGrosze: line.unitPriceGrosze,
+      menuItemId: null,
     }));
     expect(planRsvpOrders(guests, lines, menu)).toEqual({ lines: [], skipped: 3, notOnMenu: [] });
     // Another dish of the same guest, or the dish at the table, does not count as having it.
     const other = planRsvpOrders(
       guests,
       [
-        { id: 1, name: "Tatar", guestId: 1, unitPriceGrosze: 3_200 },
-        { id: 2, name: "Schab", guestId: null, unitPriceGrosze: 5_900 },
+        { id: 1, name: "Tatar", guestId: 1, unitPriceGrosze: 3_200, menuItemId: 12 },
+        { id: 2, name: "Schab", guestId: null, unitPriceGrosze: 5_900, menuItemId: 11 },
       ],
       menu,
     );
     expect(other.lines.map((line) => line.guestId)).toEqual([1, 2, 6]);
     expect(other.skipped).toBe(0);
+  });
+
+  it("skips a guest whose line is the same catalog item under its old name (the venue renamed it in between)", () => {
+    // The first move made Ania's line „Schab” from item 11; the venue renamed the item to „Schab z kością” since.
+    const renamed: RsvpOrderMenuItem[] = [{ ...menu[0], name: "Schab z kością" }, menu[1]];
+    const answers = [
+      { id: 1, attending: true, dish: "Schab z kością", menuItemId: 11 },
+      { id: 6, attending: true, dish: "Schab z kością", menuItemId: 11 },
+    ];
+    const lines: RsvpOrderLineSource[] = [
+      { id: 1, name: "Schab", guestId: 1, unitPriceGrosze: 5_900, menuItemId: 11 },
+      // A free-text line of the old name (no item) and the item at a table do not count for guest 6.
+      { id: 2, name: "Schab", guestId: 6, unitPriceGrosze: 5_900, menuItemId: null },
+      { id: 3, name: "Schab", guestId: null, unitPriceGrosze: 5_900, menuItemId: 11 },
+    ];
+    const plan = planRsvpOrders(answers, lines, renamed);
+    expect(plan.skipped).toBe(1);
+    expect(plan.lines).toEqual([
+      { guestId: 6, name: "Schab z kością", course: "main", menuItemId: 11, unitPriceGrosze: 5_900 },
+    ]);
+    // Without the item id (a guest row as the board has it) only the name decides: guest 1 would get a second line.
+    expect(planRsvpOrders([{ id: 1, attending: true, dish: "Schab z kością" }], lines, renamed).lines).toHaveLength(1);
   });
 
   it("blocks dishes the active menu does not offer (as answered, once, Polish order) and still plans the rest", () => {
@@ -76,7 +99,11 @@ describe("planRsvpOrders", () => {
   });
 
   it("without an active menu: free text, no course or item, the event's price or 0", () => {
-    const plan = planRsvpOrders(guests, [{ id: 1, name: "Tatar", guestId: null, unitPriceGrosze: 2_800 }], []);
+    const plan = planRsvpOrders(
+      guests,
+      [{ id: 1, name: "Tatar", guestId: null, unitPriceGrosze: 2_800, menuItemId: null }],
+      [],
+    );
     expect(plan.lines).toEqual([
       { guestId: 1, name: "Schab", course: null, menuItemId: null, unitPriceGrosze: 0 },
       { guestId: 2, name: "tatar", course: null, menuItemId: null, unitPriceGrosze: 2_800 },

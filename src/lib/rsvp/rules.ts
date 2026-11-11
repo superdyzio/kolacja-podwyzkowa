@@ -107,6 +107,9 @@ export interface RsvpGuestSource {
     answeredBy: string;
     answeredAt: string;
     dish: { name: string; course: MenuCourse } | null;
+    // The chosen dish's catalog item (readRsvpGuestSources only): the move to the orders recognises a line of the
+    // same item after a catalog rename (review2-fixes). Never in a DTO.
+    menuItemId?: number | null;
   } | null;
 }
 

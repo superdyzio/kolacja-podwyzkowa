@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { addGuests, deleteGuest } from "@/lib/guests";
-import { addMenuItem, setEventMenu } from "@/lib/menu/service";
+import { addMenuItem, setEventMenu, updateMenuItem } from "@/lib/menu/service";
 import { addOrderItem } from "@/lib/orders";
 import { moveRsvpToOrders, previewRsvpOrders } from "@/lib/rsvp/orders-service";
 import { saveRsvpByOrganizer, updateRsvpSettings } from "@/lib/rsvp/service";
@@ -159,6 +159,25 @@ describe.skipIf(!hasLocalDb)("RSVP choices to orders (integration)", () => {
       summary: { added: 0, skipped: 3, notOnMenu: [] },
     });
     expect(await lines(a.id)).toHaveLength(4);
+  });
+
+  it("stays idempotent after the venue renames the catalog item: a line of the same item counts (review2-fixes)", async () => {
+    // Ania's and Franek's lines say „Schab Zamówienie” (item schab); their RSVP dish now reads the new name.
+    expect((await updateMenuItem(db, a.restaurantId, item.schab, { name: "Kotlet Zamówienie" })).status).toBe(
+      "updated",
+    );
+    expect(await previewRsvpOrders(db, a.id)).toEqual({ added: 0, skipped: 3, notOnMenu: [] });
+    expect(await moveRsvpToOrders(db, a.id)).toEqual({
+      status: "moved",
+      summary: { added: 0, skipped: 3, notOnMenu: [] },
+    });
+    const after = await lines(a.id);
+    expect(after).toHaveLength(4);
+    expect(after.filter((line) => line.menu_item_id === item.schab).map((line) => line.name)).toEqual([
+      "Schab Zamówienie",
+      "Schab Zamówienie",
+    ]);
+    expect((await updateMenuItem(db, a.restaurantId, item.schab, { name: "Schab Zamówienie" })).status).toBe("updated");
   });
 
   it("refuses the whole move while a chosen dish is not on the active menu, then adds it when it is", async () => {

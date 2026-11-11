@@ -89,7 +89,10 @@ export async function saveRsvpByOrganizer(
 export async function readRsvpGuestSources(db: DbClient, eventId: number): Promise<RsvpGuestSource[]> {
   const [guests, answers] = await Promise.all([
     db.from("guest").select("id, display_name, is_absent").eq("event_id", eventId),
-    db.from("guest_rsvp").select("guest_id, answered_by, answered_at, menu_item(name, course)").eq("event_id", eventId),
+    db
+      .from("guest_rsvp")
+      .select("guest_id, answered_by, answered_at, menu_item_id, menu_item(name, course)")
+      .eq("event_id", eventId),
   ]);
   if (guests.error) {
     fail("odczytać gości", guests.error.message);
@@ -104,7 +107,14 @@ export async function readRsvpGuestSources(db: DbClient, eventId: number): Promi
       id: guest.id,
       displayName: guest.display_name,
       absent: guest.is_absent,
-      answer: row ? { answeredBy: row.answered_by, answeredAt: row.answered_at, dish: dishOf(row.menu_item) } : null,
+      answer: row
+        ? {
+            answeredBy: row.answered_by,
+            answeredAt: row.answered_at,
+            dish: dishOf(row.menu_item),
+            menuItemId: row.menu_item_id,
+          }
+        : null,
     };
   });
 }

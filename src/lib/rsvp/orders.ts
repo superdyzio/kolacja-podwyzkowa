@@ -8,15 +8,22 @@ import type { MenuCourse, RsvpGuestDto } from "@/types";
 // what POST /api/o/<key>/orders would make of it: while the event's menu is active (≥ 1 available item) the dish must
 // be on it (its spelling, course and catalog item), else free text (no course); the price is the venue's — the newest
 // line of that name in the event, else the menu item's, else 0 (FR-027). A guest who already has a line of that dish
-// (any letter case) is skipped, so running it again adds nothing (idempotent). A dish no longer on the active menu
-// blocks the whole move (`notOnMenu`, all or nothing): the client changes those guests' dish or the venue the menu.
+// — the same name in any letter case, or the same catalog item (a line keeps its spelling when the venue renames the
+// item later; review2-fixes) — is skipped, so running it again adds nothing (idempotent). A dish no longer on the
+// active menu blocks the whole move (`notOnMenu`, all or nothing): the client changes those guests' dish or the venue
+// the menu.
 
 export interface RsvpOrderLineSource {
   id: number;
   name: string;
   guestId: number | null;
   unitPriceGrosze: number;
+  // The catalog item the line was made from (null = free text, or the item was deleted).
+  menuItemId: number | null;
 }
+
+// A guest's row as the move reads it: the board's attendance and dish, plus the dish's catalog item (null = none).
+export type RsvpOrderGuestSource = Pick<RsvpGuestDto, "id" | "attending" | "dish"> & { menuItemId?: number | null };
 
 export interface RsvpOrderMenuItem {
   id: number;
@@ -43,13 +50,23 @@ export interface RsvpOrdersPlan {
 }
 
 export function planRsvpOrders(
-  guests: readonly Pick<RsvpGuestDto, "id" | "attending" | "dish">[],
+  guests: readonly RsvpOrderGuestSource[],
   lines: readonly RsvpOrderLineSource[],
   menu: readonly RsvpOrderMenuItem[],
 ): RsvpOrdersPlan {
   const have = new Set(
     lines.flatMap((line) => (line.guestId === null ? [] : [`${line.guestId}|${dishKey(line.name)}`])),
   );
+  const haveItem = new Set(
+    lines.flatMap((line) =>
+      line.guestId === null || line.menuItemId === null ? [] : [`${line.guestId}#${String(line.menuItemId)}`],
+    ),
+  );
+  const hasDish = (guest: RsvpOrderGuestSource, dish: string): boolean =>
+    have.has(`${guest.id}|${dishKey(dish)}`) ||
+    (guest.menuItemId !== undefined &&
+      guest.menuItemId !== null &&
+      haveItem.has(`${guest.id}#${String(guest.menuItemId)}`));
   const planned: PlannedRsvpOrderLine[] = [];
   const blocked = new Map<string, string>();
   let skipped = 0;
@@ -57,7 +74,7 @@ export function planRsvpOrders(
     if (guest.attending !== true || guest.dish === null || dishKey(guest.dish) === "") {
       continue;
     }
-    if (have.has(`${guest.id}|${dishKey(guest.dish)}`)) {
+    if (hasDish(guest, guest.dish)) {
       skipped += 1;
       continue;
     }

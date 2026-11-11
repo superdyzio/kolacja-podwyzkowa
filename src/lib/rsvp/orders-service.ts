@@ -20,19 +20,27 @@ function fail(action: string, message: string): never {
 async function planFor(db: DbClient, eventId: number): Promise<{ plan: RsvpOrdersPlan; lineCount: number }> {
   const [sources, lines, menu] = await Promise.all([
     readRsvpGuestSources(db, eventId),
-    db.from("order_item").select("id, name, guest_id, unit_price_grosze").eq("event_id", eventId).order("id"),
+    db
+      .from("order_item")
+      .select("id, name, guest_id, unit_price_grosze, menu_item_id")
+      .eq("event_id", eventId)
+      .order("id"),
     getAvailableMenu(db, eventId),
   ]);
   if (lines.error) {
     fail("odczytać zamówienia", lines.error.message);
   }
+  // The dish's catalog item rides along (not on the board's DTO): a line of the same item counts as the dish after a
+  // catalog rename (review2-fixes).
+  const itemOf = new Map(sources.map((source) => [source.id, source.answer?.menuItemId ?? null]));
   const plan = planRsvpOrders(
-    rsvpGuests(sources),
+    rsvpGuests(sources).map((guest) => ({ ...guest, menuItemId: itemOf.get(guest.id) ?? null })),
     lines.data.map((row) => ({
       id: row.id,
       name: row.name,
       guestId: row.guest_id,
       unitPriceGrosze: row.unit_price_grosze,
+      menuItemId: row.menu_item_id,
     })),
     menu,
   );
