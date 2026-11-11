@@ -1,5 +1,6 @@
 export {
   DEFAULT_LOCALE,
+  LOCALE_COOKIE_MAX_AGE_SECONDS,
   LOCALE_LABELS,
   LOCALE_PARAM,
   LOCALES,
@@ -7,6 +8,7 @@ export {
   defineMessages,
   isLocale,
   localeCookieName,
+  localeSwitchTarget,
   resolveLocale,
   type Locale,
 } from "./locale";

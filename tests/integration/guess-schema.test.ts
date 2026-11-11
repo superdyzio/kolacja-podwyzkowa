@@ -1,15 +1,14 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
-import { EVENT_ID } from "@/lib/event";
 import type { DbClient } from "@/lib/supabase-client";
 import {
-  acquireTestEvent,
+  createTestEvent,
   createTestGuests,
   deleteTestGuests,
   hasLocalDb,
   localDb,
   localDbEnv,
   readGuessSettings,
-  releaseEvent,
+  releaseTestEvent,
   testTag,
   writeGuessSettings,
   type GuessSettings,
@@ -31,8 +30,8 @@ describe.skipIf(!hasLocalDb)("guess schema", () => {
 
   beforeAll(async () => {
     db = localDb();
-    event = await acquireTestEvent(db);
-    original = await readGuessSettings(db);
+    event = await createTestEvent(db);
+    original = await readGuessSettings(db, event.id);
     const env = localDbEnv();
     if (!env) {
       throw new Error("unreachable: suite is skipped without a local DB");
@@ -41,16 +40,16 @@ describe.skipIf(!hasLocalDb)("guess schema", () => {
   });
 
   afterEach(async () => {
-    await writeGuessSettings(db, original);
+    await writeGuessSettings(db, event.id, original);
     await deleteTestGuests(db, guestIds.splice(0));
   });
 
   afterAll(async () => {
-    await releaseEvent(db, event);
+    await releaseTestEvent(db, event);
   });
 
   async function guests(count: number): Promise<number[]> {
-    const created = await createTestGuests(db, testTag(), count);
+    const created = await createTestGuests(db, event.id, testTag(), count);
     guestIds.push(...created.ids);
     return created.ids;
   }
@@ -68,7 +67,7 @@ describe.skipIf(!hasLocalDb)("guess schema", () => {
   }
 
   async function setIntake(open: boolean) {
-    const { error } = await db.from("event").update({ guess_intake_open: open }).eq("id", EVENT_ID);
+    const { error } = await db.from("event").update({ guess_intake_open: open }).eq("id", event.id);
     if (error) {
       throw new Error(error.message);
     }
@@ -77,18 +76,24 @@ describe.skipIf(!hasLocalDb)("guess schema", () => {
   it("keeps amounts within 0 … 10 000 000 zł and one guess per guest", async () => {
     const [guest] = await guests(1);
     for (const amount of [-1, MAX + 1]) {
-      const { error } = await db.from("guess").insert({ guest_id: guest, amount_grosze: amount });
+      const { error } = await db.from("guess").insert({ event_id: event.id, guest_id: guest, amount_grosze: amount });
       expect(error?.code).toBe("23514");
     }
-    expect((await db.from("guess").insert({ guest_id: guest, amount_grosze: MAX })).error).toBeNull();
-    expect((await db.from("guess").insert({ guest_id: guest, amount_grosze: 0 })).error?.code).toBe("23505");
+    expect(
+      (await db.from("guess").insert({ event_id: event.id, guest_id: guest, amount_grosze: MAX })).error,
+    ).toBeNull();
+    expect((await db.from("guess").insert({ event_id: event.id, guest_id: guest, amount_grosze: 0 })).error?.code).toBe(
+      "23505",
+    );
     const { error: unknownBy } = await db.from("guess").update({ entered_by: "tv" }).eq("guest_id", guest);
     expect(unknownBy?.code).toBe("23514");
   });
 
   it("deletes the guess together with the guest", async () => {
     const [guest] = await guests(1);
-    expect((await db.from("guess").insert({ guest_id: guest, amount_grosze: 100 })).error).toBeNull();
+    expect(
+      (await db.from("guess").insert({ event_id: event.id, guest_id: guest, amount_grosze: 100 })).error,
+    ).toBeNull();
     await deleteTestGuests(db, guestIds.splice(0));
     const { count, error } = await db
       .from("guess")
@@ -101,26 +106,38 @@ describe.skipIf(!hasLocalDb)("guess schema", () => {
   it("saves and replaces the guest's own guess while intake is open", async () => {
     const [guest] = await guests(1);
     await setIntake(true);
-    expect((await db.rpc("save_guest_guess", { p_guest_id: guest, p_amount_grosze: 150_000 })).error).toBeNull();
+    expect(
+      (await db.rpc("save_guest_guess", { p_event_id: event.id, p_guest_id: guest, p_amount_grosze: 150_000 })).error,
+    ).toBeNull();
     expect(await guessOf(guest)).toEqual({ amount_grosze: 150_000, entered_by: "guest" });
     await db.from("guess").update({ entered_by: "organizer" }).eq("guest_id", guest);
-    expect((await db.rpc("save_guest_guess", { p_guest_id: guest, p_amount_grosze: 149_999 })).error).toBeNull();
+    expect(
+      (await db.rpc("save_guest_guess", { p_event_id: event.id, p_guest_id: guest, p_amount_grosze: 149_999 })).error,
+    ).toBeNull();
     expect(await guessOf(guest)).toEqual({ amount_grosze: 149_999, entered_by: "guest" });
   });
 
   it("refuses the guest's save once intake is closed, and an unknown guest", async () => {
     const [guest] = await guests(1);
     await setIntake(true);
-    await db.rpc("save_guest_guess", { p_guest_id: guest, p_amount_grosze: 100 });
+    await db.rpc("save_guest_guess", { p_event_id: event.id, p_guest_id: guest, p_amount_grosze: 100 });
     await setIntake(false);
-    const closed = await db.rpc("save_guest_guess", { p_guest_id: guest, p_amount_grosze: 200 });
+    const closed = await db.rpc("save_guest_guess", { p_event_id: event.id, p_guest_id: guest, p_amount_grosze: 200 });
     expect(closed.error?.message).toBe("INTAKE_CLOSED");
     expect(await guessOf(guest)).toEqual({ amount_grosze: 100, entered_by: "guest" });
-    const unknown = await db.rpc("save_guest_guess", { p_guest_id: UNKNOWN_ID, p_amount_grosze: 100 });
+    const unknown = await db.rpc("save_guest_guess", {
+      p_event_id: event.id,
+      p_guest_id: UNKNOWN_ID,
+      p_amount_grosze: 100,
+    });
     expect(unknown.error?.message).toBe("GUEST_NOT_FOUND");
     const tooMuch = await guests(1);
     await setIntake(true);
-    const outOfRange = await db.rpc("save_guest_guess", { p_guest_id: tooMuch[0] ?? 0, p_amount_grosze: MAX + 1 });
+    const outOfRange = await db.rpc("save_guest_guess", {
+      p_event_id: event.id,
+      p_guest_id: tooMuch[0] ?? 0,
+      p_amount_grosze: MAX + 1,
+    });
     expect(outOfRange.error?.code).toBe("23514");
   });
 
@@ -137,14 +154,14 @@ describe.skipIf(!hasLocalDb)("guess schema", () => {
     return data;
   }
 
-  it("keeps a place prediction within 1 … 100 or none", async () => {
+  it("keeps a place prediction within 1 … 150 (MAX_GUESTS, scale-150) or none", async () => {
     const [guest] = await guests(1);
-    expect((await db.from("guess").insert({ guest_id: guest, amount_grosze: 1 })).error).toBeNull();
-    for (const place of [0, 101, -1]) {
+    expect((await db.from("guess").insert({ event_id: event.id, guest_id: guest, amount_grosze: 1 })).error).toBeNull();
+    for (const place of [0, 151, -1]) {
       const { error } = await db.from("guess").update({ predicted_place: place }).eq("guest_id", guest);
       expect(error?.code).toBe("23514");
     }
-    for (const place of [1, 100, null]) {
+    for (const place of [1, 100, 150, null]) {
       expect((await db.from("guess").update({ predicted_place: place }).eq("guest_id", guest)).error).toBeNull();
     }
   });
@@ -153,10 +170,17 @@ describe.skipIf(!hasLocalDb)("guess schema", () => {
     const [guest] = await guests(1);
     await setIntake(true);
     const save = (amount: number, place: number | null) =>
-      db.rpc("save_guest_guess_with_place", { p_guest_id: guest, p_amount_grosze: amount, p_predicted_place: place });
+      db.rpc("save_guest_guess_with_place", {
+        p_event_id: event.id,
+        p_guest_id: guest,
+        p_amount_grosze: amount,
+        p_predicted_place: place,
+      });
     expect((await save(150_000, 4)).error).toBeNull();
     expect(await placeOf(guest)).toEqual({ amount_grosze: 150_000, predicted_place: 4, entered_by: "guest" });
-    expect((await db.rpc("save_guest_guess", { p_guest_id: guest, p_amount_grosze: 160_000 })).error).toBeNull();
+    expect(
+      (await db.rpc("save_guest_guess", { p_event_id: event.id, p_guest_id: guest, p_amount_grosze: 160_000 })).error,
+    ).toBeNull();
     expect(await placeOf(guest)).toEqual({ amount_grosze: 160_000, predicted_place: 4, entered_by: "guest" });
     expect((await save(170_000, null)).error).toBeNull();
     expect(await placeOf(guest)).toEqual({ amount_grosze: 170_000, predicted_place: null, entered_by: "guest" });
@@ -165,27 +189,30 @@ describe.skipIf(!hasLocalDb)("guess schema", () => {
     expect((await save(180_000, 5)).error?.message).toBe("INTAKE_CLOSED");
     expect(await placeOf(guest)).toEqual({ amount_grosze: 170_000, predicted_place: null, entered_by: "guest" });
     const unknown = await db.rpc("save_guest_guess_with_place", {
+      p_event_id: event.id,
       p_guest_id: UNKNOWN_ID,
       p_amount_grosze: 1,
       p_predicted_place: 1,
     });
     expect(unknown.error?.message).toBe("GUEST_NOT_FOUND");
     await setIntake(true);
-    expect((await save(1, 101)).error?.code).toBe("23514");
+    expect((await save(1, 151)).error?.code).toBe("23514");
   });
 
   it("keeps the correct amount within the same bounds", async () => {
     for (const amount of [-1, MAX + 1]) {
-      const { error } = await db.from("event").update({ correct_amount_grosze: amount }).eq("id", EVENT_ID);
+      const { error } = await db.from("event").update({ correct_amount_grosze: amount }).eq("id", event.id);
       expect(error?.code).toBe("23514");
     }
-    const { error } = await db.from("event").update({ correct_amount_grosze: MAX }).eq("id", EVENT_ID);
+    const { error } = await db.from("event").update({ correct_amount_grosze: MAX }).eq("id", event.id);
     expect(error).toBeNull();
   });
 
   it("gives browser roles no guesses, no intake flag and no guest save", async () => {
     const [guest] = await guests(1);
-    expect((await db.from("guess").insert({ guest_id: guest, amount_grosze: 424_242 })).error).toBeNull();
+    expect(
+      (await db.from("guess").insert({ event_id: event.id, guest_id: guest, amount_grosze: 424_242 })).error,
+    ).toBeNull();
     const anonymousHeaders: Record<string, string>[] = [{}, { apikey: "anything" }];
     for (const headers of anonymousHeaders) {
       const rows = await fetch(`${restUrl}/guess?select=*`, { headers });
@@ -202,13 +229,13 @@ describe.skipIf(!hasLocalDb)("guess schema", () => {
       const save = await fetch(`${restUrl}/rpc/save_guest_guess`, {
         method: "POST",
         headers: { ...headers, "Content-Type": "application/json" },
-        body: JSON.stringify({ p_guest_id: guest, p_amount_grosze: 1 }),
+        body: JSON.stringify({ p_event_id: event.id, p_guest_id: guest, p_amount_grosze: 1 }),
       });
       expect(save.ok).toBe(false);
       const saveWithPlace = await fetch(`${restUrl}/rpc/save_guest_guess_with_place`, {
         method: "POST",
         headers: { ...headers, "Content-Type": "application/json" },
-        body: JSON.stringify({ p_guest_id: guest, p_amount_grosze: 1, p_predicted_place: 1 }),
+        body: JSON.stringify({ p_event_id: event.id, p_guest_id: guest, p_amount_grosze: 1, p_predicted_place: 1 }),
       });
       expect(saveWithPlace.ok).toBe(false);
     }

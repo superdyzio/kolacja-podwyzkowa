@@ -1,0 +1,76 @@
+---
+import type { Locale } from "@/lib/i18n/locale";
+import { printMessages } from "@/lib/prints/messages";
+import {
+  BOARD_FORMATS,
+  PLACE_CARD_FORMATS,
+  PRINT_KINDS,
+  printQuery,
+  TABLE_CARD_FORMATS,
+  type PrintKind,
+  type PrintOptions,
+} from "@/lib/prints/options";
+
+// The list of the room prints (room-prints, S-24): each print with its description and a link per format, under
+// `base` (`/o/<key>/wydruki` on the client's hub, `/panel/wydarzenia/<id>/wydruki` on the event card). `support`: the
+// platform administrator's support mode, which never opens the staff list (diets — the PR #4 review's decision 2).
+interface Props {
+  base: string;
+  support?: boolean;
+  locale: Locale;
+}
+
+const { base, support = false, locale } = Astro.props;
+const t = printMessages(locale);
+
+function formatsOf(kind: PrintKind): { label: string; options: PrintOptions }[] {
+  switch (kind) {
+    case "tablica":
+      return BOARD_FORMATS.map((format) => ({ label: t.boardFormats[format], options: { kind, format } }));
+    case "karty-stolow":
+      return TABLE_CARD_FORMATS.map((format) => ({
+        label: t.tableCardFormats[format],
+        options: { kind, format, names: false },
+      }));
+    case "winietki":
+      return PLACE_CARD_FORMATS.map((format) => ({ label: t.placeCardFormats[format], options: { kind, format } }));
+    case "lista-obslugi":
+      return [];
+  }
+}
+
+const prints = PRINT_KINDS.filter((kind) => !(support && kind === "lista-obslugi")).map((kind) => ({
+  kind,
+  href: `${base}/${kind}`,
+  formats: formatsOf(kind).map((format) => ({
+    label: format.label,
+    href: `${base}/${kind}${printQuery(format.options)}`,
+  })),
+}));
+---
+
+<ul class="grid grid-cols-1 gap-3 sm:grid-cols-2" data-print-links>
+  {prints.map((print) => (
+    <li class="flex flex-col gap-2 rounded-xl border p-4">
+      <a
+        href={print.href}
+        class="flex items-center justify-between gap-2 font-semibold underline-offset-4 hover:underline"
+        data-print-link={print.kind}
+      >
+        <span>{t.kinds[print.kind]}</span>
+        <span class="rounded-full bg-primary px-2 py-0.5 text-xs font-normal text-primary-foreground">{t.open}</span>
+      </a>
+      <p class="text-sm text-muted-foreground">{t.descriptions[print.kind]}</p>
+      {print.formats.length > 0 && (
+        <p class="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
+          <span class="text-muted-foreground">{t.formatsLabel}</span>
+          {print.formats.map((format) => (
+            <a href={format.href} class="underline underline-offset-4">
+              {format.label}
+            </a>
+          ))}
+        </p>
+      )}
+    </li>
+  ))}
+</ul>

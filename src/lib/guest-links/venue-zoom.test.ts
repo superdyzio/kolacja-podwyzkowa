@@ -20,7 +20,8 @@ describe("stepVenueZoom", () => {
   it("moves one step and stays within the steps", () => {
     expect(stepVenueZoom(1, 1)).toBe(1.5);
     expect(stepVenueZoom(3, -1)).toBe(2);
-    expect(stepVenueZoom(6, 1)).toBe(6);
+    expect(stepVenueZoom(6, 1)).toBe(8);
+    expect(stepVenueZoom(8, 1)).toBe(8);
     expect(stepVenueZoom(1, -1)).toBe(1);
     expect(stepVenueZoom(2.5, 1)).toBe(3);
     expect(stepVenueZoom(2.5, -1)).toBe(2);

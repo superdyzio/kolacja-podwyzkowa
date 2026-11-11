@@ -52,7 +52,7 @@ describe("room and table names", () => {
 
   it("describes problems in English", () => {
     expect(describeRoomNameProblem("too-long", "en")).toBe("A room name can have at most 40 characters.");
-    expect(describeTableFieldProblem({ field: "seatCount" }, "en")).toBe("A table has 2 to 20 seats.");
+    expect(describeTableFieldProblem({ field: "seatCount" }, "en")).toBe("A table has 2 to 30 seats.");
   });
 });
 
@@ -61,7 +61,8 @@ describe("seats and shapes", () => {
     [1, false],
     [2, true],
     [20, true],
-    [21, false],
+    [30, true],
+    [31, false],
     [2.5, false],
     [Number.NaN, false],
   ])("seat count %d valid: %s", (count, valid) => {
@@ -118,7 +119,7 @@ describe("validateTableFields", () => {
 
   it("reports the first problem with its field", () => {
     expect(validateTableFields({ ...table, name: "" })).toEqual({ field: "name", reason: "empty" });
-    expect(validateTableFields({ ...table, seatCount: 21 })).toEqual({ field: "seatCount" });
+    expect(validateTableFields({ ...table, seatCount: 31 })).toEqual({ field: "seatCount" });
     expect(validateTableFields({ shape: "oval" as never })).toEqual({ field: "shape" });
     expect(validateTableFields({ ...table, x: 1.1 })).toEqual({ field: "position" });
     expect(validateTableFields({ ...table, y: Number.NaN })).toEqual({ field: "position" });
@@ -130,7 +131,7 @@ describe("validateTableFields", () => {
   });
 
   it("describes problems in Polish", () => {
-    expect(describeTableFieldProblem({ field: "seatCount" })).toBe("Stolik ma od 2 do 20 miejsc.");
+    expect(describeTableFieldProblem({ field: "seatCount" })).toBe("Stolik ma od 2 do 30 miejsc.");
     expect(describeTableFieldProblem({ field: "position" })).toBe("Kliknij na planie, gdzie stoi stolik.");
     expect(describeTableFieldProblem({ field: "name", reason: "too-long" })).toBe(
       "Nazwa stolika może mieć najwyżej 24 znaków.",

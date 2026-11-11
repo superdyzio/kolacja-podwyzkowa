@@ -66,7 +66,7 @@ export const guessUiMessages = defineMessages(
     backToPanel: "← Panel organizatora",
     heading: "Strzały i ranking",
     intro:
-      "Goście zgadują na swoich telefonach, ile kosztowała cała kolacja, i widzą tylko własny strzał. Zamknij przyjmowanie, wpisz prawidłową kwotę z rachunku razem z napiwkiem i czytaj ranking od ostatniego miejsca.",
+      "Goście zgadują na swoich telefonach, ile wyniósł cały rachunek, i widzą tylko własny strzał. Zamknij przyjmowanie, wpisz prawidłową kwotę z rachunku razem z napiwkiem i czytaj ranking od ostatniego miejsca.",
     close: "Zamknij",
     cancel: "Anuluj",
     save: "Zapisz",
@@ -86,7 +86,7 @@ export const guessUiMessages = defineMessages(
     reopenIntake: "Otwórz ponownie",
     // Correct amount
     correctHeading: "Prawidłowa kwota",
-    correctLabel: "Ile kosztowała cała kolacja (z napiwkiem)?",
+    correctLabel: "Ile wyniósł cały rachunek (z napiwkiem)?",
     saveCorrect: "Zapisz prawidłową kwotę",
     change: "Zmień",
     remove: "Usuń",
@@ -151,7 +151,7 @@ export const guessUiMessages = defineMessages(
     backToPanel: "← Organizer panel",
     heading: "Guesses and ranking",
     intro:
-      "Guests guess on their phones how much the whole dinner cost, and see only their own guess. Close guessing, enter the correct amount from the bill including the tip, and read the ranking from the last place.",
+      "Guests guess on their phones how much the whole bill was, and see only their own guess. Close guessing, enter the correct amount from the bill including the tip, and read the ranking from the last place.",
     close: "Close",
     cancel: "Cancel",
     save: "Save",
@@ -168,7 +168,7 @@ export const guessUiMessages = defineMessages(
     closeIntake: "Close guessing",
     reopenIntake: "Reopen",
     correctHeading: "Correct amount",
-    correctLabel: "How much did the whole dinner cost (tip included)?",
+    correctLabel: "How much was the whole bill (tip included)?",
     saveCorrect: "Save the correct amount",
     change: "Change",
     remove: "Remove",

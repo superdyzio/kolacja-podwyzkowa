@@ -33,7 +33,7 @@ export const PATCH: APIRoute = async ({ locals, params, request }) => {
     return body.response;
   }
 
-  const result = await updateRoom(api.db, id, body.data);
+  const result = await updateRoom(api.db, api.access.event.id, id, body.data);
   switch (result.status) {
     case "invalid":
       return jsonError(400, describeRoomNameProblem(result.reason, locals.locale));
@@ -44,7 +44,7 @@ export const PATCH: APIRoute = async ({ locals, params, request }) => {
     case "not-found":
       return jsonError(404, venueMessages(locals.locale).roomNotFound);
     case "updated":
-      return jsonResponse(await getVenue(api.db));
+      return jsonResponse(await getVenue(api.db, api.access.event.id));
   }
 };
 
@@ -58,9 +58,9 @@ export const DELETE: APIRoute = async ({ locals, params }) => {
     return jsonError(404, venueMessages(locals.locale).roomNotFound);
   }
 
-  const result = await deleteRoom(api.db, id);
+  const result = await deleteRoom(api.db, api.access.event.id, id);
   if (result.status === "not-found") {
     return jsonError(404, venueMessages(locals.locale).roomNotFound);
   }
-  return jsonResponse(await getVenue(api.db));
+  return jsonResponse(await getVenue(api.db, api.access.event.id));
 };

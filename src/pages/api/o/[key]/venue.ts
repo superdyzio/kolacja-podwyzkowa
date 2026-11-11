@@ -13,7 +13,7 @@ export const GET: APIRoute = async ({ locals }) => {
   if (api instanceof Response) {
     return api;
   }
-  return jsonResponse(await getVenue(api.db));
+  return jsonResponse(await getVenue(api.db, api.access.event.id));
 };
 
 // PATCH { chairPitch }: the venue-wide chair pitch (fraction of the plan width); needs a plan. Answers with the venue.
@@ -29,13 +29,13 @@ export const PATCH: APIRoute = async ({ locals, request }) => {
     return body.response;
   }
   const messages = venueMessages(locals.locale);
-  const result = await setChairPitch(api.db, body.data.chairPitch);
+  const result = await setChairPitch(api.db, api.access.event.id, body.data.chairPitch);
   switch (result.status) {
     case "invalid":
       return jsonError(400, messages.chairPitch);
     case "no-plan":
       return jsonError(409, messages.noPlan);
     case "updated":
-      return jsonResponse(await getVenue(api.db));
+      return jsonResponse(await getVenue(api.db, api.access.event.id));
   }
 };

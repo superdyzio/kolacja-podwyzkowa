@@ -1,0 +1,57 @@
+---
+import type { Locale } from "@/lib/i18n";
+import { describeSupportEntry, formatSupportTime, supportMessages } from "@/lib/support";
+import type { SupportLogDto } from "@/types";
+
+// The owner's „Dziennik wejść administratora” (admin-support-log, S-13; US-05 AC, FR-021) on the restaurant page:
+// every entry of the platform administrator into the restaurant's data — when (the platform's time zone), who, what
+// (the entry with its reason, every page or API read, the exit) — newest first. Read-only: nothing changes or
+// deletes an entry. The administrator in support mode sees it too (what the owner sees).
+interface Props {
+  log: SupportLogDto;
+  locale: Locale;
+}
+
+const { log, locale } = Astro.props;
+const t = supportMessages(locale);
+---
+
+<section
+  aria-labelledby="support-log-heading"
+  class="flex flex-col gap-3 rounded-xl border p-4 sm:p-6"
+  data-support-log
+>
+  <h2 id="support-log-heading" class="text-xl font-semibold">
+    {t.logHeading}
+  </h2>
+  <p class="text-sm text-muted-foreground">{t.logIntro}</p>
+  {log.entries.length === 0 ? (
+    <p class="text-muted-foreground" data-support-log-empty>
+      {t.logEmpty}
+    </p>
+  ) : (
+    <ol aria-label={t.logListLabel} class="flex flex-col divide-y">
+      {log.entries.map((entry) => (
+        <li class="flex flex-col gap-1 py-3" data-support-entry={entry.kind}>
+          <span class="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+            <time datetime={entry.at} class="text-sm text-muted-foreground tabular-nums">
+              {formatSupportTime(entry.at, locale)}
+            </time>
+            <span class="font-medium">{describeSupportEntry(entry, locale)}</span>
+          </span>
+          <span class="text-sm break-all">
+            {entry.admin.name ? `${entry.admin.name} · ` : ""}
+            {entry.admin.email}
+          </span>
+          {entry.reason !== null && <span class="text-sm break-words">{t.entryReason(entry.reason)}</span>}
+          {entry.kind === "access" && entry.path !== null && (
+            <code class="text-xs break-all text-muted-foreground">
+              {entry.method} {entry.path}
+            </code>
+          )}
+        </li>
+      ))}
+    </ol>
+  )}
+  {log.truncated && <p class="text-sm text-muted-foreground">{t.logTruncated(log.entries.length)}</p>}
+</section>

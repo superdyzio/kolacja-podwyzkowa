@@ -1,21 +1,30 @@
 ---
 import NoAccess from "@/components/NoAccess.astro";
+import BrandHeader from "@/components/branding/BrandHeader.astro";
 import { GuestGuessView } from "@/components/guest/GuestGuessView";
+import { GuestModuleGate } from "@/components/guest/GuestModuleGate";
 import { GuestOrderView } from "@/components/guest/GuestOrderView";
 import { GuestQuestionDraw } from "@/components/guest/GuestQuestionDraw";
+import { GuestQuizView } from "@/components/guest/GuestQuizView";
+import { GuestRsvpView } from "@/components/guest/GuestRsvpView";
 import { GuestSeatView } from "@/components/guest/GuestSeatView";
 import { GuestTopicView } from "@/components/guest/GuestTopicView";
 import Layout from "@/layouts/Layout.astro";
 import { accessFor, guestPath } from "@/lib/access";
 import { getGuestAiQuota } from "@/lib/ai-topics/service";
+import { getEventBranding } from "@/lib/branding";
 import { getDb } from "@/lib/db";
 import { getGuestState, guestPhoneMessages } from "@/lib/guest-links";
+import { guestModulesOf } from "@/lib/modules/rules";
+import { privacyNoticeMessages } from "@/lib/privacy/messages";
 
 // The guest's phone page (S-05, US-03, FR-013, NFR-003, NFR-008): mobile-first, Polish or English (i18n). The middleware has already
 // checked the key AND the guest-access switch (off, revoked or unknown → the same no-access page); this is the
 // second, role-specific check. GuestAccess carries no keys, and only this guest's own state reaches the HTML.
 //
-// Structure: <main> holds one <section> per feature, stacked: S-05's seat view, the order (guest-delivered: the island
+// Structure: <main> holds one <section> per feature, stacked: the RSVP while answers are open (guest-rsvp-menu, S-25;
+// the same island renders at the very end, read-only, once they close), the pub quiz while one runs (pub-quiz, S-28;
+// its island renders its own <section>, nothing otherwise), S-05's seat view, the order (guest-delivered: the island
 // renders its own <section> and heading, and nothing while the guest has no order lines), S-06's guess, S-07's
 // question draw, then S-08's AI topic. Each section's island lives in src/components/guest/, receives `apiBase` (/api/g/<key>) and
 // talks to routes under src/pages/api/g/[key]/ (which start with guestApi(locals); the guest is access.guest.id, never
@@ -25,6 +34,7 @@ import { getGuestState, guestPhoneMessages } from "@/lib/guest-links";
 // every generate answer; the topics themselves are never stored, so they never appear in this HTML.
 const locale = Astro.locals.locale;
 const t = guestPhoneMessages(locale);
+const tp = privacyNoticeMessages(locale);
 const access = accessFor(Astro.locals, "guest");
 const db = access ? getDb() : null;
 if (!access || !db) {
@@ -36,8 +46,11 @@ const view =
     ? {
         eventName: access.event.name,
         apiBase: `/api${guestPath(Astro.params.key ?? "")}`,
-        initial: await getGuestState(db, access.guest),
-        initialQuota: await getGuestAiQuota(db, access.guest.id),
+        initial: await getGuestState(db, access.event.id, access.guest, guestModulesOf(access.event.modules)),
+        initialQuota: await getGuestAiQuota(db, access.event.id, access.guest.id),
+        // event-branding (S-18): the restaurant's and the client's brand, read at page load (logo URLs carry the
+        // upload's version; the phone's poll is unchanged).
+        branding: await getEventBranding(db, access.event.id),
       }
     : null;
 ---
@@ -45,9 +58,16 @@ const view =
 {view ? (
   <Layout title={view.eventName}>
     <main class="mx-auto flex min-h-screen max-w-md flex-col gap-8 px-4 pt-6 pb-12">
-      <header>
+      <header class="flex flex-col gap-3">
+        <BrandHeader branding={view.branding} base={`${view.apiBase}/branding`} locale={locale} />
         <h1 class="text-sm font-medium tracking-wide text-muted-foreground uppercase">{view.eventName}</h1>
       </header>
+
+      <GuestRsvpView client:load apiBase={view.apiBase} initial={view.initial} locale={locale} placement="open" />
+
+      <GuestModuleGate client:load apiBase={view.apiBase} initial={view.initial} module="pubQuiz">
+        <GuestQuizView client:load apiBase={view.apiBase} initial={view.initial} locale={locale} />
+      </GuestModuleGate>
 
       <section aria-labelledby="seat-heading" class="flex flex-col gap-3">
         <h2 id="seat-heading" class="sr-only">
@@ -58,32 +78,51 @@ const view =
 
       <GuestOrderView client:load apiBase={view.apiBase} initial={view.initial} locale={locale} />
 
-      <section aria-labelledby="guess-heading" class="flex flex-col gap-3">
-        <h2 id="guess-heading" class="text-xl font-semibold">
-          {t.guessHeading}
-        </h2>
-        <GuestGuessView client:load apiBase={view.apiBase} initial={view.initial} locale={locale} />
-      </section>
+      <GuestModuleGate client:load apiBase={view.apiBase} initial={view.initial} module="guessing">
+        <section aria-labelledby="guess-heading" class="flex flex-col gap-3">
+          <h2 id="guess-heading" class="text-xl font-semibold">
+            {t.guessHeading}
+          </h2>
+          <GuestGuessView client:load apiBase={view.apiBase} initial={view.initial} locale={locale} />
+        </section>
+      </GuestModuleGate>
 
-      <section aria-labelledby="question-heading" class="flex flex-col gap-3">
-        <h2 id="question-heading" class="text-xl font-semibold">
-          {t.questionHeading}
-        </h2>
-        <GuestQuestionDraw client:load apiBase={view.apiBase} initial={view.initial} locale={locale} />
-      </section>
+      <GuestModuleGate client:load apiBase={view.apiBase} initial={view.initial} module="questions">
+        <section aria-labelledby="question-heading" class="flex flex-col gap-3">
+          <h2 id="question-heading" class="text-xl font-semibold">
+            {t.questionHeading}
+          </h2>
+          <GuestQuestionDraw client:load apiBase={view.apiBase} initial={view.initial} locale={locale} />
+        </section>
+      </GuestModuleGate>
 
-      <section aria-labelledby="topic-heading" class="flex flex-col gap-3">
-        <h2 id="topic-heading" class="text-xl font-semibold">
-          {t.topicHeading}
-        </h2>
-        <GuestTopicView
-          client:load
-          apiBase={view.apiBase}
-          initial={view.initial}
-          initialQuota={view.initialQuota}
-          locale={locale}
-        />
-      </section>
+      <GuestModuleGate client:load apiBase={view.apiBase} initial={view.initial} module="aiTopics">
+        <section aria-labelledby="topic-heading" class="flex flex-col gap-3">
+          <h2 id="topic-heading" class="text-xl font-semibold">
+            {t.topicHeading}
+          </h2>
+          <GuestTopicView
+            client:load
+            apiBase={view.apiBase}
+            initial={view.initial}
+            initialQuota={view.initialQuota}
+            locale={locale}
+          />
+        </section>
+      </GuestModuleGate>
+
+      <GuestRsvpView client:load apiBase={view.apiBase} initial={view.initial} locale={locale} placement="closed" />
+
+      {/* privacy-retention (S-26): the guest's privacy notice (a draft for legal review). */}
+      <footer class="border-t pt-4 text-center text-sm">
+        <a
+          href={`${guestPath(Astro.params.key ?? "")}/prywatnosc`}
+          class="text-muted-foreground underline underline-offset-4"
+          data-privacy-link
+        >
+          {tp.footerLink}
+        </a>
+      </footer>
     </main>
   </Layout>
 ) : (

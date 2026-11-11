@@ -1,10 +1,13 @@
 ---
 import NoAccess from "@/components/NoAccess.astro";
+import LeadBanner from "@/components/lead/LeadBanner.astro";
+import ReadOnlyFrame from "@/components/lead/ReadOnlyFrame.astro";
 import { OfflineSync } from "@/components/offline/OfflineSync";
+import ModuleOff from "@/components/modules/ModuleOff.astro";
 import { QuestionManager } from "@/components/questions/QuestionManager";
 import Layout from "@/layouts/Layout.astro";
 import { accessFor, organizerPath } from "@/lib/access";
-import { getAiProviderStatus } from "@/lib/ai";
+import { clientAiUsage } from "@/lib/ai-topics/limits";
 import { getAiTopicUsage } from "@/lib/ai-topics/service";
 import { getDb } from "@/lib/db";
 import { getQuestionList } from "@/lib/questions";
@@ -14,7 +17,7 @@ import { getTvSpotlight } from "@/lib/tv-spotlight";
 // Organizer questions page (S-07, US-03, FR-014, FR-015): the TV controls (tv-spotlight, #ekran-tv: a question or an
 // AI topic for the whole room, a drawn guest), the organizer's own draw, the AI topic panel with the evening's usage
 // and the provider (S-08, FR-016, #tematy-ai), adding and pasting questions, the starter base and the whole list with
-// edit and delete. Organizer only — guests get just the question they draw (and the AI topic they generate) on their
+// edit and delete (the AI usage without provider or cost since client-restaurant-split). Organizer only — guests get just the question they draw (and the AI topic they generate) on their
 // phone; the TV only what the organizer explicitly sends there. The middleware has already checked the key; this is the second,
 // role-specific check.
 const locale = Astro.locals.locale;
@@ -25,16 +28,32 @@ if (!access || !db) {
   Astro.response.status = 404;
 }
 
-const loaded = db ? await Promise.all([getQuestionList(db), getAiTopicUsage(db, locale), getTvSpotlight(db)]) : null;
+const loaded =
+  access && db
+    ? await Promise.all([
+        getQuestionList(db, access.event.id),
+        getAiTopicUsage(db, access.event.id, locale),
+        getTvSpotlight(db, access.event.id),
+      ])
+    : null;
 const view =
   access && loaded
     ? {
         name: access.event.name,
+        // client-restaurant-split: while the venue leads, the page is view-only.
+        venueLeads: access.event.venueLeads,
         panelPath: organizerPath(access.event.organizerKey),
         apiBase: `/api${organizerPath(access.event.organizerKey)}`,
         list: loaded[0],
-        aiBoard: { usage: loaded[1], provider: getAiProviderStatus(locale) },
+        // client-restaurant-split: the counts only; the provider and the cost are the venue's.
+        aiUsage: clientAiUsage(loaded[1]),
         tv: loaded[2],
+        // event-modules: the page's three modules (the TV screen, questions, AI topics).
+        modules: {
+          questions: access.event.modules.questions,
+          aiTopics: access.event.modules.aiTopics,
+          tvSpotlight: access.event.modules.tvSpotlight,
+        },
       }
     : null;
 ---
@@ -52,15 +71,23 @@ const view =
         <h1 class="text-3xl font-bold">{t.heading}</h1>
         <p class="text-sm text-muted-foreground">{t.intro}</p>
       </header>
+      {view.venueLeads && <LeadBanner kind="client" locale={locale} />}
       <OfflineSync client:load apiBase={view.apiBase} locale={locale} />
-      <QuestionManager
-        client:load
-        apiBase={view.apiBase}
-        initial={view.list}
-        aiInitial={view.aiBoard}
-        tvInitial={view.tv}
-        locale={locale}
-      />
+      {view.modules.questions || view.modules.aiTopics || view.modules.tvSpotlight ? (
+        <ReadOnlyFrame readOnly={view.venueLeads} locale={locale}>
+          <QuestionManager
+            client:load
+            apiBase={view.apiBase}
+            initial={view.list}
+            aiInitial={view.aiUsage}
+            tvInitial={view.tv}
+            modules={view.modules}
+            locale={locale}
+          />
+        </ReadOnlyFrame>
+      ) : (
+        <ModuleOff module="questions" backPath={view.panelPath} locale={locale} />
+      )}
     </main>
   </Layout>
 ) : (

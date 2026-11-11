@@ -1,34 +1,36 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { generateAccessKey } from "@/lib/access/keys";
 import { AccessLookupError, decideAccess, resolveAccess } from "@/lib/access/resolve";
-import { createEvent, hasEvent, type CreateEventResult } from "@/lib/event";
+import { createEvent } from "@/lib/event";
 import { starterQuestionRows } from "@/lib/questions/seed";
 import { createServiceClient, type DbClient } from "@/lib/supabase-client";
-import { hasLocalDb, localDb, localDbEnv, readEvent, releaseEvent, type TestEvent } from "./helpers";
+import { createTestEvent, hasLocalDb, localDb, localDbEnv, releaseTestEvent, type TestEvent } from "./helpers";
+
+// event-modules: an event created now has the new-event defaults (AI topics and the guessing game off).
+const NEW_EVENT_MODULES = {
+  questions: true,
+  aiTopics: false,
+  guessing: false,
+  seatingDraw: true,
+  tvSpotlight: true,
+  pubQuiz: false,
+};
 
 describe.skipIf(!hasLocalDb)("access matrix against the local DB", () => {
   let db: DbClient;
   let event: TestEvent;
-  // Set only when the DB had no event: two concurrent creations raced for the singleton.
-  let raceOutcomes: CreateEventResult[] | null = null;
-  // The event to delete after the suite; stays null when the event existed before the tests.
-  let eventToRelease: TestEvent | null = null;
+  // A second event (multi-tenant-events): its keys open only itself.
+  let other: TestEvent;
 
   beforeAll(async () => {
     db = localDb();
-    if (await hasEvent(db)) {
-      event = { ...(await readEvent(db)), createdByTest: false };
-      return;
-    }
-    raceOutcomes = await Promise.all([createEvent(db), createEvent(db)]);
-    event = { ...(await readEvent(db)), createdByTest: true };
-    eventToRelease = event;
+    event = await createTestEvent(db, "access");
+    other = await createTestEvent(db, "access-other");
   });
 
   afterAll(async () => {
-    if (eventToRelease) {
-      await releaseEvent(db, eventToRelease);
-    }
+    await releaseTestEvent(db, event);
+    await releaseTestEvent(db, other);
   });
 
   describe("organizer key", () => {
@@ -39,11 +41,13 @@ describe.skipIf(!hasLocalDb)("access matrix against the local DB", () => {
         access: {
           role: "organizer",
           event: {
-            id: 1,
+            id: event.id,
             name: event.name,
             organizerKey: event.organizerKey,
             tvKey: event.tvKey,
             restaurantKey: event.restaurantKey,
+            venueLeads: false,
+            modules: NEW_EVENT_MODULES,
           },
         },
       });
@@ -68,7 +72,10 @@ describe.skipIf(!hasLocalDb)("access matrix against the local DB", () => {
   describe("TV key", () => {
     it("opens the TV view without exposing any key", async () => {
       const decision = await decideAccess(db, `/tv/${event.tvKey}`);
-      expect(decision).toEqual({ kind: "granted", access: { role: "tv", event: { id: 1, name: event.name } } });
+      expect(decision).toEqual({
+        kind: "granted",
+        access: { role: "tv", event: { id: event.id, name: event.name, modules: NEW_EVENT_MODULES } },
+      });
       const serialized = JSON.stringify(decision);
       expect(serialized).not.toContain(event.organizerKey);
       expect(serialized).not.toContain(event.tvKey);
@@ -90,7 +97,16 @@ describe.skipIf(!hasLocalDb)("access matrix against the local DB", () => {
         const decision = await decideAccess(db, path);
         expect(decision).toEqual({
           kind: "granted",
-          access: { role: "restaurant", event: { id: 1, name: event.name } },
+          access: {
+            role: "restaurant",
+            // staff-offline-readout (S-27): the event's day, for the tablet's offline copy's expiry.
+            event: {
+              id: event.id,
+              name: event.name,
+              date: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/) as string,
+              modules: NEW_EVENT_MODULES,
+            },
+          },
         });
         expect(JSON.stringify(decision)).not.toContain(event.restaurantKey);
       }
@@ -153,40 +169,55 @@ describe.skipIf(!hasLocalDb)("access matrix against the local DB", () => {
     });
   });
 
-  describe("event creation", () => {
-    it("lets exactly one of two concurrent creations win (when the DB started empty)", () => {
-      if (!raceOutcomes) {
-        return; // an event already existed before the tests; nothing to race
+  describe("event creation (multi-tenant-events)", () => {
+    it("gives every event its own id and three distinct keys from the DB", () => {
+      expect(other.id).not.toBe(event.id);
+      const keys = [
+        event.organizerKey,
+        event.tvKey,
+        event.restaurantKey,
+        other.organizerKey,
+        other.tvKey,
+        other.restaurantKey,
+      ];
+      expect(new Set(keys).size).toBe(keys.length);
+      for (const key of keys) {
+        expect(key).toMatch(/^[A-Za-z0-9_-]{24}$/);
       }
-      const statuses = raceOutcomes.map((outcome) => outcome.status).sort();
-      expect(statuses).toEqual(["already-exists", "created"]);
-      const created = raceOutcomes.find((outcome) => outcome.status === "created");
-      expect(created).toEqual({ status: "created", organizerKey: event.organizerKey, tvKey: event.tvKey });
     });
 
-    it("seeds the starter questions once, by the winner only (S-07)", async () => {
-      if (!raceOutcomes) {
-        return; // an event already existed before the tests; its question base is real data
+    it("resolves each key to its own event only", async () => {
+      for (const [path, eventId] of [
+        [`/o/${event.organizerKey}`, event.id],
+        [`/tv/${event.tvKey}`, event.id],
+        [`/r/${event.restaurantKey}`, event.id],
+        [`/o/${other.organizerKey}`, other.id],
+        [`/tv/${other.tvKey}`, other.id],
+        [`/r/${other.restaurantKey}`, other.id],
+      ] as const) {
+        const decision = await decideAccess(db, path);
+        expect(decision.kind === "granted" ? decision.access.event.id : null).toBe(eventId);
       }
-      const { count, error } = await db.from("question").select("id", { count: "exact", head: true });
-      expect(error).toBeNull();
-      expect(count).toBe(starterQuestionRows().length);
     });
 
-    it("a refused creation adds no questions (S-07)", async () => {
-      const before = await db.from("question").select("id", { count: "exact", head: true });
-      expect(await createEvent(db)).toEqual({ status: "already-exists" });
-      const after = await db.from("question").select("id", { count: "exact", head: true });
+    it("loads the starter questions into a new event (S-07)", async () => {
+      for (const created of [event, other]) {
+        const { count, error } = await db
+          .from("question")
+          .select("id", { count: "exact", head: true })
+          .eq("event_id", created.id);
+        expect(error).toBeNull();
+        expect(count).toBe(starterQuestionRows().length);
+      }
+    });
+
+    it("refuses an event of an unknown restaurant and adds nothing", async () => {
+      const before = await db.from("event").select("id", { count: "exact", head: true });
+      expect(await createEvent(db, { restaurantId: 2_000_000_000, name: "Nikt" })).toEqual({
+        status: "restaurant-not-found",
+      });
+      const after = await db.from("event").select("id", { count: "exact", head: true });
       expect(after.count).toBe(before.count);
-    });
-
-    it("refuses a second event and reveals no key", async () => {
-      const result = await createEvent(db);
-      expect(result).toEqual({ status: "already-exists" });
-    });
-
-    it("stores distinct organizer and TV keys", () => {
-      expect(event.organizerKey).not.toBe(event.tvKey);
     });
   });
 
@@ -199,7 +230,7 @@ describe.skipIf(!hasLocalDb)("access matrix against the local DB", () => {
       const badDb = createServiceClient(env.url, "not-a-valid-service-role-key");
       await expect(resolveAccess(badDb, "organizer", event.organizerKey)).rejects.toBeInstanceOf(AccessLookupError);
       await expect(decideAccess(badDb, `/tv/${event.tvKey}`)).rejects.toBeInstanceOf(AccessLookupError);
-      await expect(hasEvent(badDb)).rejects.toThrow();
+      await expect(createEvent(badDb, { restaurantId: event.restaurantId, name: "Nikt" })).rejects.toThrow();
     });
 
     it("never serves the event to anonymous REST requests", async () => {

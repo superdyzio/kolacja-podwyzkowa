@@ -1,0 +1,57 @@
+---
+import type { Locale } from "@/lib/i18n";
+import { clientWorkMessages } from "@/lib/client-routes/messages";
+import { clientSectionPath, type ClientSection } from "@/lib/client-routes/sections";
+import { shellMessages } from "@/lib/shell/messages";
+
+// „Praca klienta” on the panel's event card (client-restaurant-split, S-14): one card per section of the client's
+// work, with the same summary line as the client's shell, linking to its preview in the panel.
+interface Props {
+  eventId: number;
+  sections: readonly ClientSection[];
+  summaries: Partial<Record<ClientSection, string | null>>;
+  locale: Locale;
+}
+
+const { eventId, sections, summaries, locale } = Astro.props;
+const t = clientWorkMessages(locale);
+const shell = shellMessages(locale);
+const cards: Record<ClientSection, { title: string; text: string }> = {
+  goscie: { title: shell.guestsTitle, text: shell.guestsText },
+  sale: { title: shell.venueTitle, text: shell.venueText },
+  rozsadzenie: { title: shell.seatingTitle, text: shell.seatingText },
+  linki: { title: shell.linksTitle, text: shell.linksText },
+  potwierdzenia: { title: shell.rsvpTitle, text: shell.rsvpText },
+  strzaly: { title: shell.guessesTitle, text: shell.guessesText },
+  pytania: { title: shell.questionsTitle, text: shell.questionsText },
+  zamowienia: { title: shell.ordersTitle, text: shell.ordersText },
+  quiz: { title: shell.quizTitle, text: shell.quizText },
+};
+---
+
+<section aria-labelledby="client-work-heading" class="flex flex-col gap-4" data-client-work>
+  <div class="flex flex-col gap-1">
+    <h2 id="client-work-heading" class="text-xl font-semibold">
+      {t.heading}
+    </h2>
+    <p class="text-sm text-muted-foreground">{t.intro}</p>
+  </div>
+  <ul class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+    {sections.map((section) => (
+      <li>
+        <a
+          href={clientSectionPath(eventId, section)}
+          class="flex h-full flex-col gap-2 rounded-xl border p-4 transition-colors hover:bg-accent focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
+          data-client-section={section}
+        >
+          <div class="flex items-center justify-between gap-2">
+            <h3 class="font-semibold">{cards[section].title}</h3>
+            <span class="rounded-full bg-primary px-2 py-0.5 text-xs text-primary-foreground">{t.open}</span>
+          </div>
+          <p class="text-sm text-muted-foreground">{cards[section].text}</p>
+          {summaries[section] && <p class="text-sm font-medium">{summaries[section]}</p>}
+        </a>
+      </li>
+    ))}
+  </ul>
+</section>

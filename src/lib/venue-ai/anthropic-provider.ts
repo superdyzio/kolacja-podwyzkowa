@@ -24,7 +24,7 @@ export interface AnthropicLayoutOptions {
   fetch?: FetchLike;
 }
 
-// A layout of 40 tables is about 2 000 output tokens; the rest is room to spare.
+// A layout of 40 tables is about 2 000 output tokens, 60 tables (MAX_TABLES) about 3 000; the rest is room to spare.
 const MAX_TOKENS = 8000;
 
 export function createAnthropicLayoutProvider(options: AnthropicLayoutOptions): VenueVisionProvider {

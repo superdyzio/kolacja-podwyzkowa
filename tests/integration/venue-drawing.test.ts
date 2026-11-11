@@ -23,7 +23,7 @@ import {
 import { createMockLayoutProvider, proposeVenueLayout, type VenueVisionProvider } from "@/lib/venue-ai";
 import type { SeatingSnapshot } from "@/types";
 import {
-  acquireTestEvent,
+  createTestEvent,
   TINY_PNG,
   cleanupTestSeating,
   createTestSeating,
@@ -32,7 +32,7 @@ import {
   hasLocalDb,
   localDb,
   planExists,
-  releaseEvent,
+  releaseTestEvent,
   testTag,
   type TestEvent,
   type TestSeating,
@@ -51,7 +51,7 @@ describe.skipIf(!hasLocalDb)("venue drawing", () => {
 
   beforeAll(async () => {
     db = localDb();
-    event = await acquireTestEvent(db);
+    event = await createTestEvent(db);
   });
 
   afterEach(async () => {
@@ -61,13 +61,14 @@ describe.skipIf(!hasLocalDb)("venue drawing", () => {
   });
 
   afterAll(async () => {
-    await releaseEvent(db, event);
+    await releaseTestEvent(db, event);
   });
 
   async function setup() {
     const tag = testTag();
     seating = await createTestSeating(
       db,
+      event.id,
       tag,
       [
         { seatCount: 8, shape: "round" },
@@ -79,7 +80,7 @@ describe.skipIf(!hasLocalDb)("venue drawing", () => {
   }
 
   async function publish(): Promise<number> {
-    const result = await publishSeating(db);
+    const result = await publishSeating(db, event.id);
     if (result.status === "published") {
       createdSnapshots.push(result.snapshotId);
     }
@@ -87,7 +88,7 @@ describe.skipIf(!hasLocalDb)("venue drawing", () => {
   }
 
   async function snapshot(id: number): Promise<SeatingSnapshot> {
-    const found = await getSnapshot(db, id);
+    const found = await getSnapshot(db, event.id, id);
     if (!found) {
       throw new Error(`no snapshot ${id}`);
     }
@@ -97,12 +98,12 @@ describe.skipIf(!hasLocalDb)("venue drawing", () => {
   it("publishes rotations, the pitch and outlined rooms, and shows them on the TV and the guest's drawing", async () => {
     const { s } = await setup();
     const [t1, t2] = s.tableIds;
-    expect((await updateTable(db, t2, { rotation: -90 })).status).toBe("updated");
-    expect((await updateRoom(db, s.roomId, { outline: OUTLINE })).status).toBe("updated");
-    await seatGuest(db, s.guestIds[0], t1, 1);
-    await seatGuest(db, s.guestIds[1], t1, 2);
+    expect((await updateTable(db, event.id, t2, { rotation: -90 })).status).toBe("updated");
+    expect((await updateRoom(db, event.id, s.roomId, { outline: OUTLINE })).status).toBe("updated");
+    await seatGuest(db, event.id, s.guestIds[0], t1, 1);
+    await seatGuest(db, event.id, s.guestIds[1], t1, 2);
 
-    const venue = await getVenue(db);
+    const venue = await getVenue(db, event.id);
     expect(venue.tables.find((table) => table.id === t2)?.rotation).toBe(270);
     expect(venue.rooms.find((room) => room.id === s.roomId)?.outline).toEqual(OUTLINE);
 
@@ -110,13 +111,13 @@ describe.skipIf(!hasLocalDb)("venue drawing", () => {
     expect(snap.tables.find((table) => table.tableId === t2)?.rotation).toBe(270);
     expect(snap.chairPitch).toBe(venue.chairPitch);
     expect(snap.rooms).toContainEqual({ name: `Sala ${s.tableNames[0].split(" ")[1]}`, ...OUTLINE });
-    expect((await getSeatingBoard(db)).upToDate).toBe(true);
+    expect((await getSeatingBoard(db, event.id)).upToDate).toBe(true);
 
-    const tv = await getTvSeating(db);
+    const tv = await getTvSeating(db, event.id);
     expect(tv.tables.find((table) => table.name === s.tableNames[1])?.rotation).toBe(270);
     expect(tv.rooms.map((room) => room.name)).toContain(`Sala ${s.tableNames[0].split(" ")[1]}`);
 
-    const state = await getGuestState(db, { id: s.guestIds[0], displayName: s.guestNames[0] });
+    const state = await getGuestState(db, event.id, { id: s.guestIds[0], displayName: s.guestNames[0] });
     expect(state.status).toBe("seated");
     expect(state.drawing?.tables.find((table) => table.name === s.tableNames[1])).toMatchObject({
       shape: "rectangular",
@@ -136,16 +137,16 @@ describe.skipIf(!hasLocalDb)("venue drawing", () => {
     expect(json).not.toMatch(/guestId|tableId|access_key|key|"id"/);
 
     // Any drawing change is an unpublished change.
-    await updateTable(db, t2, { rotation: 0 });
-    expect((await getSeatingBoard(db)).upToDate).toBe(false);
+    await updateTable(db, event.id, t2, { rotation: 0 });
+    expect((await getSeatingBoard(db, event.id)).upToDate).toBe(false);
     await publish();
-    await updateRoom(db, s.roomId, { outline: null });
-    expect((await getSeatingBoard(db)).upToDate).toBe(false);
+    await updateRoom(db, event.id, s.roomId, { outline: null });
+    expect((await getSeatingBoard(db, event.id)).upToDate).toBe(false);
   });
 
   it("reads a snapshot published before the drawing as the defaults, so an untouched board stays up to date", async () => {
     await setup();
-    const venue = await getVenue(db);
+    const venue = await getVenue(db, event.id);
     const id = await publish();
     // What the migration leaves on older snapshots: no pitch, no rotations, no rooms.
     const nulled = await db.from("seating_snapshot").update({ chair_pitch: null }).eq("id", id);
@@ -166,7 +167,7 @@ describe.skipIf(!hasLocalDb)("venue drawing", () => {
       venue.tables.every((table) => table.rotation === 0);
     // Only meaningful on a venue that was never drawn (fresh DB, demo data); a drawn local venue skips this check.
     if (untouched) {
-      expect((await getSeatingBoard(db)).upToDate).toBe(true);
+      expect((await getSeatingBoard(db, event.id)).upToDate).toBe(true);
     }
   });
 
@@ -174,15 +175,15 @@ describe.skipIf(!hasLocalDb)("venue drawing", () => {
     const { tag, s } = await setup();
     const [t1, t2] = s.tableIds;
     const [g1, g2] = s.guestIds;
-    await seatGuest(db, g1, t1, 3);
-    await setPinned(db, g1, true);
-    await seatGuest(db, g2, t2, 4);
-    const before = await getAssignments(db);
-    const tableCount = (await getVenue(db)).tables.length;
-    const originalPitch = (await getVenue(db)).chairPitch;
-    const hasPlan = await planExists(db);
+    await seatGuest(db, event.id, g1, t1, 3);
+    await setPinned(db, event.id, g1, true);
+    await seatGuest(db, event.id, g2, t2, 4);
+    const before = await getAssignments(db, event.id);
+    const tableCount = (await getVenue(db, event.id)).tables.length;
+    const originalPitch = (await getVenue(db, event.id)).chairPitch;
+    const hasPlan = await planExists(db, event.id);
 
-    const result = await applyVenueLayout(db, {
+    const result = await applyVenueLayout(db, event.id, {
       tables: [
         { id: t1, x: 0.25, y: 0.75, rotation: 45 },
         { id: t2, x: 0.6, y: 0.4, rotation: 450 },
@@ -195,7 +196,7 @@ describe.skipIf(!hasLocalDb)("venue drawing", () => {
     });
     try {
       expect(result).toEqual({ status: "applied" });
-      const venue = await getVenue(db);
+      const venue = await getVenue(db, event.id);
       expect(venue.tables.find((table) => table.id === t1)).toMatchObject({ x: 0.25, y: 0.75, rotation: 45 });
       expect(venue.tables.find((table) => table.id === t2)).toMatchObject({ x: 0.6, y: 0.4, rotation: 90 });
       expect(venue.tables.find((table) => table.name === `Nowy ${tag}`)).toMatchObject({
@@ -208,10 +209,10 @@ describe.skipIf(!hasLocalDb)("venue drawing", () => {
         expect(venue.chairPitch).toBe(0.04);
       }
       // Seat assignments and pins are untouched.
-      expect(await getAssignments(db)).toEqual(before);
+      expect(await getAssignments(db, event.id)).toEqual(before);
     } finally {
       if (hasPlan) {
-        await setChairPitch(db, originalPitch);
+        await setChairPitch(db, event.id, originalPitch);
       }
     }
   });
@@ -220,14 +221,14 @@ describe.skipIf(!hasLocalDb)("venue drawing", () => {
     const { s } = await setup();
     const [t1, t2] = s.tableIds;
     const [g1, g2] = s.guestIds;
-    await seatGuest(db, g1, t1, 2);
-    await setPinned(db, g1, true);
-    await seatGuest(db, g2, t2, 1);
-    const before = await getAssignments(db);
+    await seatGuest(db, event.id, g1, t1, 2);
+    await setPinned(db, event.id, g1, true);
+    await seatGuest(db, event.id, g2, t2, 1);
+    const before = await getAssignments(db, event.id);
     // The plan is a singleton: upload one only when there is none, and remove it again.
-    const uploadedPlan = !(await planExists(db));
+    const uploadedPlan = !(await planExists(db, event.id));
     if (uploadedPlan) {
-      expect((await savePlanImage(db, TINY_PNG)).status).toBe("saved");
+      expect((await savePlanImage(db, event.id, TINY_PNG)).status).toBe("saved");
     }
     const mock = createMockLayoutProvider({ delayMs: 0 });
     const prompts: string[] = [];
@@ -239,7 +240,7 @@ describe.skipIf(!hasLocalDb)("venue drawing", () => {
       },
     };
     try {
-      const result = await proposeVenueLayout(db, recording, TINY_PNG);
+      const result = await proposeVenueLayout(db, event.id, recording, TINY_PNG);
       if (result.status !== "proposed") {
         throw new Error(`no proposal: ${result.status}`);
       }
@@ -249,13 +250,13 @@ describe.skipIf(!hasLocalDb)("venue drawing", () => {
         expect(prompts[0]).not.toContain(name);
       }
       // Nothing is written by the read.
-      expect(await getAssignments(db)).toEqual(before);
+      expect(await getAssignments(db, event.id)).toEqual(before);
 
       // Apply only what concerns this test's own rows (the event may hold real tables).
       const ours = result.proposal.updates.filter((update) => s.tableIds.includes(update.tableId));
       expect(ours.map((update) => update.tableId).sort()).toEqual([t1, t2].sort());
       const [newTable] = result.proposal.newTables;
-      const applied = await applyVenueLayout(db, {
+      const applied = await applyVenueLayout(db, event.id, {
         tables: ours.map((update) => ({ id: update.tableId, x: update.x, y: update.y, rotation: update.rotation })),
         newTables: [{ ...newTable, roomId: s.roomId, name: `${newTable.name} ${s.tableNames[0]}` }],
         rooms: result.proposal.rooms
@@ -264,7 +265,7 @@ describe.skipIf(!hasLocalDb)("venue drawing", () => {
         chairPitch: null,
       });
       expect(applied).toEqual({ status: "applied" });
-      const venue = await getVenue(db);
+      const venue = await getVenue(db, event.id);
       for (const update of ours) {
         expect(venue.tables.find((table) => table.id === update.tableId)).toMatchObject({
           x: update.x,
@@ -275,10 +276,10 @@ describe.skipIf(!hasLocalDb)("venue drawing", () => {
       // The rectangular table turned 90° (the mock's tell).
       expect(venue.tables.find((table) => table.id === t2)?.rotation).toBe(90);
       expect(venue.tables.filter((table) => table.roomId === s.roomId)).toHaveLength(3);
-      expect(await getAssignments(db)).toEqual(before);
+      expect(await getAssignments(db, event.id)).toEqual(before);
     } finally {
       if (uploadedPlan) {
-        await deleteTestPlan(db);
+        await deleteTestPlan(db, event.id);
       }
     }
   });
@@ -286,7 +287,7 @@ describe.skipIf(!hasLocalDb)("venue drawing", () => {
   it("refuses unknown ids, duplicate names and too many tables without writing anything", async () => {
     const { tag, s } = await setup();
     const [t1, t2] = s.tableIds;
-    const venueBefore = await getVenue(db);
+    const venueBefore = await getVenue(db, event.id);
     const move = { id: t1, x: 0.01, y: 0.02, rotation: 10 };
     const newTable = (name: string) => ({
       roomId: s.roomId,
@@ -299,7 +300,7 @@ describe.skipIf(!hasLocalDb)("venue drawing", () => {
     });
 
     expect(
-      await applyVenueLayout(db, {
+      await applyVenueLayout(db, event.id, {
         tables: [move, { id: UNKNOWN_ID, x: 0.5, y: 0.5, rotation: 0 }],
         newTables: [],
         rooms: [],
@@ -307,7 +308,7 @@ describe.skipIf(!hasLocalDb)("venue drawing", () => {
       }),
     ).toEqual({ status: "table-not-found" });
     expect(
-      await applyVenueLayout(db, {
+      await applyVenueLayout(db, event.id, {
         tables: [move],
         newTables: [newTable(`Inny ${tag}`)],
         rooms: [{ id: UNKNOWN_ID, outline: OUTLINE }],
@@ -315,7 +316,7 @@ describe.skipIf(!hasLocalDb)("venue drawing", () => {
       }),
     ).toEqual({ status: "room-not-found" });
     expect(
-      await applyVenueLayout(db, {
+      await applyVenueLayout(db, event.id, {
         tables: [move],
         newTables: [newTable(`Ok ${tag}`), newTable(s.tableNames[1].toUpperCase())],
         rooms: [],
@@ -325,12 +326,14 @@ describe.skipIf(!hasLocalDb)("venue drawing", () => {
     const many = Array.from({ length: MAX_TABLES - venueBefore.tables.length + 1 }, (_, index) =>
       newTable(`Masa ${index} ${tag}`),
     );
-    expect(await applyVenueLayout(db, { tables: [move], newTables: many, rooms: [], chairPitch: null })).toEqual({
+    expect(
+      await applyVenueLayout(db, event.id, { tables: [move], newTables: many, rooms: [], chairPitch: null }),
+    ).toEqual({
       status: "too-many",
       limit: MAX_TABLES,
     });
 
-    const venueAfter = await getVenue(db);
+    const venueAfter = await getVenue(db, event.id);
     expect(venueAfter).toEqual(venueBefore);
     expect(venueAfter.tables.find((table) => table.id === t2)?.rotation).toBe(0);
   });

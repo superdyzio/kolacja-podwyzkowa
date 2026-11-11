@@ -90,7 +90,8 @@ describe("layout proposal review", () => {
   it("checks the new tables' edits", () => {
     expect(isValidEdit({ name: "Taras", roomId: 1, seatCount: 4 })).toBe(true);
     expect(isValidEdit({ name: " ", roomId: 1, seatCount: 4 })).toBe(false);
-    expect(isValidEdit({ name: "Taras", roomId: 1, seatCount: 21 })).toBe(false);
+    expect(isValidEdit({ name: "Taras", roomId: 1, seatCount: 30 })).toBe(true);
+    expect(isValidEdit({ name: "Taras", roomId: 1, seatCount: 31 })).toBe(false);
   });
 
   it("draws the kept lines as a ghost: moved tables keep their shape and seats", () => {

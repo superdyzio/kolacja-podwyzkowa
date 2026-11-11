@@ -24,7 +24,7 @@ export const GET: APIRoute = async ({ locals }) => {
   if (api instanceof Response) {
     return api;
   }
-  return jsonResponse(await getGuestList(api.db));
+  return jsonResponse(await getGuestList(api.db, api.access.event.id));
 };
 
 export const POST: APIRoute = async ({ locals, request }) => {
@@ -48,7 +48,7 @@ export const POST: APIRoute = async ({ locals, request }) => {
     return jsonError(400, messages.enterOneName);
   }
 
-  const result = await addGuests(api.db, parsed.names);
+  const result = await addGuests(api.db, api.access.event.id, parsed.names);
   switch (result.status) {
     case "duplicates":
       return jsonError(409, messages.alreadyListed(quoteNames(result.names, locals.locale)), {
@@ -57,6 +57,6 @@ export const POST: APIRoute = async ({ locals, request }) => {
     case "too-many":
       return jsonError(400, messages.tooMany(MAX_GUESTS, result.existing));
     case "added":
-      return jsonResponse({ added: result.added.length, ...(await getGuestList(api.db)) }, 201);
+      return jsonResponse({ added: result.added.length, ...(await getGuestList(api.db, api.access.event.id)) }, 201);
   }
 };

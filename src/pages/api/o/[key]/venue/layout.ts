@@ -44,10 +44,10 @@ export const POST: APIRoute = async ({ locals, request }) => {
   }
 
   const messages = venueMessages(locals.locale);
-  const result = await applyVenueLayout(api.db, body.data);
+  const result = await applyVenueLayout(api.db, api.access.event.id, body.data);
   switch (result.status) {
     case "applied":
-      return jsonResponse(await getVenue(api.db));
+      return jsonResponse(await getVenue(api.db, api.access.event.id));
     case "invalid":
       return jsonError(
         400,

@@ -133,3 +133,15 @@ export function formatAiTopicSummary(
   }
   return parts.join(" · ");
 }
+
+// What the client link (/o/<key>) may know about AI (client-restaurant-split, FR-028): the counts only. Tokens, the
+// cost estimate and the provider's failure hints are the venue's („Koszty AI” in the panel); the shape stays
+// AiTopicUsageDto so the islands parse it as before.
+export function clientAiUsage(usage: AiTopicUsageDto): AiTopicUsageDto {
+  return { ...usage, inputTokens: 0, outputTokens: 0, costNanoUsd: 0, lastFailureHint: null };
+}
+
+// The client shell card: „Tematy AI: 12 z 1000” (no provider, no cost).
+export function formatClientAiTopicSummary(usage: AiTopicUsageDto, locale: Locale = "pl"): string {
+  return aiTopicMessages(locale).summary(usage.used, usage.limit);
+}

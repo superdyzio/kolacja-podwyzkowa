@@ -2,6 +2,7 @@ import type { APIRoute } from "astro";
 import { z } from "astro/zod";
 import { jsonError, jsonResponse, readJsonBody } from "@/lib/http";
 import { organizerApi } from "@/lib/organizer-api";
+import { MAX_GUESTS } from "@/lib/guests";
 import { getSeatingBoard, saveDraft, seatingMessages } from "@/lib/seating";
 
 export const prerender = false;
@@ -21,7 +22,8 @@ const DraftBody = z.strictObject({
         seat: z.number().int().positive().max(1_000),
       }),
     )
-    .max(200),
+    // One row per present non-pinned guest at most (scale-150: MAX_GUESTS = 150).
+    .max(MAX_GUESTS),
 });
 
 export const POST: APIRoute = async ({ locals, request }) => {
@@ -35,13 +37,13 @@ export const POST: APIRoute = async ({ locals, request }) => {
   }
 
   const { draftStale } = seatingMessages(locals.locale);
-  const result = await saveDraft(api.db, body.data.seats, locals.locale);
+  const result = await saveDraft(api.db, api.access.event.id, body.data.seats, locals.locale);
   switch (result.status) {
     case "invalid":
       return jsonError(409, draftStale, { problems: result.problems });
     case "conflict":
       return jsonError(409, draftStale);
     case "saved":
-      return jsonResponse(await getSeatingBoard(api.db));
+      return jsonResponse(await getSeatingBoard(api.db, api.access.event.id));
   }
 };

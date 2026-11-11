@@ -1,4 +1,3 @@
-import { EVENT_ID } from "@/lib/event";
 import type { Locale } from "@/lib/i18n/locale";
 import { deniedIn } from "@/lib/questions/bounds";
 import { secureRandom } from "@/lib/questions/draw";
@@ -25,7 +24,8 @@ import { sanitizeTopic } from "./sanitize";
 // topic that was marked "succeeded" reaches the person; every failure marks the attempt "failed", so it never
 // consumes the limit (if even that write fails, the pending attempt expires after 60 s). Each finished attempt also
 // records the model, the tokens the provider billed (ai-spend) and, when it failed, why. Functions take the client
-// as a parameter (no `astro:*`); Supabase errors throw, expected outcomes come back as status unions.
+// and the event id as parameters (no `astro:*`); attempts, limits and usage are per event (multi-tenant-events).
+// Supabase errors throw, expected outcomes come back as status unions.
 
 export interface GenerateTopicRequest {
   // null = the organizer (no personal limit).
@@ -61,13 +61,14 @@ type Reservation =
 
 async function reserve(
   db: DbClient,
+  eventId: number,
   guestId: number | null,
   category: QuestionCategory,
   guestLimit: number,
   eventLimit: number,
 ): Promise<Reservation> {
   const { data, error } = await db.rpc("reserve_ai_topic", {
-    p_event_id: EVENT_ID,
+    p_event_id: eventId,
     p_guest_id: guestId,
     p_category: category,
     p_guest_limit: guestLimit,
@@ -153,6 +154,7 @@ function asFailure(error: unknown): { kind: AiFailureKind; httpStatus?: number }
 
 export async function generateTopic(
   db: DbClient,
+  eventId: number,
   provider: AiTopicProvider,
   request: GenerateTopicRequest,
   options: GenerateTopicOptions = {},
@@ -167,6 +169,7 @@ export async function generateTopic(
 
   const reservation = await reserve(
     db,
+    eventId,
     request.guestId,
     category,
     options.guestLimit ?? MAX_GUEST_TOPICS,
@@ -208,8 +211,8 @@ export async function generateTopic(
   return { status: "generated", topic: { category, text } };
 }
 
-async function readUsage(db: DbClient, guestId: number | null): Promise<AiTopicUsageRow> {
-  const { data, error } = await db.rpc("ai_topic_usage", { p_event_id: EVENT_ID, p_guest_id: guestId });
+async function readUsage(db: DbClient, eventId: number, guestId: number | null): Promise<AiTopicUsageRow> {
+  const { data, error } = await db.rpc("ai_topic_usage", { p_event_id: eventId, p_guest_id: guestId });
   if (error) {
     fail("odczytać użycia tematów AI", error.message);
   }
@@ -218,8 +221,9 @@ async function readUsage(db: DbClient, guestId: number | null): Promise<AiTopicU
 
 async function readTokens(
   db: DbClient,
+  eventId: number,
 ): Promise<{ model: string | null; inputTokens: number; outputTokens: number }[]> {
-  const { data, error } = await db.rpc("ai_topic_tokens", { p_event_id: EVENT_ID });
+  const { data, error } = await db.rpc("ai_topic_tokens", { p_event_id: eventId });
   if (error) {
     fail("odczytać tokenów tematów AI", error.message);
   }
@@ -228,11 +232,11 @@ async function readTokens(
 
 // Why the latest finished attempt failed, for the organizer; null when it succeeded or nothing finished yet. A failed
 // attempt without a kind expired while pending (the server was cut off mid-call) or predates the ai-spend migration.
-async function readLastFailureHint(db: DbClient, locale: Locale): Promise<string | null> {
+async function readLastFailureHint(db: DbClient, eventId: number, locale: Locale): Promise<string | null> {
   const { data, error } = await db
     .from("ai_topic")
     .select("status, failure_kind, http_status")
-    .eq("event_id", EVENT_ID)
+    .eq("event_id", eventId)
     .neq("status", "pending")
     .order("finished_at", { ascending: false, nullsFirst: false })
     .order("id", { ascending: false })
@@ -253,16 +257,16 @@ async function readLastFailureHint(db: DbClient, locale: Locale): Promise<string
 
 // The evening's usage for the organizer: the counts, the billed tokens with the estimate, and the latest failure (its
 // hint in `locale`).
-export async function getAiTopicUsage(db: DbClient, locale: Locale = "pl"): Promise<AiTopicUsageDto> {
+export async function getAiTopicUsage(db: DbClient, eventId: number, locale: Locale = "pl"): Promise<AiTopicUsageDto> {
   const [row, tokens, lastFailureHint] = await Promise.all([
-    readUsage(db, null),
-    readTokens(db),
-    readLastFailureHint(db, locale),
+    readUsage(db, eventId, null),
+    readTokens(db, eventId),
+    readLastFailureHint(db, eventId, locale),
   ]);
   return toUsage(row, { ...estimateSpend(tokens), lastFailureHint });
 }
 
 // One guest's own quota (their phone).
-export async function getGuestAiQuota(db: DbClient, guestId: number): Promise<GuestAiQuotaDto> {
-  return toGuestQuota(await readUsage(db, guestId));
+export async function getGuestAiQuota(db: DbClient, eventId: number, guestId: number): Promise<GuestAiQuotaDto> {
+  return toGuestQuota(await readUsage(db, eventId, guestId));
 }

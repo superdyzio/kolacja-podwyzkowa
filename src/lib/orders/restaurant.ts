@@ -1,12 +1,15 @@
+import { EMPTY_DIET_BOARD } from "@/lib/diets/board";
 import { toTvSeating } from "@/lib/seating/published";
-import type { OrderItemDto, RestaurantItemDto, RestaurantViewDto } from "@/types";
+import type { DietBoardDto, OrderItemDto, RestaurantItemDto, RestaurantRsvpDto, RestaurantViewDto } from "@/types";
 import { deliveredCount } from "./pieces";
 import { placeOrders, type PlacementSource } from "./placement";
 import { prepList } from "./prep";
 
 // The restaurant's view (restaurant-orders), pure: the prep list, the placement for serving and the published drawing
-// — never prices, ids, keys or absences. The polling token is a fingerprint of everything else, so any change (a
-// line, a tick, a publish, a new plan) is a new version and an unchanged poll answers 204.
+// — never prices, ids, keys or absences — and (guest-import-diets, S-23) the diets at the published seats, and (the PR
+// #4 review's decision) the RSVP dish counts while the event has dish options. The polling token is a fingerprint of
+// everything else, so any change (a line, a tick, a publish, a new plan, a diet, an RSVP answer) is a new version and
+// an unchanged poll answers 204.
 
 export function toRestaurantItem(item: OrderItemDto): RestaurantItemDto {
   return {
@@ -32,6 +35,8 @@ export function toRestaurantView(
   items: readonly OrderItemDto[],
   source: PlacementSource,
   planVersion: number | null,
+  diets: DietBoardDto = EMPTY_DIET_BOARD,
+  rsvp: RestaurantRsvpDto | null = null,
 ): RestaurantViewDto {
   let quantity = 0;
   let toServe = 0;
@@ -44,6 +49,9 @@ export function toRestaurantView(
     prep: prepList(items),
     placement: placeOrders(items, source, toRestaurantItem),
     totals: { quantity, toServe },
+    // Inside the content, so the fingerprint (the tablet's polling token) changes with a diet or an RSVP answer.
+    diets,
+    rsvp,
   };
   return { version: fingerprint(JSON.stringify(content)), ...content };
 }

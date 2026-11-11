@@ -1,4 +1,6 @@
 import type { Database } from "@/db/database.types";
+import type { DietTag } from "@/lib/diets/rules";
+import type { GuestModules, ModuleKey } from "@/lib/modules/rules";
 
 // Shared entity types (DB rows and DTOs).
 
@@ -15,6 +17,69 @@ export interface GuestDto {
   isAbsent: boolean;
   // The inseparable group this guest belongs to (at most one), or null.
   groupId: number | null;
+  // guest-import-diets (S-23): diet and allergy tags (DIET_TAGS order) and the note for the kitchen (≤ 120), or none.
+  // Health data: GuestDto is the organizer's (client link, panel through the dispatcher) — never a guest's or the TV's.
+  diets: DietTag[];
+  dietNote: string | null;
+}
+
+// --- Diets at the seat (guest-import-diets, S-23) — the kitchen's and the staff's view, no ids ---------------------
+
+// A present guest at a published seat with a diet or a note (the name as published, like the TV).
+export interface DietSeatDto {
+  seat: number;
+  guestName: string;
+  diets: DietTag[];
+  note: string | null;
+}
+
+// A published table with the seats that have a diet, in seat order.
+export interface DietTableDto {
+  name: string;
+  room: string;
+  seats: DietSeatDto[];
+}
+
+// A present guest with a diet who has no seat in the latest published snapshot (live name).
+export interface DietGuestDto {
+  guestName: string;
+  diets: DietTag[];
+  note: string | null;
+}
+
+export interface DietCountDto {
+  tag: DietTag;
+  count: number;
+}
+
+// tables: by room, then table name; unplaced: Polish name order; counts: DIET_TAGS order, zeros left out; guests: the
+// present guests with any diet or note. Built by dietBoard() (src/lib/diets/board.ts).
+export interface DietBoardDto {
+  tables: DietTableDto[];
+  unplaced: DietGuestDto[];
+  counts: DietCountDto[];
+  guests: number;
+}
+
+// One row of a guest import as it would be saved (line = the 1-based line of the file, header counted).
+export interface GuestImportRowDto {
+  line: number;
+  name: string;
+  diets: DietTag[];
+  note: string | null;
+}
+
+export type GuestImportSeparator = "tab" | "semicolon" | "comma" | "none";
+
+// POST /api/o/<key>/guests/import { text, preview: true } → the preview (nothing saved); also the body of a 400 when
+// a save finds problems. problems: one localized line each („Linia 4: …”); ready: no problems and at least one row.
+export interface GuestImportPreviewDto {
+  rows: GuestImportRowDto[];
+  problems: string[];
+  header: boolean;
+  separator: GuestImportSeparator;
+  existing: number;
+  ready: boolean;
 }
 
 // An inseparable group of 2–5 guests; memberIds in the same (Polish alphabetical) order as the guest list.
@@ -182,7 +247,8 @@ export interface DrawingRoomDto extends RoomOutline {
   name: string;
 }
 
-// A seated (present) guest in a snapshot, with the display name at publish time. guestId is null once deleted.
+// A seated (present) guest in a snapshot, with the display name at publish time. guest-erasure: a deleted guest's rows
+// are removed (DB trigger), so guestId is null only in theory (the column keeps its `on delete set null`).
 export interface SnapshotSeat {
   snapshotTableId: number;
   seat: number;
@@ -199,6 +265,9 @@ export interface SeatingSnapshot {
   seats: SnapshotSeat[];
   chairPitch: number;
   rooms: DrawingRoomDto[];
+  // guest-erasure: seats erased since the publish (a deleted guest's seat rows are removed); 0 when omitted. Part of
+  // the TV's polling token (seatingVersion()), so the TV drops an erased name without a republish.
+  erasedSeats?: number;
 }
 
 // What the TV may see: names on seats, no ids, pins, absences or keys.
@@ -209,6 +278,8 @@ export interface TvSeatDto {
 
 export interface TvTableDto {
   name: string;
+  // The table's room as published (tv-room-rotation: the TV groups tables by room); a name, never an id.
+  room: string;
   shape: TableShape;
   seatCount: number;
   x: number;
@@ -248,6 +319,77 @@ export interface TvSpotlightAnswerDto {
 // ("<snapshot id>.<plan version>.<spotlight id>"), compared for equality only.
 export interface TvScreenDto extends TvSeatingDto {
   spotlight: TvSpotlightDto | null;
+  // pub-quiz (S-28): the running quiz while the module is on (null otherwise); its own layer over the spotlight.
+  quiz: TvQuizDto | null;
+}
+
+// pub-quiz (S-28): the steps of a running quiz.
+export type QuizPhase = "intro" | "question" | "reveal" | "results";
+
+// pub-quiz: one question of the client's board (the client sees everything about its own quiz). `counts` = answers per
+// option (index = option), `answers` their sum; `askedAt` set = shown (locked), `closedAt` set = its answers count.
+export interface QuizQuestionDto {
+  id: number;
+  number: number;
+  text: string;
+  options: string[];
+  correct: number;
+  askedAt: string | null;
+  closedAt: string | null;
+  answers: number;
+  counts: number[];
+}
+
+// pub-quiz: one player of the client's live standings (guests with ≥ 1 answer to a closed question), best first,
+// competition places (1, 2, 2, 4).
+export interface QuizStandingDto {
+  place: number;
+  tied: boolean;
+  guestId: number;
+  name: string;
+  points: number;
+  answered: number;
+}
+
+// pub-quiz: GET /api/o/<key>/quiz — the client's whole quiz.
+export interface QuizBoardDto {
+  run: { phase: QuizPhase; questionId: number | null } | null;
+  questions: QuizQuestionDto[];
+  standings: QuizStandingDto[];
+  // Players = standings.length; closed = questions closed so far.
+  closed: number;
+  guestCount: number;
+  maxQuestions: number;
+}
+
+// pub-quiz: the guest's OWN quiz on the phone (null while no quiz runs or the module is off). `question.id` is the
+// handle for answering (re-checked under the run lock); `correct` only once the question is closed; `points` = own
+// correct answers to closed questions; `result` = own place among the players at the results (null = did not play).
+export interface GuestQuizDto {
+  phase: QuizPhase;
+  total: number;
+  closed: number;
+  question: { id: number; number: number; text: string; options: string[]; correct: number | null } | null;
+  answer: number | null;
+  points: number;
+  result: { place: number; players: number } | null;
+}
+
+// pub-quiz: what the TV shows of the quiz — no ids; names only at the results (places 1–3, the PRD's exception to
+// „ranking only at the organizer”); per-option counts only once the question is closed.
+export interface TvQuizDto {
+  phase: QuizPhase;
+  total: number;
+  closed: number;
+  question: {
+    number: number;
+    text: string;
+    options: string[];
+    answered: number;
+    correct: number | null;
+    counts: number[] | null;
+  } | null;
+  results: { players: number; entries: { place: number; name: string; points: number }[]; more: number } | null;
 }
 
 // The organizer's view of the latest published arrangement (S-09 offline readout): names on seats with the room, no
@@ -365,6 +507,82 @@ export interface GuestStateDto {
   drawing: GuestDrawingDto | null;
   // guest-delivered: the guest's own order lines, then the lines for the middle of their table (latest snapshot).
   orders: GuestOrderLineDto[];
+  // event-modules: which of the phone's sections are on (questions, AI topics, the guess); in the token's hashed part.
+  modules: GuestModules;
+  // guest-rsvp-menu: the guest's OWN attendance answer and dish choice, null while the client has RSVP off; in the
+  // token's hashed part. Never other guests' answers, counts, prices or ids.
+  rsvp: GuestRsvpDto | null;
+  // pub-quiz (S-28): the guest's OWN quiz while one runs and the module is on (null otherwise); in the token's hashed
+  // part. Never other guests' answers, scores or names.
+  quiz: GuestQuizDto | null;
+}
+
+// guest-rsvp-menu (S-25): a dish guests may pick — a menu item the event's menu offers, by name (no price, no id).
+export interface RsvpOptionDto {
+  name: string;
+  course: MenuCourse;
+}
+
+// guest-rsvp-menu: what the guest's phone shows. `open` = before the deadline (decided by the database's clock);
+// `attending` = the derived attendance (absent → false, answered → true, else null); `byOrganizer` = the client or the
+// venue decided it (an absence marked without an answer counts as theirs).
+export interface GuestRsvpDto {
+  open: boolean;
+  deadline: string;
+  attending: boolean | null;
+  dish: string | null;
+  byOrganizer: boolean;
+  options: RsvpOptionDto[];
+}
+
+// guest-rsvp-menu: one guest on the client's board.
+export interface RsvpGuestDto {
+  id: number;
+  displayName: string;
+  attending: boolean | null;
+  dish: string | null;
+  byOrganizer: boolean;
+  answeredAt: string | null;
+}
+
+// guest-rsvp-menu: not coming = absent; coming = present and answered; no answer = present without an answer;
+// dishes count the coming guests' choices (`offered` false = no longer an option the menu offers), `noDish` the
+// coming guests without one. total = coming + notComing + noAnswer.
+export interface RsvpCountsDto {
+  total: number;
+  coming: number;
+  notComing: number;
+  noAnswer: number;
+  noDish: number;
+  dishes: { name: string; course: MenuCourse; count: number; offered: boolean }[];
+}
+
+// guest-rsvp-menu: GET /api/o/<key>/rsvp (and every change) — the client's (and the staff's) whole RSVP view.
+// `options` = the client's choice (available = the event's menu offers it now); `menu` = what may be chosen.
+export interface RsvpBoardDto {
+  deadline: string | null;
+  open: boolean;
+  eventDate: string;
+  guestLinksOn: boolean;
+  options: (RsvpOptionDto & { available: boolean })[];
+  menu: RsvpOptionDto[];
+  counts: RsvpCountsDto;
+  guests: RsvpGuestDto[];
+}
+
+// „Przenieś wybory do zamówień” (the PR #4 review's RSVP extras): GET /api/o/<key>/rsvp/orders = what a move would do
+// now (`added` = lines it would add), POST = what it did. `skipped` = coming guests with a dish who already have a line
+// of it; `notOnMenu` = chosen dishes the event's active menu no longer offers (a POST then adds nothing, 400).
+export interface RsvpOrdersSummaryDto {
+  added: number;
+  skipped: number;
+  notOnMenu: string[];
+}
+
+// POST /api/o/<key>/rsvp/orders: the summary and the whole order board after the move.
+export interface RsvpOrdersAnswerDto {
+  summary: RsvpOrdersSummaryDto;
+  board: OrderBoardDto;
 }
 
 // guest-delivered: an order line as a guest's phone shows it — no price, no ids of people. lineId addresses the line
@@ -563,7 +781,8 @@ export interface OrganizerAiTopicAnswerDto {
 
 // Organizer reset („Reset danych”). Part ids in canonical order (src/lib/reset/parts.ts has the labels, texts and
 // implications: guests ⇒ guesses, aiUsage, seating; venue ⇒ seating).
-export type ResetPart = "guesses" | "aiUsage" | "seating" | "guests" | "venue" | "orders" | "questions" | "guestLinks";
+export type ResetPart =
+  "guesses" | "aiUsage" | "seating" | "guests" | "venue" | "orders" | "questions" | "guestLinks" | "quiz" | "rsvp";
 
 // What a reset would remove (and the flags it would change), read in one query (DB function reset_counts).
 export interface ResetCountsDto {
@@ -586,6 +805,14 @@ export interface ResetCountsDto {
   orders: number;
   questions: number;
   guestAccessEnabled: boolean;
+  // pub-quiz: the quiz answers and the questions already asked (the part `quiz` clears both).
+  quizAnswers: number;
+  quizAsked: number;
+  // rsvp-reset (the PR #4 review's RSVP extras): the guests' RSVP answers, the client's dish options and whether a
+  // deadline is set (the part `rsvp` clears all three; attendance stays).
+  rsvpAnswers: number;
+  rsvpOptions: number;
+  rsvpDeadlineSet: boolean;
 }
 
 // GET /api/o/<key>/reset: fresh counts for the modal; starterQuestions = how many the questions part puts back.
@@ -610,6 +837,8 @@ export interface ResetResultDto {
 export interface OrderItemDto {
   id: number;
   name: string;
+  // menu-catalog-courses: the course at order time (a line from the menu); null = free text.
+  course: MenuCourse | null;
   note: string | null;
   quantity: number;
   unitPriceGrosze: number;
@@ -670,6 +899,8 @@ export interface OrderPlacementDto<T> {
 
 // One dish of the prep list (case-insensitive by name): toServe = the quantity not delivered yet.
 export interface PrepLineDto {
+  // menu-catalog-courses: lists are grouped by course (MENU_COURSES order), null (free text) last.
+  course: MenuCourse | null;
   name: string;
   quantity: number;
   toServe: number;
@@ -717,6 +948,23 @@ export interface DrinkTotalsDto {
   totalGrosze: number;
 }
 
+// client-restaurant-split (FR-027): the venue's prices of an event — one row per dish or drink name (any letter
+// case), with the price of its newest line; `mixed` when the lines of that name have different prices (data from
+// before the split). GET|PUT /api/panel/events/<id>/prices.
+export type PriceKind = "dish" | "drink";
+
+export interface PriceListRowDto {
+  kind: PriceKind;
+  name: string;
+  priceGrosze: number;
+  mixed: boolean;
+  lines: number;
+}
+
+export interface PriceListDto {
+  rows: PriceListRowDto[];
+}
+
 // GET /api/o/<key>/orders and every mutation's answer.
 export interface OrderBoardDto {
   items: OrderItemDto[];
@@ -732,6 +980,19 @@ export interface OrderBoardDto {
   // bill-drinks: the drinks and their sum; the bill = totals.totalGrosze + drinkTotals.totalGrosze.
   drinks: DrinkItemDto[];
   drinkTotals: DrinkTotalsDto;
+  // menu-catalog-courses: the event's available menu (no catalog ids); active = new lines must come from it.
+  menu: OrderMenuDto;
+  // guest-import-diets (S-23): diets at the published seats and the counts (client, panel preview, both floors).
+  diets: DietBoardDto;
+}
+
+// The kitchen's RSVP summary on the tablet (guest-rsvp-menu extras, the PR #4 review's decision): per dish the number of
+// COMING guests who chose it (course, the menu's name, count; dishes the menu no longer offers still count), the
+// coming guests and those of them without a dish — no guest names, ids, prices or per-guest answers.
+export interface RestaurantRsvpDto {
+  coming: number;
+  noDish: number;
+  dishes: { course: MenuCourse; name: string; count: number }[];
 }
 
 // GET /api/r/<key>/orders: the restaurant's view. seating = what the TV draws (names at chairs, no ids); no prices,
@@ -742,4 +1003,630 @@ export interface RestaurantViewDto {
   prep: PrepLineDto[];
   placement: OrderPlacementDto<RestaurantItemDto>;
   totals: { quantity: number; toServe: number };
+  // guest-import-diets (S-23): diets at the published seats and the counts (no ids); covered by `version`.
+  diets: DietBoardDto;
+  // The confirmed dishes (RestaurantRsvpDto) while the event has RSVP dish options, else null; covered by `version`.
+  // Never in the staff's offline copy (StaffReadoutDto).
+  rsvp: RestaurantRsvpDto | null;
+}
+
+// staff-offline-readout (S-27): what the kitchen tablet and both floors keep on the device for a readout without
+// network — the tablet's view without its polling token (no prices, ids, keys or who marked a piece) and without the
+// RSVP summary (a pre-event figure; copies exist only on the event's day), plus the plan photo's aspect ratio measured
+// online (the photo itself is an API answer no worker stores), for that plan version.
+export interface StaffReadoutDto extends Omit<RestaurantViewDto, "version" | "rsvp"> {
+  planAspect: { planVersion: number; aspect: number } | null;
+}
+
+// --- Platform panel (platform-restaurants, S-10) -------------------------------------------------------------------
+
+// An owner of a restaurant as the platform administrator sees them: no hashes, no sessions.
+export interface PlatformOwnerDto {
+  accountId: number;
+  email: string;
+  displayName: string | null;
+  // false = the invitation was not accepted yet (no password set).
+  hasPassword: boolean;
+}
+
+// A restaurant in the platform list: counters only, never its events, guests or keys (support access is S-13).
+export interface PlatformRestaurantDto {
+  id: number;
+  name: string;
+  disabled: boolean;
+  eventCount: number;
+  memberCount: number;
+  owners: PlatformOwnerDto[];
+}
+
+// GET /api/panel/platform/restaurants and part of every answer of the platform API.
+export interface PlatformRestaurantListDto {
+  restaurants: PlatformRestaurantDto[];
+}
+
+// A one-time link for a staff account (invitation or password reset), shown once to the person who issued it.
+export interface StaffLinkDto {
+  kind: "invite" | "reset";
+  // "/haslo/<token>"; the page adds its origin.
+  path: string;
+  expiresAt: string;
+}
+
+// The owner after „Załóż restaurację” or „Dodaj właściciela”: `link` is null when the account already has a password
+// (the person sees the restaurant after logging in).
+export interface OwnerResultDto {
+  accountId: number;
+  email: string;
+  created: boolean;
+  hasPassword: boolean;
+  link: StaffLinkDto | null;
+}
+
+// --- Restaurant team (restaurant-team, S-12) -----------------------------------------------------------------------
+
+// A member of the restaurant's team as owners and managers see it (never hashes or tokens).
+export interface TeamMemberDto {
+  accountId: number;
+  email: string;
+  displayName: string | null;
+  role: "owner" | "manager" | "waiter";
+  hasPassword: boolean;
+}
+
+// The team of one restaurant and who is looking at it (their account and role decide what the UI offers).
+export interface TeamDto {
+  restaurantId: number;
+  you: { accountId: number; role: "owner" | "manager" | "waiter" };
+  // Owners, then managers, then waiters; by e-mail inside a role.
+  members: TeamMemberDto[];
+}
+
+// The person after „Zaproś”: `link` is a fresh invitation, or null when the e-mail already had an account (they see
+// the restaurant after logging in, or after using the link they already have).
+export interface TeamInviteResultDto {
+  accountId: number;
+  email: string;
+  role: "owner" | "manager" | "waiter";
+  created: boolean;
+  hasPassword: boolean;
+  link: StaffLinkDto | null;
+}
+
+// Every team answer: the whole team, or null when the person no longer manages it (removed themself or gave up the
+// owner/manager role).
+export interface TeamAnswerDto {
+  team: TeamDto | null;
+  invited?: TeamInviteResultDto;
+  link?: StaffLinkDto;
+}
+
+// --- Restaurant events (restaurant-events, S-11) -------------------------------------------------------------------
+
+// Where an event's day stands relative to "today" in the platform's time zone (src/lib/events/dates.ts): an event
+// dated yesterday is still "today" until noon (FR-029's window).
+export type EventTiming = "upcoming" | "today" | "past";
+
+// The event's three link paths ("/o/<key>", "/tv/<key>", "/r/<key>"); the page adds its origin. Owners and managers
+// only (waiters never see links).
+export interface EventLinksDto {
+  organizer: string;
+  tv: string;
+  restaurant: string;
+}
+
+// An event in the restaurant panel's lists: no keys.
+export interface EventSummaryDto {
+  id: number;
+  name: string;
+  // "YYYY-MM-DD"
+  date: string;
+  expectedGuests: number | null;
+  archived: boolean;
+  timing: EventTiming;
+}
+
+// The event card (/panel/wydarzenia/<id>): the summary plus its restaurant, guest count and links.
+export interface EventCardDto extends EventSummaryDto {
+  restaurantId: number;
+  restaurantName: string;
+  archivedAt: string | null;
+  // client-restaurant-split (S-14): „Lokal prowadzi” — the staff edit the client's work, the organizer link is view-only.
+  venueLeads: boolean;
+  guestCount: number;
+  links: EventLinksDto;
+  // tv-room-rotation (S-20): the venue's room names, for the per-room TV links (`/tv/<key>?sala=<room>`).
+  rooms: string[];
+}
+
+// GET /api/panel/restaurants/<id>/events: "today" in the platform's time zone and the three lists (upcoming = today
+// and later, nearest first; past = latest first; archived = any date, latest first).
+export interface RestaurantEventListDto {
+  today: string;
+  upcoming: EventSummaryDto[];
+  past: EventSummaryDto[];
+  archived: EventSummaryDto[];
+}
+
+// Every answer of the event routes that leave the event in place.
+export interface EventCardAnswerDto {
+  event: EventCardDto;
+  role: "owner" | "manager" | "waiter";
+}
+
+// --- Platform admin's support access (admin-support-log, S-13) ------------------------------------------------------
+
+// What a page or route opened in support mode knows about it (the banner): no grant, session or account id.
+export interface SupportAccessDto {
+  restaurantId: number;
+  restaurantName: string;
+  // Switched off by the platform admin (platform-restaurants): support mode still opens it.
+  restaurantDisabled: boolean;
+  reason: string;
+  startedAt: string;
+  expiresAt: string;
+}
+
+// A live support session of the admin's login in one restaurant (the platform page's „Wsparcie aktywne”).
+export interface SupportGrantDto {
+  restaurantId: number;
+  // "/panel/restauracje/<id>": where support mode starts.
+  path: string;
+  startedAt: string;
+  expiresAt: string;
+}
+
+// event-modules: "unlock" / "lock" = the administrator unlocked (locked again) a paid module of an event.
+// review-fixes: "link" = the administrator issued a one-time link (invite or password reset) for an owner („Nowy link”).
+export type SupportLogKind = "enter" | "access" | "exit" | "unlock" | "lock" | "link";
+
+// One row of the owner's „Dziennik wejść administratora”: who (snapshot of the admin's e-mail and name), when, and
+// what — the reason and end time of an entry, the method and path of an access (with the event's name), an exit.
+export interface SupportLogEntryDto {
+  id: number;
+  kind: SupportLogKind;
+  at: string;
+  admin: { email: string; name: string | null };
+  reason: string | null;
+  expiresAt: string | null;
+  method: string | null;
+  path: string | null;
+  event: { id: number; name: string } | null;
+  // event-modules: the module of an unlock / lock entry, else null.
+  module: ModuleKey | null;
+  // review-fixes: a link entry's link kind and the account it was issued for (e-mail snapshot), else null; `expiresAt`
+  // is then the link's expiry.
+  link: { kind: StaffLinkDto["kind"]; email: string } | null;
+}
+
+// GET /api/panel/restaurants/<id>/support-log (owners): newest first; `truncated` when older entries exist.
+export interface SupportLogDto {
+  restaurantId: number;
+  entries: SupportLogEntryDto[];
+  truncated: boolean;
+}
+
+// The event card as support mode shows it: everything but the links (keys never reach support mode).
+export type SupportEventSummaryDto = Omit<EventCardDto, "links" | "rooms">;
+
+// GET /api/panel/events/<id> in support mode.
+export interface SupportEventAnswerDto {
+  event: SupportEventSummaryDto;
+  support: SupportAccessDto;
+}
+
+// venue-templates (S-15; FR-030, US-06, US-09): a restaurant's venue template — an event row with is_template, whose
+// venue (plan, rooms, tables, drawing) is edited with the venue editor through /api/panel/templates/<id>/sala. Never
+// keys, never guests.
+export interface VenueTemplateSummaryDto {
+  id: number;
+  name: string;
+  roomCount: number;
+  tableCount: number;
+  seatCount: number;
+  hasPlan: boolean;
+}
+
+// GET|POST /api/panel/restaurants/<id>/templates (POST adds `template`); GET|PATCH /api/panel/templates/<id>.
+export interface TemplateListAnswerDto {
+  templates: VenueTemplateSummaryDto[];
+  template?: VenueTemplateSummaryDto;
+}
+
+export interface TemplateAnswerDto {
+  template: VenueTemplateSummaryDto;
+  restaurantId: number;
+}
+
+// A guest who would lose their seat in „Zaktualizuj z szablonu” (their table is not in the template, or it has fewer
+// seats there).
+export interface TemplateLostSeatDto {
+  guestName: string;
+  table: string;
+  seat: number;
+}
+
+// What „Zaktualizuj z szablonu” would change in the event's venue (match by name, case-insensitive): computed before
+// the confirm, so it names everyone who loses a seat. planChange: the plan photo is replaced by the template's
+// ("replaced"), removed because the template has none ("removed"), or neither has one ("none").
+export interface TemplateUpdatePreviewDto {
+  templateId: number;
+  templateName: string;
+  lost: TemplateLostSeatDto[];
+  tablesAdded: string[];
+  tablesRemoved: string[];
+  tablesResized: string[];
+  roomsAdded: string[];
+  roomsRemoved: string[];
+  planChange: "replaced" | "removed" | "none";
+}
+
+// The counts apply_venue_template reports (seat assignments before and after).
+export interface TemplateUpdateResultDto {
+  seatsBefore: number;
+  seatsAfter: number;
+  roomsAdded: number;
+  roomsRemoved: number;
+  tablesAdded: number;
+  tablesRemoved: number;
+  tablesKept: number;
+}
+
+// GET (preview) / POST (apply) /api/panel/events/<id>/from-template/<templateId>.
+export interface TemplateUpdateAnswerDto {
+  preview: TemplateUpdatePreviewDto;
+  result?: TemplateUpdateResultDto;
+}
+
+// --- Menu catalog (menu-catalog-courses, S-16) ----------------------------------------------------------------------
+
+// Stored course keys, in the kitchen's order; labels per locale in src/lib/menu/messages.ts.
+export type MenuCourse = "starter" | "soup" | "main" | "dessert" | "drinks";
+
+// off = free-text orders (v1; every event from before S-16), full = the whole catalog, reduced = chosen items.
+export type EventMenuMode = "off" | "full" | "reduced";
+
+export interface MenuItemDto {
+  id: number;
+  name: string;
+  course: MenuCourse;
+  priceGrosze: number;
+}
+
+// GET /api/panel/restaurants/<id>/menu and every catalog change: the whole catalog, by course then name.
+export interface MenuCatalogDto {
+  restaurantId: number;
+  items: MenuItemDto[];
+}
+
+export interface EventMenuItemDto extends MenuItemDto {
+  available: boolean;
+}
+
+// GET|PUT /api/panel/events/<id>/menu: the mode and every catalog item with whether this event offers it.
+export interface EventMenuDto {
+  eventId: number;
+  mode: EventMenuMode;
+  items: EventMenuItemDto[];
+}
+
+// An item of the event's available menu as the order form sees it: no ids; the price a new line gets now (the
+// event's price of that name, else the catalog's).
+export interface OrderMenuItemDto {
+  name: string;
+  course: MenuCourse;
+  priceGrosze: number;
+}
+
+export interface OrderMenuDto {
+  active: boolean;
+  items: OrderMenuItemDto[];
+}
+
+// event-modules (S-17): one module of an event as the client, the venue and the administrator see it. `active` =
+// available ∧ enabled ∧ (¬paid ∨ unlocked) — what decides the routes, pages, guest phones and the TV.
+export interface EventModuleDto {
+  key: ModuleKey;
+  available: boolean;
+  enabled: boolean;
+  paid: boolean;
+  unlocked: boolean;
+  active: boolean;
+}
+
+export interface EventModulesDto {
+  modules: EventModuleDto[];
+}
+
+// event-branding (S-18): a logo's metadata (never the bytes); `version` = epoch ms of the upload, put into the URL.
+export interface LogoDto {
+  mimeType: PlanImageType;
+  byteSize: number;
+  version: number;
+}
+
+// The brand of one event as every page of its links shows it: the restaurant's (name, colour with its readable text
+// colour, logo) and the client's (company or event name, logo). No ids, no keys.
+export interface BrandingDto {
+  restaurant: { name: string; color: string | null; textColor: "#000000" | "#ffffff" | null; logo: LogoDto | null };
+  client: { name: string | null; logo: LogoDto | null };
+}
+
+// The restaurant's brand in the panel (owner edits, manager reads).
+export interface RestaurantBrandingDto {
+  restaurantId: number;
+  name: string;
+  color: string | null;
+  textColor: "#000000" | "#ffffff" | null;
+  logo: LogoDto | null;
+}
+
+// --- Per-event waiters (event-waiter-access, S-21b) -----------------------------------------------------------------
+
+// unused: link and code not used yet; redeemed: on the floor (or logged out); expired: past noon after the event.
+export type EventWaiterStatus = "unused" | "redeemed" | "expired";
+
+// One per-event waiter as the event card lists it — never a hash, a token or the code.
+export interface EventWaiterDto {
+  id: number;
+  name: string;
+  status: EventWaiterStatus;
+  createdAt: string;
+  expiresAt: string;
+}
+
+export interface EventWaitersDto {
+  eventId: number;
+  // Not archived and the floor window not over yet (today or upcoming).
+  canAdd: boolean;
+  waiters: EventWaiterDto[];
+}
+
+// The credentials of a new per-event waiter, shown ONCE to the person who added it: the link path (the page adds its
+// origin) and the code to type on /kelner. The database keeps only their hashes.
+export interface EventWaiterIssuedDto {
+  id: number;
+  name: string;
+  path: string;
+  code: string;
+  expiresAt: string;
+}
+
+export interface EventWaiterAnswerDto {
+  waiters: EventWaitersDto;
+  issued: EventWaiterIssuedDto;
+}
+
+// --- Guest data retention (privacy-retention, S-26) --------------------------------------------------------------
+
+// What purge_event_guest_data did to one event: not-found (unknown id or a venue template — never purged), kept
+// (inside its term), clean (purged before, nothing new since), purged (deleted now; the counts say what went).
+export type PurgeStatus = "not-found" | "kept" | "clean" | "purged";
+
+export interface PurgeResultDto {
+  eventId: number;
+  status: PurgeStatus;
+  // When the guests' data was deleted the first time (null = never).
+  purgedAt: string | null;
+  guests: number;
+  groups: number;
+  snapshots: number;
+  spotlight: number;
+  waiters: number;
+  notes: number;
+}
+
+// GET|PATCH /api/panel/restaurants/<id>/retention: the restaurant's term (owners change it, owners and managers read it).
+export interface RetentionSettingsDto {
+  restaurantId: number;
+  guestRetentionDays: number;
+  minDays: number;
+  maxDays: number;
+}
+
+// GET /api/panel/restaurants/<id>/retention?days=<n> (owners; retention-preview): what a new term would cost at once —
+// the events (no templates) still holding guest data that the term `days` puts past their term while the current term
+// keeps them, and the latest such event's date ("YYYY-MM-DD"; null when `events` is 0). Counts only, no ids or names.
+export interface RetentionPreviewDto {
+  restaurantId: number;
+  guestRetentionDays: number;
+  days: number;
+  events: number;
+  latestEventDate: string | null;
+}
+
+// The daily clean-up's answer (POST /api/jobs/retention, retention-schedule; also its CloudWatch line): how many events
+// lost their guests' data in this run and what went, how many listed events had nothing to purge after all, and whether
+// nothing was left when it stopped (false = the time budget ran out; the next run goes on). Counts only.
+export interface RetentionJobResultDto {
+  events: number;
+  guests: number;
+  groups: number;
+  snapshots: number;
+  spotlight: number;
+  waiters: number;
+  notes: number;
+  skipped: number;
+  complete: boolean;
+}
+
+// The clean-up's self-check (POST /api/jobs/retention with `dryRun: true`, invoked once by `npm run deploy:aws`): how
+// many events a run would purge now (`complete` false = at least that many). Nothing is deleted. Counts only.
+export interface RetentionDryRunResultDto {
+  dryRun: true;
+  events: number;
+  complete: boolean;
+}
+
+// One event's retention as its pages show it: the last day the guests' data is kept ("YYYY-MM-DD", Europe/Warsaw)
+// and when it was deleted (null = not yet).
+export interface EventRetentionDto {
+  eventDate: string;
+  retentionDays: number;
+  deleteAfter: string;
+  purgedAt: string | null;
+}
+
+// GET /api/panel/events/<id>/export (format=json): one event's data for its restaurant's owners and managers, to keep
+// before the guests' data is deleted. NO ids, link keys, tokens or hashes anywhere: guests, tables and rooms are
+// referenced by name, groups by their number in this file. After a purge `guests` is empty and `purgedAt` is set.
+export interface EventExportDto {
+  version: 1;
+  exportedAt: string;
+  event: {
+    name: string;
+    date: string;
+    restaurant: string;
+    archived: boolean;
+    guestData: { retentionDays: number; deleteAfter: string; purgedAt: string | null };
+  };
+  guests: EventExportGuestDto[];
+  // Each inseparable group as its members' names (a guest's `group` is the number of its group here, from 1).
+  groups: string[][];
+  // null while the client asks no RSVP.
+  rsvp: { deadline: string; open: boolean; options: RsvpOptionDto[] } | null;
+  venue: { rooms: { name: string; tables: { name: string; shape: TableShape; seatCount: number }[] }[] };
+  // The latest published seating (null before the first publish).
+  seating: { publishedAt: string; tables: PublishedTableDto[] } | null;
+  orders: {
+    lines: EventExportOrderLineDto[];
+    drinks: { name: string; quantity: number; unitPriceGrosze: number; totalGrosze: number }[];
+    dishesGrosze: number;
+    drinksGrosze: number;
+    billGrosze: number;
+  };
+  guesses: { intakeOpen: boolean; correctAmountGrosze: number | null };
+  // pub-quiz (S-28): the client's questions and the live standings by name (no ids).
+  quiz: {
+    questions: { text: string; options: string[]; correct: number; asked: boolean; closed: boolean }[];
+    standings: { place: number; name: string; points: number }[];
+  };
+}
+
+export interface EventExportGuestDto {
+  name: string;
+  absent: boolean;
+  group: number | null;
+  diets: DietTag[];
+  dietNote: string | null;
+  // The invitation answer (null while the client asks no RSVP).
+  rsvp: { attending: boolean | null; dish: string | null; byOrganizer: boolean; answeredAt: string | null } | null;
+  // The guest's seat in the latest published seating.
+  seat: { room: string; table: string; seat: number } | null;
+  guess: { amountGrosze: number; predictedPlace: number | null } | null;
+}
+
+export interface EventExportOrderLineDto {
+  name: string;
+  course: MenuCourse | null;
+  note: string | null;
+  quantity: number;
+  unitPriceGrosze: number;
+  totalGrosze: number;
+  deliveredPieces: number;
+  // For whom: a guest (by name) or the middle of a table; null = not assigned (or its guest / table is gone).
+  place: { guest: string } | { table: string } | null;
+}
+
+// --- Room prints (room-prints, S-24; FR-038) — view models of the printed sheets: no ids, keys or prices ------------
+
+// The brand on a print: names, the restaurant's colour and the logos' URLs (null without a logo, or where the page
+// loads no image — support mode, the floors).
+export interface PrintBrandDto {
+  restaurantName: string;
+  clientName: string | null;
+  color: string | null;
+  textColor: "#000000" | "#ffffff" | null;
+  restaurantLogo: string | null;
+  clientLogo: string | null;
+}
+
+// What a print page reads (getRoomPrintSource): the event, its brand, the latest PUBLISHED seating (null before the
+// first publish or after the guests' data was deleted), whether the working arrangement still matches it, and — for
+// the staff list only — the diets at the published seats (null for every other print).
+export interface RoomPrintSourceDto {
+  event: { name: string; date: string; purgedAt: string | null };
+  branding: BrandingDto | null;
+  published: PublishedSeatingDto | null;
+  upToDate: boolean;
+  diets: DietBoardDto | null;
+}
+
+// „Znajdź swój stolik”: one published seat (room null while the venue has one room only).
+export interface BoardEntryDto {
+  name: string;
+  table: string;
+  room: string | null;
+}
+
+// A row of a board column: a letter heading or a guest; `units` = rows of the column it takes (long rows wrap).
+export type BoardRowDto =
+  { kind: "letter"; letter: string; continued: boolean } | ({ kind: "guest"; units: number } & BoardEntryDto);
+
+export interface BoardPageDto {
+  columns: BoardRowDto[][];
+}
+
+// A table card: the table's name, its room (null with one room) and the names seated there in seat order.
+export interface TableCardDto {
+  name: string;
+  room: string | null;
+  guests: string[];
+}
+
+// A place card („winietka”): the guest's name and their published table (room null with one room).
+export interface PlaceCardDto {
+  name: string;
+  table: string;
+  room: string | null;
+}
+
+// Where place cards sit on an A4 sheet (mm). folded: the piece is two faces tall with a fold line in the middle.
+export interface PlaceCardLayoutDto {
+  pageWidthMm: number;
+  pageHeightMm: number;
+  cardWidthMm: number;
+  cardHeightMm: number;
+  pieceHeightMm: number;
+  folded: boolean;
+  columns: number;
+  rows: number;
+  perPage: number;
+  offsetXMm: number;
+  offsetYMm: number;
+}
+
+// The staff list: an occupied published seat with the guest's diet (none for a guest without one or absent since).
+export interface StaffSeatDto {
+  seat: number;
+  name: string;
+  diets: DietTag[];
+  note: string | null;
+  units: number;
+}
+
+export interface StaffTableDto {
+  name: string;
+  room: string | null;
+  people: number;
+  counts: DietCountDto[];
+  seats: StaffSeatDto[];
+}
+
+export interface StaffListDto {
+  tables: StaffTableDto[];
+  // Present guests with a diet but no published seat.
+  unplaced: DietGuestDto[];
+  counts: DietCountDto[];
+  // Present guests with a diet or a note.
+  withDiets: number;
+}
+
+// One block of a staff-list page; `continued` = the rest of a block begun on an earlier page.
+export type StaffBlockDto =
+  | { kind: "summary"; counts: DietCountDto[]; withDiets: number }
+  | { kind: "table"; table: StaffTableDto; continued: boolean }
+  | { kind: "unplaced"; guests: DietGuestDto[]; continued: boolean };
+
+export interface StaffPageDto {
+  blocks: StaffBlockDto[];
 }

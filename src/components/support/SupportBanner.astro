@@ -1,0 +1,39 @@
+---
+import type { Locale } from "@/lib/i18n";
+import { formatSupportClock, supportMessages } from "@/lib/support";
+import type { SupportAccessDto } from "@/types";
+import { EndSupportButton } from "./EndSupportButton";
+
+// The banner of the platform administrator's support mode (admin-support-log, S-13) on the restaurant and event pages:
+// whose data, read-only, until when (the platform's time zone), the reason the owner sees, a note when the restaurant
+// is switched off, and „Zakończ wsparcie”.
+interface Props {
+  support: SupportAccessDto;
+  locale: Locale;
+}
+
+const { support, locale } = Astro.props;
+const t = supportMessages(locale);
+---
+
+<section
+  aria-labelledby="support-banner-heading"
+  class="flex flex-col gap-2 rounded-xl border-2 border-amber-500/70 bg-amber-500/10 p-4"
+  data-support-banner
+>
+  <h2 id="support-banner-heading" class="text-lg font-semibold">
+    {t.bannerHeading}
+  </h2>
+  <p>{t.bannerText(support.restaurantName, formatSupportClock(support.expiresAt))}</p>
+  <p class="text-sm break-words">
+    <span class="font-medium">{t.reasonPrefix}</span>
+    {support.reason}
+  </p>
+  {support.restaurantDisabled && <p class="text-sm font-medium">{t.disabledNote}</p>}
+  <EndSupportButton
+    client:load
+    restaurantId={support.restaurantId}
+    restaurantName={support.restaurantName}
+    locale={locale}
+  />
+</section>

@@ -1,3 +1,4 @@
+import { MAX_SEATS, MIN_SEATS } from "@/lib/venue/rules";
 import type { VenuePromptInput } from "./provider";
 
 // The request for a layout read (venue-drawing), pure. Only the venue goes in: room names, table names, shapes, seat
@@ -31,7 +32,7 @@ export function buildLayoutPrompt(venue: VenuePromptInput): string {
     "- name: the exact name of the matching table from the list below; for a table that is not on the list, a short new name (at most 24 characters).",
     "- room: the exact name of the room from the list below that the table stands in.",
     '- shape: "round" or "rectangular" (square tables count as rectangular).',
-    "- seatCount: the chairs at the table, 2 to 20. For a table from the list keep its seat count unless the image clearly shows otherwise.",
+    `- seatCount: the chairs at the table, ${String(MIN_SEATS)} to ${String(MAX_SEATS)}. For a table from the list keep its seat count unless the image clearly shows otherwise.`,
     "- x, y: the centre of the table.",
     "- rotation: degrees clockwise. A rectangular table at 0° has its long sides horizontal; at 90° they are vertical. Round tables: 0.",
     "",

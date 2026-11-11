@@ -1,17 +1,13 @@
 import type { APIRoute } from "astro";
-import { restaurantPath } from "@/lib/access";
-import { jsonResponse } from "@/lib/http";
-import { rotateRestaurantKey } from "@/lib/orders";
+import { noAccessMessages } from "@/lib/access/messages";
+import { jsonError } from "@/lib/http";
 import { organizerApi } from "@/lib/organizer-api";
 
 export const prerender = false;
 
-// POST: „Wymień link” (restaurant-orders) — a fresh restaurant key; the old link opens nothing from now on. Answers
-// { path: "/r/<new key>" }; the page builds the full address from its own origin. Organizer only.
-export const POST: APIRoute = async ({ locals }) => {
+// „Wymień link” of the restaurant's tablet moved to the venue's panel (client-restaurant-split, FR-025:
+// POST /api/panel/events/<id>/links/restaurant); the client link answers the guard's identical denial.
+export const POST: APIRoute = ({ locals }) => {
   const api = organizerApi(locals);
-  if (api instanceof Response) {
-    return api;
-  }
-  return jsonResponse({ path: restaurantPath(await rotateRestaurantKey(api.db)) });
+  return api instanceof Response ? api : jsonError(404, noAccessMessages(locals.locale).title);
 };

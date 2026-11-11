@@ -1,0 +1,372 @@
+---
+import Layout from "@/layouts/Layout.astro";
+import NoAccess from "@/components/NoAccess.astro";
+import { NewEventForm } from "@/components/events/NewEventForm";
+import { authMessages } from "@/lib/auth/messages";
+import { canManageEvents, eventPanelMessages, formatEventDate, listRestaurantEvents } from "@/lib/events";
+import { findPanelRestaurant } from "@/lib/panel-api";
+import { FLOOR_ROLES, floorMessages, floorPath } from "@/lib/floor";
+import { restaurantPanelMessages } from "@/lib/restaurants";
+import { TeamManager } from "@/components/team/TeamManager";
+import SupportBanner from "@/components/support/SupportBanner.astro";
+import SupportLogSection from "@/components/support/SupportLogSection.astro";
+import SupportTeamList from "@/components/support/SupportTeamList.astro";
+import { getSupportLog, SUPPORT_LOG_ROLES, supportMessages } from "@/lib/support";
+import { canManageTeam, getTeam, teamMessages } from "@/lib/team";
+import { NewTemplateForm } from "@/components/templates/NewTemplateForm";
+import { listVenueTemplates, templateMessages, templatePath } from "@/lib/templates";
+import { getMenuCatalog, menuMessages } from "@/lib/menu";
+import { RestaurantBrandingManager } from "@/components/branding/RestaurantBrandingManager";
+import {
+  BRAND_EDIT_ROLES,
+  BRAND_VIEW_ROLES,
+  brandingMessages,
+  getRestaurantBranding,
+  restaurantLogoUrl,
+} from "@/lib/branding";
+import { RetentionSettingsForm } from "@/components/privacy/RetentionSettingsForm";
+import { getRestaurantRetention, privacyMessages, RETENTION_EDIT_ROLES, RETENTION_VIEW_ROLES } from "@/lib/privacy";
+
+// The restaurant panel (platform-restaurants, S-10; restaurant-events, S-11; restaurant-team, S-12): the restaurant,
+// the person's role, its events and (owners and managers) the team. Owners and managers create an event („Nowe
+// wydarzenie” → its card), browse the tabs „Nadchodzące / Minione / Archiwum” (?lista=nadchodzace|minione|archiwum,
+// anything else = upcoming) and manage the team within their scope (island TeamManager: invitations, roles, removal,
+// one-time links); waiters get a note until their day view (S-21) and no team. Owners also see the „Dziennik wejść
+// administratora” (admin-support-log, S-13). Through the central lookup: a foreign, unknown, malformed or disabled
+// restaurant gets the no-access page (404), the same for every reason — except the platform administrator in support
+// mode (logged for the owner), who sees what the owner sees, read-only: the banner instead of the role, no „Nowe
+// wydarzenie”, the team as a plain list, the log.
+// venue-templates (S-15): owners and managers also get „Szablony sal” (the list linking to /panel/szablony/<id> and
+// „Nowy szablon sali”; support mode: the list only) and a template choice in „Nowe wydarzenie”.
+const locale = Astro.locals.locale;
+const t = restaurantPanelMessages(locale);
+const te = eventPanelMessages(locale);
+const roles = authMessages(locale).roleLabels;
+const panel = await findPanelRestaurant(Astro.locals, Astro.params.id);
+const support = panel?.support ?? null;
+const ts = supportMessages(locale);
+const tt = teamMessages(locale);
+const team =
+  panel && canManageTeam(panel.role)
+    ? await getTeam(panel.db, panel.restaurant.id, { accountId: panel.staff.accountId, role: panel.role })
+    : null;
+const manages = panel ? canManageEvents(panel.role) : false;
+const lists = panel && manages ? await listRestaurantEvents(panel.db, panel.restaurant.id, new Date()) : null;
+// waiter-day-and-refills (S-21; FR-029): every member (never support mode) sees „Dziś na sali” — the events running
+// today (until noon of the next day), each linking to its floor page; for a waiter it is the whole event list.
+const floorLists =
+  panel && !support && FLOOR_ROLES.includes(panel.role)
+    ? (lists ?? (await listRestaurantEvents(panel.db, panel.restaurant.id, new Date())))
+    : null;
+const floorEvents = floorLists
+  ? [...floorLists.upcoming, ...floorLists.past].filter((event) => !event.archived && event.timing === "today")
+  : null;
+const tf = floorMessages(locale);
+const templates = panel && manages ? await listVenueTemplates(panel.db, panel.restaurant.id) : null;
+const tv = templateMessages(locale);
+// menu-catalog-courses (S-16): owners and managers (and support) see the „Menu lokalu” section with a link.
+const catalog = panel && manages ? await getMenuCatalog(panel.db, panel.restaurant.id) : null;
+const tm = menuMessages(locale);
+// event-branding (S-18): owners and managers (and support) see „Marka lokalu”; only owners edit it. Read from the ONE
+// guard call of this page; in support mode the logo is not loaded (its route would be a second logged read).
+const brand =
+  panel && BRAND_VIEW_ROLES.includes(panel.role) ? await getRestaurantBranding(panel.db, panel.restaurant.id) : null;
+const brandEditor = Boolean(panel && !support && BRAND_EDIT_ROLES.includes(panel.role));
+const brandBase = panel ? `/api/panel/restaurants/${String(panel.restaurant.id)}/branding` : "";
+const brandLogo = brand?.logo && !support ? restaurantLogoUrl(brandBase, brand.logo.version) : null;
+const tb = brandingMessages(locale);
+// privacy-retention (S-26): owners and managers (and support) see „Prywatność danych gości”; only owners change the
+// term (a restaurant setting).
+const retention =
+  panel && RETENTION_VIEW_ROLES.includes(panel.role)
+    ? await getRestaurantRetention(panel.db, panel.restaurant.id)
+    : null;
+const retentionEditor = Boolean(panel && !support && RETENTION_EDIT_ROLES.includes(panel.role));
+const tp = privacyMessages(locale);
+const listParam = Astro.url.searchParams.get("lista");
+const tab = listParam === "minione" ? "past" : listParam === "archiwum" ? "archived" : "upcoming";
+const tabs = lists
+  ? ([
+      { key: "upcoming", slug: "nadchodzace", label: te.tabUpcoming(lists.upcoming.length), empty: te.emptyUpcoming },
+      { key: "past", slug: "minione", label: te.tabPast(lists.past.length), empty: te.emptyPast },
+      { key: "archived", slug: "archiwum", label: te.tabArchived(lists.archived.length), empty: te.emptyArchived },
+    ] as const)
+  : [];
+const log = panel && SUPPORT_LOG_ROLES.includes(panel.role) ? await getSupportLog(panel.db, panel.restaurant.id) : null;
+const shown = lists ? lists[tab] : [];
+const emptyText =
+  support && tab === "upcoming" ? ts.emptyUpcoming : (tabs.find((candidate) => candidate.key === tab)?.empty ?? "");
+if (!panel) {
+  Astro.response.status = 404;
+}
+---
+
+{panel ? (
+  <Layout title={t.pageTitle(panel.restaurant.name)}>
+    <main class="mx-auto flex max-w-3xl flex-col gap-6 p-4 sm:p-8">
+      <header class="flex flex-col gap-2">
+        <a
+          href={support ? "/panel/platforma" : "/panel"}
+          class="self-start py-2 text-sm text-muted-foreground underline-offset-4 hover:underline"
+        >
+          {support ? ts.backToPlatform : t.backToPanel}
+        </a>
+        <div class="flex items-center gap-3">
+          {brandLogo && (
+            <img src={brandLogo} alt={tb.logoAlt(brand?.name ?? "")} class="h-12 w-auto max-w-[30%] object-contain" />
+          )}
+          <h1 class="text-3xl font-bold">{brand?.name ?? panel.restaurant.name}</h1>
+        </div>
+        {brand?.color && (
+          <div
+            class="h-1.5 w-24 rounded-full"
+            style={`background-color: ${brand.color};`}
+            data-brand-color={brand.color}
+          />
+        )}
+        {!support && (
+          <p>
+            {t.yourRole}: <span class="rounded-full border px-2 py-0.5 text-sm">{roles[panel.role]}</span>
+          </p>
+        )}
+      </header>
+
+      {support && <SupportBanner support={support} locale={locale} />}
+
+      {brand && (
+        <section
+          aria-labelledby="brand-heading"
+          class="flex flex-col gap-3 rounded-xl border p-4 sm:p-6"
+          data-restaurant-branding
+        >
+          <h2 id="brand-heading" class="text-xl font-semibold">
+            {tb.restaurantHeading}
+          </h2>
+          <p class="text-sm text-muted-foreground">{tb.restaurantHint}</p>
+          {brandEditor ? (
+            <RestaurantBrandingManager client:load initial={brand} locale={locale} />
+          ) : (
+            <dl class="flex flex-col gap-2 text-sm" data-brand-read-only>
+              <div class="flex items-center gap-2">
+                <dt class="font-medium">{tb.colorLabel}:</dt>
+                <dd class="flex items-center gap-2">
+                  {brand.color ? (
+                    <>
+                      <span class="inline-block size-5 rounded border" style={`background-color: ${brand.color};`} />
+                      <span class="font-mono">{brand.color}</span>
+                    </>
+                  ) : (
+                    tb.colorNone
+                  )}
+                </dd>
+              </div>
+              <div class="flex items-center gap-2">
+                <dt class="font-medium">{tb.logoLabel}:</dt>
+                <dd>{brand.logo ? tb.logoSet : tb.logoNone}</dd>
+              </div>
+              <p class="text-muted-foreground">{tb.restaurantReadOnly}</p>
+            </dl>
+          )}
+        </section>
+      )}
+
+      {retention && (
+        <section
+          aria-labelledby="retention-heading"
+          class="flex flex-col gap-3 rounded-xl border p-4 sm:p-6"
+          data-retention-section
+        >
+          <h2 id="retention-heading" class="text-xl font-semibold">
+            {tp.retentionHeading}
+          </h2>
+          <p class="text-sm text-muted-foreground">{tp.retentionIntro}</p>
+          {retentionEditor ? (
+            <RetentionSettingsForm client:load initial={retention} locale={locale} />
+          ) : (
+            <p class="text-sm" data-retention-read-only={retention.guestRetentionDays}>
+              {tp.readOnly(retention.guestRetentionDays)}
+            </p>
+          )}
+        </section>
+      )}
+
+      {manages && !support && (
+        <NewEventForm
+          client:load
+          restaurantId={panel.restaurant.id}
+          templates={(templates ?? []).map(({ id, name }) => ({ id, name }))}
+          locale={locale}
+        />
+      )}
+
+      {floorEvents && (
+        <section aria-labelledby="floor-heading" class="flex flex-col gap-3 rounded-xl border p-4 sm:p-6">
+          <h2 id="floor-heading" class="text-xl font-semibold">
+            {tf.todayHeading}
+          </h2>
+          <p class="text-sm text-muted-foreground">{tf.todayIntro}</p>
+          {floorEvents.length === 0 ? (
+            <p class="text-muted-foreground" data-floor-list="empty">
+              {tf.todayEmpty}
+            </p>
+          ) : (
+            <ul class="flex flex-col divide-y" data-floor-list>
+              {floorEvents.map((event) => (
+                <li class="flex flex-wrap items-center justify-between gap-2 py-3" data-floor-event={event.id}>
+                  <span class="flex flex-col">
+                    <span class="font-medium">{event.name}</span>
+                    <span class="text-sm text-muted-foreground">{formatEventDate(event.date, locale)}</span>
+                  </span>
+                  <a
+                    href={floorPath(event.id)}
+                    class="rounded-md border px-3 py-2 text-sm font-medium hover:bg-muted"
+                    aria-label={tf.openFloorFor(event.name)}
+                  >
+                    {tf.openFloor}
+                  </a>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+      )}
+
+      <section aria-labelledby="events-heading" class="flex flex-col gap-3 rounded-xl border p-4 sm:p-6">
+        <h2 id="events-heading" class="text-xl font-semibold">
+          {te.listsHeading}
+        </h2>
+        {lists ? (
+          <>
+            <nav aria-label={te.tabsLabel} class="flex flex-wrap gap-2">
+              {tabs.map((candidate) => (
+                <a
+                  href={`?lista=${candidate.slug}`}
+                  aria-current={candidate.key === tab ? "page" : undefined}
+                  class:list={[
+                    "rounded-full border px-3 py-1.5 text-sm font-medium",
+                    candidate.key === tab && "bg-primary text-primary-foreground",
+                  ]}
+                >
+                  {candidate.label}
+                </a>
+              ))}
+            </nav>
+            {shown.length === 0 ? (
+              <p class="text-muted-foreground" data-event-list={tab}>
+                {emptyText}
+              </p>
+            ) : (
+              <ul class="flex flex-col divide-y" data-event-list={tab}>
+                {shown.map((event) => (
+                  <li class="flex flex-wrap items-center justify-between gap-2 py-3" data-event-id={event.id}>
+                    <span class="flex flex-col">
+                      <a
+                        href={`/panel/wydarzenia/${String(event.id)}`}
+                        class="font-medium underline-offset-4 hover:underline"
+                        aria-label={te.openCardFor(event.name)}
+                      >
+                        {event.name}
+                      </a>
+                      <span class="text-sm text-muted-foreground">
+                        {formatEventDate(event.date, locale)}
+                        {event.expectedGuests !== null && ` · ${te.guestsExpected(event.expectedGuests)}`}
+                      </span>
+                    </span>
+                    {!event.archived && event.timing === "today" && (
+                      <span class="rounded-full bg-primary px-2 py-0.5 text-xs text-primary-foreground">
+                        {te.timingLabels.today}
+                      </span>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </>
+        ) : (
+          <p class="text-sm text-muted-foreground">{te.waiterNote}</p>
+        )}
+      </section>
+
+      {templates && (
+        <section
+          aria-labelledby="templates-heading"
+          class="flex flex-col gap-3 rounded-xl border p-4 sm:p-6"
+          data-templates-section
+        >
+          <h2 id="templates-heading" class="text-xl font-semibold">
+            {tv.heading}
+          </h2>
+          <p class="text-sm text-muted-foreground">{tv.intro}</p>
+          {templates.length === 0 ? (
+            <p class="text-muted-foreground" data-template-list>
+              {tv.empty}
+            </p>
+          ) : (
+            <ul class="flex flex-col divide-y" data-template-list>
+              {templates.map((template) => (
+                <li class="flex flex-col py-3" data-template-id={template.id}>
+                  <a
+                    href={templatePath(template.id)}
+                    class="font-medium underline-offset-4 hover:underline"
+                    aria-label={tv.openFor(template.name)}
+                  >
+                    {template.name}
+                  </a>
+                  <span class="text-sm text-muted-foreground">{tv.counts(template)}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+          {!support && <NewTemplateForm client:load restaurantId={panel.restaurant.id} locale={locale} />}
+        </section>
+      )}
+
+      {catalog && (
+        <section
+          aria-labelledby="menu-heading"
+          class="flex flex-col gap-3 rounded-xl border p-4 sm:p-6"
+          data-menu-section
+        >
+          <h2 id="menu-heading" class="text-xl font-semibold">
+            {tm.heading}
+          </h2>
+          <p class="text-sm text-muted-foreground">{tm.intro}</p>
+          <p data-menu-count={catalog.items.length}>{tm.sectionCounts(catalog.items.length)}</p>
+          <a
+            href={`/panel/restauracje/${String(panel.restaurant.id)}/menu`}
+            class="self-start font-medium underline-offset-4 hover:underline"
+          >
+            {tm.openCatalog}
+          </a>
+        </section>
+      )}
+
+      {team && (
+        <section
+          aria-labelledby="team-heading"
+          class="flex flex-col gap-3 rounded-xl border p-4 sm:p-6"
+          data-team-section
+        >
+          <h2 id="team-heading" class="text-xl font-semibold">
+            {tt.heading}
+          </h2>
+          {support ? (
+            <SupportTeamList team={team} locale={locale} />
+          ) : (
+            <TeamManager
+              client:load
+              restaurantId={panel.restaurant.id}
+              initial={team}
+              origin={Astro.url.origin}
+              locale={locale}
+            />
+          )}
+        </section>
+      )}
+
+      {log && <SupportLogSection log={log} locale={locale} />}
+    </main>
+  </Layout>
+) : (
+  <NoAccess />
+)}

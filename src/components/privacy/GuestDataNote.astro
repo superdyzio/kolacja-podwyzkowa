@@ -1,0 +1,28 @@
+---
+import { formatEventDate, platformToday } from "@/lib/events/dates";
+import type { Locale } from "@/lib/i18n/locale";
+import { privacyMessages } from "@/lib/privacy/messages";
+import type { EventRetentionDto } from "@/types";
+
+// When the event's guests' data goes (privacy-retention, S-26): „usunięte po <date>” while it is kept, „Dane gości
+// usunięte <date>” once it is gone (the first deletion's day in Warsaw). Server-rendered; no data of guests.
+interface Props {
+  retention: EventRetentionDto;
+  locale: Locale;
+}
+
+const { retention, locale } = Astro.props;
+const t = privacyMessages(locale);
+const purgedDay = retention.purgedAt ? platformToday(new Date(retention.purgedAt)) : null;
+---
+
+{purgedDay ? (
+  <div class="flex flex-col gap-1 text-sm" data-guest-data-purged={purgedDay}>
+    <p class="font-medium">{t.purged(formatEventDate(purgedDay, locale))}</p>
+    <p class="text-muted-foreground">{t.purgedHint}</p>
+  </div>
+) : (
+  <p class="text-sm" data-guest-retention={retention.deleteAfter}>
+    {t.deleteAfter(formatEventDate(retention.deleteAfter, locale), retention.retentionDays)}
+  </p>
+)}

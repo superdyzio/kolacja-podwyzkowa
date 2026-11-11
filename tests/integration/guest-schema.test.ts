@@ -1,12 +1,12 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { DbClient } from "@/lib/supabase-client";
 import {
-  acquireTestEvent,
+  createTestEvent,
   deleteTestGuests,
   hasLocalDb,
   localDb,
   localDbEnv,
-  releaseEvent,
+  releaseTestEvent,
   testTag,
   type TestEvent,
 } from "./helpers";
@@ -23,7 +23,7 @@ describe.skipIf(!hasLocalDb)("guest schema is closed to browser roles", () => {
 
   beforeAll(async () => {
     db = localDb();
-    event = await acquireTestEvent(db);
+    event = await createTestEvent(db);
     const env = localDbEnv();
     if (!env) {
       throw new Error("unreachable: suite is skipped without a local DB");
@@ -32,7 +32,7 @@ describe.skipIf(!hasLocalDb)("guest schema is closed to browser roles", () => {
 
     const { data, error } = await db
       .from("guest")
-      .insert(names.map((display_name) => ({ display_name })))
+      .insert(names.map((display_name) => ({ event_id: event.id, display_name })))
       .select("id, display_name");
     if (error) {
       throw new Error(error.message);
@@ -45,7 +45,10 @@ describe.skipIf(!hasLocalDb)("guest schema is closed to browser roles", () => {
       return row.id;
     });
     // The first two form a group so guest_group has a row to (not) leak.
-    const { error: groupError } = await db.rpc("create_guest_group", { p_guest_ids: [ids[0], ids[1]] });
+    const { error: groupError } = await db.rpc("create_guest_group", {
+      p_event_id: event.id,
+      p_guest_ids: [ids[0], ids[1]],
+    });
     if (groupError) {
       throw new Error(groupError.message);
     }
@@ -53,7 +56,7 @@ describe.skipIf(!hasLocalDb)("guest schema is closed to browser roles", () => {
 
   afterAll(async () => {
     await deleteTestGuests(db, ids);
-    await releaseEvent(db, event);
+    await releaseTestEvent(db, event);
   });
 
   const anonymousHeaders: Record<string, string>[] = [{}, { apikey: "anything" }];
@@ -76,7 +79,7 @@ describe.skipIf(!hasLocalDb)("guest schema is closed to browser roles", () => {
       const response = await fetch(`${restUrl}/rpc/create_guest_group`, {
         method: "POST",
         headers: { ...headers, "Content-Type": "application/json" },
-        body: JSON.stringify({ p_guest_ids: [ids[2], ids[3]] }),
+        body: JSON.stringify({ p_event_id: event.id, p_guest_ids: [ids[2], ids[3]] }),
       });
       expect(response.ok).toBe(false);
     }

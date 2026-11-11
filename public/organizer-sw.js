@@ -1,13 +1,18 @@
-// Organizer offline readout service worker (S-09, NFR-004). Registered by organizer pages with the scope `/o/<key>`
-// (src/components/hooks/offline-worker.ts), so it only ever sees that organizer link's pages.
+// Offline readout service worker (S-09, NFR-004; staff-offline-readout S-27, NFR-017). One script for four kinds of
+// scope, each registered on its own: the client's link `/o/<key>` (src/components/hooks/offline-worker.ts), the kitchen
+// tablet `/r/<key>`, the staff floor `/panel/obsluga/<id>` and the per-event waiter's floor `/kelner/sala/<id>`. It
+// only ever answers navigations INSIDE its own path segment (a worker of `/kelner/sala/1` leaves `/kelner/sala/12`
+// alone, although browsers match scopes by string prefix) and `/_astro/` files of the pages it controls.
 //
 // It keeps ONE thing: a complete copy of the data-free readout page `<scope>/odczyt` and its `/_astro/` files. The
-// saved state itself lives in the page's localStorage, never here. Navigations go to the network first; only when an
-// organizer page cannot be loaded (network error, 8 s without an answer, 5xx) the copy of the readout page is served
-// instead, so a refresh or the panel bookmark still shows the last saved state. API requests are never answered or
+// saved state itself lives in the page's localStorage, never here. Navigations go to the network first; only when a
+// page of the scope cannot be loaded (network error, 8 s without an answer, 5xx) the copy of the readout page is
+// served instead, so a refresh or a bookmark still shows the last saved state. API requests are never answered or
 // stored here. A new copy replaces the old one only once it is complete; any failure keeps the old one. When the
-// readout page answers with the app's denial (the key no longer opens anything), the copy is dropped and the worker
-// unregisters itself. Every handler falls back to the plain network on any error. Tested in tests/sw/.
+// readout page answers with the app's denial — a 404 or 401 with the guard's private header, or a redirect (a staff
+// area sends a browser without a session to its login page; the copy is fetched with `redirect: "manual"`, so a login
+// page is never stored) — the copy is dropped and the worker unregisters itself. Every handler falls back to the plain
+// network on any error. Tested in tests/sw/.
 
 const CACHE_PREFIX = "kolacja-odczyt|";
 const ASSET_PREFIX = "/_astro/";
@@ -24,6 +29,14 @@ function scopeUrl() {
   return self.registration.scope.replace(/\/$/, "");
 }
 
+// Inside this worker's own path segment: the scope page itself or below it (never a longer sibling path).
+function inScope(url) {
+  const scope = new URL(scopeUrl());
+  return (
+    url.origin === scope.origin && (url.pathname === scope.pathname || url.pathname.startsWith(scope.pathname + "/"))
+  );
+}
+
 function readoutUrl() {
   return scopeUrl() + "/odczyt";
 }
@@ -37,9 +50,16 @@ async function ownCacheNames() {
   return names.filter((name) => name.startsWith(ownCachePrefix()));
 }
 
-// The app's own denial: a 404 with the private headers the key guard adds (a portal's or proxy's 404 is not one).
+// The app's own denial: a 404 or 401 with the private header every guarded answer carries (a portal's or proxy's
+// error is not one), or a redirect — the staff areas send a browser without a session to their login page.
 function isDenial(response) {
-  return response.status === 404 && (response.headers.get("x-robots-tag") || "").includes("noindex");
+  if (response.type === "opaqueredirect" || response.redirected || (response.status >= 300 && response.status < 400)) {
+    return true;
+  }
+  return (
+    (response.status === 404 || response.status === 401) &&
+    (response.headers.get("x-robots-tag") || "").includes("noindex")
+  );
 }
 
 function withTimeout(promise, ms) {
@@ -114,7 +134,7 @@ async function forget() {
 
 async function copyReadout() {
   const pageUrl = readoutUrl();
-  const response = await fetch(pageUrl, { cache: "no-store" });
+  const response = await fetch(pageUrl, { cache: "no-store", redirect: "manual" });
   if (isDenial(response)) {
     await forget();
     return;
@@ -189,7 +209,8 @@ async function navigate(event) {
   if (response.status >= 500) {
     return (await cachedReadout()) || response;
   }
-  if (response.status === 404) {
+  // A missing page, or a redirect (a staff area without a session): is the scope still open? (refresh decides)
+  if (response.status === 404 || response.type === "opaqueredirect") {
     event.waitUntil(refresh(true));
   } else if (response.ok) {
     event.waitUntil(refresh(false));
@@ -231,11 +252,13 @@ self.addEventListener("fetch", (event) => {
       return;
     }
     const url = new URL(request.url);
-    if (url.origin !== self.location.origin) {
+    if (url.origin !== self.location.origin || url.pathname.startsWith("/api/")) {
       return;
     }
     if (request.mode === "navigate") {
-      event.respondWith(navigate(event));
+      if (inScope(url)) {
+        event.respondWith(navigate(event));
+      }
     } else if (url.pathname.startsWith(ASSET_PREFIX)) {
       event.respondWith(asset(request));
     }

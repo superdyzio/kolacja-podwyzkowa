@@ -32,7 +32,8 @@ export default defineConfig({
   },
   // Node standalone server: `npm run preview` locally, AWS Lambda (Lambda Web Adapter in front) in production.
   adapter: node({ mode: "standalone" }),
-  // The app keeps no sessions; the adapter's default filesystem session store would point at a build-time path.
+  // No Astro sessions: staff logins (staff-accounts) live in Postgres (`staff_session`, cookie kp-session), and the
+  // adapter's default filesystem session store would point at a build-time path.
   session: false,
   // No image optimisation (the venue plan is served as uploaded), so no native `sharp` in the server bundle.
   image: { service: passthroughImageService() },
@@ -57,6 +58,10 @@ export default defineConfig({
       ANTHROPIC_API_KEY: envField.string({ context: "server", access: "secret", optional: true }),
       // Claude model id; default claude-haiku-5-5.
       AI_MODEL: envField.string({ context: "server", access: "secret", optional: true }),
+      // The daily guest data clean-up's secret (retention-schedule): the EventBridge Scheduler schedule sends it to
+      // POST /api/jobs/retention (through the Lambda Web Adapter's pass-through path). Unset or shorter than 32
+      // characters = the route answers 404 to everyone. Only src/lib/retention-token.ts reads it.
+      RETENTION_TOKEN: envField.string({ context: "server", access: "secret", optional: true }),
     },
   },
 });

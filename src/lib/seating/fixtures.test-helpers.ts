@@ -14,7 +14,7 @@ import { outlinedRooms } from "./published";
 // Small builders for the pure seating tests (not a test file itself).
 
 export function guest(id: number, displayName: string, extra: Partial<GuestDto> = {}): GuestDto {
-  return { id, displayName, isAbsent: false, groupId: null, ...extra };
+  return { id, displayName, isAbsent: false, groupId: null, diets: [], dietNote: null, ...extra };
 }
 
 export function table(id: number, name: string, seatCount: number, shape: TableShape = "round", roomId = 1): TableDto {

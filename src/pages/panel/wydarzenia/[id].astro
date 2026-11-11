@@ -1,0 +1,369 @@
+---
+import Layout from "@/layouts/Layout.astro";
+import NoAccess from "@/components/NoAccess.astro";
+import { EventCard } from "@/components/events/EventCard";
+import AiCosts from "@/components/lead/AiCosts.astro";
+import ClientWorkCards from "@/components/lead/ClientWorkCards.astro";
+import { ResetPanel } from "@/components/reset/ResetPanel";
+import SupportBanner from "@/components/support/SupportBanner.astro";
+import SupportEventSummary from "@/components/support/SupportEventSummary.astro";
+import { getAiProviderStatus } from "@/lib/ai";
+import { getAiTopicUsage } from "@/lib/ai-topics/service";
+import { clientWorkMessages } from "@/lib/client-routes/messages";
+import { CLIENT_SECTIONS, KEY_SECTIONS, panelClientApiBase, panelEventApiBase } from "@/lib/client-routes/sections";
+import { EventModulesManager } from "@/components/modules/EventModulesManager";
+import { EventBrandingManager } from "@/components/branding/EventBrandingManager";
+import ReadOnlyFrame from "@/components/lead/ReadOnlyFrame.astro";
+import { brandingMessages, getEventBranding } from "@/lib/branding";
+import { getEventModules, modulesMessages } from "@/lib/modules";
+import { EVENT_STAFF_ROLES, eventPanelMessages, getEventCard } from "@/lib/events";
+import { formatGuestLinksSummary, getGuestAccessEnabled } from "@/lib/guest-links";
+import { formatGuessSummary, getGuessBoard } from "@/lib/guesses";
+import { formatGuestSummary, summarizeGuestList } from "@/lib/guests";
+import { leadMessages } from "@/lib/lead/messages";
+import { formatOrderSummary, getOrderItems, orderTotals } from "@/lib/orders";
+import { findPanelEvent } from "@/lib/panel-api";
+import { formatQuestionSummary, getQuestionList } from "@/lib/questions";
+import { formatQuizSummary, getQuizBoard } from "@/lib/quiz";
+import { formatRsvpSummary, getRsvpBoard } from "@/lib/rsvp";
+import { formatSeatingSummary, getSeatingBoard, summarizeSeating } from "@/lib/seating";
+import { supportEventSummary } from "@/lib/support";
+import { EventTemplateActions } from "@/components/templates/EventTemplateActions";
+import { listVenueTemplates } from "@/lib/templates";
+import { formatVenueSummary, summarizeVenue } from "@/lib/venue";
+import { EventMenuEditor } from "@/components/menu/EventMenuEditor";
+import { courseLabel, getEventMenu, groupByCourse, menuMessages } from "@/lib/menu";
+import { formatAmount } from "@/lib/guesses/amount";
+import { EventWaitersManager } from "@/components/event-waiters/EventWaitersManager";
+import { eventWaiterMessages, getEventWaiters } from "@/lib/event-waiters";
+import GuestDataNote from "@/components/privacy/GuestDataNote.astro";
+import { EXPORT_FORMATS, exportPath, getEventRetention, privacyMessages } from "@/lib/privacy";
+import PrintLinks from "@/components/prints/PrintLinks.astro";
+import PrintState from "@/components/prints/PrintState.astro";
+import { printMessages } from "@/lib/prints/messages";
+
+// The event card (restaurant-events, S-11; US-06, US-09, FR-025): owners and managers of the event's restaurant see
+// what it is, copy, open and replace its client, TV and staff tablet links, edit it, archive or restore it; owners also
+// delete it. Through the central lookup: a waiter (S-21 brings their day view), another restaurant's event, a
+// disabled restaurant and an unknown or malformed id all get the same no-access page (404). The platform administrator
+// in support mode (admin-support-log, S-13; logged for the owner with the event's name) gets the banner and a
+// read-only summary WITHOUT the links (keys never reach support mode).
+// client-restaurant-split (S-14; FR-026): the card has the switch „Lokal prowadzi” and the page shows „Praca klienta”
+// — one card per section of the client's work with the client shell's summaries, linking to the panel's previews
+// (support mode: without the guests' links, which carry keys), then „Koszty AI” (usage, provider, spend) and, for
+// members, the full „Reset danych” (FR-028; the client keeps „Reset prób”). ONE guard call (each one is a log row in
+// support mode). venue-templates (S-15): members also get „Szablon sali” (save the room as a template, update the
+// room from a template after a preview naming who loses a seat). event-waiter-access (S-21b): members get „Kelnerzy na
+// imprezę” (add a waiter for this event with a one-time link and code, revoke); support mode shows no such section.
+const locale = Astro.locals.locale;
+const t = eventPanelMessages(locale);
+const lead = leadMessages(locale);
+const clientWork = clientWorkMessages(locale);
+const tmod = modulesMessages(locale);
+const tmenu = menuMessages(locale);
+const tbrand = brandingMessages(locale);
+const twaiters = eventWaiterMessages(locale);
+const tprivacy = privacyMessages(locale);
+const tprint = printMessages(locale);
+const panel = await findPanelEvent(Astro.locals, Astro.params.id, EVENT_STAFF_ROLES);
+const loaded = panel
+  ? await Promise.all([
+      getEventCard(panel.db, panel.event.restaurantId, panel.event.id, new Date()),
+      getSeatingBoard(panel.db, panel.event.id),
+      getGuestAccessEnabled(panel.db, panel.event.id),
+      getGuessBoard(panel.db, panel.event.id),
+      getQuestionList(panel.db, panel.event.id),
+      getOrderItems(panel.db, panel.event.id),
+      getAiTopicUsage(panel.db, panel.event.id, locale),
+      // venue-templates (S-15): „Zapisz salę jako szablon” / „Zaktualizuj z szablonu” (members only).
+      panel.support ? Promise.resolve([]) : listVenueTemplates(panel.db, panel.event.restaurantId),
+      // menu-catalog-courses (S-16): „Menu wydarzenia”.
+      getEventMenu(panel.db, panel.event.restaurantId, panel.event.id),
+      // event-modules (S-17): „Moduły wydarzenia”.
+      getEventModules(panel.db, panel.event.id),
+      // event-branding (S-18): „Marka wydarzenia” (members only; support mode shows no brand editor).
+      panel.support ? Promise.resolve(null) : getEventBranding(panel.db, panel.event.id),
+      // event-waiter-access (S-21b): „Kelnerzy na imprezę” (members only; never credentials, those are shown once).
+      panel.support
+        ? Promise.resolve(null)
+        : getEventWaiters(panel.db, panel.event.restaurantId, panel.event.id, new Date()),
+      // guest-rsvp-menu (S-25): the venue's counts on „Potwierdzenia i wybór dania”.
+      getRsvpBoard(panel.db, panel.event.id, new Date()),
+      // privacy-retention (S-26): „Dane gości i eksport” (the guard has applied the retention already).
+      getEventRetention(panel.db, panel.event.id),
+      // pub-quiz (S-28): the quiz card's summary (the card shows only while the module works).
+      getQuizBoard(panel.db, panel.event.id),
+    ])
+  : null;
+const card = loaded?.[0] ?? null;
+if (!panel || !card) {
+  Astro.response.status = 404;
+}
+const work = loaded
+  ? (() => {
+      const [
+        ,
+        board,
+        guestAccessEnabled,
+        guessBoard,
+        questionList,
+        orderItems,
+        aiUsage,
+        templates,
+        menu,
+        modules,
+        branding,
+        waiters,
+        rsvpBoard,
+        retention,
+        quizBoard,
+      ] = loaded;
+      const quizActive = modules?.modules.find((module) => module.key === "pubQuiz")?.active ?? false;
+      return {
+        // room-prints (S-24): the publication state above „Wydruki dla sali”.
+        prints: { publishedAt: board.published?.publishedAt ?? null, upToDate: board.upToDate },
+        retention,
+        branding,
+        waiters,
+        templates,
+        menu,
+        modules,
+        ai: { usage: aiUsage, provider: getAiProviderStatus(locale) },
+        sections: CLIENT_SECTIONS.filter(
+          (section) => !(panel?.support && KEY_SECTIONS.includes(section)) && (section !== "quiz" || quizActive),
+        ),
+        summaries: {
+          goscie: formatGuestSummary(summarizeGuestList(board.guestList), locale),
+          sale: formatVenueSummary(summarizeVenue(board.venue), locale),
+          rozsadzenie: formatSeatingSummary(summarizeSeating(board), board.published, board.upToDate, locale),
+          linki: formatGuestLinksSummary(
+            { enabled: guestAccessEnabled, guestCount: board.guestList.guests.length },
+            locale,
+          ),
+          potwierdzenia: rsvpBoard ? formatRsvpSummary(rsvpBoard, locale) : null,
+          strzaly: formatGuessSummary(guessBoard, locale),
+          pytania: formatQuestionSummary(questionList.questions, locale),
+          zamowienia: formatOrderSummary(orderTotals(orderItems), locale),
+          quiz: quizBoard ? formatQuizSummary(quizBoard, locale) : null,
+        },
+      };
+    })()
+  : null;
+---
+
+{panel && card && work ? (
+  <Layout title={t.pageTitle(card.name)}>
+    <main class="mx-auto flex max-w-3xl flex-col gap-6 p-4 sm:p-8">
+      <a
+        href={`/panel/restauracje/${String(card.restaurantId)}`}
+        class="self-start py-2 text-sm text-muted-foreground underline-offset-4 hover:underline"
+      >
+        {t.backTo(card.restaurantName)}
+      </a>
+      {panel.support ? (
+        <>
+          <SupportBanner support={panel.support} locale={locale} />
+          <SupportEventSummary event={supportEventSummary(card)} locale={locale} />
+          <p class="text-sm" data-venue-leads={String(card.venueLeads)}>
+            <span class="font-medium">{lead.switchHeading}:</span> {card.venueLeads ? lead.stateOn : lead.stateOff}
+          </p>
+        </>
+      ) : (
+        <EventCard client:load initial={card} role={panel.role} origin={Astro.url.origin} locale={locale} />
+      )}
+      {!panel.support && work.waiters && (
+        <section
+          aria-labelledby="event-waiters-heading"
+          class="flex flex-col gap-3 rounded-xl border p-4 sm:p-6"
+          data-event-waiters
+        >
+          <h2 id="event-waiters-heading" class="text-xl font-semibold">
+            {twaiters.heading}
+          </h2>
+          <p class="text-sm text-muted-foreground">{twaiters.intro}</p>
+          <EventWaitersManager
+            client:load
+            eventId={card.id}
+            initial={work.waiters}
+            origin={Astro.url.origin}
+            locale={locale}
+          />
+        </section>
+      )}
+      <ClientWorkCards eventId={card.id} sections={work.sections} summaries={work.summaries} locale={locale} />
+      <section
+        aria-labelledby="event-prints-heading"
+        class="flex flex-col gap-3 rounded-xl border p-4 sm:p-6"
+        data-event-prints
+      >
+        <h2 id="event-prints-heading" class="text-xl font-semibold">
+          {tprint.hubTitle}
+        </h2>
+        <p class="text-sm text-muted-foreground">{tprint.panelIntro}</p>
+        <PrintState
+          publishedAt={work.prints.publishedAt}
+          upToDate={work.prints.upToDate}
+          purgedAt={work.retention?.purgedAt ?? null}
+          seatingHref={`/panel/wydarzenia/${String(card.id)}/rozsadzenie`}
+          locale={locale}
+        />
+        <PrintLinks
+          base={`/panel/wydarzenia/${String(card.id)}/wydruki`}
+          support={panel.support !== null}
+          locale={locale}
+        />
+      </section>
+      {!panel.support && (
+        <EventTemplateActions
+          client:load
+          eventId={card.id}
+          eventName={card.name}
+          restaurantId={card.restaurantId}
+          templates={work.templates}
+          locale={locale}
+        />
+      )}
+      {work.menu && (
+        <section
+          aria-labelledby="event-menu-heading"
+          class="flex flex-col gap-3 rounded-xl border p-4 sm:p-6"
+          data-event-menu={work.menu.mode}
+        >
+          <h2 id="event-menu-heading" class="text-xl font-semibold">
+            {tmenu.eventHeading}
+          </h2>
+          <p class="text-sm text-muted-foreground">{tmenu.eventIntro}</p>
+          {panel.support ? (
+            <>
+              <p class="text-sm">
+                <span class="font-medium">{tmenu.modeLegend}:</span> {tmenu.modes[work.menu.mode]}
+              </p>
+              {groupByCourse(work.menu.items.filter((item) => item.available)).map((group) => (
+                <div class="flex flex-col gap-1">
+                  <p class="text-xs font-semibold text-muted-foreground uppercase">
+                    {courseLabel(group.course, locale)}
+                  </p>
+                  <ul class="text-sm">
+                    {group.items.map((item) => (
+                      <li>
+                        {item.name} — {formatAmount(item.priceGrosze)}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ))}
+            </>
+          ) : (
+            <EventMenuEditor
+              client:load
+              eventId={card.id}
+              restaurantId={card.restaurantId}
+              initial={work.menu}
+              locale={locale}
+            />
+          )}
+        </section>
+      )}
+      {work.modules && (
+        <section
+          aria-labelledby="event-modules-heading"
+          class="flex flex-col gap-3 rounded-xl border p-4 sm:p-6"
+          data-event-modules-section
+        >
+          <h2 id="event-modules-heading" class="text-xl font-semibold">
+            {panel.support ? tmod.adminHeading : tmod.venueHeading}
+          </h2>
+          <p class="text-sm text-muted-foreground">{panel.support ? tmod.adminIntro : tmod.venueIntro}</p>
+          {panel.support ? (
+            <EventModulesManager
+              client:load
+              initial={work.modules}
+              adminApi={`/api/panel/platform/events/${String(card.id)}/modules`}
+              locale={locale}
+            />
+          ) : (
+            <EventModulesManager
+              client:load
+              initial={work.modules}
+              venueApi={`${panelEventApiBase(card.id)}/modules`}
+              clientApi={card.venueLeads ? `${panelClientApiBase(card.id)}/modules` : null}
+              locale={locale}
+            />
+          )}
+        </section>
+      )}
+
+      {!panel.support && work.branding && (
+        <section
+          aria-labelledby="event-branding-heading"
+          class="flex flex-col gap-3 rounded-xl border p-4 sm:p-6"
+          data-event-branding-section
+        >
+          <h2 id="event-branding-heading" class="text-xl font-semibold">
+            {tbrand.eventHeading}
+          </h2>
+          <p class="text-sm text-muted-foreground">{card.venueLeads ? tbrand.eventHintStaff : tbrand.readOnlyStaff}</p>
+          <ReadOnlyFrame readOnly={!card.venueLeads} locale={locale}>
+            <EventBrandingManager
+              client:load
+              apiBase={panelClientApiBase(card.id)}
+              initial={work.branding}
+              locale={locale}
+            />
+          </ReadOnlyFrame>
+        </section>
+      )}
+      {work.retention && (
+        <section
+          aria-labelledby="event-privacy-heading"
+          class="flex flex-col gap-3 rounded-xl border p-4 sm:p-6"
+          data-event-privacy
+        >
+          <h2 id="event-privacy-heading" class="text-xl font-semibold">
+            {tprivacy.eventHeading}
+          </h2>
+          <GuestDataNote retention={work.retention} locale={locale} />
+          {!panel.support && (
+            <>
+              <p class="text-sm text-muted-foreground">{tprivacy.exportIntro}</p>
+              <ul class="flex flex-wrap gap-2">
+                {EXPORT_FORMATS.map((format) => (
+                  <li>
+                    <a
+                      href={exportPath(card.id, format)}
+                      download
+                      class="inline-flex rounded-md border px-3 py-2 text-sm font-medium hover:bg-muted"
+                      data-event-export={format}
+                    >
+                      {format === "json"
+                        ? tprivacy.exportJson
+                        : format === "guests-csv"
+                          ? tprivacy.exportGuestsCsv
+                          : tprivacy.exportOrdersCsv}
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+        </section>
+      )}
+      <AiCosts board={work.ai} locale={locale} />
+      {!panel.support && (
+        <section
+          aria-labelledby="event-reset-heading"
+          class="flex flex-col gap-3 rounded-xl border border-destructive/40 p-4 sm:p-6"
+          data-event-reset
+        >
+          <h2 id="event-reset-heading" class="text-xl font-semibold">
+            {clientWork.resetHeading}
+          </h2>
+          <p class="text-sm text-muted-foreground">{clientWork.resetText}</p>
+          <ResetPanel client:load apiBase={panelEventApiBase(card.id)} locale={locale} />
+        </section>
+      )}
+    </main>
+  </Layout>
+) : (
+  <NoAccess />
+)}

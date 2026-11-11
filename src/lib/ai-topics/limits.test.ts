@@ -2,9 +2,11 @@ import { describe, expect, it } from "vitest";
 import type { AiProviderStatusDto } from "@/types";
 import {
   aiTopicLimitMessages,
+  clientAiUsage,
   EVENT_LIMIT_MESSAGE,
   FAILED_MESSAGE,
   formatAiTopicSummary,
+  formatClientAiTopicSummary,
   formatProvider,
   formatRemaining,
   formatUsage,
@@ -84,6 +86,19 @@ describe("AI topic limits", () => {
     expect(formatAiTopicSummary(usage(1, 0, { inputTokens: 10, outputTokens: 5, costNanoUsd: null }), CLAUDE)).toBe(
       "Tematy AI: 1 z 1000 · Claude (claude-haiku-5-5)",
     );
+  });
+
+  it("gives the client link the counts without spend or hints (client-restaurant-split)", () => {
+    const billed = usage(12, 3, {
+      inputTokens: 9000,
+      outputTokens: 1500,
+      costNanoUsd: 1_650_000,
+      lastFailureHint: "Skończyły się kredyty.",
+    });
+    const client = clientAiUsage(billed);
+    expect(client).toEqual({ ...billed, inputTokens: 0, outputTokens: 0, costNanoUsd: 0, lastFailureHint: null });
+    expect(formatClientAiTopicSummary(billed)).toBe("Tematy AI: 12 z 1000");
+    expect(formatClientAiTopicSummary(billed, "en")).toBe("AI topics: 12 of 1000");
   });
 
   it("says the limits and the failure rule clearly", () => {

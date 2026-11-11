@@ -10,12 +10,13 @@ export const prerender = false;
 // GET: the plan image for the read-only TV view (S-03 draws the seating on it). The TV key opens only this image,
 // never the organizer API. The middleware has already checked the key; this is the second, role-specific check.
 export const GET: APIRoute = async ({ locals }) => {
-  if (!accessFor(locals, "tv")) {
+  const access = accessFor(locals, "tv");
+  if (!access) {
     return jsonError(404, noAccessMessages(locals.locale).title);
   }
   const db = getDb();
   if (!db) {
     return jsonError(503, httpMessages(locals.locale).noDatabase);
   }
-  return planImageResponse(db, locals.locale);
+  return planImageResponse(db, access.event.id, locals.locale);
 };

@@ -1,7 +1,7 @@
 import type { QuestionCategory } from "@/types";
 
 // The starter question base (S-07, PRD FR-014, Open Question 4): ~30 Polish conversation starters per category for a
-// group of friends at the annual raise dinner — work, money (as hypotheticals), ambitions, life choices, light
+// group of guests at a party in a restaurant — work, money (as hypotheticals), ambitions, life choices, light
 // philosophy and fun "what ifs".
 //
 // Content bounds chosen by the user (shape-notes, "AI topics"): bold and debatable, but no party politics, no

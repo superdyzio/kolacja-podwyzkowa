@@ -13,6 +13,7 @@ import {
 } from "@/lib/offline/cache";
 import type { GuessBoardDto, PublishedSeatingDto } from "@/types";
 import { createLocalStore } from "./local-store";
+import { isOrganizerApiBase } from "./offline-worker";
 
 // The organizer's offline memory (S-09) in this browser's localStorage, through the generic local store
 // (local-store.ts): two fixed keys, untrusted storage, the in-page fallback when storage is blocked, other tabs' writes
@@ -28,6 +29,9 @@ export interface OfflineCache {
 
 // published null: nothing has been published yet (also worth remembering — the readout says so).
 export function saveOfflineSeating(apiBase: string, published: PublishedSeatingDto | null, savedAt: string) {
+  if (!isOrganizerApiBase(apiBase)) {
+    return;
+  }
   seatingStore.write(OFFLINE_SEATING_STORAGE_KEY, offlineEntry(apiBase, published, savedAt));
 }
 
@@ -42,7 +46,7 @@ export function saveOfflineGuesses(
   savedAt: string,
   readStartedAtMs: number = Date.now(),
 ) {
-  if (readStartedAtMs < guessesSavedAtMs) {
+  if (!isOrganizerApiBase(apiBase) || readStartedAtMs < guessesSavedAtMs) {
     return;
   }
   guessesSavedAtMs = Date.now();

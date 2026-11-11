@@ -24,13 +24,13 @@ export const POST: APIRoute = async ({ locals, request }) => {
   }
 
   const messages = seatingMessages(locals.locale);
-  const result = await restoreSnapshot(api.db, body.data.snapshotId, locals.locale);
+  const result = await restoreSnapshot(api.db, api.access.event.id, body.data.snapshotId, locals.locale);
   switch (result.status) {
     case "not-found":
       return jsonError(404, messages.snapshotNotFound);
     case "conflict":
       return jsonError(409, messages.seatingChanged);
     case "restored":
-      return jsonResponse({ ...(await getSeatingBoard(api.db)), notice: result.notice });
+      return jsonResponse({ ...(await getSeatingBoard(api.db, api.access.event.id)), notice: result.notice });
   }
 };

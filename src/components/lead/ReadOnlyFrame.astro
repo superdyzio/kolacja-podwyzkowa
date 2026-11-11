@@ -1,0 +1,41 @@
+---
+import type { Locale } from "@/lib/i18n";
+import { leadMessages } from "@/lib/lead/messages";
+
+// The read-only mode of the client's islands (client-restaurant-split, S-14): one wrapper for all of them instead of a
+// prop per island. With `readOnly` the content is `inert` — no pointer, focus or keyboard reaches any form, button or
+// drawing inside — and dimmed slightly; the banner above says why. Its name and note sit OUTSIDE the inert subtree
+// (visually hidden, the region's label and description), since an inert element is hidden from assistive technology
+// together with any label on it. Both wrappers are flex columns with the pages' gap (islands render
+// `display: contents`; the hidden note is absolutely positioned, so it takes no gap), so the layout does not change
+// between the two modes.
+interface Props {
+  readOnly: boolean;
+  locale: Locale;
+}
+
+const { readOnly, locale } = Astro.props;
+const t = leadMessages(locale);
+// A page may hold several frames: the ids must not repeat.
+const id = `read-only-${crypto.randomUUID().slice(0, 8)}`;
+---
+
+{readOnly ? (
+  <div
+    class="flex min-w-0 flex-col gap-6"
+    role="region"
+    aria-labelledby={`${id}-label`}
+    aria-describedby={`${id}-note`}
+  >
+    <p class="sr-only">
+      <span id={`${id}-label`}>{t.readOnlyLabel}</span>: <span id={`${id}-note`}>{t.readOnlyNote}</span>
+    </p>
+    <div class="flex min-w-0 flex-col gap-6 opacity-90" inert data-read-only="">
+      <slot />
+    </div>
+  </div>
+) : (
+  <div class="flex min-w-0 flex-col gap-6">
+    <slot />
+  </div>
+)}

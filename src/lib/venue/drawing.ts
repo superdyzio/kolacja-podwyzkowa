@@ -501,6 +501,12 @@ export function padRect(rect: StageRect, margin: number): StageRect {
   return { left: rect.left - margin, top: rect.top - margin, right: rect.right + margin, bottom: rect.bottom + margin };
 }
 
+// The view of a whole drawing (or of a part of it): every table's bounds and room outline, or the stage when there is
+// nothing, with a margin of 0.6 chair pitch. VenueDrawing and the TV's readability rule (tv-room-rotation) share it.
+export function contentView(rects: readonly StageRect[], pitch: number, stage: StageRect): StageRect {
+  return padRect(unionRect(rects) ?? stage, pitch * 0.6);
+}
+
 // The SVG viewBox of a rect.
 export function viewBoxOf(rect: StageRect): string {
   const round = (value: number) => Math.round(value * 100) / 100;

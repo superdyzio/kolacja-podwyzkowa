@@ -1,34 +1,146 @@
 ---
-import { Button } from "@/components/ui/button";
+import LegalLinks from "@/components/legal/LegalLinks.astro";
 import Layout from "@/layouts/Layout.astro";
-import { getDb } from "@/lib/db";
-import { hasEvent } from "@/lib/event";
-import { shellMessages } from "@/lib/shell/messages";
+import { LOGIN_PATH } from "@/lib/auth/paths";
+import { PRODUCT_NAME } from "@/lib/i18n/product";
+import { HOME_PATH, landingMessages } from "@/lib/legal";
 
-// Public entry. Before the event exists it offers one-time creation (POST /api/event → organizer page with links).
-// Once it exists it shows only the no-access message: the organizer enters through the bookmarked link.
-const t = shellMessages(Astro.locals.locale);
-const db = getDb();
-const eventExists = db ? await hasEvent(db) : null;
+// The public product page (landing-legal, S-30; FR-041): what the platform does, for whom, how it works (PRD v2 flow
+// 1–7), the privacy facts, how a venue gets access, the way to the staff login and the links to the DRAFT terms and
+// privacy policy. Static: no DB access (a missing DB configuration shows the Layout's banner), no island, no form, no
+// external asset. Events never start here (the platform admin creates restaurants, the venue its events); holders of
+// an event link open it directly. Not cached (the language comes from a cookie); like every page, `noindex` (Layout)
+// until the product's name and domain are decided (PRD v2 Open Questions 1 and 4).
+const t = landingMessages(Astro.locals.locale);
+const STEPS_ANCHOR = "jak-to-dziala";
 
 Astro.response.headers.set("Cache-Control", "no-store");
 ---
 
-<Layout>
-  <main class="mx-auto flex min-h-screen max-w-xl flex-col justify-center gap-4 p-6">
-    <h1 class="text-3xl font-bold">{t.appName}</h1>
-    {eventExists === null && <p class="text-muted-foreground">{t.noDatabase}</p>}
-    {eventExists === false && (
-      <>
-        <p class="text-muted-foreground">{t.noEventYet}</p>
-        <p class="text-muted-foreground">{t.bookmarkNow}</p>
-        <form method="post" action="/api/event">
-          <Button type="submit" size="lg">
-            {t.createEvent}
-          </Button>
-        </form>
-      </>
-    )}
-    {eventExists === true && <p class="text-muted-foreground">{t.linkOnly}</p>}
-  </main>
+<Layout title={t.pageTitle}>
+  <div class="flex min-h-screen flex-col" data-landing>
+    <header class="mx-auto flex w-full max-w-5xl items-center justify-between gap-4 px-4 pt-14 pb-2 sm:px-8">
+      <a href={HOME_PATH} class="text-xl font-bold tracking-tight">
+        {PRODUCT_NAME}
+      </a>
+      <a href={LOGIN_PATH} class="rounded-md border px-3 py-1.5 text-sm font-medium" data-landing-login="header">
+        {t.login}
+      </a>
+    </header>
+
+    <main class="mx-auto flex w-full max-w-5xl flex-1 flex-col gap-16 px-4 pb-16 sm:px-8">
+      <section
+        aria-labelledby="landing-hero-heading"
+        class="flex flex-col gap-5 pt-8 sm:pt-16"
+        data-landing-section="hero"
+      >
+        <h1 id="landing-hero-heading" class="max-w-3xl text-4xl font-bold tracking-tight sm:text-5xl">
+          {t.heroTitle}
+        </h1>
+        <p class="max-w-2xl text-lg text-muted-foreground">{t.heroText}</p>
+        <div class="flex flex-wrap items-center gap-3">
+          <a
+            href={LOGIN_PATH}
+            class="rounded-md bg-primary px-5 py-2.5 text-sm font-medium text-primary-foreground"
+            data-landing-login="hero"
+          >
+            {t.login}
+          </a>
+          <a href={`#${STEPS_ANCHOR}`} class="rounded-md border px-5 py-2.5 text-sm font-medium">
+            {t.howLink}
+          </a>
+        </div>
+        <p class="text-sm text-muted-foreground">{t.loginHint}</p>
+      </section>
+
+      <section aria-labelledby="landing-audience-heading" class="flex flex-col gap-4" data-landing-section="audience">
+        <h2 id="landing-audience-heading" class="text-2xl font-semibold">
+          {t.audienceHeading}
+        </h2>
+        <ul class="grid gap-4 sm:grid-cols-3">
+          {t.audience.map((card) => (
+            <li class="flex flex-col gap-2 rounded-xl border p-5">
+              <h3 class="font-semibold">{card.title}</h3>
+              <p class="text-sm text-muted-foreground">{card.text}</p>
+            </li>
+          ))}
+        </ul>
+      </section>
+
+      <section aria-labelledby="landing-features-heading" class="flex flex-col gap-4" data-landing-section="features">
+        <h2 id="landing-features-heading" class="text-2xl font-semibold">
+          {t.featuresHeading}
+        </h2>
+        <ul class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {t.features.map((card) => (
+            <li class="flex flex-col gap-1 rounded-xl border p-5">
+              <h3 class="font-semibold">{card.title}</h3>
+              <p class="text-sm text-muted-foreground">{card.text}</p>
+            </li>
+          ))}
+        </ul>
+      </section>
+
+      <section
+        id={STEPS_ANCHOR}
+        aria-labelledby="landing-steps-heading"
+        class="flex scroll-mt-4 flex-col gap-4"
+        data-landing-section="steps"
+      >
+        <h2 id="landing-steps-heading" class="text-2xl font-semibold">
+          {t.stepsHeading}
+        </h2>
+        <ol class="flex flex-col gap-3">
+          {t.steps.map((step, index) => (
+            <li class="flex items-start gap-3">
+              <span
+                class="flex size-7 shrink-0 items-center justify-center rounded-full bg-primary text-sm font-semibold text-primary-foreground"
+                aria-hidden="true"
+              >
+                {String(index + 1)}
+              </span>
+              <span class="pt-0.5">{step}</span>
+            </li>
+          ))}
+        </ol>
+      </section>
+
+      <section
+        aria-labelledby="landing-privacy-heading"
+        class="flex flex-col gap-4 rounded-xl border p-5 sm:p-6"
+        data-landing-section="privacy"
+      >
+        <h2 id="landing-privacy-heading" class="text-2xl font-semibold">
+          {t.privacyHeading}
+        </h2>
+        <ul class="flex list-disc flex-col gap-2 pl-5 text-sm">
+          {t.privacy.map((point) => (
+            <li>{point}</li>
+          ))}
+        </ul>
+      </section>
+
+      <section aria-labelledby="landing-access-heading" class="flex flex-col gap-3" data-landing-section="access">
+        <h2 id="landing-access-heading" class="text-2xl font-semibold">
+          {t.accessHeading}
+        </h2>
+        <p>{t.accessVenue}</p>
+        <p class="text-muted-foreground">{t.accessLinkHolder}</p>
+        <a
+          href={LOGIN_PATH}
+          class="self-start rounded-md bg-primary px-5 py-2.5 text-sm font-medium text-primary-foreground"
+          data-landing-login="access"
+        >
+          {t.login}
+        </a>
+      </section>
+    </main>
+
+    <footer class="border-t">
+      <div class="mx-auto flex w-full max-w-5xl flex-col gap-2 px-4 py-6 sm:px-8">
+        <LegalLinks />
+        <p class="text-xs text-muted-foreground">{t.footerNote}</p>
+      </div>
+    </footer>
+  </div>
 </Layout>

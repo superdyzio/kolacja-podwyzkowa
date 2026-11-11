@@ -1,0 +1,65 @@
+---
+import { brandingMessages, brandStyle, logoUrl } from "@/lib/branding";
+import type { Locale } from "@/lib/i18n/locale";
+import type { BrandingDto } from "@/types";
+
+// The brand of an event's pages (event-branding, S-18, FR-032): the restaurant's logo and name on its brand colour
+// (black or white text, whichever reads better) and the client's company / event logo and name. White-label: the
+// platform's name never appears here. `base` is the area's branding API (`/api/g/<key>/branding`, …): the logos come
+// only through that area's guarded route, with the upload's version in the URL. Without a colour it keeps the
+// neutral look of the page (`variant="page"`) or the TV's dark one (`variant="tv"`, a small corner badge).
+interface Props {
+  branding: BrandingDto | null;
+  base: string;
+  locale: Locale;
+  variant?: "page" | "tv";
+}
+
+const { branding, base, locale, variant = "page" } = Astro.props;
+const t = brandingMessages(locale);
+const style = branding ? brandStyle(branding.restaurant.color, branding.restaurant.textColor) : undefined;
+const tv = variant === "tv";
+---
+
+{branding && (
+  <div
+    data-brand-header={variant}
+    style={style}
+    class:list={[
+      "flex items-center",
+      tv
+        ? "fixed top-[1.5vh] left-[1.5vw] z-10 max-w-[45vw] gap-[1vw] rounded-[1vh] px-[1vw] py-[0.8vh] text-[2.2vh]"
+        : "gap-3 rounded-xl px-3 py-2",
+      !style && (tv ? "bg-neutral-900/80 text-white" : "border"),
+    ]}
+  >
+    {branding.restaurant.logo && (
+      <img
+        src={logoUrl(base, "restaurant", branding.restaurant.logo.version)}
+        alt={t.logoAlt(branding.restaurant.name)}
+        class:list={["w-auto object-contain", tv ? "h-[5vh] max-w-[12vw]" : "h-10 max-w-[35%]"]}
+        data-brand-logo="restaurant"
+      />
+    )}
+    <span class="min-w-0 leading-tight font-semibold" data-brand-restaurant>
+      {branding.restaurant.name}
+    </span>
+    {(branding.client.logo !== null || branding.client.name !== null) && (
+      <span class:list={["ml-auto flex min-w-0 items-center", tv ? "gap-[0.8vw] pl-[1vw]" : "gap-2 pl-2"]}>
+        {branding.client.logo && (
+          <img
+            src={logoUrl(base, "event", branding.client.logo.version)}
+            alt={t.logoAlt(branding.client.name ?? branding.restaurant.name)}
+            class:list={["w-auto object-contain", tv ? "h-[5vh] max-w-[12vw]" : "h-10 max-w-[30vw]"]}
+            data-brand-logo="event"
+          />
+        )}
+        {branding.client.name && (
+          <span class:list={["min-w-0 leading-tight", !tv && "text-sm"]} data-brand-client>
+            {branding.client.name}
+          </span>
+        )}
+      </span>
+    )}
+  </div>
+)}

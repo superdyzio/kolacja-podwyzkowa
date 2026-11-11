@@ -41,7 +41,7 @@ const ZIP = path.join(OUT, "function.zip");
 
 const MAX_ZIP_BYTES = 50 * 1024 * 1024; // direct zip upload limit
 const MAX_UNZIPPED_BYTES = 200 * 1024 * 1024; // Lambda allows 250 MB with layers; keep room for the adapter layer
-const SECRET_NAMES = ["SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY", "ANTHROPIC_API_KEY"];
+const SECRET_NAMES = ["SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY", "ANTHROPIC_API_KEY", "RETENTION_TOKEN"];
 const SECRET_FILES = [".env", ".env.aws", ".dev.vars"];
 const EM_AARCH64 = 0xb7;
 
@@ -185,7 +185,7 @@ async function smokeUnpacked(dir) {
       favicon.status === 200 &&
       favicon.headers.get("content-type") === "image/png" &&
       home.status === 200 &&
-      homeText.includes("Kolacja podwyżkowa");
+      homeText.includes("Stolik");
     if (!ok) fail(`serwer z run.sh odpowiada źle: favicon ${favicon.status}, strona główna ${home.status}`);
   } finally {
     server.kill();

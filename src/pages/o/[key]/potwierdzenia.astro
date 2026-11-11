@@ -1,0 +1,65 @@
+---
+import NoAccess from "@/components/NoAccess.astro";
+import LeadBanner from "@/components/lead/LeadBanner.astro";
+import ReadOnlyFrame from "@/components/lead/ReadOnlyFrame.astro";
+import { OfflineSync } from "@/components/offline/OfflineSync";
+import { RsvpManager } from "@/components/rsvp/RsvpManager";
+import Layout from "@/layouts/Layout.astro";
+import { accessFor, organizerPath } from "@/lib/access";
+import { getDb } from "@/lib/db";
+import { getRsvpBoard, rsvpMessages } from "@/lib/rsvp";
+
+// The client's RSVP page (guest-rsvp-menu, S-25; FR-039, US-07): the deadline guests answer by, the dishes they pick
+// from (among what the event's menu offers), the counts and every guest's answer, which the client may enter or
+// change at any time. The middleware has already checked the key; this is the second, role-specific check. While the
+// venue leads, the page is view-only (the staff edit through the panel's preview).
+const locale = Astro.locals.locale;
+const t = rsvpMessages(locale);
+const access = accessFor(Astro.locals, "organizer");
+const db = access ? getDb() : null;
+const board = access && db ? await getRsvpBoard(db, access.event.id, new Date()) : null;
+if (!access || !db || !board) {
+  Astro.response.status = 404;
+}
+
+const view =
+  access && board
+    ? {
+        name: access.event.name,
+        venueLeads: access.event.venueLeads,
+        panelPath: organizerPath(access.event.organizerKey),
+        apiBase: `/api${organizerPath(access.event.organizerKey)}`,
+        board,
+      }
+    : null;
+---
+
+{view ? (
+  <Layout title={t.pageTitle(view.name)}>
+    <main class="mx-auto flex max-w-3xl flex-col gap-6 p-4 sm:p-8">
+      <header class="flex flex-col gap-2">
+        <a
+          href={view.panelPath}
+          class="self-start py-2 text-sm text-muted-foreground underline-offset-4 hover:underline"
+        >
+          {t.backToPanel}
+        </a>
+        <h1 class="text-3xl font-bold">{t.heading}</h1>
+        <p class="text-sm text-muted-foreground">{t.intro}</p>
+      </header>
+      {view.venueLeads && <LeadBanner kind="client" locale={locale} />}
+      <OfflineSync client:load apiBase={view.apiBase} locale={locale} />
+      <ReadOnlyFrame readOnly={view.venueLeads} locale={locale}>
+        <RsvpManager
+          client:load
+          apiBase={view.apiBase}
+          initial={view.board}
+          sectionsBase={view.panelPath}
+          locale={locale}
+        />
+      </ReadOnlyFrame>
+    </main>
+  </Layout>
+) : (
+  <NoAccess />
+)}

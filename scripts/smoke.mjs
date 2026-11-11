@@ -1,15 +1,39 @@
 // HTTP smoke test of the link-key access matrix against a running server (dev or production preview).
-// Needs a FRESH database (no event yet): it creates the event through the home page form endpoint.
+// Needs the server's LOCAL Supabase in .env (SUPABASE_URL on 127.0.0.1/localhost, like the server): it creates its own
+// two restaurants with one event each straight in the database (multi-tenant-events: nothing in the app creates events
+// yet), runs every section on event A and proves at the end that A's links never reach event B. Staff accounts of its
+// own (e-mails tagged with the run, so a throttle of an earlier run never applies) check login, sessions, the panel
+// guard, the platform panel (which adds restaurants of the run) and the admin's logged support access to them. Other
+// events and accounts in the database are never touched, so it runs again and again on the same database.
 // Zero dependencies on purpose. Usage: BASE_URL=http://localhost:4321 npm run smoke
 
 import { Buffer } from "node:buffer";
 import { randomBytes } from "node:crypto";
-import { URL } from "node:url";
+import { URL, URLSearchParams } from "node:url";
+import { performance } from "node:perf_hooks";
 import { TextDecoder, TextEncoder } from "node:util";
+import {
+  addMembership,
+  createEvent,
+  createRestaurant,
+  ensureStaffAccount,
+  expireEventWaiter,
+  issueStaffLink,
+  listEvents,
+  listRestaurants,
+  PlatformError,
+  purgeExpiredGuestData,
+  readDbEnv,
+  readEventKeys,
+  removeMembership,
+  setEventDate,
+} from "./lib/platform.mjs";
 
 const BASE_URL = process.env.BASE_URL ?? "http://localhost:4321";
 const NO_ACCESS_TEXT = "Ta strona jest dostępna tylko przez link od organizatora.";
-const EVENT_NAME = "Kolacja podwyżkowa";
+const RUN_TAG = randomBytes(4).toString("hex");
+const EVENT_NAME = `Kolacja smoke A ${RUN_TAG}`;
+const OTHER_EVENT_NAME = `Kolacja smoke B ${RUN_TAG}`;
 const KEY = "[A-Za-z0-9_-]{24}";
 
 let failed = 0;
@@ -19,13 +43,21 @@ function check(name, ok, detail = "") {
   if (!ok) failed++;
 }
 
-// `json` sends a JSON body; `rawBody` sends the string as is (with a JSON content type); `extraHeaders` are added.
-async function request(path, { method = "GET", json, rawBody, extraHeaders = {} } = {}) {
-  const headers = { Origin: BASE_URL, ...extraHeaders };
+// `json` sends a JSON body; `rawBody` sends the string as is (with a JSON content type); `form` sends the fields
+// form-encoded (like an HTML form); `cookie` is the Cookie header; `noOrigin` leaves the Origin header out;
+// `extraHeaders` are added.
+async function request(
+  path,
+  { method = "GET", json, rawBody, form, cookie, noOrigin = false, extraHeaders = {} } = {},
+) {
+  const headers = { ...(noOrigin ? {} : { Origin: BASE_URL }), ...(cookie ? { Cookie: cookie } : {}), ...extraHeaders };
   let body;
   if (json !== undefined || rawBody !== undefined) {
     headers["Content-Type"] = "application/json";
     body = rawBody ?? JSON.stringify(json);
+  } else if (form !== undefined) {
+    headers["Content-Type"] = "application/x-www-form-urlencoded";
+    body = new URLSearchParams(form).toString();
   }
   const response = await fetch(BASE_URL + path, { method, redirect: "manual", headers, body });
   const text = await response.text();
@@ -41,14 +73,18 @@ async function request(path, { method = "GET", json, rawBody, extraHeaders = {} 
     cacheControl: response.headers.get("cache-control") ?? "",
     referrerPolicy: response.headers.get("referrer-policy") ?? "",
     setCookie: response.headers.get("set-cookie") ?? "",
+    frameOptions: response.headers.get("x-frame-options") ?? "",
+    retryAfter: response.headers.get("retry-after") ?? "",
+    robots: response.headers.get("x-robots-tag") ?? "",
+    contentType: response.headers.get("content-type") ?? "",
     body: text,
     data,
   };
 }
 
 // Raw bytes in and out (plan image upload and download).
-async function requestBytes(path, { method = "GET", body, contentType } = {}) {
-  const headers = { Origin: BASE_URL };
+async function requestBytes(path, { method = "GET", body, contentType, cookie } = {}) {
+  const headers = { Origin: BASE_URL, ...(cookie ? { Cookie: cookie } : {}) };
   if (contentType) {
     headers["Content-Type"] = contentType;
   }
@@ -79,50 +115,106 @@ function finish() {
   process.exit(failed ? 1 : 0);
 }
 
-// 1. Fresh home page offers one-time creation.
+// 1. The home page is the product page (landing-legal, S-30): it creates nothing and shows no event — staff log in
+// through /logowanie, a link holder opens the link directly (section 45 checks the page in detail).
 const home = await request("/");
 check("home renders", home.status === 200, String(home.status));
-if (!home.body.includes("Utwórz wydarzenie")) {
-  check("home offers event creation (the smoke test needs a database without an event)", false);
+check(
+  "home is the product page with the staff login, says event links open directly and offers no event creation",
+  home.body.includes("data-landing") &&
+    home.body.includes('href="/logowanie"') &&
+    home.body.includes("Masz link od organizatora albo lokalu?") &&
+    !home.body.includes("Utwórz wydarzenie") &&
+    !home.body.includes("/api/event"),
+);
+
+// 2. The old one-time creation endpoint is gone.
+const oldCreate = await request("/api/event", { method: "POST" });
+check("the old event creation endpoint is gone", oldCreate.status === 404, String(oldCreate.status));
+
+// 3. Two restaurants with one event each, created in the LOCAL database (refused anywhere else). Every section below
+// runs on A; section 23d checks B, section 25 gives both restaurants staff accounts.
+let platformEnv;
+let restaurantA;
+let restaurantB;
+let eventA;
+let eventB;
+try {
+  platformEnv = readDbEnv({ requireLocal: true });
+  restaurantA = await createRestaurant(platformEnv, `Restauracja smoke A ${RUN_TAG}`);
+  restaurantB = await createRestaurant(platformEnv, `Restauracja smoke B ${RUN_TAG}`);
+  eventA = await createEvent(platformEnv, restaurantA.id, EVENT_NAME, { allModules: true });
+  eventB = await createEvent(platformEnv, restaurantB.id, OTHER_EVENT_NAME, { allModules: true });
+} catch (error) {
+  check(
+    "smoke events are created in the local database",
+    false,
+    error instanceof PlatformError ? error.message : String(error),
+  );
   finish();
 }
+console.log(`      database ${platformEnv.host}: events ${String(eventA.id)} (A) and ${String(eventB.id)} (B)`);
 
-// 2. Creating the event redirects to the organizer view.
-const created = await request("/api/event", { method: "POST" });
-const organizerKey = new RegExp(`^/o/(${KEY})$`).exec(created.location)?.[1];
+// An „ops” owner of A with a panel session (client-restaurant-split): since S-14 the full reset, the AI costs and the
+// tablet link rotation live in the panel, so sections 20–24 use it there. Its membership is removed before section 25,
+// which builds the team of A from scratch (and sections 26/28 count it).
+const opsPanel = `/api/panel/events/${String(eventA.id)}`;
+let opsCookie = "";
+let opsAccount;
+try {
+  opsAccount = await ensureStaffAccount(platformEnv, {
+    email: `ops-${RUN_TAG}@smoke.stolik`,
+    displayName: "Smoke ops",
+  });
+  await addMembership(platformEnv, restaurantA.id, opsAccount.id, "owner");
+  const opsInvite = await issueStaffLink(platformEnv, opsAccount.id, "invite", BASE_URL);
+  const opsRedeemed = await request("/api/auth/password-link", {
+    method: "POST",
+    form: { token: opsInvite.token, password: "smoke-ops-haslo-1", repeat: "smoke-ops-haslo-1" },
+  });
+  const opsToken = /(?:^|[\s,])kp-session=([A-Za-z0-9_-]{43});/.exec(opsRedeemed.setCookie)?.[1];
+  opsCookie = opsToken ? `kp-session=${opsToken}` : "";
+} catch (error) {
+  check("the ops owner of A is created", false, error instanceof PlatformError ? error.message : String(error));
+}
+check("the ops owner of A has a panel session", opsCookie !== "");
+const asOps = (options = {}) => ({ ...options, cookie: opsCookie });
+const organizerKey = eventA.organizerKey;
+const tvKey = eventA.tvKey;
 check(
-  "event creation redirects to the organizer view",
-  created.status === 303 && Boolean(organizerKey),
-  `${created.status} ${organizerKey ? "/o/<organizer>" : created.location}`,
+  "the two smoke events have their own keys",
+  new Set([
+    eventA.organizerKey,
+    eventA.tvKey,
+    eventA.restaurantKey,
+    eventB.organizerKey,
+    eventB.tvKey,
+    eventB.restaurantKey,
+  ]).size === 6 && [organizerKey, tvKey].every((key) => new RegExp(`^${KEY}$`).test(key)),
 );
-if (!organizerKey) finish();
 
-// 3. Organizer view opens with private headers and shows the TV link.
+// 4. A gets the starter question base, like `npm run event:create` gives it.
+const starterLoad = await request(`/api/o/${organizerKey}/questions/starter`, { method: "POST" });
+check(
+  "event A gets the starter question base",
+  starterLoad.status === 200 && starterLoad.data?.added === 90 && starterLoad.data.starterMissing === 0,
+  `${starterLoad.status} ${String(starterLoad.data?.added)}`,
+);
+
+// 5. Organizer view opens with private headers and shows the TV link.
 const organizer = await request(`/o/${organizerKey}`);
-const tvKey = new RegExp(`/tv/(${KEY})`).exec(organizer.body)?.[1];
 check("organizer view renders", organizer.status === 200, String(organizer.status));
 check("organizer view is not cacheable", organizer.cacheControl.includes("no-store"), organizer.cacheControl);
 check("organizer view sends no referrer", organizer.referrerPolicy === "no-referrer", organizer.referrerPolicy);
-check("organizer view shows the TV link", Boolean(tvKey) && tvKey !== organizerKey);
-if (!tvKey) finish();
+check(
+  "organizer view shows its event and the TV link",
+  organizer.body.includes(EVENT_NAME) && organizer.body.includes(`/tv/${tvKey}`),
+);
 
-// 4. TV view opens and never contains the organizer key.
+// 6. TV view opens and never contains the organizer key.
 const tv = await request(`/tv/${tvKey}`);
 check("TV view renders", tv.status === 200, String(tv.status));
 check("TV view does not contain the organizer key", !tv.body.includes(organizerKey));
-
-// 5. A second creation reveals nothing.
-const again = await request("/api/event", { method: "POST" });
-check(
-  "second creation redirects home without a key",
-  again.status === 303 && again.location === "/" && again.body === "",
-  `${again.status} ${again.location}`,
-);
-
-// 6. Home now shows only the no-access message.
-const homeAfter = await request("/");
-check("home no longer offers creation", homeAfter.status === 200 && !homeAfter.body.includes("Utwórz wydarzenie"));
-check("home says access is by link only", homeAfter.body.includes("Dostęp tylko przez link od organizatora"));
 
 // 7. Every page without a valid key of the right role gets the same 404 no-access page with no data.
 const unknownKey = randomBytes(18).toString("base64url");
@@ -466,11 +558,11 @@ check(
 );
 const tooManySeats = await request(`${api}/tables`, {
   method: "POST",
-  json: { roomId: gardenId, name: "Taras Smoke", seatCount: 21, shape: "round", x: 0.5, y: 0.5 },
+  json: { roomId: gardenId, name: "Taras Smoke", seatCount: 31, shape: "round", x: 0.5, y: 0.5 },
 });
 check(
-  "21 seats are refused",
-  tooManySeats.status === 400 && errorOf(tooManySeats) === "Stolik ma od 2 do 20 miejsc.",
+  "31 seats are refused (scale-150: 2 to 30)",
+  tooManySeats.status === 400 && errorOf(tooManySeats) === "Stolik ma od 2 do 30 miejsc.",
   `${tooManySeats.status} ${errorOf(tooManySeats)}`,
 );
 const offPlan = await request(`${api}/tables`, {
@@ -789,15 +881,17 @@ check(
   leaksFromTv(tvFirst.body).join(" "),
 );
 check(
-  "TV draws the published venue: rotations, outlined rooms and the chair pitch, nothing else",
+  "TV draws the published venue: rotations, outlined rooms, each table's room name and the chair pitch, nothing else",
+  // pub-quiz (S-28) added `quiz` (null while no quiz runs; event A has every module on); section 43 checks it.
   JSON.stringify(Object.keys(tvFirst.data ?? {}).sort()) ===
-    JSON.stringify(["chairPitch", "planVersion", "publishedAt", "rooms", "spotlight", "tables", "version"]) &&
+    JSON.stringify(["chairPitch", "planVersion", "publishedAt", "quiz", "rooms", "spotlight", "tables", "version"]) &&
+    tvFirst.data.quiz === null &&
     tvFirst.data.chairPitch === 0.04 &&
     tvFirst.data.rooms.some((room) => room.width === OUTLINE.width && room.height === OUTLINE.height) &&
     tvFirst.data.rooms.every((room) => Object.keys(room).sort().join(",") === "height,name,width,x,y") &&
     tableNamed(tvFirst, TABLE_NAME)?.rotation === 270 &&
     tvFirst.data.tables.every(
-      (table) => Object.keys(table).sort().join(",") === "name,rotation,seatCount,seats,shape,x,y",
+      (table) => Object.keys(table).sort().join(",") === "name,room,rotation,seatCount,seats,shape,x,y",
     ),
   tvFirst.body,
 );
@@ -938,6 +1032,48 @@ const tvPageLeaks = [organizerKey, "guestId", "pinned", "isAbsent", "tableId", "
   tvPage.body.includes(secret),
 );
 check("TV page leaks no organizer key, ids, pins or absences", tvPageLeaks.length === 0, tvPageLeaks.join(" "));
+
+// 15a. TV pinned to one room (tv-room-rotation, S-20): `?sala=<room name>` (any case) shows that room with its own
+// name as the caption; a malformed or unknown value gives the plain TV page — 200, never an echo of the value, nothing
+// private. The pin is resolved on the server against THIS event's published rooms only.
+const tvPinned = await request(`/tv/${tvKey}?sala=${encodeURIComponent(ROOM_NAME.toLowerCase())}`);
+check(
+  "TV page pinned to a room shows that room by its own name",
+  tvPinned.status === 200 &&
+    tvPinned.body.includes(`data-tv-room="${ROOM_NAME}"`) &&
+    tvPinned.body.includes(TABLE_NAME) &&
+    tvPinned.body.includes(GUEST_NAMES[0]),
+  String(tvPinned.status),
+);
+const tvPinLeaks = [organizerKey, "guestId", "pinned", "isAbsent", "tableId"].filter((secret) =>
+  tvPinned.body.includes(secret),
+);
+check("TV page pinned to a room leaks no key, ids or absences", tvPinLeaks.length === 0, tvPinLeaks.join(" "));
+const organizerWithRooms = await request(`/o/${organizerKey}`);
+check(
+  "organizer page lists a TV link per room",
+  organizerWithRooms.status === 200 &&
+    organizerWithRooms.body.includes(`/tv/${tvKey}?sala=${encodeURIComponent(ROOM_NAME)}`),
+  String(organizerWithRooms.status),
+);
+const PIN_MARK = `PinSmoke${RUN_TAG}`;
+for (const [label, value] of [
+  ["markup", `<b>${PIN_MARK}</b><script>alert(1)</script>`],
+  ["unknown", `Nieznana ${PIN_MARK}`],
+  ["overlong", `${PIN_MARK}${"x".repeat(200)}`],
+  ["blank", "   "],
+]) {
+  const res = await request(`/tv/${tvKey}?sala=${encodeURIComponent(value)}`);
+  check(
+    `TV page with the room parameter (${label}) is the plain TV page (no echo, no pin)`,
+    res.status === 200 &&
+      res.body.includes(TABLE_NAME) &&
+      !res.body.includes(PIN_MARK) &&
+      !res.body.includes("alert(1)") &&
+      !res.body.includes(organizerKey),
+    String(res.status),
+  );
+}
 
 // 16. Draw, draft and restore (S-04). The draw itself runs in the browser; the server gives it the neighbour history,
 // re-checks the drawn draft and restores published arrangements. State here: Ania Smoke at seat 4 of "Okno Smoke"
@@ -1176,7 +1312,7 @@ check(
     aniaState.data.drawing.chairPitch === 0.04 &&
     aniaState.data.drawing.tables.some((table) => table.name === TABLE_NAME && table.rotation === 270) &&
     aniaState.data.drawing.tables.every(
-      (table) => Object.keys(table).sort().join(",") === "name,rotation,seatCount,seats,shape,x,y",
+      (table) => Object.keys(table).sort().join(",") === "name,room,rotation,seatCount,seats,shape,x,y",
     ) &&
     aniaState.data.drawing.tables.every((table) =>
       table.seats.every((seat) => Object.keys(seat).sort().join(",") === "name,seat"),
@@ -2261,9 +2397,13 @@ const usageText = (used, failed, lastFailureHint = null) =>
 const generatedTopics = [];
 const topicLeaks = (body) => generatedTopics.filter((text) => body.includes(text) || body.includes(escapeHtml(text)));
 
-const aiBoard = await request(aiApi);
+// client-restaurant-split: the AI board (usage, provider, spend) is the venue's — GET in the panel; the client link's
+// GET answers the identical denial and its generation answers the counts without spend or hints.
+const aiBoard = await request(`${opsPanel}/ai-topics`, asOps());
+const clientAiBoard = await request(aiApi);
+check("AI board on the client link: the identical denial", noAccessJson(clientAiBoard), String(clientAiBoard.status));
 check(
-  "AI board: usage starts at zero, with the limits and the provider (never a key)",
+  "AI board (panel): usage starts at zero, with the limits and the provider (never a key)",
   aiBoard.status === 200 &&
     aiBoard.cacheControl.includes("no-store") &&
     keysOf(aiBoard.data) === "provider,usage" &&
@@ -2399,20 +2539,18 @@ if (aiOnMock) {
   );
   const organizerFail = await request(aiApi, { method: "POST", json: { category: null }, extraHeaders: AI_FAIL });
   check(
-    "a failed organizer attempt: 503 with the reason for the organizer",
+    "a failed client attempt: 503 with the message and the counts, no hint (the cause is the venue's)",
     organizerFail.status === 503 &&
-      keysOf(organizerFail.data) === "error,hint,usage" &&
+      keysOf(organizerFail.data) === "error,usage" &&
       organizerFail.data.error.includes("nie zmniejszyła limitu") &&
-      typeof organizerFail.data.hint === "string" &&
-      organizerFail.data.hint.length > 0 &&
-      JSON.stringify(organizerFail.data.usage) === usageText(evening, 2, MOCK_FAILURE_HINT),
+      JSON.stringify(organizerFail.data.usage) === usageText(evening, 2),
     organizerFail.body,
   );
   const organizerExtra = await request(aiApi, { method: "POST", json: { category: null, guestId: ola.id } });
   check("organizer AI topic with an extra key: 400", organizerExtra.status === 400, String(organizerExtra.status));
-  const aiBoardAfter = await request(aiApi);
+  const aiBoardAfter = await request(`${opsPanel}/ai-topics`, asOps());
   check(
-    "AI board counts every success and every failure",
+    "AI board (panel) counts every success and every failure, with the latest failure's hint",
     aiBoardAfter.status === 200 &&
       JSON.stringify(aiBoardAfter.data?.usage) === usageText(evening, 2, MOCK_FAILURE_HINT),
     aiBoardAfter.body.slice(0, 200),
@@ -2445,31 +2583,44 @@ if (aiOnMock) {
     String(aniaPageAfterAi.status),
   );
 
-  // The organizer's AI panel on the questions page and the shell card (no „Wkrótce” card is left).
+  // The client's AI panel on the questions page and the shell card: counts only (client-restaurant-split); the
+  // provider, the failure hint and the cost are on the panel's event page („Koszty AI”).
   const aiPage = await request(`/o/${organizerKey}/pytania`);
   check(
-    "questions page has the organizer's AI panel with usage and provider",
+    "questions page has the client's AI panel with the usage only (no provider, hint or cost)",
     aiPage.status === 200 &&
       aiPage.body.includes('id="tematy-ai"') &&
       aiPage.body.includes("Temat od AI") &&
       aiPage.body.includes("Wygeneruj temat z AI") &&
       aiPage.body.includes(`Wykorzystano ${evening} z ${EVENT_AI_LIMIT} · nieudane: 2`) &&
-      aiPage.body.includes("atrapa AI") &&
-      aiPage.body.includes("Ostatnia próba (np. gościa) się nie udała") &&
-      aiPage.body.includes(MOCK_FAILURE_HINT) &&
-      // The mock bills nothing, so no cost line.
+      !aiPage.body.includes("atrapa AI") &&
+      !aiPage.body.includes("Ostatnia próba (np. gościa) się nie udała") &&
+      !aiPage.body.includes(MOCK_FAILURE_HINT) &&
       !aiPage.body.includes("Koszt AI") &&
       topicLeaks(aiPage.body).length === 0,
     String(aiPage.status),
   );
   const shellWithAi = await request(`/o/${organizerKey}`);
   check(
-    "organizer shell links to the AI panel with its summary",
+    "client shell links to the AI panel with the counts only",
     shellWithAi.status === 200 &&
       shellWithAi.body.includes(`/o/${organizerKey}/pytania#tematy-ai`) &&
-      shellWithAi.body.includes(`Tematy AI: ${evening} z ${EVENT_AI_LIMIT} · atrapa AI · ostatnia próba nieudana`) &&
+      shellWithAi.body.includes(`Tematy AI: ${evening} z ${EVENT_AI_LIMIT}`) &&
+      !shellWithAi.body.includes("atrapa AI") &&
+      !shellWithAi.body.includes("ostatnia próba nieudana") &&
       countOf(shellWithAi.body, "Wkrótce") === 0,
     String(shellWithAi.status),
+  );
+  const eventPageWithAi = await request(`/panel/wydarzenia/${String(eventA.id)}`, asOps());
+  check(
+    "the panel's event page shows „Koszty AI”: usage, the provider and the latest failure's hint",
+    eventPageWithAi.status === 200 &&
+      eventPageWithAi.body.includes("Koszty AI") &&
+      eventPageWithAi.body.includes(`Wykorzystano ${evening} z ${EVENT_AI_LIMIT} · nieudane: 2`) &&
+      eventPageWithAi.body.includes("atrapa AI") &&
+      eventPageWithAi.body.includes(MOCK_FAILURE_HINT) &&
+      topicLeaks(eventPageWithAi.body).length === 0,
+    String(eventPageWithAi.status),
   );
 }
 for (const [label, key] of [
@@ -2886,13 +3037,16 @@ if (aiOnMock) {
 // refused on /r/ and the restaurant key opens nothing else; „Wymień link” kills the old link at once.
 const ordersApi = `${api}/orders`;
 const shellWithOrders = await request(`/o/${organizerKey}`);
-const restaurantKey = new RegExp(`/r/(${KEY})`).exec(shellWithOrders.body)?.[1];
+// client-restaurant-split: the tablet link is the venue's (the panel's event card), never on the client's pages.
+const restaurantKey = eventA.restaurantKey;
 check(
-  "organizer shell shows the restaurant link and the orders card",
+  "client shell has the orders card and no tablet link",
   shellWithOrders.status === 200 &&
     Boolean(restaurantKey) &&
     restaurantKey !== organizerKey &&
     restaurantKey !== tvKey &&
+    !shellWithOrders.body.includes(restaurantKey) &&
+    !/\/r\/[A-Za-z0-9_-]{24}/.test(shellWithOrders.body) &&
     shellWithOrders.body.includes(`/o/${organizerKey}/zamowienia`) &&
     shellWithOrders.body.includes("Zamówienia i restauracja"),
   `${shellWithOrders.status} ${restaurantKey}`,
@@ -2993,17 +3147,38 @@ check(
 );
 
 const addLine = (json) => request(ordersApi, { method: "POST", json });
-const schabowy = await addLine({
+// client-restaurant-split (FR-027): the client never sends a price — a new name costs 0 until the venue sets it in
+// „Cennik wydarzenia” (PUT /api/panel/events/<id>/prices, the ops owner here). addPricedLine adds the line on the client
+// link, sets its name's price in the panel and answers the client's fresh board with the add's status.
+const setPrice = (name, price, kind = "dish") =>
+  request(`${opsPanel}/prices`, asOps({ method: "PUT", json: { kind, name, price } }));
+const addPricedLine = async ({ price, ...json }) => {
+  const added = await addLine(json);
+  if (added.status !== 201) return added;
+  const priced = await setPrice(json.name, price);
+  if (priced.status !== 200) return priced;
+  return { ...(await request(ordersApi)), status: added.status };
+};
+const unpricedSchabowy = await addLine({ name: "Schabowy Smoke", quantity: 1 });
+const unpricedId = unpricedSchabowy.data?.items?.find((item) => item.name === "Schabowy Smoke")?.id;
+check(
+  "orders: a dish the venue has not priced yet costs 0",
+  unpricedSchabowy.status === 201 &&
+    unpricedSchabowy.data.items.find((item) => item.id === unpricedId)?.unitPriceGrosze === 0,
+  unpricedSchabowy.body.slice(0, 200),
+);
+await request(`${ordersApi}/${String(unpricedId)}`, { method: "DELETE" });
+const schabowy = await addPricedLine({
   name: "  Schabowy   Smoke ",
   price: "49,90 zł",
   quantity: 1,
   note: "bez cebuli",
   assignment: { guestId: seatedGuest?.id },
 });
-await addLine({ name: "Żurek Smoke", price: "24", quantity: 2, assignment: { guestId: seatedGuest?.id } });
-await addLine({ name: "Woda Smoke", price: "18", quantity: 2, assignment: { tableId: publishedTable?.id } });
-await addLine({ name: "Pierogi Smoke", price: "36", quantity: 1, assignment: { guestId: unseatedGuest?.id } });
-const tortLine = await addLine({ name: "Tort Smoke", price: "350", quantity: 1, assignment: null });
+await addPricedLine({ name: "Żurek Smoke", price: "24", quantity: 2, assignment: { guestId: seatedGuest?.id } });
+await addPricedLine({ name: "Woda Smoke", price: "18", quantity: 2, assignment: { tableId: publishedTable?.id } });
+await addPricedLine({ name: "Pierogi Smoke", price: "36", quantity: 1, assignment: { guestId: unseatedGuest?.id } });
+const tortLine = await addPricedLine({ name: "Tort Smoke", price: "350", quantity: 1, assignment: null });
 const seatedTable = tortLine.data?.placement?.tables?.find((table) => table.name === seatedGuest?.seat?.table);
 check(
   "orders: lines are added with normalized names and grosze, totals and placement by the published seating",
@@ -3033,19 +3208,24 @@ check(
 );
 
 for (const [label, json, status, message] of [
-  ["a zero quantity", { name: "X", price: "1", quantity: 0 }, 400, "Ilość to liczba od 1 do 99."],
-  ["a bad price", { name: "X", price: "abc", quantity: 1 }, 400, "Wpisz kwotę w złotych, np. 1500 albo 1499,99."],
-  ["no dish name", { name: "  ", price: "1", quantity: 1 }, 400, "Wpisz nazwę dania."],
+  ["a zero quantity", { name: "X", quantity: 0 }, 400, "Ilość to liczba od 1 do 99."],
   [
-    "a guest and a table at once",
-    { name: "X", price: "1", quantity: 1, assignment: { guestId: 1, tableId: 1 } },
+    "a price (the venue's, client-restaurant-split)",
+    { name: "X", price: "1", quantity: 1 },
     400,
     "Nieprawidłowe dane.",
   ],
-  ["an extra key", { name: "X", price: "1", quantity: 1, priceGrosze: 100 }, 400, "Nieprawidłowe dane."],
+  ["no dish name", { name: "  ", quantity: 1 }, 400, "Wpisz nazwę dania."],
+  [
+    "a guest and a table at once",
+    { name: "X", quantity: 1, assignment: { guestId: 1, tableId: 1 } },
+    400,
+    "Nieprawidłowe dane.",
+  ],
+  ["an extra key", { name: "X", quantity: 1, priceGrosze: 100 }, 400, "Nieprawidłowe dane."],
   [
     "a guest that does not exist",
-    { name: "X", price: "1", quantity: 1, assignment: { guestId: 2_000_000_000 } },
+    { name: "X", quantity: 1, assignment: { guestId: 2_000_000_000 } },
     409,
     "Nie ma już takiego gościa albo stolika.",
   ],
@@ -3153,14 +3333,18 @@ check(
     restaurantTicked.data.prep.find((line) => line.name === "Schabowy Smoke")?.toServe === 0,
   `${ticked.status} ${restaurantTicked.status}`,
 );
-const moved = await request(`${ordersApi}/${schabowyId}`, {
+const movedOnly = await request(`${ordersApi}/${schabowyId}`, {
   method: "PATCH",
-  json: { assignment: { tableId: publishedTable?.id }, price: "52", quantity: 2 },
+  json: { assignment: { tableId: publishedTable?.id }, quantity: 2 },
 });
+const repriced = await setPrice("schabowy smoke", "52");
+const moved = await request(ordersApi);
 const movedLine = moved.data?.items?.find((item) => item.id === schabowyId);
 check(
-  "orders: a line is moved to a table and repriced, keeping its tick on the first piece (the new one is to serve)",
-  moved.status === 200 &&
+  "orders: a line is moved to a table and repriced by the venue, keeping its tick on the first piece (the new one is to serve)",
+  movedOnly.status === 200 &&
+    repriced.status === 200 &&
+    moved.status === 200 &&
     movedLine?.guestId === null &&
     movedLine.tableId === publishedTable?.id &&
     movedLine.unitPriceGrosze === 5200 &&
@@ -3361,10 +3545,11 @@ check(
 const ordersPage = await request(`/o/${organizerKey}/zamowienia`);
 const tvOrdersPage = await request(`/o/${tvKey}/zamowienia`);
 check(
-  "organizer order page renders with the restaurant link; other keys get the denial",
+  "client order page renders without the tablet link; other keys get the denial",
   ordersPage.status === 200 &&
     ordersPage.body.includes("Zamówienia i restauracja") &&
-    ordersPage.body.includes(`/r/${restaurantKey}`) &&
+    !ordersPage.body.includes(restaurantKey) &&
+    !ordersPage.body.includes("Wymień link") &&
     ordersPage.body.includes("Schabowy Smoke") &&
     tvOrdersPage.status === 404,
   `${ordersPage.status} ${tvOrdersPage.status}`,
@@ -3376,7 +3561,15 @@ check(
 const drinksApi = `${api}/drinks`;
 const DRINK = "Piwo Drinksmoke";
 const addDrink = (json) => request(drinksApi, { method: "POST", json });
-const drinkAdded = await addDrink({ name: `  ${DRINK}  `, price: "14,50 zł", quantity: 12 });
+// Priced like the dishes: the client adds the drink, the venue sets its name's price in the panel.
+const addPricedDrink = async ({ price, ...json }) => {
+  const added = await addDrink(json);
+  if (added.status !== 201) return added;
+  const priced = await setPrice(json.name, price, "drink");
+  if (priced.status !== 200) return priced;
+  return { ...(await request(ordersApi)), status: added.status };
+};
+const drinkAdded = await addPricedDrink({ name: `  ${DRINK}  `, price: "14,50 zł", quantity: 12 });
 const drinkId = drinkAdded.data?.drinks?.find((drink) => drink.name === DRINK)?.id;
 check(
   "drinks: a drink joins the organizer's board, its sum apart from the dishes'",
@@ -3392,7 +3585,7 @@ check(
     !drinkAdded.data.prep.some((line) => line.name === DRINK),
   drinkAdded.body.slice(0, 300),
 );
-const wineAdded = await addDrink({ name: "Wino Drinksmoke", price: "120", quantity: 1 });
+const wineAdded = await addPricedDrink({ name: "Wino Drinksmoke", price: "120", quantity: 1 });
 const wineId = wineAdded.data?.drinks?.find((drink) => drink.name === "Wino Drinksmoke")?.id;
 const drinkChanged = await request(`${drinksApi}/${drinkId}`, { method: "PATCH", json: { quantity: 15 } });
 check(
@@ -3405,31 +3598,17 @@ check(
   drinkChanged.body.slice(0, 300),
 );
 for (const [label, method, path, json, status, message] of [
-  ["no name", "POST", drinksApi, { name: " ", price: "1", quantity: 1 }, 400, "Wpisz nazwę napoju."],
+  ["no name", "POST", drinksApi, { name: " ", quantity: 1 }, 400, "Wpisz nazwę napoju."],
+  ["a quantity above 999", "POST", drinksApi, { name: "X", quantity: 1000 }, 400, "Ilość to liczba od 1 do 999."],
   [
-    "a quantity above 999",
+    "a price (the venue's, client-restaurant-split)",
     "POST",
     drinksApi,
-    { name: "X", price: "1", quantity: 1000 },
-    400,
-    "Ilość to liczba od 1 do 999.",
-  ],
-  [
-    "a bad price",
-    "POST",
-    drinksApi,
-    { name: "X", price: "abc", quantity: 1 },
-    400,
-    "Wpisz kwotę w złotych, np. 1500 albo 1499,99.",
-  ],
-  [
-    "an assignment",
-    "POST",
-    drinksApi,
-    { name: "X", price: "1", quantity: 1, assignment: null },
+    { name: "X", price: "1", quantity: 1 },
     400,
     "Nieprawidłowe dane.",
   ],
+  ["an assignment", "POST", drinksApi, { name: "X", quantity: 1, assignment: null }, 400, "Nieprawidłowe dane."],
   ["an empty change", "PATCH", `${drinksApi}/${drinkId}`, {}, 400, "Nieprawidłowe dane."],
   ["an unknown drink", "PATCH", `${drinksApi}/2000000000`, { quantity: 1 }, 404, "Nie znaleziono napoju."],
 ]) {
@@ -3445,7 +3624,7 @@ for (const [method, path] of [
 ]) {
   const res = await request(path, {
     method,
-    json: method === "DELETE" ? undefined : { name: "X", price: "1", quantity: 1 },
+    json: method === "DELETE" ? undefined : { name: "X", quantity: 1 },
   });
   check(
     `drinks: other keys are refused (${method} ${path.replace(tvKey, "<tv>").replace(restaurantKey, "<restaurant>").replace(seatedKey, "<guest>")})`,
@@ -3494,14 +3673,23 @@ check(
   `${wineDeleted.status} ${wineDeletedAgain.status}`,
 );
 
-const rotated = await request(`${api}/restaurant-link`, { method: "POST" });
-const newRestaurantKey = new RegExp(`^/r/(${KEY})$`).exec(rotated.data?.path ?? "")?.[1];
+// client-restaurant-split (FR-025): the client link cannot replace the tablet link any more (the identical denial);
+// the venue does it on the panel's event card.
+const clientRotation = await request(`${api}/restaurant-link`, { method: "POST" });
+const stillOldRestaurant = await request(`/r/${restaurantKey}`);
+check(
+  "„Wymień link” of the tablet on the client link: the identical denial, the tablet link unchanged",
+  noAccessJson(clientRotation) && stillOldRestaurant.status === 200,
+  `${clientRotation.status} ${stillOldRestaurant.status}`,
+);
+const rotated = await request(`${opsPanel}/links/restaurant`, asOps({ method: "POST" }));
+const newRestaurantKey = new RegExp(`^/r/(${KEY})$`).exec(rotated.data?.event?.links?.restaurant ?? "")?.[1];
 const oldRestaurantPage = await request(`/r/${restaurantKey}`);
 const oldRestaurantApi = await request(`${restaurantApiBase}/orders`);
 const newRestaurantPage = newRestaurantKey ? await request(`/r/${newRestaurantKey}`) : null;
 const shellAfterRotation = await request(`/o/${organizerKey}`);
 check(
-  "„Wymień link”: a new restaurant key, the old link dead at once",
+  "„Wymień link” in the panel: a new tablet key, the old link dead at once, never on the client shell",
   rotated.status === 200 &&
     Boolean(newRestaurantKey) &&
     newRestaurantKey !== restaurantKey &&
@@ -3510,16 +3698,359 @@ check(
     oldRestaurantApi.status === 404 &&
     oldRestaurantApi.body === JSON.stringify({ error: "No access" }) &&
     newRestaurantPage?.status === 200 &&
-    shellAfterRotation.body.includes(`/r/${newRestaurantKey}`) &&
+    shellAfterRotation.status === 200 &&
+    !shellAfterRotation.body.includes(`/r/${newRestaurantKey}`) &&
     !shellAfterRotation.body.includes(`/r/${restaurantKey}`),
-  `${rotated.status} ${rotated.body}`,
+  `${rotated.status} ${rotated.body.slice(0, 200)}`,
 );
 
-// 24. Organizer reset („Reset danych”). Organizer only; one POST resets the chosen parts (implied ones added) in one
-// transaction and answers with the Polish summary. Here: a subset first (guesses + AI usage), then the guest links,
-// then everything — the organizer and TV links keep working, the event is empty except the 90 starter questions.
-const resetApi = `${api}/reset`;
-const RESET_PARTS = ["guesses", "aiUsage", "seating", "guests", "venue", "orders", "questions", "guestLinks"];
+// 23d. Event isolation (multi-tenant-events, NFR-012). Event B (its own restaurant, created in section 3) gets guests, a
+// group, a room, a table, a published seating, a guess, a question, a dish and a drink through ITS organizer key.
+// Then A's keys aim at B's ids: every write is refused exactly like an id that does not exist (same status, same body),
+// nothing of B shows up in anything A's links read, B reads the same before and after, and B's TV, restaurant and guest
+// links show B only. Section 24 then resets all of A, and B must still read the same.
+const bApi = `/api/o/${eventB.organizerKey}`;
+const B_MARK = `Bx${RUN_TAG}`;
+const B_GUESTS = ["Bartek", "Basia", "Bogdan", "Bożena"].map((name) => `${name} ${B_MARK}`);
+const B_DISH = `Danie ${B_MARK}`;
+const B_DRINK = `Napój ${B_MARK}`;
+const B_QUESTION = `Pytanie izolacji ${B_MARK}?`;
+const UNKNOWN_ID = 2_000_000_000;
+
+const bPasted = await request(`${bApi}/guests`, { method: "POST", json: { text: B_GUESTS.join("\n") } });
+const [b1, b2, b3, b4] = B_GUESTS.map((name) => guestNamed(bPasted, name)?.id);
+const bGroup = await request(`${bApi}/groups`, { method: "POST", json: { guestIds: [b1, b2] } });
+const bRoom = await request(`${bApi}/rooms`, { method: "POST", json: { name: `Sala ${B_MARK}` } });
+const bRoomId = bRoom.data?.rooms?.[0]?.id;
+const bTable = await request(`${bApi}/tables`, {
+  method: "POST",
+  json: { roomId: bRoomId, name: `Stół ${B_MARK}`, seatCount: 4, shape: "round", x: 0.5, y: 0.5 },
+});
+const bTableId = bTable.data?.tables?.[0]?.id;
+for (const [guestId, seat] of [
+  [b1, 1],
+  [b2, 2],
+  [b3, 3],
+]) {
+  await request(`${bApi}/seating/guests/${guestId}`, { method: "PUT", json: { tableId: bTableId, seat } });
+}
+const bPublished = await request(`${bApi}/seating/publish`, { method: "POST" });
+const bSnapshotId = bPublished.data?.published?.snapshotId;
+const bGuess = await request(`${bApi}/guesses/${b1}`, { method: "PUT", json: { amount: "1500" } });
+const bQuestion = await request(`${bApi}/questions`, {
+  method: "POST",
+  json: { category: "generyczne", text: B_QUESTION },
+});
+const bQuestionId = bQuestion.data?.questions?.find((question) => question.text === B_QUESTION)?.id;
+const bOrder = await request(`${bApi}/orders`, {
+  method: "POST",
+  json: { name: B_DISH, quantity: 2, assignment: { guestId: b1 } },
+});
+const bLineId = bOrder.data?.items?.find((item) => item.name === B_DISH)?.id;
+const bDrink = await request(`${bApi}/drinks`, { method: "POST", json: { name: B_DRINK, quantity: 3 } });
+const bDrinkId = bDrink.data?.drinks?.find((drink) => drink.name === B_DRINK)?.id;
+const bLinks = await request(`${bApi}/guest-links`, { method: "PATCH", json: { enabled: true } });
+const bGuestKey = linkOf(bLinks, b1)?.key;
+const bGroupId = bGroup.data?.groups?.[0]?.id;
+check(
+  "isolation: event B is set up through its own organizer key",
+  bPasted.status === 201 &&
+    [b1, b2, b3, b4].every(Boolean) &&
+    bGroup.status === 201 &&
+    Boolean(bGroupId) &&
+    bRoom.status === 201 &&
+    bTable.status === 201 &&
+    Boolean(bTableId) &&
+    bPublished.status === 201 &&
+    Boolean(bSnapshotId) &&
+    bGuess.status === 200 &&
+    bQuestion.status === 201 &&
+    Boolean(bQuestionId) &&
+    bOrder.status === 201 &&
+    Boolean(bLineId) &&
+    bDrink.status === 201 &&
+    Boolean(bDrinkId) &&
+    bLinks.status === 200 &&
+    isKey(bGuestKey),
+  [bPasted, bGroup, bRoom, bTable, bPublished, bGuess, bQuestion, bOrder, bDrink, bLinks]
+    .map((res) => res.status)
+    .join(" "),
+);
+
+// Everything B's organizer reads, to compare after A's attempts and after A's reset.
+const B_READS = [
+  "guests",
+  "venue",
+  "seating",
+  "seating/history",
+  "seating/published",
+  "guesses",
+  "guest-links",
+  "questions",
+  "orders",
+  "tv-spotlight",
+  "trial-reset",
+];
+const readB = async () => {
+  const bodies = [];
+  for (const path of B_READS) {
+    const res = await request(`${bApi}/${path}`);
+    bodies.push(`${String(res.status)} ${res.body}`);
+  }
+  return bodies;
+};
+const bBefore = await readB();
+
+const aGuests = (await request(`${api}/guests`)).data?.guests ?? [];
+const aGuestNames = aGuests.map((guest) => guest.displayName);
+const aGuestId = aGuests[0]?.id;
+const aTableId = (await request(`${api}/venue`)).data?.tables?.[0]?.id;
+const aBoard = await request(ordersApi);
+const aLineId = aBoard.data?.items?.[0]?.id;
+const aDishNames = (aBoard.data?.items ?? []).map((item) => item.name);
+check(
+  "isolation: event A has guests, a table and a dish to aim with",
+  Boolean(aGuestId) && Boolean(aTableId) && Boolean(aLineId) && aGuestNames.length > 0 && aDishNames.length > 0,
+);
+
+// [label, method, path for an id, body for an id, B's id]: the same request with UNKNOWN_ID must answer the same.
+const foreignWrites = [
+  ["rename B's guest", "PATCH", (id) => `guests/${id}`, () => ({ displayName: "Przejęty gość" }), b1],
+  ["delete B's guest", "DELETE", (id) => `guests/${id}`, () => undefined, b4],
+  ["group B's guests", "POST", () => "groups", (id) => ({ guestIds: [id, id === UNKNOWN_ID ? id - 1 : b4] }), b3],
+  ["dissolve B's group", "DELETE", (id) => `groups/${id}`, () => undefined, bGroupId],
+  ["rename B's room", "PATCH", (id) => `rooms/${id}`, () => ({ name: "Przejęta sala" }), bRoomId],
+  ["delete B's room", "DELETE", (id) => `rooms/${id}`, () => undefined, bRoomId],
+  ["rename B's table", "PATCH", (id) => `tables/${id}`, () => ({ name: "Przejęty stół" }), bTableId],
+  ["delete B's table", "DELETE", (id) => `tables/${id}`, () => undefined, bTableId],
+  [
+    "add a table to B's room",
+    "POST",
+    () => "tables",
+    (id) => ({ roomId: id, name: "Obcy stół", seatCount: 4, shape: "round", x: 0.2, y: 0.2 }),
+    bRoomId,
+  ],
+  ["move A's table into B's room", "PATCH", () => `tables/${aTableId}`, (id) => ({ roomId: id }), bRoomId],
+  ["seat B's guest", "PUT", (id) => `seating/guests/${id}`, () => ({ tableId: aTableId, seat: 1 }), b4],
+  [
+    "seat A's guest at B's table",
+    "PUT",
+    () => `seating/guests/${aGuestId}`,
+    (id) => ({ tableId: id, seat: 4 }),
+    bTableId,
+  ],
+  ["pin B's guest", "PATCH", (id) => `seating/guests/${id}`, () => ({ pinned: true }), b1],
+  ["unseat B's guest", "DELETE", (id) => `seating/guests/${id}`, () => undefined, b1],
+  ["restore B's snapshot", "POST", () => "seating/restore", (id) => ({ snapshotId: id }), bSnapshotId],
+  ["enter B's guest's guess", "PUT", (id) => `guesses/${id}`, () => ({ amount: "1" }), b2],
+  ["delete B's guest's guess", "DELETE", (id) => `guesses/${id}`, () => undefined, b1],
+  ["revoke B's guest link", "POST", (id) => `guest-links/${id}/revoke`, () => undefined, b1],
+  ["edit B's question", "PATCH", (id) => `questions/${id}`, () => ({ text: "Przejęte pytanie?" }), bQuestionId],
+  ["delete B's question", "DELETE", (id) => `questions/${id}`, () => undefined, bQuestionId],
+  [
+    "order a dish for B's guest",
+    "POST",
+    () => "orders",
+    (id) => ({ name: "Obce danie", quantity: 1, assignment: { guestId: id } }),
+    b1,
+  ],
+  [
+    "order a dish for B's table",
+    "POST",
+    () => "orders",
+    (id) => ({ name: "Obce danie", quantity: 1, assignment: { tableId: id } }),
+    bTableId,
+  ],
+  ["give A's dish to B's guest", "PATCH", () => `orders/${aLineId}`, (id) => ({ assignment: { guestId: id } }), b1],
+  ["mark B's dish served", "PATCH", (id) => `orders/${id}`, () => ({ delivered: true }), bLineId],
+  ["mark a piece of B's dish", "PUT", (id) => `orders/${id}/pieces`, () => ({ piece: 1, delivered: true }), bLineId],
+  ["delete B's dish", "DELETE", (id) => `orders/${id}`, () => undefined, bLineId],
+  ["change B's drink", "PATCH", (id) => `drinks/${id}`, () => ({ quantity: 9 }), bDrinkId],
+  ["delete B's drink", "DELETE", (id) => `drinks/${id}`, () => undefined, bDrinkId],
+];
+for (const [label, method, pathOf, bodyOf, foreignId] of foreignWrites) {
+  const send = (id) => {
+    const json = bodyOf(id);
+    return request(`${api}/${pathOf(id)}`, json === undefined ? { method } : { method, json });
+  };
+  const foreign = await send(foreignId);
+  const unknown = await send(UNKNOWN_ID);
+  check(
+    `isolation: A's key cannot ${label} (answered like an unknown id)`,
+    foreign.status >= 400 && foreign.status === unknown.status && foreign.body === unknown.body,
+    `${foreign.status} ${unknown.status} ${foreign.body.slice(0, 120)}`,
+  );
+}
+
+// The panel side: A's owner cannot price, reset or read the AI costs of B's event (the identical 404).
+for (const [method, path, json] of [
+  ["PUT", "prices", { kind: "dish", name: B_DISH, price: "1" }],
+  ["GET", "prices", undefined],
+  ["POST", "reset", { parts: ["guesses"] }],
+  ["GET", "ai-topics", undefined],
+]) {
+  const res = await request(`/api/panel/events/${String(eventB.id)}/${path}`, asOps({ method, json }));
+  check(`isolation: A's owner gets the identical 404 on B's ${method} ${path}`, noAccessJson(res), String(res.status));
+}
+
+// A draft with B's guest (at A's table) and A's guest at B's table: the same 409 and problems as ids that do not exist.
+const draftOf = (guestId, tableId) =>
+  request(`${seatingApi}/draft`, {
+    method: "POST",
+    json: {
+      seats: [
+        { guestId, tableId: aTableId, seat: 1 },
+        { guestId: aGuestId, tableId, seat: 2 },
+      ],
+    },
+  });
+const foreignDraft = await draftOf(b4, bTableId);
+const unknownDraft = await draftOf(UNKNOWN_ID, UNKNOWN_ID);
+check(
+  "isolation: A's draft with B's guest and table is refused like unknown ids",
+  foreignDraft.status === 409 &&
+    foreignDraft.body === unknownDraft.body &&
+    foreignDraft.data?.problems?.includes("W projekcie jest osoba, której nie ma już na liście gości.") &&
+    foreignDraft.data.problems.includes("W projekcie jest stolik, którego już nie ma."),
+  `${foreignDraft.body} / ${unknownDraft.body}`,
+);
+
+// A guest of A marks a piece of B's dish: the same 409 as a line that does not exist.
+await request(linksApi, { method: "PATCH", json: { enabled: true } });
+const aGuestKey = (await request(linksApi)).data?.guests?.[0]?.key;
+const foreignPiece = await request(`/api/g/${aGuestKey}/orders`, {
+  method: "PUT",
+  json: { lineId: bLineId, piece: 1, delivered: true },
+});
+const unknownPiece = await request(`/api/g/${aGuestKey}/orders`, {
+  method: "PUT",
+  json: { lineId: UNKNOWN_ID, piece: 1, delivered: true },
+});
+const aGuestState = await request(guestStateApi(aGuestKey));
+const aGuestPage = await request(`/g/${aGuestKey}`);
+check(
+  "isolation: A's guest cannot mark B's dish and sees nothing of B",
+  foreignPiece.status === 409 &&
+    foreignPiece.body === unknownPiece.body &&
+    aGuestState.status === 200 &&
+    aGuestPage.status === 200 &&
+    ![aGuestState.body, aGuestPage.body].some((body) => body.includes(B_MARK) || body.includes(OTHER_EVENT_NAME)),
+  `${foreignPiece.status} ${unknownPiece.status} ${aGuestState.status} ${aGuestPage.status}`,
+);
+await request(linksApi, { method: "PATCH", json: { enabled: false } });
+
+// Nothing A's organizer, TV or restaurant links read mentions B.
+const aReads = [
+  ...B_READS.map((path) => `${api}/${path}`),
+  `/o/${organizerKey}`,
+  `/o/${organizerKey}/goscie`,
+  `/o/${organizerKey}/sale`,
+  `/o/${organizerKey}/rozsadzenie`,
+  `/o/${organizerKey}/strzaly`,
+  `/o/${organizerKey}/linki`,
+  `/o/${organizerKey}/pytania`,
+  `/o/${organizerKey}/zamowienia`,
+  `/tv/${tvKey}`,
+  // tv-room-rotation: A's TV pinned to B's room name shows nothing of B (the pin only filters A's own rooms).
+  `/tv/${tvKey}?sala=${encodeURIComponent(`Sala ${B_MARK}`)}`,
+  tvSeatingApi,
+  `/r/${newRestaurantKey}`,
+  `/api/r/${newRestaurantKey}/orders`,
+];
+const aLeaks = [];
+for (const path of aReads) {
+  const res = await request(path);
+  if (res.status !== 200 || res.body.includes(B_MARK) || res.body.includes(OTHER_EVENT_NAME)) {
+    aLeaks.push(`${path.replace(organizerKey, "<organizer>").replace(tvKey, "<tv>")} ${String(res.status)}`);
+  }
+}
+check("isolation: nothing A's links read mentions event B", aLeaks.length === 0, aLeaks.join(", "));
+
+const bAfterAttempts = await readB();
+check(
+  "isolation: event B reads exactly the same after A's attempts",
+  bAfterAttempts.every((body, index) => body === bBefore[index]),
+  B_READS.filter((_, index) => bAfterAttempts[index] !== bBefore[index]).join(", "),
+);
+
+// B's own links show B and nothing of A.
+const mentionsA = (body) => body.includes(EVENT_NAME) || aGuestNames.some((name) => body.includes(name));
+const bTvSeating = await request(`/api/tv/${eventB.tvKey}/seating`);
+const bTvPage = await request(`/tv/${eventB.tvKey}`);
+const bRestaurant = await request(`/api/r/${eventB.restaurantKey}/orders`);
+const bRestaurantPage = await request(`/r/${eventB.restaurantKey}`);
+const bGuestState = await request(guestStateApi(bGuestKey));
+const bGuestPage = await request(`/g/${bGuestKey}`);
+check(
+  "isolation: B's TV, restaurant and guest links show B's seating, dish and event only",
+  bTvSeating.status === 200 &&
+    B_GUESTS.slice(0, 3).every((name) => bTvSeating.body.includes(name)) &&
+    bTvPage.status === 200 &&
+    bRestaurant.status === 200 &&
+    bRestaurant.body.includes(B_DISH) &&
+    !aDishNames.some((name) => bRestaurant.body.includes(name)) &&
+    bRestaurantPage.status === 200 &&
+    bGuestState.status === 200 &&
+    bGuestState.data?.status === "seated" &&
+    bGuestPage.status === 200 &&
+    bGuestPage.body.includes(OTHER_EVENT_NAME) &&
+    ![bTvSeating, bTvPage, bRestaurant, bRestaurantPage, bGuestState, bGuestPage].some((res) => mentionsA(res.body)),
+  [bTvSeating, bTvPage, bRestaurant, bRestaurantPage, bGuestState, bGuestPage].map((res) => res.status).join(" "),
+);
+
+// B's keys in another role's place get the same denials as any wrong key (keys are global, never per event).
+const bKeyDenials = [];
+for (const [path, expected] of [
+  [`/o/${eventB.tvKey}`, deniedBody],
+  [`/o/${bGuestKey}`, deniedBody],
+  [`/o/${eventB.restaurantKey}`, deniedBody],
+  [`/tv/${eventB.organizerKey}`, deniedBody],
+  [`/tv/${bGuestKey}`, deniedBody],
+  [`/g/${eventB.organizerKey}`, deniedBody],
+  [`/g/${eventB.tvKey}`, deniedBody],
+  [`/r/${eventB.organizerKey}`, restaurantDeniedBody],
+  [`/api/o/${eventB.tvKey}/guests`, JSON.stringify({ error: "Brak dostępu" })],
+  [`/api/tv/${bGuestKey}/seating`, JSON.stringify({ error: "Brak dostępu" })],
+  [`/api/g/${eventB.organizerKey}/state`, JSON.stringify({ error: "Brak dostępu" })],
+  [`/api/r/${eventB.tvKey}/orders`, JSON.stringify({ error: "No access" })],
+]) {
+  const res = await request(path);
+  if (res.status !== 404 || res.body !== expected) {
+    const shown = [eventB.organizerKey, eventB.tvKey, eventB.restaurantKey, bGuestKey].reduce(
+      (text, key) => text.replace(key, "<key>"),
+      path,
+    );
+    bKeyDenials.push(`${shown} ${String(res.status)}`);
+  }
+}
+check(
+  "isolation: B's keys in another role's place get the usual denial",
+  bKeyDenials.length === 0,
+  bKeyDenials.join(", "),
+);
+
+// 24. Reset. Since client-restaurant-split (FR-028) the full „Reset danych” is the venue's (panel, owners and
+// managers: the ops owner here) and the client link has „Reset prób” (seating + guesses only); the client's old reset
+// route answers the identical denial. One POST resets the chosen parts (implied ones added) in one transaction and
+// answers with the Polish summary. Here: a subset first (guesses + AI usage), then the guest links, then the client's
+// trial reset, then everything — the client and TV links keep working, the event is empty except the 90 starter
+// questions.
+const resetApi = `${opsPanel}/reset`;
+const trialResetApi = `${api}/trial-reset`;
+// pub-quiz (S-28) added the part `quiz` (last; implied by `guests`) and its counts `quizAnswers`, `quizAsked`;
+// rsvp-reset the part `rsvp` (last; implied by `guests`) and `rsvpAnswers`, `rsvpOptions`, `rsvpDeadlineSet`.
+const RESET_PARTS = [
+  "guesses",
+  "aiUsage",
+  "seating",
+  "guests",
+  "venue",
+  "orders",
+  "questions",
+  "guestLinks",
+  "quiz",
+  "rsvp",
+];
 const COUNT_KEYS = [
   "guesses",
   "correctAmountSet",
@@ -3537,6 +4068,11 @@ const COUNT_KEYS = [
   "orders",
   "questions",
   "guestAccessEnabled",
+  "quizAnswers",
+  "quizAsked",
+  "rsvpAnswers",
+  "rsvpOptions",
+  "rsvpDeadlineSet",
 ]
   .sort()
   .join(",");
@@ -3550,19 +4086,32 @@ const isSummary = (data, lines) =>
 
 const shellWithReset = await request(`/o/${organizerKey}`);
 const tvPageWithoutReset = await request(`/tv/${tvKey}`);
+const eventPageWithReset = await request(`/panel/wydarzenia/${String(eventA.id)}`, asOps());
 check(
-  "organizer shell ends with the „Reset danych” card; the TV page has none",
+  "client shell ends with the „Reset prób” card (no full reset); the TV page has none",
   shellWithReset.status === 200 &&
-    shellWithReset.body.includes("Reset danych") &&
+    shellWithReset.body.includes("Reset prób") &&
+    !shellWithReset.body.includes("Reset danych") &&
     shellWithReset.body.includes('component-export="ResetPanel"') &&
-    shellWithReset.body.indexOf("Reset danych") > shellWithReset.body.indexOf("Odczyt bez sieci") &&
+    shellWithReset.body.includes("&quot;variant&quot;:[0,&quot;trial&quot;]") &&
+    shellWithReset.body.indexOf("Reset prób") > shellWithReset.body.indexOf("Odczyt bez sieci") &&
     tvPageWithoutReset.status === 200 &&
+    !tvPageWithoutReset.body.includes("Reset prób") &&
     !tvPageWithoutReset.body.includes("Reset danych") &&
     !tvPageWithoutReset.body.includes("ResetPanel"),
   `${shellWithReset.status} ${tvPageWithoutReset.status}`,
 );
+check(
+  "the panel's event page has the full „Reset danych” for the owner",
+  eventPageWithReset.status === 200 &&
+    eventPageWithReset.body.includes("Reset danych") &&
+    eventPageWithReset.body.includes("data-event-reset") &&
+    eventPageWithReset.body.includes('component-export="ResetPanel"'),
+  String(eventPageWithReset.status),
+);
 
 for (const [label, key] of [
+  ["<organizer>", organizerKey],
   ["<tv>", tvKey],
   ["<guest>", aniaNewKey],
 ]) {
@@ -3571,11 +4120,29 @@ for (const [label, key] of [
       `/api/o/${key}/reset`,
       method === "POST" ? { method, json: { parts: [...RESET_PARTS] } } : {},
     );
-    check(`reset API with a wrong key: ${method} ${label}`, noAccessJson(res), `${res.status} ${res.body}`);
+    check(
+      `full reset on a key: ${method} ${label} → the identical denial`,
+      noAccessJson(res),
+      `${res.status} ${res.body}`,
+    );
   }
 }
+for (const [label, key] of [
+  ["<tv>", tvKey],
+  ["<guest>", aniaNewKey],
+]) {
+  for (const method of ["GET", "POST"]) {
+    const res = await request(
+      `/api/o/${key}/trial-reset`,
+      method === "POST" ? { method, json: { parts: ["seating"] } } : {},
+    );
+    check(`trial reset with a wrong key: ${method} ${label}`, noAccessJson(res), `${res.status} ${res.body}`);
+  }
+}
+const resetNoSession = await request(resetApi);
+check("panel reset without a session: 401", resetNoSession.status === 401, String(resetNoSession.status));
 
-const resetPreview = await request(resetApi);
+const resetPreview = await request(resetApi, asOps());
 const previewCounts = resetPreview.data?.counts;
 check(
   "reset preview: fresh counts of everything a reset would remove",
@@ -3604,10 +4171,19 @@ for (const [label, options] of [
   ["an extra key", { json: { parts: ["guesses"], organizerKey } }],
   ["malformed JSON", { rawBody: "{" }],
 ]) {
-  const res = await request(resetApi, { method: "POST", ...options });
+  const res = await request(resetApi, asOps({ method: "POST", ...options }));
   check(`reset refuses ${label}: 400`, res.status === 400 && errorOf(res) === "Nieprawidłowe dane.", res.body);
 }
-const previewAfterRefusals = await request(resetApi);
+for (const [label, options] of [
+  ["a part outside the trial", { json: { parts: ["guests"] } }],
+  ["the full list", { json: { parts: [...RESET_PARTS] } }],
+  ["an empty list", { json: { parts: [] } }],
+  ["an extra key", { json: { parts: ["seating"], organizerKey } }],
+]) {
+  const res = await request(trialResetApi, { method: "POST", ...options });
+  check(`trial reset refuses ${label}: 400`, res.status === 400 && errorOf(res) === "Nieprawidłowe dane.", res.body);
+}
+const previewAfterRefusals = await request(resetApi, asOps());
 check(
   "refused resets change nothing",
   previewAfterRefusals.status === 200 && previewAfterRefusals.body === resetPreview.body,
@@ -3615,9 +4191,9 @@ check(
 );
 
 const spotBeforeReset = await request(tvSpotApi, { method: "PUT", json: { kind: "question", text: SPOT_QUESTION } });
-const subsetReset = await request(resetApi, { method: "POST", json: { parts: ["aiUsage", "guesses"] } });
+const subsetReset = await request(resetApi, asOps({ method: "POST", json: { parts: ["aiUsage", "guesses"] } }));
 const guessesAfterSubset = await request(guessesApi);
-const aiAfterSubset = await request(aiApi);
+const aiAfterSubset = await request(`${opsPanel}/ai-topics`, asOps());
 const guestsAfterSubset = await request(`${api}/guests`);
 const venueAfterSubset = await request(`${api}/venue`);
 check(
@@ -3649,7 +4225,7 @@ check(
 
 await request(linksApi, { method: "PATCH", json: { enabled: true } });
 const aniaBeforeLinksReset = await request(guestStateApi(aniaNewKey));
-const linksReset = await request(resetApi, { method: "POST", json: { parts: ["guestLinks"] } });
+const linksReset = await request(resetApi, asOps({ method: "POST", json: { parts: ["guestLinks"] } }));
 const linksAfterReset = await request(linksApi);
 const aniaAfterLinksReset = await request(guestStateApi(aniaNewKey));
 check(
@@ -3665,8 +4241,80 @@ check(
   `${aniaBeforeLinksReset.status} ${linksReset.status} ${aniaAfterLinksReset.status}`,
 );
 
+// rsvp-reset (the PR #4 review's RSVP extras): the part `rsvp` alone — the client sets a deadline (A has no menu yet,
+// so no dish options here: tests/integration/reset.test.ts covers them) and answers for two present guests („yes”,
+// „no” = absent); the reset clears the deadline and the answers and keeps every absence (the „no” guest stays absent).
+const rsvpDeadline24 = `${new Date(Date.now() + 2 * 86_400_000).toISOString().slice(0, 10)}T20:00`;
+const present24 = (guestsAfterSubset.data?.guests ?? []).filter((guest) => !guest.isAbsent);
+const rsvpSet24 = await request(`${api}/rsvp`, { method: "PATCH", json: { deadline: rsvpDeadline24 } });
+const rsvpYes24 = await request(`${api}/rsvp/guests/${String(present24[0]?.id ?? 0)}`, {
+  method: "PUT",
+  json: { attending: true, dish: null },
+});
+const rsvpNo24 = await request(`${api}/rsvp/guests/${String(present24[1]?.id ?? 0)}`, {
+  method: "PUT",
+  json: { attending: false, dish: null },
+});
+const rsvpPreview24 = (await request(resetApi, asOps())).data?.counts;
+const absentBefore24 = (await request(`${api}/guests`)).data?.guests?.filter((guest) => guest.isAbsent).length;
+const rsvpReset24 = await request(resetApi, asOps({ method: "POST", json: { parts: ["rsvp"] } }));
+const rsvpBoard24 = await request(`${api}/rsvp`);
+const rsvpCounts24 = (await request(resetApi, asOps())).data?.counts;
+const guestsAfterRsvp24 = await request(`${api}/guests`);
+check(
+  "reset of the RSVP: the deadline and the answers go, every absence stays (the „no” guest is still absent), nothing else changes",
+  present24.length >= 2 &&
+    rsvpSet24.status === 200 &&
+    rsvpYes24.status === 200 &&
+    rsvpNo24.status === 200 &&
+    rsvpPreview24?.rsvpAnswers === 2 &&
+    rsvpPreview24.rsvpOptions === 0 &&
+    rsvpPreview24.rsvpDeadlineSet === true &&
+    rsvpReset24.status === 200 &&
+    JSON.stringify(rsvpReset24.data?.parts) === JSON.stringify(["rsvp"]) &&
+    isSummary(rsvpReset24.data, 1) &&
+    rsvpBoard24.data?.deadline === null &&
+    rsvpBoard24.data.open === false &&
+    rsvpBoard24.data.guests.every((guest) => guest.answeredAt === null) &&
+    rsvpCounts24?.rsvpAnswers === 0 &&
+    rsvpCounts24.rsvpDeadlineSet === false &&
+    sameFlat({ ...rsvpCounts24, rsvpAnswers: 2, rsvpDeadlineSet: true }, rsvpPreview24) &&
+    guestsAfterRsvp24.data?.guests?.filter((guest) => guest.isAbsent).length === absentBefore24 &&
+    guestNamed(guestsAfterRsvp24, present24[1]?.displayName)?.isAbsent === true &&
+    guestNamed(guestsAfterRsvp24, present24[0]?.displayName)?.isAbsent === false,
+  `${rsvpSet24.status} ${rsvpYes24.status} ${rsvpNo24.status} ${JSON.stringify(rsvpPreview24 ?? null).slice(0, 300)} ${rsvpReset24.status} ${rsvpReset24.body.slice(0, 200)}`,
+);
+
+// The client's „Reset prób”: the seating (with every publication) and the guesses go; guests, the venue, orders and
+// questions stay.
+const trialPreview = await request(trialResetApi);
+const panelPreviewBeforeTrial = await request(resetApi, asOps());
+const trialReset = await request(trialResetApi, { method: "POST", json: { parts: ["seating", "guesses"] } });
+const afterTrial = (await request(resetApi, asOps())).data?.counts;
+const beforeTrial = panelPreviewBeforeTrial.data?.counts;
+check(
+  "„Reset prób”: the preview is the panel's, the reset clears seating and guesses only",
+  trialPreview.status === 200 &&
+    trialPreview.body === panelPreviewBeforeTrial.body &&
+    beforeTrial?.snapshots > 0 &&
+    trialReset.status === 200 &&
+    JSON.stringify(trialReset.data?.parts) === JSON.stringify(["guesses", "seating"]) &&
+    isSummary(trialReset.data, 2) &&
+    afterTrial?.seats === 0 &&
+    afterTrial.snapshots === 0 &&
+    afterTrial.guesses === 0 &&
+    afterTrial.guests === beforeTrial.guests &&
+    afterTrial.groups === beforeTrial.groups &&
+    afterTrial.rooms === beforeTrial.rooms &&
+    afterTrial.tables === beforeTrial.tables &&
+    afterTrial.orders === beforeTrial.orders &&
+    afterTrial.questions === beforeTrial.questions &&
+    afterTrial.plan === beforeTrial.plan,
+  `${trialPreview.status} ${trialReset.status} ${trialReset.body.slice(0, 200)}`,
+);
+
 const tvBeforeFullReset = await request(tvSeatingApi);
-const fullReset = await request(resetApi, { method: "POST", json: { parts: [...RESET_PARTS] } });
+const fullReset = await request(resetApi, asOps({ method: "POST", json: { parts: [...RESET_PARTS] } }));
 check(
   "reset of everything answers with every part and its summary",
   fullReset.status === 200 &&
@@ -3684,7 +4332,7 @@ const publishedAfterReset = await request(`${seatingApi}/published`);
 const questionsAfterReset = await request(questionsApi);
 const guessesAfterReset = await request(guessesApi);
 const linksAfterFullReset = await request(linksApi);
-const previewAfterReset = await request(resetApi);
+const previewAfterReset = await request(resetApi, asOps());
 check(
   "after resetting everything: no guests, venue, seating or guesses",
   guestsAfterReset.data?.guests?.length === 0 &&
@@ -3734,6 +4382,11 @@ check(
       orders: 0,
       questions: 90,
       guestAccessEnabled: false,
+      quizAnswers: 0,
+      quizAsked: 0,
+      rsvpAnswers: 0,
+      rsvpOptions: 0,
+      rsvpDeadlineSet: false,
     }),
   previewAfterReset.body,
 );
@@ -3752,5 +4405,7862 @@ check(
   shellAfterReset.status === 200 && tvPageAfterReset.status === 200,
   `${shellAfterReset.status} ${tvPageAfterReset.status}`,
 );
+const bAfterReset = await readB();
+check(
+  "isolation: resetting everything in A leaves event B exactly as it was",
+  bAfterReset.every((body, index) => body === bBefore[index]),
+  B_READS.filter((_, index) => bAfterReset[index] !== bBefore[index]).join(", "),
+);
+
+// The ops owner leaves A before the team sections (its session stays; it opens nothing in A any more).
+try {
+  if (opsAccount) await removeMembership(platformEnv, restaurantA.id, opsAccount.id);
+} catch (error) {
+  check("the ops owner leaves A", false, error instanceof PlatformError ? error.message : String(error));
+}
+const opsAfterLeaving = await request(`${opsPanel}/ai-topics`, asOps());
+check("the ops owner opens nothing in A after leaving", noAccessJson(opsAfterLeaving), String(opsAfterLeaving.status));
+
+// 25. Staff accounts (staff-accounts, F-03): one-time links set the password, e-mail + password log in for 30 days,
+// logout (here or everywhere) and a password change end sessions, failed logins are throttled per e-mail, every
+// mutation needs the page's own Origin, and the panel guard opens only the person's own restaurants and events (one 404
+// for everything else). Accounts: owner of A, waiter of A, owner of B, a platform admin without restaurants and an
+// account only for the throttle, all with e-mails of this run.
+const STAFF_PASSWORD = "smoke-haslo-1";
+const NEW_STAFF_PASSWORD = "smoke-nowe-haslo-2";
+const staffEmail = (who) => `${who}-${RUN_TAG}@smoke.stolik`;
+const SESSION_RE = /(?:^|[\s,])kp-session=([A-Za-z0-9_-]{43});/;
+const sessionOf = (res) => SESSION_RE.exec(res.setCookie)?.[1] ?? null;
+const asStaff = (token) => `kp-session=${token}`;
+const pathOf = (res) => (res.location ? new URL(res.location, BASE_URL) : null);
+const redirectsTo = (res, target) => res.status === 303 && `${pathOf(res)?.pathname}${pathOf(res)?.search}` === target;
+const authHeaders = (res) =>
+  res.referrerPolicy === "same-origin" && res.frameOptions === "DENY" && res.cacheControl.includes("no-store");
+const redeem = (token, password = STAFF_PASSWORD, repeat = password, options = {}) =>
+  request("/api/auth/password-link", { method: "POST", form: { token, password, repeat }, ...options });
+const logIn = (email, password, options = {}) =>
+  request("/api/auth/login", { method: "POST", form: { email, password }, ...options });
+const me = (token) => request("/api/panel/me", { cookie: asStaff(token) });
+
+const staff = {};
+try {
+  for (const [who, role, restaurant] of [
+    ["ownerA", "owner", restaurantA],
+    ["waiterA", "waiter", restaurantA],
+    ["ownerB", "owner", restaurantB],
+    ["admin", null, null],
+    ["throttled", null, null],
+  ]) {
+    const account = await ensureStaffAccount(platformEnv, {
+      email: staffEmail(who.toLowerCase()),
+      displayName: `Smoke ${who}`,
+      isPlatformAdmin: who === "admin",
+    });
+    if (restaurant) {
+      await addMembership(platformEnv, restaurant.id, account.id, role);
+    }
+    const invite = await issueStaffLink(platformEnv, account.id, "invite", BASE_URL);
+    staff[who] = { email: account.email, id: account.id, invite: invite.token };
+  }
+} catch (error) {
+  check(
+    "staff accounts are created in the local database",
+    false,
+    error instanceof PlatformError ? error.message : String(error),
+  );
+  finish();
+}
+
+// Pages and redirects without a session.
+const loginPage = await request("/logowanie");
+check(
+  "staff: the login page has the form and the auth headers (same-origin referrer, no framing, no-store)",
+  loginPage.status === 200 && loginPage.body.includes('action="/api/auth/login"') && authHeaders(loginPage),
+  `${loginPage.status} ${loginPage.referrerPolicy} ${loginPage.frameOptions}`,
+);
+const organizerHeaders = await request(`/o/${organizerKey}`);
+check(
+  "staff: the key routes keep Referrer-Policy: no-referrer",
+  organizerHeaders.status === 200 && organizerHeaders.referrerPolicy === "no-referrer",
+  organizerHeaders.referrerPolicy,
+);
+const panelNoSession = await request("/panel");
+const panelDeepNoSession = await request("/panel/x");
+const panelKeyNoSession = await request(`/panel/${organizerKey}`);
+check(
+  "staff: /panel, /panel/x and an organizer key under /panel without a session → 303 to /logowanie, no-store",
+  [panelNoSession, panelDeepNoSession, panelKeyNoSession].every(
+    (res) => redirectsTo(res, "/logowanie") && res.cacheControl.includes("no-store"),
+  ),
+  [panelNoSession, panelDeepNoSession, panelKeyNoSession].map((res) => `${res.status} ${res.location}`).join(", "),
+);
+const meNoCookie = await request("/api/panel/me");
+const meGarbage = await request("/api/panel/me", { cookie: asStaff(randomBytes(32).toString("base64url")) });
+const meMalformed = await request("/api/panel/me", { cookie: "kp-session=abc" });
+const panelApiUnknown = await request("/api/panel/nie-ma");
+check(
+  "staff: the panel API without a valid session → identical 401 bodies (no cookie, unknown, malformed, unknown route)",
+  [meNoCookie, meGarbage, meMalformed, panelApiUnknown].every(
+    (res) => res.status === 401 && res.body === meNoCookie.body && res.cacheControl.includes("no-store"),
+  ) && meNoCookie.data?.error !== undefined,
+  [meNoCookie, meGarbage, meMalformed, panelApiUnknown].map((res) => res.status).join(" "),
+);
+// The middleware judges the pathname Astro's router matches (decoded, duplicate slashes collapsed): a percent-encoded
+// letter or a doubled slash reaches exactly the same staff and waiter guards, with the same headers and bodies.
+const encodedPanel = await request("/%70anel");
+const encodedPanelDeep = await request("/%70anel/x");
+const doubledPanel = await request("//panel");
+const encodedLogin = await request("/%6Cogowanie");
+const plainLogin = await request("/logowanie");
+const encodedMe = await request("/api/%70anel/me");
+const plainWaiterFloor = await request("/kelner/sala/1");
+const encodedWaiterFloor = await request("/%6Belner/sala/1");
+const sameHeaders = (a, b) =>
+  a.status === b.status &&
+  a.location === b.location &&
+  a.cacheControl === b.cacheControl &&
+  a.referrerPolicy === b.referrerPolicy &&
+  a.frameOptions === b.frameOptions &&
+  a.robots === b.robots;
+check(
+  "staff: percent-encoded and doubled-slash staff paths (/%70anel, //panel, /%6Cogowanie, /api/%70anel/me, /%6Belner/sala/1) answer exactly like the plain ones (303 / 200 / identical 401, the staff headers)",
+  redirectsTo(encodedPanel, "/logowanie") &&
+    authHeaders(encodedPanel) &&
+    sameHeaders(encodedPanel, panelNoSession) &&
+    sameHeaders(encodedPanelDeep, panelDeepNoSession) &&
+    sameHeaders(doubledPanel, panelNoSession) &&
+    encodedLogin.status === 200 &&
+    authHeaders(encodedLogin) &&
+    sameHeaders(encodedLogin, plainLogin) &&
+    encodedMe.status === 401 &&
+    encodedMe.body === meNoCookie.body &&
+    sameHeaders(encodedMe, meNoCookie) &&
+    redirectsTo(plainWaiterFloor, "/kelner") &&
+    authHeaders(encodedWaiterFloor) &&
+    sameHeaders(encodedWaiterFloor, plainWaiterFloor),
+  [encodedPanel, encodedPanelDeep, doubledPanel, encodedLogin, encodedMe, plainWaiterFloor, encodedWaiterFloor]
+    .map((res) => `${res.status} ${res.location} ${res.frameOptions}`)
+    .join(", "),
+);
+// The language switch echoes the request's path into Location: always a same-origin path, never `//host/…`.
+const offsiteSwitches = await Promise.all(
+  ["//evil.example/?lang=pl", "///evil.example/x?lang=en", "/\\evil.example/?lang=pl", "/%5Cevil.example/?lang=pl"].map(
+    (path) => request(path),
+  ),
+);
+check(
+  "i18n: the language switch on //evil.example/, ///…, /\\… and /%5C… redirects to a same-origin path (no open redirect)",
+  offsiteSwitches.every(
+    (res) =>
+      res.status === 303 &&
+      res.location.startsWith("/") &&
+      !/^[/\\]{2}/.test(res.location) &&
+      new URL(res.location, BASE_URL).origin === new URL(BASE_URL).origin,
+  ),
+  offsiteSwitches.map((res) => `${res.status} ${res.location}`).join(", "),
+);
+check(
+  "staff: a session cookie that opens nothing is cleared (Max-Age=0)",
+  /kp-session=;[^,]*Max-Age=0/.test(meGarbage.setCookie) && meNoCookie.setCookie === "",
+  meGarbage.setCookie,
+);
+
+// One-time links: an unknown or malformed link and (later) a used one get the identical invalid-link page.
+const linkUnknown = await request(`/haslo/${randomBytes(32).toString("base64url")}`);
+const linkMalformed = await request("/haslo/abc");
+check(
+  "staff: an unknown and a malformed password link → identical 404 invalid-link page",
+  linkUnknown.status === 404 &&
+    linkMalformed.status === 404 &&
+    linkUnknown.body === linkMalformed.body &&
+    linkUnknown.body.includes("Link nieważny") &&
+    authHeaders(linkUnknown),
+  `${linkUnknown.status} ${linkMalformed.status}`,
+);
+const inviteA = `/haslo/${staff.ownerA.invite}`;
+const invitePage = await request(inviteA);
+check(
+  "staff: a valid invitation shows the account's e-mail with the auth headers",
+  invitePage.status === 200 &&
+    invitePage.body.includes(staff.ownerA.email) &&
+    invitePage.body.includes('action="/api/auth/password-link"') &&
+    authHeaders(invitePage),
+  `${invitePage.status} ${invitePage.referrerPolicy}`,
+);
+const tooShort = await redeem(staff.ownerA.invite, "krotkie");
+const mismatch = await redeem(staff.ownerA.invite, STAFF_PASSWORD, `${STAFF_PASSWORD}x`);
+const stillValid = await request(inviteA);
+check(
+  "staff: a too short or mismatched password → back to the link with a code, the link still works",
+  redirectsTo(tooShort, `${inviteA}?blad=krotkie`) &&
+    redirectsTo(mismatch, `${inviteA}?blad=rozne`) &&
+    tooShort.setCookie === "" &&
+    stillValid.status === 200,
+  `${tooShort.location} ${mismatch.location} ${stillValid.status}`.replaceAll(staff.ownerA.invite, "<token>"),
+);
+const redeemedA = await redeem(staff.ownerA.invite);
+const sessionA1 = sessionOf(redeemedA);
+check(
+  "staff: setting the password → 303 /panel with a 30-day HttpOnly SameSite=Lax cookie (no Secure on http)",
+  redirectsTo(redeemedA, "/panel") &&
+    sessionA1 !== null &&
+    /HttpOnly/i.test(redeemedA.setCookie) &&
+    /SameSite=Lax/i.test(redeemedA.setCookie) &&
+    /Path=\/(;|$)/.test(redeemedA.setCookie) &&
+    /Max-Age=2592000/.test(redeemedA.setCookie) &&
+    (behindTls || !/Secure/i.test(redeemedA.setCookie)),
+  redeemedA.setCookie.replace(SESSION_RE, "kp-session=<token>;"),
+);
+const linkUsed = await request(inviteA);
+const redeemAgain = await redeem(staff.ownerA.invite);
+check(
+  "staff: a used link → the identical invalid-link page, and it sets no password again",
+  linkUsed.status === 404 && linkUsed.body === linkUnknown.body && redirectsTo(redeemAgain, inviteA),
+  `${linkUsed.status} ${redeemAgain.status} ${redeemAgain.location}`.replaceAll(staff.ownerA.invite, "<token>"),
+);
+const redeemedWaiter = await redeem(staff.waiterA.invite, STAFF_PASSWORD, STAFF_PASSWORD, { extraHeaders: viaProxy });
+const sessionWaiter = sessionOf(redeemedWaiter);
+check(
+  "staff: behind a TLS proxy the session cookie is Secure",
+  redirectsTo(redeemedWaiter, "/panel") && sessionWaiter !== null && /Secure/i.test(redeemedWaiter.setCookie),
+  redeemedWaiter.setCookie.replace(SESSION_RE, "kp-session=<token>;"),
+);
+const sessionB = sessionOf(await redeem(staff.ownerB.invite));
+const sessionAdmin = sessionOf(await redeem(staff.admin.invite));
+const sessionThrottled = sessionOf(await redeem(staff.throttled.invite));
+check(
+  "staff: every invited account sets its password",
+  [sessionB, sessionAdmin, sessionThrottled].every((token) => token !== null),
+);
+
+// The panel with a session.
+const panelA = await request("/panel", { cookie: asStaff(sessionA1) });
+check(
+  "staff: /panel shows the person, restaurant A and the role „Właściciel” with the auth headers",
+  panelA.status === 200 &&
+    panelA.body.includes(staff.ownerA.email) &&
+    panelA.body.includes(`Restauracja smoke A ${RUN_TAG}`) &&
+    panelA.body.includes("Właściciel") &&
+    !panelA.body.includes(`Restauracja smoke B ${RUN_TAG}`) &&
+    authHeaders(panelA),
+  `${panelA.status} ${panelA.referrerPolicy}`,
+);
+const loginWithSession = await request("/logowanie", { cookie: asStaff(sessionA1) });
+check(
+  "staff: /logowanie with a session → 303 /panel",
+  redirectsTo(loginWithSession, "/panel"),
+  loginWithSession.location,
+);
+const meA = await me(sessionA1);
+check(
+  "staff: /api/panel/me answers the person and their restaurants with roles (no tokens, no ids of sessions)",
+  meA.status === 200 &&
+    meA.data?.email === staff.ownerA.email &&
+    meA.data.isPlatformAdmin === false &&
+    meA.data.restaurants?.length === 1 &&
+    meA.data.restaurants[0].id === restaurantA.id &&
+    meA.data.restaurants[0].role === "owner" &&
+    !meA.body.includes(sessionA1),
+  meA.body,
+);
+
+// Login: one answer for a wrong password and an unknown e-mail; typos below the limit do not lock anyone out.
+const wrongPassword = await logIn(staff.ownerA.email, "zle-haslo-123");
+const unknownEmail = await logIn(staffEmail("nikt"), "zle-haslo-123");
+check(
+  "staff: a wrong password and an unknown e-mail → the identical 303 /logowanie?blad=dane without a cookie",
+  redirectsTo(wrongPassword, "/logowanie?blad=dane") &&
+    redirectsTo(unknownEmail, "/logowanie?blad=dane") &&
+    wrongPassword.body === unknownEmail.body &&
+    wrongPassword.setCookie === "" &&
+    unknownEmail.setCookie === "",
+  `${wrongPassword.location} ${unknownEmail.location}`,
+);
+const loggedInA = await logIn(` ${staff.ownerA.email.toUpperCase()} `, STAFF_PASSWORD);
+const sessionA2 = sessionOf(loggedInA);
+check(
+  "staff: the right password (e-mail in any case, spaces around) → 303 /panel with a new session",
+  redirectsTo(loggedInA, "/panel") && sessionA2 !== null && sessionA2 !== sessionA1,
+  loggedInA.location,
+);
+for (let typo = 0; typo < 3; typo++) {
+  await logIn(staff.ownerB.email, `literowka-${String(typo)}-xyz`);
+}
+const afterTypos = await logIn(staff.ownerB.email, STAFF_PASSWORD);
+check(
+  "staff: three typos, then the right password → logged in",
+  redirectsTo(afterTypos, "/panel") && sessionOf(afterTypos) !== null,
+  afterTypos.location,
+);
+for (let failure = 0; failure < 10; failure++) {
+  await logIn(staff.throttled.email, `zle-haslo-${String(failure)}`);
+  await logIn(staffEmail("nieznany"), `zle-haslo-${String(failure)}`);
+}
+const throttledRight = await logIn(staff.throttled.email, STAFF_PASSWORD);
+const throttledUnknown = await logIn(staffEmail("nieznany"), STAFF_PASSWORD);
+check(
+  "staff: after 10 failures even the right password → 303 blad=limit with Retry-After, identical for an unknown e-mail",
+  redirectsTo(throttledRight, "/logowanie?blad=limit") &&
+    redirectsTo(throttledUnknown, "/logowanie?blad=limit") &&
+    throttledRight.setCookie === "" &&
+    Number(throttledRight.retryAfter) > 0 &&
+    Number(throttledRight.retryAfter) <= 900 &&
+    Number(throttledUnknown.retryAfter) > 0 &&
+    throttledRight.body === throttledUnknown.body,
+  `${throttledRight.location} ${throttledRight.retryAfter} ${throttledUnknown.location} ${throttledUnknown.retryAfter}`,
+);
+check(
+  "staff: the throttle stops new logins only, a session of that account still works",
+  (await me(sessionThrottled)).status === 200,
+);
+
+// Origin: every auth and panel mutation without the page's own Origin → 403, and nothing happens.
+const FOREIGN = { Origin: "https://evil.example" };
+const originAttempts = [
+  ["login, no Origin, form", () => logIn(staff.ownerA.email, STAFF_PASSWORD, { noOrigin: true })],
+  ["login, foreign Origin, form", () => logIn(staff.ownerA.email, STAFF_PASSWORD, { extraHeaders: FOREIGN })],
+  [
+    "login, foreign Origin, JSON",
+    () =>
+      request("/api/auth/login", {
+        method: "POST",
+        json: { email: staff.ownerA.email, password: STAFF_PASSWORD },
+        extraHeaders: FOREIGN,
+      }),
+  ],
+  [
+    "logout, no Origin",
+    () => request("/api/auth/logout", { method: "POST", cookie: asStaff(sessionA1), noOrigin: true }),
+  ],
+  [
+    "logout, foreign Origin",
+    () => request("/api/auth/logout", { method: "POST", form: {}, cookie: asStaff(sessionA1), extraHeaders: FOREIGN }),
+  ],
+  [
+    "password change, no Origin, form",
+    () =>
+      request("/api/panel/password", {
+        method: "POST",
+        form: { current: STAFF_PASSWORD, password: NEW_STAFF_PASSWORD, repeat: NEW_STAFF_PASSWORD },
+        cookie: asStaff(sessionA1),
+        noOrigin: true,
+      }),
+  ],
+  [
+    "password change, foreign Origin, JSON",
+    () =>
+      request("/api/panel/password", {
+        method: "POST",
+        json: { current: STAFF_PASSWORD, password: NEW_STAFF_PASSWORD, repeat: NEW_STAFF_PASSWORD },
+        cookie: asStaff(sessionA1),
+        extraHeaders: FOREIGN,
+      }),
+  ],
+];
+const originResults = [];
+for (const [name, attempt] of originAttempts) {
+  const res = await attempt();
+  originResults.push(`${name}: ${String(res.status)}${res.setCookie ? " +cookie" : ""}`);
+  if (res.status !== 403 || res.setCookie !== "") {
+    check(`staff: Origin refused (${name})`, false, `${res.status} ${res.body.slice(0, 120)}`);
+  }
+}
+check(
+  "staff: login, logout and the password change without the page's Origin → 403 without a cookie",
+  originResults.every((line) => line.endsWith(": 403")),
+  originResults.join("; "),
+);
+// A percent-encoded letter in the path reaches the same Origin pre-check: the JSON login (which Astro's own form-only
+// origin check never refuses) gets the middleware's identical 403 body and the staff headers, and logs nobody in.
+const loginJsonForeign = (path) =>
+  request(path, {
+    method: "POST",
+    json: { email: staff.ownerA.email, password: STAFF_PASSWORD },
+    extraHeaders: FOREIGN,
+  });
+const plainLoginForeign = await loginJsonForeign("/api/auth/login");
+const encodedLoginForeign = await loginJsonForeign("/api/%61uth/login");
+check(
+  "staff: a foreign-Origin JSON login on /api/%61uth/login → the middleware's identical 403 (body and headers), no cookie",
+  plainLoginForeign.status === 403 &&
+    encodedLoginForeign.status === 403 &&
+    encodedLoginForeign.body === plainLoginForeign.body &&
+    plainLoginForeign.data?.error !== undefined &&
+    authHeaders(encodedLoginForeign) &&
+    encodedLoginForeign.setCookie === "",
+  `${plainLoginForeign.status} ${encodedLoginForeign.status} ${encodedLoginForeign.body.slice(0, 80)}`,
+);
+const stillLoggedIn = await me(sessionA1);
+const oldPasswordStill = await logIn(staff.ownerA.email, STAFF_PASSWORD);
+check(
+  "staff: after the refused attempts the session still works and the password is unchanged",
+  stillLoggedIn.status === 200 && redirectsTo(oldPasswordStill, "/panel"),
+  `${stillLoggedIn.status} ${oldPasswordStill.location}`,
+);
+const sessionA3 = sessionOf(oldPasswordStill);
+
+// Password change: a wrong current password is refused; a change ends every OTHER session.
+const changePassword = (token, current, password, repeat = password) =>
+  request("/api/panel/password", { method: "POST", form: { current, password, repeat }, cookie: asStaff(token) });
+const wrongCurrent = await changePassword(sessionA1, "nie-to-haslo-1", NEW_STAFF_PASSWORD);
+check(
+  "staff: a password change with a wrong current password → 303 /panel?blad=obecne#haslo",
+  wrongCurrent.status === 303 && wrongCurrent.location === "/panel?blad=obecne#haslo",
+  wrongCurrent.location,
+);
+const changed = await changePassword(sessionA1, STAFF_PASSWORD, NEW_STAFF_PASSWORD);
+const meA1AfterChange = await me(sessionA1);
+const meA2AfterChange = await me(sessionA2);
+const meA3AfterChange = await me(sessionA3);
+const oldPassword = await logIn(staff.ownerA.email, STAFF_PASSWORD);
+const newPassword = await logIn(staff.ownerA.email, NEW_STAFF_PASSWORD);
+check(
+  "staff: a password change keeps this session, ends the others, and only the new password logs in",
+  redirectsTo(changed, "/panel?haslo=zmienione") &&
+    meA1AfterChange.status === 200 &&
+    meA2AfterChange.status === 401 &&
+    meA3AfterChange.status === 401 &&
+    redirectsTo(oldPassword, "/logowanie?blad=dane") &&
+    redirectsTo(newPassword, "/panel"),
+  [changed.location, meA1AfterChange.status, meA2AfterChange.status, meA3AfterChange.status, oldPassword.location].join(
+    " ",
+  ),
+);
+const sessionA4 = sessionOf(newPassword);
+
+// Logout here, then everywhere.
+const loggedOut = await request("/api/auth/logout", { method: "POST", form: {}, cookie: asStaff(sessionA1) });
+const meAfterLogout = await me(sessionA1);
+check(
+  "staff: logout → 303 /logowanie?wylogowano=1 with the cookie cleared, the old cookie gets 401",
+  redirectsTo(loggedOut, "/logowanie?wylogowano=1") &&
+    /kp-session=;[^,]*Max-Age=0/.test(loggedOut.setCookie) &&
+    meAfterLogout.status === 401 &&
+    (await me(sessionA4)).status === 200,
+  `${loggedOut.location} ${meAfterLogout.status}`,
+);
+const sessionA5 = sessionOf(await logIn(staff.ownerA.email, NEW_STAFF_PASSWORD));
+const everywhere = await request("/api/auth/logout", {
+  method: "POST",
+  form: { wszedzie: "1" },
+  cookie: asStaff(sessionA4),
+});
+const meA4AfterAll = await me(sessionA4);
+const meA5AfterAll = await me(sessionA5);
+check(
+  "staff: logout everywhere ends every session of the person",
+  redirectsTo(everywhere, "/logowanie?wylogowano=1") && meA4AfterAll.status === 401 && meA5AfterAll.status === 401,
+  `${everywhere.location} ${meA4AfterAll.status} ${meA5AfterAll.status}`,
+);
+
+// The guard: own restaurant and event only; everything else is one 404, like a wrong link key.
+const sessionOwner = sessionOf(await logIn(staff.ownerA.email, NEW_STAFF_PASSWORD));
+const panelGet = (token, path) => request(`/api/panel${path}`, { cookie: asStaff(token) });
+const ownRestaurant = await panelGet(sessionOwner, `/restaurants/${String(restaurantA.id)}`);
+const ownEvent = await panelGet(sessionOwner, `/events/${String(eventA.id)}`);
+check(
+  "staff: the owner of A reads restaurant A and event A",
+  ownRestaurant.status === 200 &&
+    ownRestaurant.data?.restaurant?.id === restaurantA.id &&
+    ownRestaurant.data.role === "owner" &&
+    ownEvent.status === 200 &&
+    ownEvent.data?.event?.id === eventA.id &&
+    // Owners and managers hold the event's links since restaurant-events (S-11); the tablet key is the one the
+    // orders section put in place with „Wymień link”.
+    ownEvent.data.event.links?.organizer === `/o/${organizerKey}` &&
+    ownEvent.data.event.links.tv === `/tv/${tvKey}` &&
+    ownEvent.data.event.links.restaurant === `/r/${newRestaurantKey}`,
+  `${ownRestaurant.status} ${ownEvent.status} ${ownEvent.body.slice(0, 160)}`,
+);
+const guardDenied = [];
+for (const path of [
+  `/restaurants/${String(restaurantB.id)}`,
+  `/events/${String(eventB.id)}`,
+  "/restaurants/2000000000",
+  "/events/2000000000",
+  "/restaurants/99999999999",
+  "/restaurants/abc",
+  "/events/abc",
+  "/restaurants/-1",
+]) {
+  const res = await panelGet(sessionOwner, path);
+  if (!noAccessJson(res)) {
+    guardDenied.push(`${path} ${String(res.status)} ${res.body.slice(0, 60)}`);
+  }
+}
+check(
+  "staff: another restaurant's restaurant or event, unknown, huge and malformed ids → the identical 404",
+  guardDenied.length === 0,
+  guardDenied.join("; "),
+);
+const waiterRestaurant = await panelGet(sessionWaiter, `/restaurants/${String(restaurantA.id)}`);
+const waiterEvent = await panelGet(sessionWaiter, `/events/${String(eventA.id)}`);
+check(
+  "staff: the waiter of A reads restaurant A (role waiter) but not its event (the identical 404)",
+  waiterRestaurant.status === 200 && waiterRestaurant.data?.role === "waiter" && noAccessJson(waiterEvent),
+  `${waiterRestaurant.status} ${waiterEvent.status}`,
+);
+const adminMe = await me(sessionAdmin);
+const adminRestaurant = await panelGet(sessionAdmin, `/restaurants/${String(restaurantA.id)}`);
+const adminEvent = await panelGet(sessionAdmin, `/events/${String(eventA.id)}`);
+check(
+  "staff: the platform admin is flagged but opens no restaurant without a membership (the identical 404)",
+  adminMe.status === 200 &&
+    adminMe.data?.isPlatformAdmin === true &&
+    adminMe.data.restaurants?.length === 0 &&
+    noAccessJson(adminRestaurant) &&
+    noAccessJson(adminEvent),
+  `${adminMe.body} ${adminRestaurant.status} ${adminEvent.status}`,
+);
+const ownerBReadsA = await panelGet(sessionB, `/restaurants/${String(restaurantA.id)}`);
+check("staff: the owner of B does not open restaurant A (the identical 404)", noAccessJson(ownerBReadsA));
+
+// Link keys are untouched by a staff session.
+const organizerWithSession = await request(`/o/${organizerKey}`, { cookie: asStaff(sessionOwner) });
+const garbageWithSession = await request("/o/garbage", { cookie: asStaff(sessionOwner) });
+const tvWithSession = await request(`/tv/${tvKey}`, { cookie: asStaff(sessionOwner) });
+check(
+  "staff: a session cookie changes nothing on the key routes (organizer and TV open, a garbage key is the no-access page)",
+  organizerWithSession.status === 200 &&
+    organizerWithSession.referrerPolicy === "no-referrer" &&
+    tvWithSession.status === 200 &&
+    garbageWithSession.status === 404 &&
+    garbageWithSession.body.includes(NO_ACCESS_TEXT),
+  `${organizerWithSession.status} ${tvWithSession.status} ${garbageWithSession.status}`,
+);
+const keyAsSession = await request("/api/panel/me", { cookie: asStaff(organizerKey) });
+check(
+  "staff: an organizer key as a session cookie opens nothing",
+  keyAsSession.status === 401,
+  String(keyAsSession.status),
+);
+
+// 26. Platform panel (platform-restaurants, S-10): only the platform admin lists the restaurants (counters and owners,
+// never an event's data), creates one with its owner's one-time invitation, gives an owner a fresh link (invitation
+// or password reset), adds owners and switches a restaurant off and on. Other staff get the guard's identical 404,
+// no session the identical 401; every mutation needs the page's own Origin. A disabled restaurant opens nothing to its
+// staff, while its events' links keep working. Uses the sessions of section 25.
+const PLATFORM_API = "/api/panel/platform/restaurants";
+const RESET_STAFF_PASSWORD = "smoke-reset-haslo-3";
+const HASLO_PATH = /^\/haslo\/([A-Za-z0-9_-]{43})$/;
+const platformCall = (token, path = "", options = {}) =>
+  request(`${PLATFORM_API}${path}`, { ...(token ? { cookie: asStaff(token) } : {}), ...options });
+const idPath = (id) => `/${String(id)}`;
+const listedOf = (res) => (Array.isArray(res.data?.restaurants) ? res.data.restaurants : []);
+const findListed = (res, id) => listedOf(res).find((restaurant) => restaurant.id === id);
+const sortedIds = (rows) =>
+  rows
+    .map((row) => row.id)
+    .sort((a, b) => a - b)
+    .join(",");
+const isNoAccessPage = (res) => res.status === 404 && res.body.includes(NO_ACCESS_TEXT);
+// The panel hub's entry of a restaurant (`<li … data-restaurant-id="<id>">…</li>`).
+const hubEntry = (res, id) => {
+  const start = res.body.indexOf(`data-restaurant-id="${String(id)}"`);
+  return start === -1 ? "" : res.body.slice(start, res.body.indexOf("</li>", start));
+};
+
+let dbRestaurants = [];
+try {
+  dbRestaurants = await listRestaurants(platformEnv);
+} catch (error) {
+  check(
+    "platform: the restaurants are read from the database",
+    false,
+    error instanceof PlatformError ? error.message : String(error),
+  );
+}
+const adminList = await platformCall(sessionAdmin);
+const listedA = findListed(adminList, restaurantA.id);
+check(
+  "platform: the admin lists every restaurant of the database (no-store), A with 1 event, 2 people and owner A with a password",
+  adminList.status === 200 &&
+    adminList.cacheControl.includes("no-store") &&
+    dbRestaurants.length > 0 &&
+    sortedIds(listedOf(adminList)) === sortedIds(dbRestaurants) &&
+    listedA?.name === `Restauracja smoke A ${RUN_TAG}` &&
+    listedA.disabled === false &&
+    listedA.eventCount === 1 &&
+    listedA.memberCount === 2 &&
+    listedA.owners.length === 1 &&
+    listedA.owners[0].email === staff.ownerA.email &&
+    listedA.owners[0].accountId === staff.ownerA.id &&
+    listedA.owners[0].hasPassword === true,
+  `${adminList.status} ${listedOf(adminList).length}/${dbRestaurants.length} ${JSON.stringify(listedA)}`,
+);
+check(
+  "platform: the admin's list carries no event data (event A's name and keys are not in it)",
+  adminList.status === 200 &&
+    ![EVENT_NAME, organizerKey, tvKey, eventA.restaurantKey].some((secret) => adminList.body.includes(secret)),
+);
+const platformPage = await request("/panel/platforma", { cookie: asStaff(sessionAdmin) });
+const adminHub = await request("/panel", { cookie: asStaff(sessionAdmin) });
+check(
+  "platform: /panel/platforma opens for the admin with A's name and the auth headers; /panel links to it",
+  platformPage.status === 200 &&
+    platformPage.body.includes(`Restauracja smoke A ${RUN_TAG}`) &&
+    authHeaders(platformPage) &&
+    adminHub.status === 200 &&
+    adminHub.body.includes('href="/panel/platforma"') &&
+    adminHub.body.includes("Panel platformy"),
+  `${platformPage.status} ${adminHub.status}`,
+);
+
+// Everyone but the admin: the identical 404 (staff) or 401 (no session), and nothing happens.
+const platformAttempts = [
+  ["list", "", {}],
+  ["disable A", idPath(restaurantA.id), { method: "PATCH", json: { disabled: true } }],
+  ["add an owner to A", `${idPath(restaurantA.id)}/owners`, { method: "POST", json: { email: staffEmail("intruz") } }],
+  ["link for owner A", `${idPath(restaurantA.id)}/owners/${String(staff.ownerA.id)}/link`, { method: "POST" }],
+  [
+    "create a restaurant",
+    "",
+    { method: "POST", json: { name: `Restauracja intruza ${RUN_TAG}`, ownerEmail: staffEmail("intruz") } },
+  ],
+];
+const unknownForStaff = await panelGet(sessionOwner, "/restaurants/2000000000");
+const platformDenied = [];
+for (const [who, token] of [
+  ["owner A", sessionOwner],
+  ["owner B", sessionB],
+  ["waiter A", sessionWaiter],
+]) {
+  for (const [name, path, options] of platformAttempts) {
+    const res = await platformCall(token, path, options);
+    if (!noAccessJson(res) || res.body !== unknownForStaff.body) {
+      platformDenied.push(`${who}, ${name}: ${String(res.status)} ${res.body.slice(0, 60)}`);
+    }
+  }
+}
+check(
+  "platform: owners and waiters get the identical 404 of an unknown restaurant on every platform route",
+  noAccessJson(unknownForStaff) && platformDenied.length === 0,
+  platformDenied.join("; "),
+);
+const anonymousDenied = [];
+for (const [name, path, options] of platformAttempts) {
+  const res = await platformCall(null, path, options);
+  if (res.status !== 401 || res.body !== meNoCookie.body) {
+    anonymousDenied.push(`${name}: ${String(res.status)} ${res.body.slice(0, 60)}`);
+  }
+}
+check(
+  "platform: without a session every platform route → the identical 401 of /api/panel/me",
+  anonymousDenied.length === 0,
+  anonymousDenied.join("; "),
+);
+const platformPageOwner = await request("/panel/platforma", { cookie: asStaff(sessionOwner) });
+const platformPageAnonymous = await request("/panel/platforma");
+check(
+  "platform: /panel/platforma → the no-access page for an owner, 303 /logowanie without a session",
+  isNoAccessPage(platformPageOwner) && redirectsTo(platformPageAnonymous, "/logowanie"),
+  `${platformPageOwner.status} ${platformPageAnonymous.status} ${platformPageAnonymous.location}`,
+);
+
+// Origin: every platform mutation without the page's own Origin → 403, also for the admin.
+const platformOriginResults = [];
+for (const [name, path, options] of platformAttempts.filter(([, , options]) => options.method)) {
+  for (const [how, extra] of [
+    ["no Origin", { noOrigin: true }],
+    ["foreign Origin", { extraHeaders: FOREIGN }],
+  ]) {
+    const res = await platformCall(sessionAdmin, path, { ...options, ...extra });
+    if (res.status !== 403) {
+      platformOriginResults.push(`${name}, ${how}: ${String(res.status)}`);
+    }
+  }
+}
+const listAfterRefusals = await platformCall(sessionAdmin);
+check(
+  "platform: create, disable, add owner and link without the page's Origin → 403 (admin too), nothing changed",
+  platformOriginResults.length === 0 &&
+    listedOf(listAfterRefusals).length === listedOf(adminList).length &&
+    findListed(listAfterRefusals, restaurantA.id)?.disabled === false &&
+    findListed(listAfterRefusals, restaurantA.id)?.owners.length === 1,
+  platformOriginResults.join("; "),
+);
+
+// Validation and unknown targets (admin).
+const platformInvalid = [];
+for (const [name, path, options] of [
+  ["empty name", "", { method: "POST", json: { name: "", ownerEmail: staffEmail("walidacja") } }],
+  ["81-character name", "", { method: "POST", json: { name: "x".repeat(81), ownerEmail: staffEmail("walidacja") } }],
+  ["bad e-mail", "", { method: "POST", json: { name: `Walidacja ${RUN_TAG}`, ownerEmail: "nie-email" } }],
+  [
+    "extra field",
+    "",
+    { method: "POST", json: { name: `Walidacja ${RUN_TAG}`, ownerEmail: staffEmail("walidacja"), extra: 1 } },
+  ],
+  ["disabled as text", idPath(restaurantA.id), { method: "PATCH", json: { disabled: "yes" } }],
+  ["owner with a bad e-mail", `${idPath(restaurantA.id)}/owners`, { method: "POST", json: { email: "nie-email" } }],
+]) {
+  const res = await platformCall(sessionAdmin, path, options);
+  if (res.status !== 400 || typeof res.data?.error !== "string") {
+    platformInvalid.push(`${name}: ${String(res.status)}`);
+  }
+}
+check(
+  "platform: an empty or 81-character name, a bad e-mail, an extra field, disabled as text → 400 with a message",
+  platformInvalid.length === 0,
+  platformInvalid.join("; "),
+);
+const platformUnknown = [];
+for (const [name, path, options] of [
+  ["disable unknown", "/2000000000", { method: "PATCH", json: { disabled: true } }],
+  ["disable huge", "/99999999999", { method: "PATCH", json: { disabled: true } }],
+  ["disable malformed", "/abc", { method: "PATCH", json: { disabled: true } }],
+  ["owner of unknown", "/2000000000/owners", { method: "POST", json: { email: staffEmail("walidacja") } }],
+  ["link of unknown restaurant", `/2000000000/owners/${String(staff.ownerA.id)}/link`, { method: "POST" }],
+  ["link of a waiter", `${idPath(restaurantA.id)}/owners/${String(staff.waiterA.id)}/link`, { method: "POST" }],
+  ["link of another's owner", `${idPath(restaurantB.id)}/owners/${String(staff.ownerA.id)}/link`, { method: "POST" }],
+  ["link of a malformed account", `${idPath(restaurantA.id)}/owners/abc/link`, { method: "POST" }],
+]) {
+  const res = await platformCall(sessionAdmin, path, options);
+  if (!noAccessJson(res)) {
+    platformUnknown.push(`${name}: ${String(res.status)} ${res.body.slice(0, 60)}`);
+  }
+}
+const listAfterInvalid = await platformCall(sessionAdmin);
+check(
+  "platform: unknown, huge or malformed ids and an account that is not an owner there → the identical 404, nothing created",
+  platformUnknown.length === 0 && listedOf(listAfterInvalid).length === listedOf(adminList).length,
+  platformUnknown.join("; "),
+);
+
+// Flow: a new restaurant with a new owner, the owner's invitation, their empty restaurant panel.
+const nameC = `Restauracja smoke C ${RUN_TAG}`;
+const emailC = staffEmail("ownerc");
+const createdC = await platformCall(sessionAdmin, "", {
+  method: "POST",
+  json: { name: nameC, ownerEmail: emailC, ownerName: "Smoke ownerC" },
+});
+const restaurantCId = typeof createdC.data?.restaurantId === "number" ? createdC.data.restaurantId : 2000000001;
+const ownerC = createdC.data?.owner ?? null;
+const listedC = findListed(createdC, restaurantCId);
+check(
+  "platform: the admin creates restaurant C with a new owner → 201, the owner's invitation /haslo/<token>, C listed without events",
+  createdC.status === 201 &&
+    ownerC?.email === emailC &&
+    ownerC.created === true &&
+    ownerC.hasPassword === false &&
+    ownerC.link?.kind === "invite" &&
+    HASLO_PATH.test(ownerC.link.path) &&
+    listedC?.name === nameC &&
+    listedC.disabled === false &&
+    listedC.eventCount === 0 &&
+    listedC.memberCount === 1 &&
+    listedC.owners[0]?.hasPassword === false,
+  `${createdC.status} ${createdC.body.slice(0, 200)}`.replace(/\/haslo\/[A-Za-z0-9_-]+/g, "/haslo/<token>"),
+);
+const firstInviteC = HASLO_PATH.exec(ownerC?.link?.path ?? "")?.[1] ?? "brak";
+const newInviteC = await platformCall(
+  sessionAdmin,
+  `${idPath(restaurantCId)}/owners/${String(ownerC?.accountId)}/link`,
+  {
+    method: "POST",
+  },
+);
+const inviteCToken = HASLO_PATH.exec(newInviteC.data?.link?.path ?? "")?.[1] ?? "brak";
+const firstInvitePage = await request(`/haslo/${firstInviteC}`);
+const inviteCPage = await request(`/haslo/${inviteCToken}`);
+check(
+  "platform: „Nowy link” for an owner without a password → a new invitation; the earlier one stops working",
+  newInviteC.status === 200 &&
+    newInviteC.data?.link?.kind === "invite" &&
+    inviteCToken !== firstInviteC &&
+    firstInvitePage.status === 404 &&
+    firstInvitePage.body === linkUnknown.body &&
+    inviteCPage.status === 200 &&
+    inviteCPage.body.includes(emailC),
+  `${newInviteC.status} ${newInviteC.data?.link?.kind} ${firstInvitePage.status} ${inviteCPage.status}`,
+);
+const redeemedC = await redeem(inviteCToken);
+const sessionC = sessionOf(redeemedC);
+const hubC = await request("/panel", { cookie: asStaff(sessionC) });
+const pageC = await request(`/panel/restauracje/${String(restaurantCId)}`, { cookie: asStaff(sessionC) });
+check(
+  "platform: the owner of C sets the password, /panel links C to its restaurant panel, which shows C and „Właściciel”",
+  redirectsTo(redeemedC, "/panel") &&
+    sessionC !== null &&
+    hubC.status === 200 &&
+    hubC.body.includes(nameC) &&
+    hubC.body.includes(`href="/panel/restauracje/${String(restaurantCId)}"`) &&
+    pageC.status === 200 &&
+    pageC.body.includes(nameC) &&
+    pageC.body.includes("Właściciel") &&
+    authHeaders(pageC),
+  `${redeemedC.status} ${hubC.status} ${pageC.status}`,
+);
+const cReadsC = await panelGet(sessionC, `/restaurants/${String(restaurantCId)}`);
+const cReadsA = await panelGet(sessionC, `/restaurants/${String(restaurantA.id)}`);
+const cPageA = await request(`/panel/restauracje/${String(restaurantA.id)}`, { cookie: asStaff(sessionC) });
+const cPageUnknown = await request("/panel/restauracje/2000000000", { cookie: asStaff(sessionC) });
+const cPageMalformed = await request("/panel/restauracje/abc", { cookie: asStaff(sessionC) });
+check(
+  "platform: the owner of C reads C but restaurant A, an unknown and a malformed id are the identical 404 (API and page)",
+  cReadsC.status === 200 &&
+    cReadsC.data?.role === "owner" &&
+    noAccessJson(cReadsA) &&
+    isNoAccessPage(cPageA) &&
+    cPageA.body === cPageUnknown.body &&
+    cPageA.body === cPageMalformed.body &&
+    cPageUnknown.status === 404 &&
+    cPageMalformed.status === 404,
+  `${cReadsC.status} ${cReadsA.status} ${cPageA.status} ${cPageUnknown.status} ${cPageMalformed.status}`,
+);
+const listWithC = await platformCall(sessionAdmin);
+check(
+  "platform: after the invitation the admin sees C's owner with a password",
+  findListed(listWithC, restaurantCId)?.owners[0]?.hasPassword === true,
+  JSON.stringify(findListed(listWithC, restaurantCId)),
+);
+
+// A lost password: „Nowy link” for an owner with a password is a reset link; setting the new password ends their
+// sessions and only the new password logs in (US-05).
+const resetC = await platformCall(sessionAdmin, `${idPath(restaurantCId)}/owners/${String(ownerC?.accountId)}/link`, {
+  method: "POST",
+});
+const resetCToken = HASLO_PATH.exec(resetC.data?.link?.path ?? "")?.[1] ?? "brak";
+const redeemedResetC = await redeem(resetCToken, RESET_STAFF_PASSWORD);
+const meCAfterReset = await me(sessionC);
+const oldPasswordC = await logIn(emailC, STAFF_PASSWORD);
+const newPasswordC = await logIn(emailC, RESET_STAFF_PASSWORD);
+check(
+  "platform: a reset link for an owner with a password → the old session gets 401 and only the new password logs in",
+  resetC.status === 200 &&
+    resetC.data?.link?.kind === "reset" &&
+    redirectsTo(redeemedResetC, "/panel") &&
+    meCAfterReset.status === 401 &&
+    redirectsTo(oldPasswordC, "/logowanie?blad=dane") &&
+    redirectsTo(newPasswordC, "/panel"),
+  `${resetC.status} ${resetC.data?.link?.kind} ${redeemedResetC.status} ${meCAfterReset.status} ${oldPasswordC.location} ${newPasswordC.location}`,
+);
+
+// review-fixes (PRD FR-021, NFR-012): every one-time link of the admin for C's owner is in C's support log, newest first
+// — the reset (which logs whoever opens it in as the owner), the „Nowy link” invitation and (review2-fixes) the
+// invitation of „Nowa restauracja” — with the admin's e-mail, the account and the expiry; the owner's restaurant page
+// shows them. The non-admins' attempts above wrote nothing (A's log stays empty, section 29).
+const sessionCAfterReset = sessionOf(newPasswordC);
+const linkLogC = await request(`/api/panel/restaurants/${String(restaurantCId)}/support-log`, {
+  cookie: asStaff(sessionCAfterReset),
+});
+const linkLogPageC = await request(`/panel/restauracje/${String(restaurantCId)}`, {
+  cookie: asStaff(sessionCAfterReset),
+});
+const linkEntriesC = Array.isArray(linkLogC.data?.entries) ? linkLogC.data.entries : [];
+check(
+  "platform: C's owner sees the admin's three links in the support log (reset, „Nowy link” invitation, the creation's invitation; admin, account, expiry), also on the restaurant page",
+  linkLogC.status === 200 &&
+    linkEntriesC.map((entry) => `${entry.kind}:${entry.link?.kind}`).join(",") ===
+      "link:reset,link:invite,link:invite" &&
+    linkEntriesC.every(
+      (entry) => entry.link?.email === emailC && entry.admin?.email === staff.admin.email && entry.expiresAt !== null,
+    ) &&
+    Date.parse(linkEntriesC[0]?.expiresAt ?? "") === Date.parse(resetC.data?.link?.expiresAt ?? "x") &&
+    Date.parse(linkEntriesC[2]?.expiresAt ?? "") === Date.parse(ownerC?.link?.expiresAt ?? "x") &&
+    linkLogPageC.status === 200 &&
+    (linkLogPageC.body.match(/data-support-entry="link"/g) ?? []).length === 3 &&
+    linkLogPageC.body.includes(`Wydanie linku do resetu hasła konta ${emailC}`) &&
+    linkLogPageC.body.includes(`Wydanie linku z zaproszeniem dla konta ${emailC}`),
+  `${linkLogC.status} ${linkLogC.body.slice(0, 300)} ${linkLogPageC.status}`,
+);
+
+// One more owner: an account that already has a password gets no link and sees the restaurant after logging in.
+const ownerAToB = await platformCall(sessionAdmin, `${idPath(restaurantB.id)}/owners`, {
+  method: "POST",
+  json: { email: staff.ownerA.email.toUpperCase() },
+});
+const meOwnerAWithB = await me(sessionOwner);
+check(
+  "platform: adding owner A (who has a password) to B → no link, B lists them, and owner A's /api/panel/me shows B",
+  ownerAToB.status === 200 &&
+    ownerAToB.data?.owner?.link === null &&
+    ownerAToB.data.owner.hasPassword === true &&
+    ownerAToB.data.owner.created === false &&
+    findListed(ownerAToB, restaurantB.id)?.owners.some((owner) => owner.email === staff.ownerA.email) === true &&
+    meOwnerAWithB.data?.restaurants?.some(
+      (restaurant) => restaurant.id === restaurantB.id && restaurant.role === "owner",
+    ) === true,
+  `${ownerAToB.status} ${ownerAToB.body.slice(0, 160)}`,
+);
+
+// Disable A: its staff open nothing of it at once; its event's links keep working; enable → back.
+const disableA = await platformCall(sessionAdmin, idPath(restaurantA.id), {
+  method: "PATCH",
+  json: { disabled: true },
+});
+const disabledReads = [];
+for (const [who, token] of [
+  ["owner A", sessionOwner],
+  ["waiter A", sessionWaiter],
+]) {
+  for (const path of [`/restaurants/${String(restaurantA.id)}`, `/events/${String(eventA.id)}`]) {
+    const res = await panelGet(token, path);
+    if (!noAccessJson(res)) {
+      disabledReads.push(`${who} ${path}: ${String(res.status)}`);
+    }
+  }
+}
+const ownerAReadsBWhileAOff = await panelGet(sessionOwner, `/restaurants/${String(restaurantB.id)}`);
+const pageAOff = await request(`/panel/restauracje/${String(restaurantA.id)}`, { cookie: asStaff(sessionOwner) });
+const hubAOff = await request("/panel", { cookie: asStaff(sessionOwner) });
+const meAOff = await me(sessionOwner);
+check(
+  "platform: the admin disables A → owner A and the waiter get the identical 404 for A and its event, owner A still opens B",
+  disableA.status === 200 &&
+    findListed(disableA, restaurantA.id)?.disabled === true &&
+    disabledReads.length === 0 &&
+    ownerAReadsBWhileAOff.status === 200,
+  `${disableA.status} ${disabledReads.join("; ")} ${ownerAReadsBWhileAOff.status}`,
+);
+check(
+  "platform: a disabled restaurant's page is the no-access page and /panel marks it „Wyłączona” without a link",
+  isNoAccessPage(pageAOff) &&
+    pageAOff.body === cPageUnknown.body &&
+    hubEntry(hubAOff, restaurantA.id).includes("Wyłączona") &&
+    !hubAOff.body.includes(`href="/panel/restauracje/${String(restaurantA.id)}"`) &&
+    meAOff.data?.restaurants?.find((restaurant) => restaurant.id === restaurantA.id)?.disabled === true,
+  `${pageAOff.status} ${hubEntry(hubAOff, restaurantA.id).length}`,
+);
+const organizerWhileOff = await request(`/o/${organizerKey}`);
+const guestsWhileOff = await request(`/api/o/${organizerKey}/guests`);
+check(
+  "platform: the event links of a disabled restaurant keep working (organizer page and API)",
+  organizerWhileOff.status === 200 && guestsWhileOff.status === 200,
+  `${organizerWhileOff.status} ${guestsWhileOff.status}`,
+);
+const enableA = await platformCall(sessionAdmin, idPath(restaurantA.id), {
+  method: "PATCH",
+  json: { disabled: false },
+});
+const ownerAReadsAAgain = await panelGet(sessionOwner, `/restaurants/${String(restaurantA.id)}`);
+const pageAOn = await request(`/panel/restauracje/${String(restaurantA.id)}`, { cookie: asStaff(sessionOwner) });
+check(
+  "platform: enabling A gives its staff access back (API and restaurant page)",
+  enableA.status === 200 &&
+    findListed(enableA, restaurantA.id)?.disabled === false &&
+    ownerAReadsAAgain.status === 200 &&
+    pageAOn.status === 200 &&
+    pageAOn.body.includes(`Restauracja smoke A ${RUN_TAG}`),
+  `${enableA.status} ${ownerAReadsAAgain.status} ${pageAOn.status}`,
+);
+
+// 27. Restaurant events (restaurant-events, S-11): owners and managers of a restaurant list its events (upcoming, past,
+// archive), create one (it lands on its card with the client, TV and staff tablet links), edit, archive and restore
+// it and replace each link (the old one opens nothing at once); only the owner deletes an event, with everything in
+// it. A waiter, another restaurant's owner and the platform admin get the identical 404 of an unknown id, no session
+// the identical 401, a foreign Origin 403. Every event changed here is created here (never event A or B). Uses the
+// sessions of sections 25–26 and a manager of A created here.
+const eventsApiOf = (restaurantId) => `/api/panel/restaurants/${String(restaurantId)}/events`;
+const eventApi = (id) => `/api/panel/events/${String(id)}`;
+const eventPage = (id) => `/panel/wydarzenia/${String(id)}`;
+const restaurantPageOf = (id, list = "") => `/panel/restauracje/${String(id)}${list ? `?lista=${list}` : ""}`;
+const asSession = (token, options = {}) => ({ ...(token ? { cookie: asStaff(token) } : {}), ...options });
+const staffCall = (token, path, options = {}) => request(path, asSession(token, options));
+const listIds = (res, list) => (Array.isArray(res.data?.[list]) ? res.data[list].map((event) => event.id) : []);
+const keyOfPath = (path) => (typeof path === "string" ? (path.split("/")[2] ?? "") : "");
+const LINK_KINDS = ["organizer", "tv", "restaurant"];
+const LINK_PREFIX = { organizer: "o", tv: "tv", restaurant: "r" };
+const hasFreshLinks = (event) =>
+  LINK_KINDS.every((kind) =>
+    new RegExp(`^/${LINK_PREFIX[kind]}/${KEY}$`).test(
+      typeof event?.links?.[kind] === "string" ? event.links[kind] : "",
+    ),
+  ) && new Set(LINK_KINDS.map((kind) => keyOfPath(event.links[kind]))).size === 3;
+// The restaurant page's row of an event (`<li … data-event-id="<id>">…</li>`).
+const eventRow = (res, id) => {
+  const start = res.body.indexOf(`data-event-id="${String(id)}"`);
+  return start === -1 ? "" : res.body.slice(start, res.body.indexOf("</li>", start));
+};
+const shiftDate = (date, days) => {
+  const [year, month, day] = date.split("-").map(Number);
+  return new Date(Date.UTC(year, month - 1, day + days)).toISOString().slice(0, 10);
+};
+const RESTAURANT_DENIED_JSON = JSON.stringify({ error: "No access" });
+// What a replaced or deleted link answers: the identical denial of its area (page and JSON).
+const LINK_ROUTES = {
+  organizer: { page: (key) => `/o/${key}`, api: (key) => `/api/o/${key}/guests` },
+  tv: { page: (key) => `/tv/${key}`, api: (key) => `/api/tv/${key}/seating` },
+  restaurant: { page: (key) => `/r/${key}`, api: (key) => `/api/r/${key}/orders` },
+};
+const linkDenied = async (kind, key) => {
+  const page = await request(LINK_ROUTES[kind].page(key));
+  const json = await request(LINK_ROUTES[kind].api(key));
+  return (
+    page.status === 404 &&
+    page.body === (kind === "restaurant" ? restaurantDeniedBody : deniedBody) &&
+    (kind === "restaurant" ? json.status === 404 && json.body === RESTAURANT_DENIED_JSON : noAccessJson(json))
+  );
+};
+const linkOpens = async (kind, key) => {
+  const page = await request(LINK_ROUTES[kind].page(key));
+  const json = await request(LINK_ROUTES[kind].api(key));
+  return page.status === 200 && json.status === 200;
+};
+
+let sessionManager = null;
+try {
+  const account = await ensureStaffAccount(platformEnv, {
+    email: staffEmail("managera"),
+    displayName: "Smoke managerA",
+  });
+  await addMembership(platformEnv, restaurantA.id, account.id, "manager");
+  const invite = await issueStaffLink(platformEnv, account.id, "invite", BASE_URL);
+  sessionManager = sessionOf(await redeem(invite.token));
+} catch (error) {
+  check(
+    "events: the manager of A is created in the local database",
+    false,
+    error instanceof PlatformError ? error.message : String(error),
+  );
+  finish();
+}
+check("events: the manager of A has a session", Boolean(sessionManager));
+
+// Lists: event A (created today by section 3) is under upcoming as today; no keys in the list.
+const listA = await staffCall(sessionOwner, eventsApiOf(restaurantA.id));
+const today = typeof listA.data?.today === "string" ? listA.data.today : "";
+check(
+  "events: owner A lists A's events (no-store) — event A today under upcoming, past and archive empty, no keys",
+  listA.status === 200 &&
+    listA.cacheControl.includes("no-store") &&
+    /^\d{4}-\d{2}-\d{2}$/.test(today) &&
+    listA.data.upcoming.some((event) => event.id === eventA.id && event.timing === "today") &&
+    listIds(listA, "past").length === 0 &&
+    listIds(listA, "archived").length === 0 &&
+    ![organizerKey, tvKey].some((secret) => listA.body.includes(secret)),
+  `${listA.status} ${listA.body.slice(0, 200)}`,
+);
+if (!today) finish();
+
+// Create: 201 with the card and three fresh links; the card page and the restaurant page show it.
+const futureDate = shiftDate(today, 30);
+const createIn = (token, json, options = {}) =>
+  staffCall(token, eventsApiOf(restaurantA.id), { method: "POST", json, ...options });
+const createdFuture = await createIn(sessionOwner, {
+  name: `  Wigilia   smoke ${RUN_TAG} `,
+  date: futureDate,
+  expectedGuests: 80,
+});
+let party = createdFuture.data?.event;
+check(
+  "events: owner A creates an event → 201 with its card: normalized name, date, 80 guests, upcoming, three fresh links",
+  createdFuture.status === 201 &&
+    createdFuture.data.role === "owner" &&
+    party?.name === `Wigilia smoke ${RUN_TAG}` &&
+    party.date === futureDate &&
+    party.expectedGuests === 80 &&
+    party.archived === false &&
+    party.archivedAt === null &&
+    party.timing === "upcoming" &&
+    party.guestCount === 0 &&
+    party.restaurantId === restaurantA.id &&
+    party.restaurantName === `Restauracja smoke A ${RUN_TAG}` &&
+    hasFreshLinks(party) &&
+    ![organizerKey, tvKey, eventA.restaurantKey].some((key) => createdFuture.body.includes(key)),
+  `${createdFuture.status} ${createdFuture.body.slice(0, 200)}`,
+);
+if (!party || !hasFreshLinks(party)) finish();
+const partyCard = await staffCall(sessionOwner, eventApi(party.id));
+const partyPage = await staffCall(sessionOwner, eventPage(party.id));
+check(
+  "events: the card API and the card page (auth headers) show the event and its client link",
+  partyCard.status === 200 &&
+    JSON.stringify(partyCard.data?.event) === JSON.stringify(party) &&
+    partyPage.status === 200 &&
+    authHeaders(partyPage) &&
+    partyPage.body.includes(`Wigilia smoke ${RUN_TAG}`) &&
+    partyPage.body.includes(party.links.organizer) &&
+    partyPage.body.includes("Usuń wydarzenie trwale"),
+  `${partyCard.status} ${partyPage.status}`,
+);
+const restaurantEventsPage = await staffCall(sessionOwner, restaurantPageOf(restaurantA.id));
+const restaurantPageOddList = await staffCall(sessionOwner, restaurantPageOf(restaurantA.id, "cokolwiek"));
+check(
+  "events: the restaurant page has the create form and lists the event under „Nadchodzące” (also for an unknown ?lista)",
+  restaurantEventsPage.status === 200 &&
+    restaurantEventsPage.body.includes("Nowe wydarzenie") &&
+    restaurantEventsPage.body.includes('data-event-list="upcoming"') &&
+    eventRow(restaurantEventsPage, party.id).includes(`href="${eventPage(party.id)}"`) &&
+    eventRow(restaurantEventsPage, eventA.id).includes("Dziś") &&
+    eventRow(restaurantPageOddList, party.id) !== "" &&
+    !restaurantEventsPage.body.includes(party.links.organizer),
+  `${restaurantEventsPage.status} ${restaurantPageOddList.status}`,
+);
+const partyOrganizer = await request(party.links.organizer);
+const partyQuestions = await request(`/api/o/${keyOfPath(party.links.organizer)}/questions`);
+check(
+  "events: the new client link opens the organizer view with the starter question base (90)",
+  partyOrganizer.status === 200 && partyQuestions.status === 200 && partyQuestions.data?.questions?.length === 90,
+  `${partyOrganizer.status} ${partyQuestions.status} ${partyQuestions.data?.questions?.length}`,
+);
+const createdPast = await createIn(sessionOwner, { name: `Urodziny smoke ${RUN_TAG}`, date: shiftDate(today, -10) });
+const birthday = createdPast.data?.event;
+const listWithPast = await staffCall(sessionOwner, eventsApiOf(restaurantA.id));
+const pastPage = await staffCall(sessionOwner, restaurantPageOf(restaurantA.id, "minione"));
+check(
+  "events: a past date without a guest count → the past list and ?lista=minione",
+  createdPast.status === 201 &&
+    birthday?.timing === "past" &&
+    birthday.expectedGuests === null &&
+    listIds(listWithPast, "past").includes(birthday.id) &&
+    !listIds(listWithPast, "upcoming").includes(birthday.id) &&
+    listIds(listWithPast, "upcoming").includes(party.id) &&
+    pastPage.body.includes('data-event-list="past"') &&
+    eventRow(pastPage, birthday.id) !== "" &&
+    eventRow(pastPage, party.id) === "",
+  `${createdPast.status} ${createdPast.body.slice(0, 160)}`,
+);
+
+// Validation: 400 with a message, nothing created or changed.
+const invalidCreates = [
+  { name: "", date: futureDate },
+  { name: "   ", date: futureDate },
+  { name: "x".repeat(121), date: futureDate },
+  { name: "Zła data", date: "2026-02-30" },
+  { name: "Zła data", date: "12.12.2026" },
+  { name: "Za mało gości", date: futureDate, expectedGuests: 0 },
+  { name: "Za dużo gości", date: futureDate, expectedGuests: 1001 },
+  { name: "Ułamek gości", date: futureDate, expectedGuests: 2.5 },
+  { name: "Bez daty" },
+  { name: "Dodatkowe pole", date: futureDate, restaurantId: restaurantB.id },
+];
+const createProblems = [];
+for (const json of invalidCreates) {
+  const res = await createIn(sessionOwner, json);
+  if (res.status !== 400 || typeof res.data?.error !== "string") {
+    createProblems.push(`${JSON.stringify(json).slice(0, 40)} ${String(res.status)}`);
+  }
+}
+const tooLongEvent = await createIn(sessionOwner, { name: "x".repeat(121), date: futureDate });
+const listAfterInvalidEvents = await staffCall(sessionOwner, eventsApiOf(restaurantA.id));
+check(
+  "events: invalid new events → 400 with a message (the 121-character name names the limit), nothing created",
+  createProblems.length === 0 &&
+    tooLongEvent.data?.error?.includes("120") === true &&
+    JSON.stringify(listAfterInvalidEvents.data) === JSON.stringify(listWithPast.data),
+  createProblems.join("; "),
+);
+const invalidPatches = [{}, { name: "" }, { date: "2026-13-01" }, { expectedGuests: 0 }, { archived: "tak" }, { x: 1 }];
+const patchProblems = [];
+for (const json of invalidPatches) {
+  const res = await staffCall(sessionOwner, eventApi(party.id), { method: "PATCH", json });
+  if (res.status !== 400 || typeof res.data?.error !== "string") {
+    patchProblems.push(`${JSON.stringify(json)} ${String(res.status)}`);
+  }
+}
+const partyAfterInvalid = await staffCall(sessionOwner, eventApi(party.id));
+check(
+  "events: invalid edits (empty, bad fields, unknown field) → 400 with a message, the card unchanged",
+  patchProblems.length === 0 && JSON.stringify(partyAfterInvalid.data?.event) === JSON.stringify(party),
+  patchProblems.join("; "),
+);
+
+// Edit.
+const editedEvent = await staffCall(sessionOwner, eventApi(party.id), {
+  method: "PATCH",
+  json: { name: `Wigilia firmowa smoke ${RUN_TAG}`, date: shiftDate(today, 32), expectedGuests: 90 },
+});
+const guestsCleared = await staffCall(sessionOwner, eventApi(party.id), {
+  method: "PATCH",
+  json: { expectedGuests: null },
+});
+check(
+  "events: editing the name, date and guest count (then clearing it) → the card answers with the new values, links kept",
+  editedEvent.status === 200 &&
+    editedEvent.data?.event?.name === `Wigilia firmowa smoke ${RUN_TAG}` &&
+    editedEvent.data.event.date === shiftDate(today, 32) &&
+    editedEvent.data.event.expectedGuests === 90 &&
+    guestsCleared.status === 200 &&
+    guestsCleared.data?.event?.expectedGuests === null &&
+    guestsCleared.data.event.name === `Wigilia firmowa smoke ${RUN_TAG}` &&
+    JSON.stringify(guestsCleared.data.event.links) === JSON.stringify(party.links),
+  `${editedEvent.status} ${guestsCleared.status}`,
+);
+party = guestsCleared.data?.event ?? party;
+
+// Replace each link: a fresh key, the other two unchanged, the old link dead at once (page and API), the new one open.
+for (const kind of LINK_KINDS) {
+  const oldKey = keyOfPath(party.links[kind]);
+  const openedBefore = await linkOpens(kind, oldKey);
+  const rotated = await staffCall(sessionOwner, `${eventApi(party.id)}/links/${kind}`, { method: "POST" });
+  const next = rotated.data?.event;
+  const newKey = keyOfPath(next?.links?.[kind]);
+  const othersKept = LINK_KINDS.filter((other) => other !== kind).every(
+    (other) => next?.links?.[other] === party.links[other],
+  );
+  const oldDenied = await linkDenied(kind, oldKey);
+  const newOpens = await linkOpens(kind, newKey);
+  check(
+    `events: replacing the ${kind} link → a new key, the other links kept; the old page and API get the identical 404, the new ones open`,
+    openedBefore &&
+      rotated.status === 200 &&
+      new RegExp(`^${KEY}$`).test(newKey) &&
+      newKey !== oldKey &&
+      othersKept &&
+      oldDenied &&
+      newOpens,
+    `${String(openedBefore)} ${rotated.status} ${String(othersKept)} ${String(oldDenied)} ${String(newOpens)}`,
+  );
+  party = next ?? party;
+}
+const guestKind = await staffCall(sessionOwner, `${eventApi(party.id)}/links/guest`, { method: "POST" });
+const oddKind = await staffCall(sessionOwner, `${eventApi(party.id)}/links/organizer-key`, { method: "POST" });
+const partyAfterKinds = await staffCall(sessionOwner, eventApi(party.id));
+check(
+  "events: any other link kind (guests' links are the client's) → the identical 404, nothing replaced",
+  noAccessJson(guestKind) &&
+    noAccessJson(oddKind) &&
+    JSON.stringify(partyAfterKinds.data?.event) === JSON.stringify(party),
+  `${guestKind.status} ${oddKind.status}`,
+);
+
+// Archive and restore: the event moves between the lists; its links keep working.
+const archivedParty = await staffCall(sessionOwner, eventApi(party.id), { method: "PATCH", json: { archived: true } });
+const listArchived = await staffCall(sessionOwner, eventsApiOf(restaurantA.id));
+const archivePage = await staffCall(sessionOwner, restaurantPageOf(restaurantA.id, "archiwum"));
+const clientWhileArchived = await linkOpens("organizer", keyOfPath(party.links.organizer));
+const tvWhileArchived = await linkOpens("tv", keyOfPath(party.links.tv));
+const tabletWhileArchived = await linkOpens("restaurant", keyOfPath(party.links.restaurant));
+check(
+  "events: archiving → only in the archive (also ?lista=archiwum), the client, TV and tablet links keep working",
+  archivedParty.status === 200 &&
+    archivedParty.data?.event?.archived === true &&
+    typeof archivedParty.data.event.archivedAt === "string" &&
+    listIds(listArchived, "archived").includes(party.id) &&
+    !listIds(listArchived, "upcoming").includes(party.id) &&
+    eventRow(archivePage, party.id) !== "" &&
+    clientWhileArchived &&
+    tvWhileArchived &&
+    tabletWhileArchived,
+  `${archivedParty.status} ${String(clientWhileArchived)} ${String(tvWhileArchived)} ${String(tabletWhileArchived)}`,
+);
+const restoredParty = await staffCall(sessionOwner, eventApi(party.id), { method: "PATCH", json: { archived: false } });
+const listRestored = await staffCall(sessionOwner, eventsApiOf(restaurantA.id));
+check(
+  "events: restoring → back under upcoming, archive mark cleared",
+  restoredParty.status === 200 &&
+    restoredParty.data?.event?.archived === false &&
+    restoredParty.data.event.archivedAt === null &&
+    listIds(listRestored, "upcoming").includes(party.id) &&
+    !listIds(listRestored, "archived").includes(party.id),
+  `${restoredParty.status}`,
+);
+party = restoredParty.data?.event ?? party;
+
+// The manager of A: everything but the permanent delete.
+const managerList = await staffCall(sessionManager, eventsApiOf(restaurantA.id));
+const managerCreated = await createIn(sessionManager, { name: `Komunia smoke ${RUN_TAG}`, date: shiftDate(today, 60) });
+const communion = managerCreated.data?.event;
+const managerRotated = communion
+  ? await staffCall(sessionManager, `${eventApi(communion.id)}/links/tv`, { method: "POST" })
+  : null;
+const managerArchived = communion
+  ? await staffCall(sessionManager, eventApi(communion.id), { method: "PATCH", json: { archived: true } })
+  : null;
+const managerDelete = communion ? await staffCall(sessionManager, eventApi(communion.id), { method: "DELETE" }) : null;
+const communionAfter = communion ? await staffCall(sessionOwner, eventApi(communion.id)) : null;
+const managerPage = communion ? await staffCall(sessionManager, eventPage(communion.id)) : null;
+check(
+  "events: the manager of A lists, creates, replaces a link and archives, but DELETE → the identical 404 and the event stays",
+  managerList.status === 200 &&
+    listIds(managerList, "upcoming").includes(party.id) &&
+    managerCreated.status === 201 &&
+    managerCreated.data?.role === "manager" &&
+    managerRotated?.status === 200 &&
+    managerRotated.data?.event?.links?.tv !== communion?.links?.tv &&
+    managerArchived?.status === 200 &&
+    managerArchived.data?.event?.archived === true &&
+    noAccessJson(managerDelete) &&
+    communionAfter?.status === 200 &&
+    communionAfter.data?.event?.archived === true,
+  `${managerList.status} ${managerCreated.status} ${managerRotated?.status} ${managerArchived?.status} ${managerDelete?.status} ${communionAfter?.status}`,
+);
+check(
+  "events: the manager's card page has the links but no permanent delete",
+  managerPage?.status === 200 &&
+    managerPage.body.includes(`Komunia smoke ${RUN_TAG}`) &&
+    !managerPage.body.includes("Usuń wydarzenie trwale"),
+  String(managerPage?.status),
+);
+
+// Waiter A, owner B and the platform admin: the identical 404 of an unknown id, and nothing changes.
+const outsiderAttempts = (id) => [
+  ["list A", eventsApiOf(restaurantA.id), {}],
+  ["create in A", eventsApiOf(restaurantA.id), { method: "POST", json: { name: "Intruz", date: futureDate } }],
+  ["card", eventApi(id), {}],
+  ["edit", eventApi(id), { method: "PATCH", json: { name: "Intruz" } }],
+  ["archive", eventApi(id), { method: "PATCH", json: { archived: true } }],
+  ["replace the client link", `${eventApi(id)}/links/organizer`, { method: "POST" }],
+  ["delete", eventApi(id), { method: "DELETE" }],
+];
+const listBeforeOutsiders = await staffCall(sessionOwner, eventsApiOf(restaurantA.id));
+const outsiderDenied = [];
+const unknownPageOf = {};
+for (const [who, token] of [
+  ["waiter A", sessionWaiter],
+  ["owner B", sessionB],
+  ["admin", sessionAdmin],
+]) {
+  for (const [name, path, options] of outsiderAttempts(party.id)) {
+    const res = await staffCall(token, path, options);
+    if (!noAccessJson(res)) {
+      outsiderDenied.push(`${who} ${name}: ${String(res.status)}`);
+    }
+  }
+  const unknown = await staffCall(token, eventApi(2_000_000_000));
+  if (!noAccessJson(unknown)) {
+    outsiderDenied.push(`${who} unknown id: ${String(unknown.status)}`);
+  }
+  const page = await staffCall(token, eventPage(party.id));
+  const unknownPage = await staffCall(token, eventPage(2_000_000_000));
+  unknownPageOf[who] = unknownPage.body;
+  if (!isNoAccessPage(page) || page.body !== unknownPage.body || page.body.includes(party.links.organizer)) {
+    outsiderDenied.push(`${who} card page: ${String(page.status)}`);
+  }
+}
+const listAfterOutsiders = await staffCall(sessionOwner, eventsApiOf(restaurantA.id));
+const partyAfterOutsiders = await staffCall(sessionOwner, eventApi(party.id));
+check(
+  "events: waiter A, owner B and the admin get the identical 404 (API and card page) for A's events, nothing changes",
+  outsiderDenied.length === 0 &&
+    JSON.stringify(partyAfterOutsiders.data?.event) === JSON.stringify(party) &&
+    JSON.stringify(listAfterOutsiders.data) === JSON.stringify(listBeforeOutsiders.data) &&
+    unknownPageOf["waiter A"] === unknownPageOf["owner B"],
+  outsiderDenied.join("; "),
+);
+const waiterRestaurantPage = await staffCall(sessionWaiter, restaurantPageOf(restaurantA.id));
+check(
+  "events: the waiter's restaurant page shows no event list, no create form and no links — the note and (waiter-day-and-refills) „Dziś na sali” with today's event A only",
+  waiterRestaurantPage.status === 200 &&
+    waiterRestaurantPage.body.includes("Twoje dzisiejsze wydarzenia są w „Dziś na sali”") &&
+    waiterRestaurantPage.body.includes(`data-floor-event="${String(eventA.id)}"`) &&
+    !waiterRestaurantPage.body.includes(organizerKey) &&
+    !waiterRestaurantPage.body.includes("Nowe wydarzenie") &&
+    !waiterRestaurantPage.body.includes("data-event-id") &&
+    !waiterRestaurantPage.body.includes(party.name),
+  String(waiterRestaurantPage.status),
+);
+const malformedDenied = [];
+for (const path of [
+  eventApi("abc"),
+  eventApi("99999999999"),
+  eventApi("-1"),
+  eventApi("1.5"),
+  eventsApiOf("abc"),
+  eventsApiOf("99999999999"),
+  eventsApiOf(2_000_000_000),
+]) {
+  const res = await staffCall(sessionOwner, path);
+  if (!noAccessJson(res)) {
+    malformedDenied.push(`${path} ${String(res.status)}`);
+  }
+}
+for (const id of [2_000_000_000, "abc"]) {
+  const res = await staffCall(sessionOwner, `${eventApi(id)}/links/organizer`, { method: "POST" });
+  if (!noAccessJson(res)) {
+    malformedDenied.push(`POST ${eventApi(id)}/links/organizer ${String(res.status)}`);
+  }
+}
+const ownerUnknownPage = await staffCall(sessionOwner, eventPage(2_000_000_000));
+for (const id of ["abc", "99999999999", "-1"]) {
+  const page = await staffCall(sessionOwner, eventPage(id));
+  if (!isNoAccessPage(page) || page.body !== ownerUnknownPage.body) {
+    malformedDenied.push(`${eventPage(id)} ${String(page.status)}`);
+  }
+}
+check(
+  "events: unknown, huge and malformed ids → the identical 404 (API and card page)",
+  malformedDenied.length === 0 && isNoAccessPage(ownerUnknownPage),
+  malformedDenied.join("; "),
+);
+
+// No session: the identical 401 of /api/panel/me; the card page sends to the login page.
+const noSessionDenied = [];
+for (const [name, path, options] of outsiderAttempts(party.id)) {
+  const res = await staffCall(null, path, options);
+  if (res.status !== 401 || res.body !== meNoCookie.body) {
+    noSessionDenied.push(`${name}: ${String(res.status)}`);
+  }
+}
+const cardPageNoSession = await request(eventPage(party.id));
+check(
+  "events: without a session every event route → the identical 401 and the card page → 303 to /logowanie",
+  noSessionDenied.length === 0 && redirectsTo(cardPageNoSession, "/logowanie"),
+  `${noSessionDenied.join("; ")} ${cardPageNoSession.status} ${cardPageNoSession.location}`,
+);
+
+// Origin: a mutation without the page's own Origin → 403, nothing changes.
+const originRefused = [];
+for (const [name, path, options] of outsiderAttempts(party.id).filter(([, , options]) => options.method)) {
+  for (const variant of [{ noOrigin: true }, { extraHeaders: { Origin: "https://evil.example" } }]) {
+    const res = await staffCall(sessionOwner, path, { ...options, ...variant });
+    if (res.status !== 403) {
+      originRefused.push(`${name} ${variant.noOrigin ? "no Origin" : "foreign"}: ${String(res.status)}`);
+    }
+  }
+}
+const partyAfterOrigin = await staffCall(sessionOwner, eventApi(party.id));
+const listAfterOrigin = await staffCall(sessionOwner, eventsApiOf(restaurantA.id));
+check(
+  "events: create, edit, archive, replace and delete without the page's Origin → 403, nothing changes",
+  originRefused.length === 0 &&
+    JSON.stringify(partyAfterOrigin.data?.event) === JSON.stringify(party) &&
+    JSON.stringify(listAfterOrigin.data) === JSON.stringify(listBeforeOutsiders.data),
+  originRefused.join("; "),
+);
+
+// Delete (owner): the event goes with its guest, and every link of it (client, TV, tablet, the guest's) dies at once.
+// Event A and event B read the same as before.
+const aGuestsBeforeDelete = (await request(`/api/o/${organizerKey}/guests`)).body;
+const bBeforeDelete = await readB();
+const createdDoomed = await createIn(sessionOwner, { name: `Do usunięcia smoke ${RUN_TAG}`, date: futureDate });
+const doomed = createdDoomed.data?.event;
+const doomedKey = keyOfPath(doomed?.links?.organizer);
+await request(`/api/o/${doomedKey}/guests`, { method: "POST", json: { text: "Gość do usunięcia" } });
+await request(`/api/o/${doomedKey}/guest-links`, { method: "PATCH", json: { enabled: true } });
+const doomedGuestKey = (await request(`/api/o/${doomedKey}/guest-links`)).data?.guests?.[0]?.key ?? "brak";
+const doomedGuestBefore = await request(`/api/g/${doomedGuestKey}/state`);
+const doomedCardBefore = await staffCall(sessionOwner, eventApi(doomed?.id ?? 0));
+const eventDeleted = await staffCall(sessionOwner, eventApi(doomed?.id ?? 0), { method: "DELETE" });
+const doomedCardAfter = await staffCall(sessionOwner, eventApi(doomed?.id ?? 0));
+const doomedPageAfter = await staffCall(sessionOwner, eventPage(doomed?.id ?? 0));
+const eventDeletedAgain = await staffCall(sessionOwner, eventApi(doomed?.id ?? 0), { method: "DELETE" });
+const listAfterDelete = await staffCall(sessionOwner, eventsApiOf(restaurantA.id));
+const doomedLinksDead = doomed
+  ? (await Promise.all(LINK_KINDS.map((kind) => linkDenied(kind, keyOfPath(doomed.links[kind]))))).every(Boolean)
+  : false;
+const doomedGuestAfter = await request(`/api/g/${doomedGuestKey}/state`);
+const doomedGuestPage = await request(`/g/${doomedGuestKey}`);
+check(
+  "events: the owner deletes an event with a guest → 200; card, page and list gone; client, TV, tablet and guest links → the identical 404",
+  createdDoomed.status === 201 &&
+    doomedCardBefore.data?.event?.guestCount === 1 &&
+    doomedGuestBefore.status === 200 &&
+    eventDeleted.status === 200 &&
+    eventDeleted.data?.deleted === true &&
+    eventDeleted.data.restaurantId === restaurantA.id &&
+    noAccessJson(doomedCardAfter) &&
+    isNoAccessPage(doomedPageAfter) &&
+    doomedPageAfter.body === ownerUnknownPage.body &&
+    noAccessJson(eventDeletedAgain) &&
+    ![...listIds(listAfterDelete, "upcoming"), ...listIds(listAfterDelete, "past")].includes(doomed?.id) &&
+    doomedLinksDead &&
+    noAccessJson(doomedGuestAfter) &&
+    doomedGuestPage.status === 404 &&
+    doomedGuestPage.body === deniedBody,
+  `${createdDoomed.status} ${doomedGuestBefore.status} ${eventDeleted.status} ${doomedCardAfter.status} ${String(doomedLinksDead)} ${doomedGuestAfter.status}`,
+);
+const aGuestsAfterDelete = (await request(`/api/o/${organizerKey}/guests`)).body;
+const bAfterDelete = await readB();
+check(
+  "events: deleting an event leaves event A and event B as they were",
+  aGuestsAfterDelete === aGuestsBeforeDelete && JSON.stringify(bAfterDelete) === JSON.stringify(bBeforeDelete),
+);
+
+// 28. Restaurant team (restaurant-team, S-12): owners invite managers and waiters, managers invite waiters, with
+// one-time links handed over by a person (no e-mail); within their scope they change roles, remove people and give a
+// fresh link (an invitation without a password, else a password reset). The last owner is never demoted or removed. A
+// removed person loses this restaurant at once, their other restaurants stay. A link sets the ACCOUNT's password, so
+// a team never gives one to an account of another restaurant (409), and a team's unused link dies when the account
+// joins a second restaurant. Outsiders get the identical 404 of an unknown restaurant, no session the identical 401, a
+// foreign Origin 403. Accounts of this section are created only through the team API; uses the sessions of 25–27.
+const TEAM_PASSWORD = "smoke-zespol-1";
+const NEW_TEAM_PASSWORD = "smoke-zespol-nowe-2";
+const HOUR_MS = 60 * 60 * 1000;
+const teamApiOf = (restaurantId) => `/api/panel/restaurants/${String(restaurantId)}/team`;
+const memberApiOf = (accountId, restaurantId = restaurantA.id) => `${teamApiOf(restaurantId)}/${String(accountId)}`;
+const teamOf = (res) => (Array.isArray(res.data?.team?.members) ? res.data.team : null);
+const memberIn = (res, email) => teamOf(res)?.members.find((member) => member.email === email) ?? null;
+const readTeamA = (token = sessionOwner) => staffCall(token, teamApiOf(restaurantA.id));
+const inviteInto = (token, json, restaurantId = restaurantA.id, options = {}) =>
+  staffCall(token, teamApiOf(restaurantId), { method: "POST", json, ...options });
+const setRoleOf = (token, accountId, role, restaurantId = restaurantA.id) =>
+  staffCall(token, memberApiOf(accountId, restaurantId), { method: "PATCH", json: { role } });
+const removeOf = (token, accountId, restaurantId = restaurantA.id) =>
+  staffCall(token, memberApiOf(accountId, restaurantId), { method: "DELETE" });
+const memberLinkOf = (token, accountId, restaurantId = restaurantA.id) =>
+  staffCall(token, `${memberApiOf(accountId, restaurantId)}/link`, { method: "POST" });
+const linkToken = (link) => HASLO_PATH.exec(typeof link?.path === "string" ? link.path : "")?.[1] ?? "brak";
+const expiresAbout = (link, ms) => {
+  const left = Date.parse(typeof link?.expiresAt === "string" ? link.expiresAt : "") - Date.now();
+  return Number.isFinite(left) && Math.abs(left - ms) < 10 * 60 * 1000;
+};
+const MEMBER_FIELDS = "accountId,displayName,email,hasPassword,role";
+const managerAEmail = staffEmail("managera");
+
+// Reading the team: owners and managers, the whole team with account ids and nothing secret.
+const teamStart = await readTeamA();
+const managerAId = memberIn(teamStart, managerAEmail)?.accountId ?? 2_000_000_002;
+check(
+  "team: owner A reads A's team (no-store) — owner A, manager A, waiter A with ids and roles, nothing secret",
+  teamStart.status === 200 &&
+    teamStart.cacheControl.includes("no-store") &&
+    teamOf(teamStart)?.restaurantId === restaurantA.id &&
+    teamOf(teamStart).you.accountId === staff.ownerA.id &&
+    teamOf(teamStart).you.role === "owner" &&
+    teamOf(teamStart).members.length === 3 &&
+    memberIn(teamStart, staff.ownerA.email)?.role === "owner" &&
+    memberIn(teamStart, staff.ownerA.email).accountId === staff.ownerA.id &&
+    memberIn(teamStart, staff.waiterA.email)?.role === "waiter" &&
+    memberIn(teamStart, managerAEmail)?.role === "manager" &&
+    teamOf(teamStart).members.every(
+      (member) => Object.keys(member).sort().join(",") === MEMBER_FIELDS && member.hasPassword === true,
+    ) &&
+    !/hash|token|session/i.test(teamStart.body),
+  `${teamStart.status} ${teamStart.body.slice(0, 200)}`,
+);
+const teamByManager = await readTeamA(sessionManager);
+check(
+  "team: manager A reads the same team as a manager",
+  teamByManager.status === 200 &&
+    teamOf(teamByManager)?.you.role === "manager" &&
+    teamOf(teamByManager).you.accountId === managerAId &&
+    JSON.stringify(teamOf(teamByManager).members) === JSON.stringify(teamOf(teamStart)?.members),
+  `${teamByManager.status} ${teamByManager.body.slice(0, 160)}`,
+);
+const ownerTeamPage = await staffCall(sessionOwner, restaurantPageOf(restaurantA.id));
+const managerTeamPage = await staffCall(sessionManager, restaurantPageOf(restaurantA.id));
+const waiterTeamPage = await staffCall(sessionWaiter, restaurantPageOf(restaurantA.id));
+check(
+  "team: the restaurant page shows „Zespół” with the invitation form and the e-mails to the owner and the manager, nothing to the waiter",
+  [ownerTeamPage, managerTeamPage].every(
+    (page) =>
+      page.status === 200 &&
+      page.body.includes("data-team-section") &&
+      page.body.includes("Zaproś do zespołu") &&
+      page.body.includes(staff.waiterA.email) &&
+      page.body.includes(managerAEmail) &&
+      page.body.includes(staff.ownerA.email),
+  ) &&
+    waiterTeamPage.status === 200 &&
+    !waiterTeamPage.body.includes("data-team-section") &&
+    !waiterTeamPage.body.includes(staff.ownerA.email) &&
+    !waiterTeamPage.body.includes(managerAEmail),
+  `${ownerTeamPage.status} ${managerTeamPage.status} ${waiterTeamPage.status}`,
+);
+
+// Invitations: 7-day one-time links that open and set the password; the new people see A with their roles.
+const mgrEmail = staffEmail("teammgr");
+const w1Email = staffEmail("teamw1");
+const w2Email = staffEmail("teamw2");
+const pendEmail = staffEmail("teampend");
+const invitedMgr = await inviteInto(sessionOwner, { email: mgrEmail, name: "  Smoke   teamMgr ", role: "manager" });
+const invitedW1 = await inviteInto(sessionOwner, { email: `  ${w1Email.toUpperCase()} `, role: "waiter" });
+const freshInvite = (res, email, role) =>
+  res.status === 201 &&
+  res.data?.invited?.email === email &&
+  res.data.invited.role === role &&
+  res.data.invited.created === true &&
+  res.data.invited.hasPassword === false &&
+  res.data.invited.link?.kind === "invite" &&
+  HASLO_PATH.test(res.data.invited.link.path) &&
+  expiresAbout(res.data.invited.link, 7 * 24 * HOUR_MS) &&
+  memberIn(res, email)?.role === role &&
+  memberIn(res, email).hasPassword === false &&
+  memberIn(res, email).accountId === res.data.invited.accountId;
+check(
+  "team: owner A invites a manager and a waiter (e-mail normalized) → 201, each with a 7-day invitation /haslo/<token>",
+  freshInvite(invitedMgr, mgrEmail, "manager") &&
+    memberIn(invitedMgr, mgrEmail)?.displayName === "Smoke teamMgr" &&
+    freshInvite(invitedW1, w1Email, "waiter") &&
+    memberIn(invitedW1, w1Email)?.displayName === null,
+  `${invitedMgr.status} ${invitedW1.status} ${invitedW1.body.slice(0, 200)}`.replace(
+    /\/haslo\/[A-Za-z0-9_-]+/g,
+    "/haslo/<token>",
+  ),
+);
+const mgrId = invitedMgr.data?.invited?.accountId ?? 2_000_000_003;
+const w1Id = invitedW1.data?.invited?.accountId ?? 2_000_000_004;
+const mgrInvitePage = await request(`/haslo/${linkToken(invitedMgr.data?.invited?.link)}`);
+const redeemedMgr = await redeem(linkToken(invitedMgr.data?.invited?.link), TEAM_PASSWORD);
+const redeemedW1 = await redeem(linkToken(invitedW1.data?.invited?.link), TEAM_PASSWORD);
+const sessionMgr = sessionOf(redeemedMgr);
+const sessionW1 = sessionOf(redeemedW1);
+const mgrReadsA = await panelGet(sessionMgr, `/restaurants/${String(restaurantA.id)}`);
+const w1ReadsA = await panelGet(sessionW1, `/restaurants/${String(restaurantA.id)}`);
+const w1ReadsTeam = await readTeamA(sessionW1);
+check(
+  "team: the invitations open with the e-mail and set the password; the manager opens A as a manager, the waiter as a waiter without the team",
+  mgrInvitePage.status === 200 &&
+    mgrInvitePage.body.includes(mgrEmail) &&
+    redirectsTo(redeemedMgr, "/panel") &&
+    redirectsTo(redeemedW1, "/panel") &&
+    mgrReadsA.status === 200 &&
+    mgrReadsA.data?.role === "manager" &&
+    w1ReadsA.status === 200 &&
+    w1ReadsA.data?.role === "waiter" &&
+    noAccessJson(w1ReadsTeam),
+  `${mgrInvitePage.status} ${redeemedMgr.status} ${mgrReadsA.status} ${w1ReadsA.status} ${w1ReadsTeam.status}`,
+);
+
+// A manager invites waiters only; anything else is the identical 404 and nothing joins.
+const invitedW2 = await inviteInto(sessionManager, { email: w2Email, role: "waiter" });
+const teamBeforeRefusals = await readTeamA();
+const scopeRefused = [];
+for (const [who, token, role] of [
+  ["manager A as a manager", sessionManager, "manager"],
+  ["manager A as an owner", sessionManager, "owner"],
+  ["owner A as an owner", sessionOwner, "owner"],
+]) {
+  const res = await inviteInto(token, { email: staffEmail("poza-zakresem"), role });
+  if (!noAccessJson(res)) {
+    scopeRefused.push(`${who}: ${String(res.status)} ${res.body.slice(0, 60)}`);
+  }
+}
+const teamAfterRefusals = await readTeamA();
+check(
+  "team: manager A invites a waiter (201, invitation); inviting a manager or an owner (also owner A an owner) → the identical 404, nobody joins",
+  freshInvite(invitedW2, w2Email, "waiter") &&
+    invitedW2.data.team?.you.role === "manager" &&
+    scopeRefused.length === 0 &&
+    JSON.stringify(teamOf(teamAfterRefusals)?.members) === JSON.stringify(teamOf(teamBeforeRefusals)?.members),
+  scopeRefused.join("; "),
+);
+const w2Id = invitedW2.data?.invited?.accountId ?? 2_000_000_005;
+const teamInvalid = [];
+for (const [name, json] of [
+  ["bad e-mail", { email: "nie-email", role: "waiter" }],
+  ["81-character name", { email: staffEmail("walidacja-zespolu"), name: "x".repeat(81), role: "waiter" }],
+  ["unknown role", { email: staffEmail("walidacja-zespolu"), role: "szef" }],
+  ["no role", { email: staffEmail("walidacja-zespolu") }],
+  ["extra field", { email: staffEmail("walidacja-zespolu"), role: "waiter", restaurantId: restaurantB.id }],
+]) {
+  const res = await inviteInto(sessionOwner, json);
+  if (res.status !== 400 || typeof res.data?.error !== "string") {
+    teamInvalid.push(`${name}: ${String(res.status)}`);
+  }
+}
+const roleInvalid = await staffCall(sessionOwner, memberApiOf(w1Id), { method: "PATCH", json: { role: "szef" } });
+const roleExtra = await staffCall(sessionOwner, memberApiOf(w1Id), {
+  method: "PATCH",
+  json: { role: "waiter", restaurantId: restaurantB.id },
+});
+const alreadyIn = await inviteInto(sessionOwner, { email: w1Email, role: "manager" });
+check(
+  "team: a bad e-mail, an 81-character name, an unknown or missing role, an extra field → 400; a member again → 409",
+  teamInvalid.length === 0 &&
+    roleInvalid.status === 400 &&
+    roleExtra.status === 400 &&
+    alreadyIn.status === 409 &&
+    alreadyIn.data?.error === "Ta osoba już jest w zespole. Jej rolę zmienisz na liście.",
+  `${teamInvalid.join("; ")} ${roleInvalid.status} ${roleExtra.status} ${alreadyIn.status}`,
+);
+
+// Role changes by the owner, also making someone an owner; a promoted owner may step down while another owner stays.
+const w1ToManager = await setRoleOf(sessionOwner, w1Id, "manager");
+const w1ToWaiter = await setRoleOf(sessionOwner, w1Id, "waiter");
+const w1Same = await setRoleOf(sessionOwner, w1Id, "waiter");
+const mgrToOwner = await setRoleOf(sessionOwner, mgrId, "owner");
+const mgrStepsDown = await setRoleOf(sessionMgr, mgrId, "manager");
+check(
+  "team: owner A makes the waiter a manager and back, the manager an owner; the new owner steps down to manager (their team as a manager)",
+  w1ToManager.status === 200 &&
+    memberIn(w1ToManager, w1Email)?.role === "manager" &&
+    w1ToWaiter.status === 200 &&
+    memberIn(w1ToWaiter, w1Email)?.role === "waiter" &&
+    w1Same.status === 200 &&
+    mgrToOwner.status === 200 &&
+    memberIn(mgrToOwner, mgrEmail)?.role === "owner" &&
+    teamOf(mgrToOwner).members.filter((member) => member.role === "owner").length === 2 &&
+    mgrStepsDown.status === 200 &&
+    teamOf(mgrStepsDown)?.you.role === "manager" &&
+    memberIn(mgrStepsDown, mgrEmail)?.role === "manager",
+  [w1ToManager, w1ToWaiter, w1Same, mgrToOwner, mgrStepsDown].map((res) => res.status).join(" "),
+);
+const lastOwnerDemote = await setRoleOf(sessionOwner, staff.ownerA.id, "manager");
+const lastOwnerRemove = await removeOf(sessionOwner, staff.ownerA.id);
+const ownerStill = await readTeamA();
+check(
+  "team: the only owner demoting or removing themself → 409 with the message, still the owner",
+  lastOwnerDemote.status === 409 &&
+    lastOwnerDemote.data?.error ===
+      "Restauracja musi mieć co najmniej jednego właściciela. Najpierw nadaj rolę właściciela komuś innemu." &&
+    lastOwnerRemove.status === 409 &&
+    lastOwnerRemove.body === lastOwnerDemote.body &&
+    teamOf(ownerStill)?.you.role === "owner" &&
+    memberIn(ownerStill, staff.ownerA.email)?.role === "owner",
+  `${lastOwnerDemote.status} ${lastOwnerRemove.status} ${lastOwnerDemote.body}`,
+);
+
+// A manager's scope: waiters only. Managers, owners and themself are the identical 404.
+const managerScope = [];
+for (const [whom, accountId] of [
+  ["the new manager", mgrId],
+  ["owner A", staff.ownerA.id],
+  ["themself", managerAId],
+]) {
+  for (const [what, call] of [
+    ["role", () => setRoleOf(sessionManager, accountId, "waiter")],
+    ["remove", () => removeOf(sessionManager, accountId)],
+    ["link", () => memberLinkOf(sessionManager, accountId)],
+  ]) {
+    const res = await call();
+    if (!noAccessJson(res)) {
+      managerScope.push(`${whom} ${what}: ${String(res.status)}`);
+    }
+  }
+}
+const managerPromotes = await setRoleOf(sessionManager, w1Id, "manager");
+const teamAfterManagerScope = await readTeamA();
+check(
+  "team: manager A on a manager, on owner A, on themself (role, remove, link) and making a waiter a manager → the identical 404, nothing changed",
+  managerScope.length === 0 &&
+    noAccessJson(managerPromotes) &&
+    JSON.stringify(teamOf(teamAfterManagerScope)?.members) === JSON.stringify(teamOf(mgrStepsDown)?.members),
+  managerScope.join("; "),
+);
+const managerResetW1 = await memberLinkOf(sessionManager, w1Id);
+const managerRemovesW2 = await removeOf(sessionManager, w2Id);
+const w2InvitePage = await request(`/haslo/${linkToken(invitedW2.data?.invited?.link)}`);
+check(
+  "team: manager A gives a waiter with a password a 24-hour reset link, removes a waiter who never set one → their invitation is the invalid-link page",
+  managerResetW1.status === 200 &&
+    managerResetW1.data?.link?.kind === "reset" &&
+    expiresAbout(managerResetW1.data.link, 24 * HOUR_MS) &&
+    managerRemovesW2.status === 200 &&
+    memberIn(managerRemovesW2, w2Email) === null &&
+    w2InvitePage.status === 404 &&
+    w2InvitePage.body === linkUnknown.body,
+  `${managerResetW1.status} ${managerResetW1.data?.link?.kind} ${managerRemovesW2.status} ${w2InvitePage.status}`,
+);
+
+// Another restaurant: an account that has a password joins without a link and A's team's unused link for it dies; an
+// account of another restaurant without a password is refused (it keeps its invitation there).
+const w1IntoB = await inviteInto(sessionB, { email: w1Email, role: "waiter" }, restaurantB.id);
+const w1ResetPage = await request(`/haslo/${linkToken(managerResetW1.data?.link)}`);
+const invitedPend = await inviteInto(sessionOwner, { email: pendEmail, role: "waiter" });
+const pendIntoB = await inviteInto(sessionB, { email: pendEmail, role: "waiter" }, restaurantB.id);
+const pendInvitePage = await request(`/haslo/${linkToken(invitedPend.data?.invited?.link)}`);
+check(
+  "team: owner B adds A's waiter (password) to B → no link, and manager A's unused reset link for them is the invalid-link page",
+  w1IntoB.status === 201 &&
+    w1IntoB.data?.invited?.created === false &&
+    w1IntoB.data.invited.hasPassword === true &&
+    w1IntoB.data.invited.link === null &&
+    w1ResetPage.status === 404 &&
+    w1ResetPage.body === linkUnknown.body,
+  `${w1IntoB.status} ${w1IntoB.body.slice(0, 160)} ${w1ResetPage.status}`,
+);
+check(
+  "team: owner B inviting A's invitee who has not set a password → 409 with the message, their invitation from A still opens",
+  freshInvite(invitedPend, pendEmail, "waiter") &&
+    pendIntoB.status === 409 &&
+    pendIntoB.data?.error ===
+      "Ta osoba ma już konto w innej restauracji, ale nie ustawiła jeszcze hasła. Zaproś ją ponownie, gdy ustawi hasło z linku, który tam dostała." &&
+    pendInvitePage.status === 200 &&
+    pendInvitePage.body.includes(pendEmail),
+  `${invitedPend.status} ${pendIntoB.status} ${pendInvitePage.status}`,
+);
+
+// A link sets the ACCOUNT's password: none for a member who also works elsewhere (owner A is an owner of B too).
+const linkForShared = await memberLinkOf(sessionOwner, w1Id);
+const linkForSelf = await memberLinkOf(sessionOwner, staff.ownerA.id);
+const ELSEWHERE_PREFIX = "Ta osoba ma dostęp także do innej restauracji";
+check(
+  "team: „Nowy link” for a waiter who is also in B and for owner A (also an owner of B) → 409, no link",
+  linkForShared.status === 409 &&
+    String(linkForShared.data?.error).startsWith(ELSEWHERE_PREFIX) &&
+    linkForShared.data.link === undefined &&
+    linkForSelf.status === 409 &&
+    linkForSelf.body === linkForShared.body,
+  `${linkForShared.status} ${linkForSelf.status}`,
+);
+
+// Removal: A closes to the person at once (API, page, hub), their other restaurant stays.
+const removedW1 = await removeOf(sessionOwner, w1Id);
+const w1AfterA = await panelGet(sessionW1, `/restaurants/${String(restaurantA.id)}`);
+const w1AfterPage = await staffCall(sessionW1, restaurantPageOf(restaurantA.id));
+const w1AfterB = await panelGet(sessionW1, `/restaurants/${String(restaurantB.id)}`);
+const w1Hub = await request("/panel", { cookie: asStaff(sessionW1) });
+const w1Me = await me(sessionW1);
+check(
+  "team: owner A removes the waiter → their session gets the identical 404 for A (API and page), still opens B, /panel lists B only",
+  removedW1.status === 200 &&
+    memberIn(removedW1, w1Email) === null &&
+    noAccessJson(w1AfterA) &&
+    isNoAccessPage(w1AfterPage) &&
+    w1AfterPage.body === cPageUnknown.body &&
+    w1AfterB.status === 200 &&
+    w1AfterB.data?.role === "waiter" &&
+    w1Hub.status === 200 &&
+    hubEntry(w1Hub, restaurantB.id) !== "" &&
+    hubEntry(w1Hub, restaurantA.id) === "" &&
+    w1Me.status === 200 &&
+    w1Me.data?.restaurants?.length === 1 &&
+    w1Me.data.restaurants[0].id === restaurantB.id,
+  `${removedW1.status} ${w1AfterA.status} ${w1AfterPage.status} ${w1AfterB.status} ${w1Me.body.slice(0, 120)}`,
+);
+const removedAgain = await removeOf(sessionOwner, w1Id);
+check("team: removing someone who is no longer in the team → the identical 404", noAccessJson(removedAgain));
+
+// A forgotten password: the owner's reset link for the manager ends the manager's sessions once used.
+const resetMgr = await memberLinkOf(sessionOwner, mgrId);
+const redeemedResetMgr = await redeem(linkToken(resetMgr.data?.link), NEW_TEAM_PASSWORD);
+const mgrOldSession = await me(sessionMgr);
+const mgrOldPassword = await logIn(mgrEmail, TEAM_PASSWORD);
+const mgrNewPassword = await logIn(mgrEmail, NEW_TEAM_PASSWORD);
+check(
+  "team: owner A's „Nowy link” for the manager is a 24-hour reset; setting the new password ends the old session, only the new password logs in",
+  resetMgr.status === 200 &&
+    resetMgr.data?.link?.kind === "reset" &&
+    expiresAbout(resetMgr.data.link, 24 * HOUR_MS) &&
+    redirectsTo(redeemedResetMgr, "/panel") &&
+    mgrOldSession.status === 401 &&
+    redirectsTo(mgrOldPassword, "/logowanie?blad=dane") &&
+    redirectsTo(mgrNewPassword, "/panel"),
+  `${resetMgr.status} ${resetMgr.data?.link?.kind} ${redeemedResetMgr.status} ${mgrOldSession.status}`,
+);
+
+// Outsiders: the identical 404 of an unknown restaurant on every team route; nothing changes.
+const teamBeforeOutsiders = await readTeamA();
+const unknownTeam = await staffCall(sessionOwner, teamApiOf(2_000_000_000));
+const teamAttempts = (restaurantId, accountId) => [
+  ["read", teamApiOf(restaurantId), {}],
+  [
+    "invite",
+    teamApiOf(restaurantId),
+    { method: "POST", json: { email: staffEmail("intruz-zespolu"), role: "waiter" } },
+  ],
+  ["role", memberApiOf(accountId, restaurantId), { method: "PATCH", json: { role: "manager" } }],
+  ["remove", memberApiOf(accountId, restaurantId), { method: "DELETE" }],
+  ["link", `${memberApiOf(accountId, restaurantId)}/link`, { method: "POST" }],
+];
+const teamOutsiders = [];
+for (const [who, token] of [
+  ["waiter A", sessionWaiter],
+  ["owner B", sessionB],
+  ["the admin", sessionAdmin],
+  ["the removed waiter", sessionW1],
+]) {
+  for (const [name, path, options] of teamAttempts(restaurantA.id, staff.waiterA.id)) {
+    const res = await staffCall(token, path, options);
+    if (!noAccessJson(res) || res.body !== unknownTeam.body) {
+      teamOutsiders.push(`${who} ${name}: ${String(res.status)}`);
+    }
+  }
+}
+for (const [name, path, options] of teamAttempts(restaurantB.id, staff.waiterA.id).slice(2)) {
+  const res = await staffCall(sessionB, path, options);
+  if (!noAccessJson(res)) {
+    teamOutsiders.push(`owner B on A's waiter through B, ${name}: ${String(res.status)}`);
+  }
+}
+for (const accountId of ["2000000000", "abc", "99999999999", "-1", "1.5"]) {
+  for (const [name, path, options] of teamAttempts(restaurantA.id, accountId).slice(2)) {
+    const res = await staffCall(sessionOwner, path, options);
+    if (!noAccessJson(res)) {
+      teamOutsiders.push(`owner A, account ${accountId}, ${name}: ${String(res.status)}`);
+    }
+  }
+}
+for (const restaurantId of ["abc", "99999999999", "-1"]) {
+  const res = await staffCall(sessionOwner, teamApiOf(restaurantId));
+  if (!noAccessJson(res)) {
+    teamOutsiders.push(`owner A, restaurant ${restaurantId}: ${String(res.status)}`);
+  }
+}
+const teamAfterOutsiders = await readTeamA();
+check(
+  "team: waiter A, owner B, the admin and the removed waiter → the identical 404 on every team route of A; foreign, unknown and malformed ids too; nothing changed",
+  noAccessJson(unknownTeam) &&
+    teamOutsiders.length === 0 &&
+    JSON.stringify(teamAfterOutsiders.data) === JSON.stringify(teamBeforeOutsiders.data),
+  teamOutsiders.join("; "),
+);
+const teamNoSession = [];
+for (const [name, path, options] of teamAttempts(restaurantA.id, staff.waiterA.id)) {
+  const res = await staffCall(null, path, options);
+  if (res.status !== 401 || res.body !== meNoCookie.body) {
+    teamNoSession.push(`${name}: ${String(res.status)}`);
+  }
+}
+const teamOrigin = [];
+for (const [name, path, options] of teamAttempts(restaurantA.id, staff.waiterA.id).slice(1)) {
+  for (const variant of [{ noOrigin: true }, { extraHeaders: FOREIGN }]) {
+    const res = await staffCall(sessionOwner, path, { ...options, ...variant });
+    if (res.status !== 403) {
+      teamOrigin.push(`${name} ${variant.noOrigin ? "no Origin" : "foreign"}: ${String(res.status)}`);
+    }
+  }
+}
+const teamAfterOrigin = await readTeamA();
+check(
+  "team: without a session every team route → the identical 401; mutations without the page's Origin → 403, nothing changed",
+  teamNoSession.length === 0 &&
+    teamOrigin.length === 0 &&
+    JSON.stringify(teamAfterOrigin.data) === JSON.stringify(teamBeforeOutsiders.data),
+  `${teamNoSession.join("; ")} ${teamOrigin.join("; ")}`,
+);
+
+// 29. Platform admin's support access (admin-support-log, S-13): the admin opens a restaurant's data only after
+// „Wejdź jako wsparcie” with a reason (3–300 characters), read-only, for 60 minutes, bound to that login session.
+// Every entry, every read and every exit lands in an append-only log that only the restaurant's owners read. Outside
+// support mode — and for every mutation inside it — the admin gets the identical 404 of an unknown restaurant; the
+// event's links (keys) never reach support mode. Restaurant C's switch is restored. Uses the sessions of 25–28.
+const supportApiOf = (restaurantId) => `${PLATFORM_API}/${String(restaurantId)}/support`;
+const supportLogApiOf = (restaurantId) => `/api/panel/restaurants/${String(restaurantId)}/support-log`;
+const restaurantApiOf = (restaurantId) => `/api/panel/restaurants/${String(restaurantId)}`;
+const logOf = (res) => (Array.isArray(res.data?.entries) ? res.data.entries : []);
+const SUPPORT_REASON = `Smoke: prośba właściciela ${RUN_TAG}`;
+const enterSupport = (token, restaurantId, json = { reason: SUPPORT_REASON }, options = {}) =>
+  staffCall(token, supportApiOf(restaurantId), { method: "POST", json, ...options });
+const endSupportOf = (token, restaurantId, options = {}) =>
+  staffCall(token, supportApiOf(restaurantId), { method: "DELETE", ...options });
+const readLogA = (token = sessionOwner) => staffCall(token, supportLogApiOf(restaurantA.id));
+// Every read support mode opens (API), in this order; and the two pages.
+const supportReads = (restaurantId, eventId) => [
+  ["restaurant", restaurantApiOf(restaurantId)],
+  ["events", eventsApiOf(restaurantId)],
+  ["team", teamApiOf(restaurantId)],
+  ["log", supportLogApiOf(restaurantId)],
+  ["event", eventApi(eventId)],
+];
+const supportPages = (restaurantId, eventId) => [restaurantPageOf(restaurantId), eventPage(eventId)];
+
+// Event A's keys as its owner sees them (links) plus its guests' keys: none may appear in support mode.
+const ownerCardA = await staffCall(sessionOwner, eventApi(eventA.id));
+const aLinkKeys = LINK_KINDS.map((kind) => keyOfPath(ownerCardA.data?.event?.links?.[kind]));
+const aGuestKeys = ((await request(`/api/o/${aLinkKeys[0]}/guest-links`)).data?.guests ?? []).map((guest) => guest.key);
+const aKeys = [...aLinkKeys, ...aGuestKeys].filter((key) => typeof key === "string" && key.length === 24);
+const leaksAKey = (body) => aKeys.some((key) => body.includes(key)) || new RegExp(`/(o|tv|r|g)/${KEY}`).test(body);
+const adminUnknownPage = await staffCall(sessionAdmin, restaurantPageOf(2_000_000_000));
+const adminUnknownEventPage = await staffCall(sessionAdmin, eventPage(2_000_000_000));
+const ownerPageA = await staffCall(sessionOwner, restaurantPageOf(restaurantA.id));
+check(
+  "support: event A's three link keys are known to its owner, the owner's page carries the writing islands",
+  ownerCardA.status === 200 &&
+    aLinkKeys.every((key) => key.length === 24) &&
+    ownerPageA.status === 200 &&
+    ownerPageA.body.includes("NewEventForm") &&
+    ownerPageA.body.includes("TeamManager"),
+  `${ownerCardA.status} ${aKeys.length} ${ownerPageA.status}`,
+);
+
+// Before entering: the identical 404 everywhere, nothing logged.
+const logBeforeSupport = await readLogA();
+const deniedBefore = [];
+for (const [name, path] of supportReads(restaurantA.id, eventA.id)) {
+  const res = await staffCall(sessionAdmin, path);
+  if (!noAccessJson(res)) {
+    deniedBefore.push(`${name}: ${String(res.status)}`);
+  }
+}
+const [pageABefore, eventPageABefore] = await Promise.all(
+  supportPages(restaurantA.id, eventA.id).map((path) => staffCall(sessionAdmin, path)),
+);
+const logStillEmpty = await readLogA();
+check(
+  "support: before entering, the admin gets the identical 404 on A's routes and pages; the owner's log is empty and stays so",
+  deniedBefore.length === 0 &&
+    isNoAccessPage(pageABefore) &&
+    pageABefore.body === adminUnknownPage.body &&
+    isNoAccessPage(eventPageABefore) &&
+    eventPageABefore.body === adminUnknownEventPage.body &&
+    logBeforeSupport.status === 200 &&
+    logOf(logBeforeSupport).length === 0 &&
+    logBeforeSupport.data?.truncated === false &&
+    logOf(logStillEmpty).length === 0,
+  `${deniedBefore.join("; ")} ${pageABefore.status} ${eventPageABefore.status} ${logBeforeSupport.status} ${logBeforeSupport.body.slice(0, 120)}`,
+);
+
+// Entering: Origin, platform admin, known id, a reason of 3–300 characters; nothing is logged for a refusal.
+const enterRefusals = [];
+for (const [label, options] of [
+  ["no Origin", { noOrigin: true }],
+  ["foreign Origin", { extraHeaders: FOREIGN }],
+]) {
+  const res = await enterSupport(sessionAdmin, restaurantA.id, undefined, options);
+  if (res.status !== 403) {
+    enterRefusals.push(`${label}: ${String(res.status)}`);
+  }
+}
+for (const [who, token] of [
+  ["owner A", sessionOwner],
+  ["manager A", sessionManager],
+  ["waiter A", sessionWaiter],
+  ["owner B", sessionB],
+]) {
+  const res = await enterSupport(token, restaurantA.id);
+  if (!noAccessJson(res)) {
+    enterRefusals.push(`${who}: ${String(res.status)}`);
+  }
+}
+for (const id of ["2000000000", "abc", "99999999999", "-1", "1.5"]) {
+  const res = await staffCall(sessionAdmin, `${PLATFORM_API}/${id}/support`, {
+    method: "POST",
+    json: { reason: SUPPORT_REASON },
+  });
+  if (!noAccessJson(res)) {
+    enterRefusals.push(`id ${id}: ${String(res.status)}`);
+  }
+}
+for (const [label, json] of [
+  ["empty", { reason: "" }],
+  ["two characters", { reason: "  a​b " }],
+  ["301 characters", { reason: "x".repeat(301) }],
+  ["an extra field", { reason: SUPPORT_REASON, minutes: 600 }],
+  ["no reason", {}],
+]) {
+  const res = await enterSupport(sessionAdmin, restaurantA.id, json);
+  if (res.status !== 400) {
+    enterRefusals.push(`${label}: ${String(res.status)}`);
+  }
+}
+const shortReason = await enterSupport(sessionAdmin, restaurantA.id, { reason: "ab" });
+const enterNoSession = await enterSupport(null, restaurantA.id);
+const stillDeniedAfterRefusals = await staffCall(sessionAdmin, restaurantApiOf(restaurantA.id));
+const logAfterRefusals = await readLogA();
+check(
+  "support: entering needs the page's Origin (403), a platform admin (owner, manager and waiter of A, owner B → the identical 404), a known id (404) and a reason of 3–300 characters (400); no session → 401; nothing opens, nothing is logged",
+  enterRefusals.length === 0 &&
+    shortReason.status === 400 &&
+    shortReason.data?.error === "Wpisz powód wejścia (co najmniej 3 znaki)." &&
+    enterNoSession.status === 401 &&
+    enterNoSession.body === meNoCookie.body &&
+    noAccessJson(stillDeniedAfterRefusals) &&
+    logOf(logAfterRefusals).length === 0,
+  `${enterRefusals.join("; ")} ${shortReason.status} ${enterNoSession.status} ${logOf(logAfterRefusals).length}`,
+);
+
+const enteredAt = Date.now();
+const enteredA = await enterSupport(sessionAdmin, restaurantA.id);
+const grantA = enteredA.data?.support;
+const grantMinutes = (Date.parse(grantA?.expiresAt ?? "") - enteredAt) / 60_000;
+const platformPageInSupport = await staffCall(sessionAdmin, "/panel/platforma");
+check(
+  "support: the admin enters A with a reason → 201 with the restaurants and where support starts, for 60 minutes; the platform page shows it as active",
+  enteredA.status === 201 &&
+    Array.isArray(enteredA.data?.restaurants) &&
+    grantA?.restaurantId === restaurantA.id &&
+    grantA.path === restaurantPageOf(restaurantA.id) &&
+    grantMinutes > 58 &&
+    grantMinutes < 62 &&
+    !leaksAKey(enteredA.body) &&
+    platformPageInSupport.status === 200 &&
+    platformPageInSupport.body.includes(`data-support-active="${String(restaurantA.id)}"`) &&
+    platformPageInSupport.body.includes("Wsparcie aktywne do"),
+  `${enteredA.status} ${JSON.stringify(grantA)} ${grantMinutes.toFixed(1)} ${platformPageInSupport.status}`,
+);
+
+// In support mode: the owner's view, read-only, without keys; B stays closed.
+const supportAnswers = {};
+for (const [name, path] of supportReads(restaurantA.id, eventA.id)) {
+  supportAnswers[name] = await staffCall(sessionAdmin, path);
+}
+const [pageAInSupport, eventPageAInSupport] = [
+  await staffCall(sessionAdmin, restaurantPageOf(restaurantA.id)),
+  await staffCall(sessionAdmin, eventPage(eventA.id)),
+];
+const supportInfo = supportAnswers.restaurant.data?.support;
+const allListedIds = ["upcoming", "past", "archived"].flatMap((list) => listIds(supportAnswers.events, list));
+check(
+  "support: in support mode the admin reads A as its owner (restaurant, events, team, log, event) — the event WITHOUT its links and no key anywhere",
+  Object.values(supportAnswers).every((res) => res.status === 200) &&
+    supportAnswers.restaurant.data?.role === "owner" &&
+    supportInfo?.restaurantId === restaurantA.id &&
+    supportInfo.reason === SUPPORT_REASON &&
+    supportInfo.restaurantDisabled === false &&
+    Object.keys(supportInfo).sort().join(",") ===
+      "expiresAt,reason,restaurantDisabled,restaurantId,restaurantName,startedAt" &&
+    allListedIds.includes(eventA.id) &&
+    memberIn(supportAnswers.team, staff.ownerA.email)?.role === "owner" &&
+    supportAnswers.event.data?.event?.id === eventA.id &&
+    supportAnswers.event.data.event.name === EVENT_NAME &&
+    supportAnswers.event.data.event.links === undefined &&
+    supportAnswers.event.data.support?.restaurantId === restaurantA.id &&
+    Object.values(supportAnswers).every((res) => !leaksAKey(res.body)),
+  Object.entries(supportAnswers)
+    .map(([name, res]) => `${name} ${String(res.status)}`)
+    .join(", "),
+);
+check(
+  "support: A's page shows the banner with the reason, the events, the team as a list and the log — no writing island; the event card page is a summary without links",
+  pageAInSupport.status === 200 &&
+    pageAInSupport.body.includes("data-support-banner") &&
+    pageAInSupport.body.includes(SUPPORT_REASON) &&
+    pageAInSupport.body.includes(`data-event-id="${String(eventA.id)}"`) &&
+    pageAInSupport.body.includes("data-support-team") &&
+    pageAInSupport.body.includes(staff.ownerA.email) &&
+    pageAInSupport.body.includes("data-support-log") &&
+    pageAInSupport.body.includes('data-support-entry="enter"') &&
+    !pageAInSupport.body.includes("NewEventForm") &&
+    !pageAInSupport.body.includes("TeamManager") &&
+    !leaksAKey(pageAInSupport.body) &&
+    eventPageAInSupport.status === 200 &&
+    eventPageAInSupport.body.includes(`data-support-event="${String(eventA.id)}"`) &&
+    eventPageAInSupport.body.includes("data-support-banner") &&
+    eventPageAInSupport.body.includes(escapeHtml(EVENT_NAME)) &&
+    !eventPageAInSupport.body.includes("EventCard") &&
+    !leaksAKey(eventPageAInSupport.body),
+  `${pageAInSupport.status} ${eventPageAInSupport.status}`,
+);
+const deniedB = [];
+for (const [name, path] of supportReads(restaurantB.id, eventB.id)) {
+  const res = await staffCall(sessionAdmin, path);
+  if (!noAccessJson(res)) {
+    deniedB.push(`${name}: ${String(res.status)}`);
+  }
+}
+for (const path of supportPages(restaurantB.id, eventB.id)) {
+  const res = await staffCall(sessionAdmin, path);
+  if (!isNoAccessPage(res)) {
+    deniedB.push(`${path}: ${String(res.status)}`);
+  }
+}
+check("support: support mode in A opens nothing of B (the identical 404)", deniedB.length === 0, deniedB.join("; "));
+
+// Read-only: every mutation of the admin on A's routes is the identical 404 and changes nothing, logs nothing.
+const eventsBeforeWrites = await staffCall(sessionOwner, eventsApiOf(restaurantA.id));
+const cardBeforeWrites = await staffCall(sessionOwner, eventApi(eventA.id));
+const teamBeforeWrites = await readTeamA();
+const logBeforeWrites = await readLogA();
+const supportWrites = [
+  [
+    "create event",
+    eventsApiOf(restaurantA.id),
+    { method: "POST", json: { name: "Wsparcie pisze", date: "2030-01-01" } },
+  ],
+  ["edit event", eventApi(eventA.id), { method: "PATCH", json: { name: "Zmienione przez wsparcie" } }],
+  ["archive event", eventApi(eventA.id), { method: "PATCH", json: { archived: true } }],
+  ["delete event", eventApi(eventA.id), { method: "DELETE" }],
+  ["replace link", `${eventApi(eventA.id)}/links/organizer`, { method: "POST" }],
+  ["invite", teamApiOf(restaurantA.id), { method: "POST", json: { email: staffEmail("wsparcie"), role: "waiter" } }],
+  ["role", memberApiOf(staff.waiterA.id), { method: "PATCH", json: { role: "manager" } }],
+  ["remove", memberApiOf(staff.waiterA.id), { method: "DELETE" }],
+  ["member link", `${memberApiOf(staff.waiterA.id)}/link`, { method: "POST" }],
+];
+const writesLetThrough = [];
+for (const [name, path, options] of supportWrites) {
+  const res = await staffCall(sessionAdmin, path, options);
+  if (!noAccessJson(res)) {
+    writesLetThrough.push(`${name}: ${String(res.status)}`);
+  }
+}
+for (const method of ["POST", "PATCH", "PUT", "DELETE"]) {
+  const res = await staffCall(sessionAdmin, supportLogApiOf(restaurantA.id), { method, json: { entries: [] } });
+  const ownerRes = await staffCall(sessionOwner, supportLogApiOf(restaurantA.id), { method, json: { entries: [] } });
+  if (![404, 405].includes(res.status) || ![404, 405].includes(ownerRes.status)) {
+    writesLetThrough.push(`log ${method}: ${String(res.status)} / owner ${String(ownerRes.status)}`);
+  }
+}
+const eventsAfterWrites = await staffCall(sessionOwner, eventsApiOf(restaurantA.id));
+const cardAfterWrites = await staffCall(sessionOwner, eventApi(eventA.id));
+const teamAfterWrites = await readTeamA();
+const logAfterWrites = await readLogA();
+check(
+  "support: every write in support mode (events, links, team, the log itself) → the identical 404 (the log has no write method at all); A's events, card, team and log are unchanged",
+  writesLetThrough.length === 0 &&
+    eventsAfterWrites.body === eventsBeforeWrites.body &&
+    cardAfterWrites.body === cardBeforeWrites.body &&
+    JSON.stringify(teamAfterWrites.data) === JSON.stringify(teamBeforeWrites.data) &&
+    logAfterWrites.body === logBeforeWrites.body,
+  writesLetThrough.join("; "),
+);
+
+// The owner's log: the entry with the reason, every read (method, path, the event's name), nothing denied.
+const expectedAccess = [
+  ...supportReads(restaurantA.id, eventA.id).map(([, path]) => path),
+  ...supportPages(restaurantA.id, eventA.id),
+];
+const oldestFirst = [...logOf(logAfterWrites)].reverse();
+const [enterEntry, ...accessEntries] = oldestFirst;
+const eventPaths = new Set([eventApi(eventA.id), eventPage(eventA.id)]);
+check(
+  "support: owner A's log lists, newest first, the entry (reason, the admin's e-mail, until when) and one GET per read in support mode (the event's with its name) — nothing for refusals and writes",
+  logAfterWrites.status === 200 &&
+    oldestFirst.length === 1 + expectedAccess.length &&
+    logOf(logAfterWrites).every((entry, index, all) => index === 0 || all[index - 1].id > entry.id) &&
+    enterEntry?.kind === "enter" &&
+    enterEntry.reason === SUPPORT_REASON &&
+    enterEntry.admin?.email === staff.admin.email &&
+    enterEntry.expiresAt === grantA?.expiresAt &&
+    accessEntries.every(
+      (entry, index) =>
+        entry.kind === "access" &&
+        entry.method === "GET" &&
+        entry.path === expectedAccess[index] &&
+        entry.admin?.email === staff.admin.email &&
+        (eventPaths.has(entry.path)
+          ? entry.event?.id === eventA.id && entry.event.name === EVENT_NAME
+          : entry.event === null),
+    ),
+  oldestFirst.map((entry) => `${entry.kind} ${entry.method ?? ""} ${entry.path ?? ""}`).join(" | "),
+);
+const ownerPageWithLog = await staffCall(sessionOwner, restaurantPageOf(restaurantA.id));
+const managerLog = await readLogA(sessionManager);
+const waiterLog = await readLogA(sessionWaiter);
+const ownerBLog = await readLogA(sessionB);
+const noSessionLog = await readLogA(null);
+const managerPageA = await staffCall(sessionManager, restaurantPageOf(restaurantA.id));
+const waiterPage = await staffCall(sessionWaiter, restaurantPageOf(restaurantA.id));
+const oddLogIds = [];
+for (const id of ["2000000000", "abc", "99999999999", "-1"]) {
+  const res = await staffCall(sessionOwner, supportLogApiOf(id));
+  if (!noAccessJson(res)) {
+    oddLogIds.push(`${id}: ${String(res.status)}`);
+  }
+}
+check(
+  "support: the owner's page shows „Dziennik wejść administratora” with the reason; manager A, waiter A, owner B → the identical 404 on the log and no section; unknown ids 404, no session 401",
+  ownerPageWithLog.status === 200 &&
+    ownerPageWithLog.body.includes("data-support-log") &&
+    ownerPageWithLog.body.includes("Dziennik wejść administratora") &&
+    ownerPageWithLog.body.includes(SUPPORT_REASON) &&
+    ownerPageWithLog.body.includes(staff.admin.email) &&
+    !ownerPageWithLog.body.includes("data-support-banner") &&
+    noAccessJson(managerLog) &&
+    noAccessJson(waiterLog) &&
+    noAccessJson(ownerBLog) &&
+    noSessionLog.status === 401 &&
+    managerPageA.status === 200 &&
+    !managerPageA.body.includes("data-support-log") &&
+    waiterPage.status === 200 &&
+    !waiterPage.body.includes("data-support-log") &&
+    oddLogIds.length === 0,
+  `${ownerPageWithLog.status} ${managerLog.status} ${waiterLog.status} ${ownerBLog.status} ${noSessionLog.status} ${oddLogIds.join("; ")}`,
+);
+
+// client-restaurant-split (S-14) in support mode: the client's work reads through the dispatcher and the preview pages
+// render without islands; the guests' links (keys) stay closed; every write (dispatcher, prices, reset) is the
+// identical 404; the event page shows „Koszty AI” but no reset, the orders preview no price editor.
+const supportKlient = (path, options) => staffCall(sessionAdmin, `${eventApi(eventA.id)}/klient/${path}`, options);
+const supportClientGuests = await supportKlient("guests");
+const supportClientQuestions = await supportKlient("questions");
+const supportClientLinks = await supportKlient("guest-links");
+const supportPreview = await staffCall(sessionAdmin, `${eventPage(eventA.id)}/goscie`);
+const supportPreviewLinks = await staffCall(sessionAdmin, `${eventPage(eventA.id)}/linki`);
+const supportPreviewOrders = await staffCall(sessionAdmin, `${eventPage(eventA.id)}/zamowienia`);
+const supportPrices = await staffCall(sessionAdmin, `${eventApi(eventA.id)}/prices`);
+const supportAi = await staffCall(sessionAdmin, `${eventApi(eventA.id)}/ai-topics`);
+const supportS14Writes = [];
+for (const [label, path, options] of [
+  ["add guests", `${eventApi(eventA.id)}/klient/guests`, { method: "POST", json: { text: "Wsparcie Gość" } }],
+  ["set a price", `${eventApi(eventA.id)}/prices`, { method: "PUT", json: { kind: "dish", name: "X", price: "1" } }],
+  ["reset", `${eventApi(eventA.id)}/reset`, { method: "POST", json: { parts: ["guesses"] } }],
+  ["switch", eventApi(eventA.id), { method: "PATCH", json: { venueLeads: true } }],
+]) {
+  const res = await staffCall(sessionAdmin, path, options);
+  if (!noAccessJson(res)) supportS14Writes.push(`${label}: ${String(res.status)}`);
+}
+check(
+  "support (S-14): the client's work reads (dispatcher, previews without islands, prices, AI costs), the guests' links stay closed, every write is the identical 404",
+  supportClientGuests.status === 200 &&
+    Array.isArray(supportClientGuests.data?.guests) &&
+    supportClientQuestions.status === 200 &&
+    noAccessJson(supportClientLinks) &&
+    supportPreview.status === 200 &&
+    supportPreview.body.includes('data-client-preview="goscie"') &&
+    supportPreview.body.includes('data-lead-banner="support"') &&
+    // Rendered, not hydrated (the support banner's exit button is the page's only island).
+    supportPreview.body.includes("Dodaj gości") &&
+    !supportPreview.body.includes('component-export="GuestManager"') &&
+    !leaksAKey(supportPreview.body) &&
+    isNoAccessPage(supportPreviewLinks) &&
+    supportPreviewOrders.status === 200 &&
+    !supportPreviewOrders.body.includes("data-price-list") &&
+    !leaksAKey(supportPreviewOrders.body) &&
+    supportPrices.status === 200 &&
+    Array.isArray(supportPrices.data?.rows) &&
+    supportAi.status === 200 &&
+    keysOf(supportAi.data) === "provider,usage" &&
+    eventPageAInSupport.body.includes("data-ai-costs") &&
+    !eventPageAInSupport.body.includes("data-event-reset") &&
+    supportS14Writes.length === 0,
+  `${supportClientGuests.status} ${supportClientLinks.status} ${supportPreview.status} ${supportPreviewLinks.status} ${supportPreviewOrders.status} ${supportPrices.status} ${supportAi.status} ${supportS14Writes.join("; ")}`,
+);
+
+// Support mode never sees diets (the PR #4 review's decision 2: health data, like the export). Event A's client gives
+// one guest a diet and a note of the run; its owner (a member) sees them through the dispatcher and the previews; the
+// admin in support mode sees neither in any answer or page of the visit — the dispatcher's guests, seating, orders and
+// RSVP, the previews, the event card and the prints — and the staff list is the no-access page with no log row (like
+// the export); the card lists no staff list. The guest is deleted again.
+const DIET_NOTE29 = `Smoke dieta wsparcia ${RUN_TAG}`;
+const DIET_TAG29 = "seafood-allergy";
+const DIET_GUEST29 = `Dieta Wsparcie ${RUN_TAG}`;
+const clientApi29 = `/api/o/${aLinkKeys[0]}`;
+const dietGuest29 = await request(`${clientApi29}/guests`, { method: "POST", json: { text: DIET_GUEST29 } });
+const dietGuestId29 = guestNamed(dietGuest29, DIET_GUEST29)?.id ?? 0;
+const dietSet29 = await request(`${clientApi29}/guests/${String(dietGuestId29)}`, {
+  method: "PATCH",
+  json: { diets: [DIET_TAG29], dietNote: DIET_NOTE29 },
+});
+const jsonLeak29 = (res) => res.body.includes(DIET_NOTE29) || res.body.includes(`"${DIET_TAG29}"`);
+const pageLeak29 = (res) => res.body.includes(DIET_NOTE29) || res.body.includes(`data-diet="${DIET_TAG29}"`);
+const dietApis29 = ["guests", "seating", "orders", "rsvp"].map((path) => `${eventApi(eventA.id)}/klient/${path}`);
+const dietPages29 = [
+  ...["goscie", "rozsadzenie", "zamowienia", "potwierdzenia"].map((section) => `${eventPage(eventA.id)}/${section}`),
+  eventPage(eventA.id),
+  ...["tablica", "karty-stolow", "winietki"].map((kind) => `${eventPage(eventA.id)}/wydruki/${kind}`),
+];
+const ownerSees29 = [];
+for (const path of [`${eventApi(eventA.id)}/klient/guests`, `${eventApi(eventA.id)}/klient/orders`]) {
+  const res = await staffCall(sessionOwner, path);
+  if (res.status !== 200 || !jsonLeak29(res)) ownerSees29.push(`${path}: ${String(res.status)}`);
+}
+for (const section of ["goscie", "zamowienia"]) {
+  const res = await staffCall(sessionOwner, `${eventPage(eventA.id)}/${section}`);
+  if (res.status !== 200 || !pageLeak29(res)) ownerSees29.push(`${section}: ${String(res.status)}`);
+}
+const ownerStaffList29 = await staffCall(sessionOwner, `${eventPage(eventA.id)}/wydruki/lista-obslugi`);
+const ownerCard29 = await staffCall(sessionOwner, eventPage(eventA.id));
+const supportLeaks29 = [];
+for (const path of dietApis29) {
+  const res = await staffCall(sessionAdmin, path);
+  if (res.status !== 200 || jsonLeak29(res)) supportLeaks29.push(`${path}: ${String(res.status)}`);
+}
+let supportCard29 = { status: 0, body: "" };
+for (const path of dietPages29) {
+  const res = await staffCall(sessionAdmin, path);
+  if (path === eventPage(eventA.id)) supportCard29 = res;
+  if (res.status !== 200 || pageLeak29(res)) supportLeaks29.push(`${path}: ${String(res.status)}`);
+}
+const supportGuests29 = await supportKlient("guests");
+const logBeforeStaffList29 = (await readLogA()).data?.entries?.[0];
+const supportStaffList29 = await staffCall(sessionAdmin, `${eventPage(eventA.id)}/wydruki/lista-obslugi`);
+const logAfterStaffList29 = (await readLogA()).data?.entries?.[0];
+const dietGuestGone29 = await request(`${clientApi29}/guests/${String(dietGuestId29)}`, { method: "DELETE" });
+check(
+  "support: no diets in support mode — the owner sees the guest's diet and note (dispatcher, previews, staff list); the admin's dispatcher answers, previews, event card and prints carry neither (the guest still listed), the staff list is the no-access page with no log row and is not on the card; the guest deleted",
+  dietGuest29.status === 201 &&
+    dietGuestId29 > 0 &&
+    dietSet29.status === 200 &&
+    ownerSees29.length === 0 &&
+    ownerStaffList29.status === 200 &&
+    ownerCard29.body.includes('data-print-link="lista-obslugi"') &&
+    supportLeaks29.length === 0 &&
+    guestNamed(supportGuests29, DIET_GUEST29)?.dietNote === null &&
+    JSON.stringify(guestNamed(supportGuests29, DIET_GUEST29)?.diets) === "[]" &&
+    supportCard29.body.includes("data-event-prints") &&
+    supportCard29.body.includes('data-print-link="tablica"') &&
+    !supportCard29.body.includes('data-print-link="lista-obslugi"') &&
+    isNoAccessPage(supportStaffList29) &&
+    logBeforeStaffList29?.id !== undefined &&
+    logAfterStaffList29?.id === logBeforeStaffList29.id &&
+    dietGuestGone29.status === 200,
+  `${dietGuest29.status} ${dietSet29.status} [${ownerSees29.join("; ")}] ${ownerStaffList29.status} [${supportLeaks29.join("; ")}] ${supportStaffList29.status} ${String(logBeforeStaffList29?.id)}/${String(logAfterStaffList29?.id)} ${dietGuestGone29.status}`,
+);
+
+// Support mode belongs to the login session: the admin's second login is outside it.
+const secondAdminLogin = await logIn(staff.admin.email, STAFF_PASSWORD);
+const secondAdmin = sessionOf(secondAdminLogin);
+const secondReadsA = await staffCall(secondAdmin, restaurantApiOf(restaurantA.id));
+const secondPlatformPage = await staffCall(secondAdmin, "/panel/platforma");
+check(
+  "support: another login of the same admin is not in support mode (the identical 404, no active support on its platform page)",
+  redirectsTo(secondAdminLogin, "/panel") &&
+    noAccessJson(secondReadsA) &&
+    secondPlatformPage.status === 200 &&
+    !secondPlatformPage.body.includes("data-support-active"),
+  `${secondAdminLogin.status} ${secondReadsA.status}`,
+);
+
+// Exit: Origin required, logged once; afterwards the identical 404 again.
+const logBeforeExit = await readLogA();
+const exitNoOrigin = await endSupportOf(sessionAdmin, restaurantA.id, { noOrigin: true });
+const exitForeign = await endSupportOf(sessionAdmin, restaurantA.id, { extraHeaders: FOREIGN });
+const exitByOwner = await endSupportOf(sessionOwner, restaurantA.id);
+const stillInSupport = await staffCall(sessionAdmin, restaurantApiOf(restaurantA.id));
+const exitA = await endSupportOf(sessionAdmin, restaurantA.id);
+const exitAgain = await endSupportOf(sessionAdmin, restaurantA.id);
+const exitUnknown = await endSupportOf(sessionAdmin, 2_000_000_000);
+const afterExitApi = await staffCall(sessionAdmin, restaurantApiOf(restaurantA.id));
+const afterExitPage = await staffCall(sessionAdmin, restaurantPageOf(restaurantA.id));
+const logAfterExit = await readLogA();
+check(
+  "support: „Zakończ wsparcie” needs the page's Origin (403) and the admin (404 for the owner); → ended, again → nothing to end; afterwards the identical 404; the log ends with the exit",
+  exitNoOrigin.status === 403 &&
+    exitForeign.status === 403 &&
+    noAccessJson(exitByOwner) &&
+    stillInSupport.status === 200 &&
+    exitA.status === 200 &&
+    exitA.data?.ended === true &&
+    Array.isArray(exitA.data?.restaurants) &&
+    exitAgain.status === 200 &&
+    exitAgain.data?.ended === false &&
+    noAccessJson(exitUnknown) &&
+    noAccessJson(afterExitApi) &&
+    isNoAccessPage(afterExitPage) &&
+    afterExitPage.body === adminUnknownPage.body &&
+    logOf(logAfterExit)[0]?.kind === "exit" &&
+    logOf(logAfterExit)[0].admin?.email === staff.admin.email &&
+    logOf(logAfterExit).length === logOf(logBeforeExit).length + 2,
+  `${exitNoOrigin.status} ${exitForeign.status} ${exitByOwner.status} ${exitA.status} ${exitA.body.slice(-30)} ${exitAgain.body.slice(-30)} ${afterExitApi.status} ${logOf(logAfterExit).length}`,
+);
+
+// A switched-off restaurant opens in support mode too (its staff stay out); C's switch is restored.
+const loginC = await logIn(emailC, RESET_STAFF_PASSWORD);
+const sessionCNow = sessionOf(loginC);
+const C_REASON = `Smoke: wyłączona restauracja ${RUN_TAG}`;
+const disableC = await platformCall(sessionAdmin, idPath(restaurantCId), { method: "PATCH", json: { disabled: true } });
+const enteredC = await enterSupport(sessionAdmin, restaurantCId, { reason: C_REASON });
+const apiCInSupport = await staffCall(sessionAdmin, restaurantApiOf(restaurantCId));
+const pageCInSupport = await staffCall(sessionAdmin, restaurantPageOf(restaurantCId));
+const ownerCWhileOff = await staffCall(sessionCNow, restaurantApiOf(restaurantCId));
+const exitC = await endSupportOf(sessionAdmin, restaurantCId);
+const enableC = await platformCall(sessionAdmin, idPath(restaurantCId), { method: "PATCH", json: { disabled: false } });
+const logC = await staffCall(sessionCNow, supportLogApiOf(restaurantCId));
+check(
+  "support: the admin enters switched-off C (its owner stays out), the banner notes it; after enabling C its owner's log shows enter, two reads and exit (after section 26's three link entries)",
+  redirectsTo(loginC, "/panel") &&
+    findListed(disableC, restaurantCId)?.disabled === true &&
+    enteredC.status === 201 &&
+    apiCInSupport.status === 200 &&
+    apiCInSupport.data?.support?.restaurantDisabled === true &&
+    pageCInSupport.status === 200 &&
+    pageCInSupport.body.includes("Ta restauracja jest wyłączona") &&
+    pageCInSupport.body.includes(C_REASON) &&
+    noAccessJson(ownerCWhileOff) &&
+    exitC.data?.ended === true &&
+    findListed(enableC, restaurantCId)?.disabled === false &&
+    logC.status === 200 &&
+    logOf(logC)
+      .map((entry) => entry.kind)
+      .join(",") === "exit,access,access,enter,link,link,link" &&
+    logOf(logC)[3]?.reason === C_REASON,
+  `${loginC.status} ${enteredC.status} ${apiCInSupport.status} ${pageCInSupport.status} ${ownerCWhileOff.status} ${logC.body.slice(0, 160)}`,
+);
+
+// Logging out ends support mode with the login; the entry stays in the owner's log.
+const SECOND_REASON = `Smoke: drugie logowanie ${RUN_TAG}`;
+const enteredSecond = await enterSupport(secondAdmin, restaurantA.id, { reason: SECOND_REASON });
+const secondInSupport = await staffCall(secondAdmin, restaurantApiOf(restaurantA.id));
+const firstOutside = await staffCall(sessionAdmin, restaurantApiOf(restaurantA.id));
+const loggedOutSecond = await request("/api/auth/logout", { method: "POST", form: {}, cookie: asStaff(secondAdmin) });
+const thirdAdmin = sessionOf(await logIn(staff.admin.email, STAFF_PASSWORD));
+const thirdReadsA = await staffCall(thirdAdmin, restaurantApiOf(restaurantA.id));
+const logAfterLogout = await readLogA();
+check(
+  "support: logging out ends support mode (a new login → the identical 404); the entry of that login stays in the owner's log",
+  enteredSecond.status === 201 &&
+    secondInSupport.status === 200 &&
+    noAccessJson(firstOutside) &&
+    loggedOutSecond.status === 303 &&
+    noAccessJson(thirdReadsA) &&
+    logOf(logAfterLogout).some((entry) => entry.kind === "enter" && entry.reason === SECOND_REASON),
+  `${enteredSecond.status} ${secondInSupport.status} ${firstOutside.status} ${loggedOutSecond.status} ${thirdReadsA.status}`,
+);
+
+// 30. Client / venue split (client-restaurant-split, S-14; FR-026..FR-028). The switch „Lokal prowadzi” on event A:
+// while OFF the client edits and the staff preview (dispatcher writes → 409 client-leads); while ON the staff edit
+// through the dispatcher and the client's writes get 409 venue-leads (its reads and pages stay, with the banner);
+// guests keep writing either way. Owners and managers toggle; a waiter, owner B, no session and a foreign Origin are
+// refused. Prices are the venue's whichever side leads. Uses the sessions of 25–29.
+const cardA30 = await staffCall(sessionOwner, eventApi(eventA.id));
+const clientKey = keyOfPath(cardA30.data?.event?.links?.organizer);
+const clientApi = `/api/o/${clientKey}`;
+const klientApi = `${eventApi(eventA.id)}/klient`;
+const leadCode = (res) => res.data?.code;
+check(
+  "split: event A starts client-led (the card says so) with a client link",
+  cardA30.status === 200 && cardA30.data?.event?.venueLeads === false && clientKey.length === 24,
+  `${cardA30.status} ${String(cardA30.data?.event?.venueLeads)}`,
+);
+
+// OFF: the client writes, the staff read through the dispatcher and are refused on writes.
+const S14_GUESTS = ["Ala", "Ola", "Ela"].map((name) => `${name} S14 ${RUN_TAG}`);
+const clientAdded = await request(`${clientApi}/guests`, { method: "POST", json: { text: S14_GUESTS.join("\n") } });
+const staffRead = await staffCall(sessionOwner, `${klientApi}/guests`);
+const clientRead = await request(`${clientApi}/guests`);
+const staffWriteOff = await staffCall(sessionOwner, `${klientApi}/guests`, {
+  method: "POST",
+  json: { text: `Personel S14 ${RUN_TAG}` },
+});
+const staffUnknownSub = await staffCall(sessionOwner, `${klientApi}/nie-ma-takiej`);
+const staffClientOnly = await staffCall(sessionOwner, `${klientApi}/trial-reset`);
+check(
+  "split OFF: the client adds guests; the staff read the same list through the dispatcher; their write → 409 client-leads; unknown and client-only sub-paths → the identical 404",
+  clientAdded.status === 201 &&
+    staffRead.status === 200 &&
+    staffRead.body === clientRead.body &&
+    S14_GUESTS.every((name) => staffRead.body.includes(name)) &&
+    staffWriteOff.status === 409 &&
+    leadCode(staffWriteOff) === "client-leads" &&
+    typeof staffWriteOff.data?.error === "string" &&
+    noAccessJson(staffUnknownSub) &&
+    noAccessJson(staffClientOnly),
+  `${clientAdded.status} ${staffRead.status} ${staffWriteOff.status} ${staffUnknownSub.status} ${staffClientOnly.status}`,
+);
+const previewOff = await staffCall(sessionOwner, `${eventPage(eventA.id)}/goscie`);
+const previewUnknown = await staffCall(sessionOwner, `${eventPage(eventA.id)}/nieznana`);
+const previewWaiter = await staffCall(sessionWaiter, `${eventPage(eventA.id)}/goscie`);
+const eventPage30 = await staffCall(sessionOwner, eventPage(eventA.id));
+check(
+  "split: the event page has the switch, „Praca klienta”, „Koszty AI” and „Reset danych”; the preview is read-only under the staff-preview banner; an unknown section and a waiter → the no-access page",
+  eventPage30.status === 200 &&
+    eventPage30.body.includes("data-client-work") &&
+    eventPage30.body.includes("data-ai-costs") &&
+    eventPage30.body.includes("data-event-reset") &&
+    previewOff.status === 200 &&
+    previewOff.body.includes('data-lead-banner="staff-preview"') &&
+    previewOff.body.includes("data-read-only") &&
+    previewOff.body.includes(" inert") &&
+    previewOff.body.includes(S14_GUESTS[0]) &&
+    isNoAccessPage(previewUnknown) &&
+    isNoAccessPage(previewWaiter),
+  `${eventPage30.status} ${previewOff.status} ${previewUnknown.status} ${previewWaiter.status}`,
+);
+
+// Who may flip the switch.
+const waiterToggle = await staffCall(sessionWaiter, eventApi(eventA.id), {
+  method: "PATCH",
+  json: { venueLeads: true },
+});
+const ownerBToggle = await staffCall(sessionB, eventApi(eventA.id), { method: "PATCH", json: { venueLeads: true } });
+const noSessionToggle = await staffCall(null, eventApi(eventA.id), { method: "PATCH", json: { venueLeads: true } });
+const foreignToggle = await staffCall(sessionOwner, eventApi(eventA.id), {
+  method: "PATCH",
+  json: { venueLeads: true },
+  extraHeaders: FOREIGN,
+});
+const stillOff = await staffCall(sessionOwner, eventApi(eventA.id));
+check(
+  "split: a waiter and owner B → the identical 404, no session → 401, a foreign Origin → 403; the switch stays off",
+  noAccessJson(waiterToggle) &&
+    noAccessJson(ownerBToggle) &&
+    noSessionToggle.status === 401 &&
+    foreignToggle.status === 403 &&
+    stillOff.data?.event?.venueLeads === false,
+  `${waiterToggle.status} ${ownerBToggle.status} ${noSessionToggle.status} ${foreignToggle.status}`,
+);
+const ownerBReads = [];
+for (const path of [
+  `${klientApi}/guests`,
+  `${eventApi(eventA.id)}/reset`,
+  `${eventApi(eventA.id)}/ai-topics`,
+  `${eventApi(eventA.id)}/prices`,
+]) {
+  const res = await staffCall(sessionB, path);
+  if (!noAccessJson(res)) ownerBReads.push(`${path}: ${String(res.status)}`);
+}
+const ownerBPreview = await staffCall(sessionB, `${eventPage(eventA.id)}/goscie`);
+const noSessionKlient = await staffCall(null, `${klientApi}/guests`);
+check(
+  "split: owner B gets the identical 404 on A's dispatcher, reset, AI costs, prices and previews; no session → 401",
+  ownerBReads.length === 0 && isNoAccessPage(ownerBPreview) && noSessionKlient.status === 401,
+  `${ownerBReads.join("; ")} ${ownerBPreview.status} ${noSessionKlient.status}`,
+);
+
+// ON (a manager flips it): the staff edit, the client views; guests keep writing.
+const managerOn = await staffCall(sessionManager, eventApi(eventA.id), { method: "PATCH", json: { venueLeads: true } });
+const staffWriteOn = await staffCall(sessionManager, `${klientApi}/guests`, {
+  method: "POST",
+  json: { text: `Personel S14 ${RUN_TAG}` },
+});
+const clientWriteOn = await request(`${clientApi}/guests`, { method: "POST", json: { text: `Klient S14 ${RUN_TAG}` } });
+const clientTrialOn = await request(`${clientApi}/trial-reset`, { method: "POST", json: { parts: ["seating"] } });
+const clientReadOn = await request(`${clientApi}/guests`);
+const clientPageOn = await request(`/o/${clientKey}/goscie`);
+const clientShellOn = await request(`/o/${clientKey}`);
+const previewOn = await staffCall(sessionManager, `${eventPage(eventA.id)}/goscie`);
+check(
+  "split ON: a manager flips the switch; the staff add a guest through the dispatcher; the client's writes (incl. „Reset prób”) → 409 venue-leads; its reads and pages stay, read-only with the banner",
+  managerOn.status === 200 &&
+    managerOn.data?.event?.venueLeads === true &&
+    staffWriteOn.status === 201 &&
+    staffWriteOn.body.includes(`Personel S14 ${RUN_TAG}`) &&
+    clientWriteOn.status === 409 &&
+    leadCode(clientWriteOn) === "venue-leads" &&
+    clientTrialOn.status === 409 &&
+    leadCode(clientTrialOn) === "venue-leads" &&
+    clientReadOn.status === 200 &&
+    clientReadOn.body.includes(`Personel S14 ${RUN_TAG}`) &&
+    !clientReadOn.body.includes(`Klient S14 ${RUN_TAG}`) &&
+    clientPageOn.status === 200 &&
+    clientPageOn.body.includes('data-lead-banner="client"') &&
+    clientPageOn.body.includes(" inert") &&
+    clientShellOn.status === 200 &&
+    clientShellOn.body.includes('data-lead-banner="client"') &&
+    previewOn.status === 200 &&
+    previewOn.body.includes('data-lead-banner="staff-leads"') &&
+    !previewOn.body.includes("data-read-only"),
+  `${managerOn.status} ${staffWriteOn.status} ${clientWriteOn.status} ${clientTrialOn.status} ${clientPageOn.status} ${previewOn.status}`,
+);
+const staffLinksOn = await staffCall(sessionOwner, `${klientApi}/guest-links`, {
+  method: "PATCH",
+  json: { enabled: true },
+});
+const s14Guest = staffLinksOn.data?.guests?.find((guest) => guest.displayName === S14_GUESTS[0]);
+const guestGuessOn = s14Guest
+  ? await request(`/api/g/${s14Guest.key}/guess`, { method: "PUT", json: { amount: "1500" } })
+  : null;
+check(
+  "split ON: the staff switch guest access on through the dispatcher; a guest still saves a guess (the switch never touches guests)",
+  staffLinksOn.status === 200 && staffLinksOn.data?.enabled === true && guestGuessOn?.status === 200,
+  `${staffLinksOn.status} ${guestGuessOn?.status}`,
+);
+
+// Prices are the venue's whichever side leads: a new dish costs 0, the price set in the panel shows on the client's
+// line and prices the next line of that name.
+const S14_DISH = `Pierogi S14 ${RUN_TAG}`;
+const staffDish = await staffCall(sessionOwner, `${klientApi}/orders`, {
+  method: "POST",
+  json: { name: S14_DISH, quantity: 2 },
+});
+const priceSet = await staffCall(sessionManager, `${eventApi(eventA.id)}/prices`, {
+  method: "PUT",
+  json: { kind: "dish", name: S14_DISH.toUpperCase(), price: "36" },
+});
+const priceBad = await staffCall(sessionOwner, `${eventApi(eventA.id)}/prices`, {
+  method: "PUT",
+  json: { kind: "dish", name: S14_DISH, price: "abc" },
+});
+const priceUnknown = await staffCall(sessionOwner, `${eventApi(eventA.id)}/prices`, {
+  method: "PUT",
+  json: { kind: "drink", name: S14_DISH, price: "1" },
+});
+const priceWaiter = await staffCall(sessionWaiter, `${eventApi(eventA.id)}/prices`, {
+  method: "PUT",
+  json: { kind: "dish", name: S14_DISH, price: "1" },
+});
+const managerOff = await staffCall(sessionManager, eventApi(eventA.id), {
+  method: "PATCH",
+  json: { venueLeads: false },
+});
+const clientDishAgain = await request(`${clientApi}/orders`, { method: "POST", json: { name: S14_DISH, quantity: 1 } });
+const clientDishWithPrice = await request(`${clientApi}/orders`, {
+  method: "POST",
+  json: { name: S14_DISH, quantity: 1, price: "1" },
+});
+const s14Lines = (clientDishAgain.data?.items ?? []).filter((item) => item.name === S14_DISH);
+const priceRow = priceSet.data?.rows?.find((row) => row.name === S14_DISH);
+const pricesPreview = await staffCall(sessionOwner, `${eventPage(eventA.id)}/zamowienia`);
+check(
+  "split prices: a new dish costs 0; the manager prices it in the panel (any letter case) → every line and the next one cost 36,00 zł; a bad price 400, an unknown name 404, a waiter 404; the client cannot send a price (400); the orders preview has „Cennik wydarzenia”",
+  staffDish.status === 201 &&
+    staffDish.data?.items?.find((item) => item.name === S14_DISH)?.unitPriceGrosze === 0 &&
+    priceSet.status === 200 &&
+    priceRow?.priceGrosze === 3600 &&
+    priceRow.kind === "dish" &&
+    priceRow.lines === 1 &&
+    priceBad.status === 400 &&
+    errorOf(priceBad) === "Wpisz kwotę w złotych, np. 1500 albo 1499,99." &&
+    priceUnknown.status === 404 &&
+    noAccessJson(priceWaiter) &&
+    managerOff.status === 200 &&
+    managerOff.data?.event?.venueLeads === false &&
+    clientDishAgain.status === 201 &&
+    s14Lines.length === 2 &&
+    s14Lines.every((item) => item.unitPriceGrosze === 3600) &&
+    clientDishWithPrice.status === 400 &&
+    pricesPreview.status === 200 &&
+    pricesPreview.body.includes("data-price-list") &&
+    pricesPreview.body.includes("Cennik wydarzenia"),
+  `${staffDish.status} ${priceSet.status} ${priceBad.status} ${priceUnknown.status} ${priceWaiter.status} ${clientDishAgain.status} ${clientDishWithPrice.status} ${pricesPreview.status}`,
+);
+
+// OFF again: the client writes; the staff are back to preview.
+const clientWriteOffAgain = await request(`${clientApi}/guests`, {
+  method: "POST",
+  json: { text: `Klient S14 ${RUN_TAG}` },
+});
+const staffWriteOffAgain = await staffCall(sessionOwner, `${klientApi}/guests/${String(s14Guest?.id ?? 0)}`, {
+  method: "DELETE",
+});
+check(
+  "split OFF again: the client adds a guest; a staff delete through the dispatcher → 409 client-leads",
+  clientWriteOffAgain.status === 201 &&
+    staffWriteOffAgain.status === 409 &&
+    leadCode(staffWriteOffAgain) === "client-leads",
+  `${clientWriteOffAgain.status} ${staffWriteOffAgain.status}`,
+);
+
+// 31. Venue templates (venue-templates, S-15; FR-030, US-06, US-09). A template is an event row with is_template: the
+// manager creates one from scratch and draws it with the client's editor through the template dispatcher, the owner
+// saves event A's room as another, an event is created from a template with its room ready, and „Zaktualizuj z
+// szablonu” first names who loses a seat and then unseats exactly them. A template never opens through any link key,
+// never shows in the event lists or the platform counter, never opens through event routes (and an event never through
+// template routes); a waiter, owner B, the admin outside support mode, unknown and malformed ids → the identical 404;
+// no session → 401; a foreign Origin → 403; support mode reads only. Uses the sessions of 25–30.
+const templatesApiOf = (restaurantId) => `/api/panel/restaurants/${String(restaurantId)}/templates`;
+const templateApi = (id) => `/api/panel/templates/${String(id)}`;
+const templateSala = (id) => `${templateApi(id)}/sala`;
+const templatePage = (id) => `/panel/szablony/${String(id)}`;
+const TPL_NAME = `Sala smoke ${RUN_TAG}`;
+const listedCountA = async () => findListed(await platformCall(sessionAdmin), restaurantA.id)?.eventCount ?? -1;
+const eventCountBefore = await listedCountA();
+
+const tplCreated = await staffCall(sessionManager, templatesApiOf(restaurantA.id), {
+  method: "POST",
+  json: { name: `  ${TPL_NAME}  ` },
+});
+const tplId = tplCreated.data?.template?.id ?? 0;
+const tplEmpty = await staffCall(sessionOwner, `${templateSala(tplId)}/venue`);
+const tplPlan = await requestBytes(`${templateSala(tplId)}/plan`, {
+  method: "PUT",
+  body: TINY_PNG,
+  contentType: "image/png",
+  cookie: asStaff(sessionOwner),
+});
+const tplRoom = await staffCall(sessionManager, `${templateSala(tplId)}/rooms`, {
+  method: "POST",
+  json: { name: "Sala A" },
+});
+const tplRoomId = tplRoom.data?.rooms?.find((room) => room.name === "Sala A")?.id ?? 0;
+const tplT1 = await staffCall(sessionManager, `${templateSala(tplId)}/tables`, {
+  method: "POST",
+  json: { roomId: tplRoomId, name: "T1", seatCount: 4, shape: "round", x: 0.3, y: 0.3 },
+});
+const tplT2 = await staffCall(sessionManager, `${templateSala(tplId)}/tables`, {
+  method: "POST",
+  json: { roomId: tplRoomId, name: "T2", seatCount: 6, shape: "rectangular", x: 0.6, y: 0.6, rotation: 90 },
+});
+const tplImage = await requestBytes(`${templateSala(tplId)}/plan/image?v=1`, { cookie: asStaff(sessionOwner) });
+check(
+  "templates: a manager creates an empty template (name normalized) → 201; the client's editor routes draw it through the template dispatcher (plan, room, two tables, the image back)",
+  tplCreated.status === 201 &&
+    tplCreated.data?.template?.name === TPL_NAME &&
+    tplCreated.data.template.tableCount === 0 &&
+    tplCreated.data.template.hasPlan === false &&
+    Array.isArray(tplCreated.data.templates) &&
+    tplEmpty.status === 200 &&
+    tplEmpty.data?.tables?.length === 0 &&
+    tplPlan.status === 200 &&
+    tplRoom.status === 201 &&
+    tplT1.status === 201 &&
+    tplT2.status === 201 &&
+    tplT2.data?.tables?.length === 2 &&
+    tplImage.status === 200 &&
+    sameBytes(tplImage.bytes, TINY_PNG),
+  `${tplCreated.status} ${tplEmpty.status} ${tplPlan.status} ${tplRoom.status} ${tplT1.status} ${tplT2.status} ${tplImage.status}`,
+);
+
+const tplSeating = await staffCall(sessionOwner, `${templateSala(tplId)}/seating`);
+const tplRefused = [];
+for (const [method, sub] of [
+  ["GET", "guests"],
+  ["GET", "guest-links"],
+  ["GET", "orders"],
+  ["GET", "questions"],
+  ["POST", "seating/publish"],
+  ["POST", "seating"],
+  ["GET", "nie-ma-takiej"],
+  ["GET", "reset"],
+]) {
+  const res = await staffCall(sessionOwner, `${templateSala(tplId)}/${sub}`, { method });
+  if (!noAccessJson(res)) tplRefused.push(`${method} ${sub}: ${String(res.status)}`);
+}
+check(
+  "templates: the dispatcher runs only the venue routes and a read of the (empty) seating board; guests, links, orders, questions, publishing and unknown sub-paths → the identical 404",
+  tplSeating.status === 200 && tplSeating.data?.guestList?.guests?.length === 0 && tplRefused.length === 0,
+  `${tplSeating.status} ${tplRefused.join(", ")}`,
+);
+
+const tplList = await staffCall(sessionOwner, templatesApiOf(restaurantA.id));
+const tplListed = tplList.data?.templates?.find((template) => template.id === tplId);
+const eventsWithTpl = await staffCall(sessionOwner, eventsApiOf(restaurantA.id));
+const restaurantPageTpl = await staffCall(sessionManager, restaurantPageOf(restaurantA.id));
+const restaurantPageArchive = await staffCall(sessionOwner, restaurantPageOf(restaurantA.id, "archiwum"));
+const eventCountWithTpl = await listedCountA();
+const linksListed = (await listEvents(platformEnv)).some((event) => event.id === tplId);
+check(
+  "templates: listed with their counters for the restaurant and on its page („Szablony sal”), never in the event lists, tabs, the platform's event counter or npm run links",
+  tplList.status === 200 &&
+    JSON.stringify(tplListed) ===
+      JSON.stringify({ id: tplId, name: TPL_NAME, roomCount: 1, tableCount: 2, seatCount: 10, hasPlan: true }) &&
+    eventsWithTpl.status === 200 &&
+    !["upcoming", "past", "archived"].some((list) => listIds(eventsWithTpl, list).includes(tplId)) &&
+    restaurantPageTpl.status === 200 &&
+    restaurantPageTpl.body.includes("data-templates-section") &&
+    restaurantPageTpl.body.includes(`data-template-id="${String(tplId)}"`) &&
+    eventRow(restaurantPageTpl, tplId) === "" &&
+    eventRow(restaurantPageArchive, tplId) === "" &&
+    eventCountBefore >= 1 &&
+    eventCountWithTpl === eventCountBefore &&
+    !linksListed,
+  `${tplList.status} ${JSON.stringify(tplListed)} ${eventCountBefore}/${eventCountWithTpl} ${String(linksListed)}`,
+);
+
+const tplKeys = await readEventKeys(platformEnv, tplId);
+const tplKeyDenied = [];
+for (const kind of LINK_KINDS) {
+  const key = kind === "organizer" ? tplKeys.organizerKey : kind === "tv" ? tplKeys.tvKey : tplKeys.restaurantKey;
+  if (!(await linkDenied(kind, key))) tplKeyDenied.push(kind);
+}
+const tplKeyVenue = await request(`/api/o/${tplKeys.organizerKey}/venue`);
+const tplKeyPlan = await request(`/api/tv/${tplKeys.tvKey}/plan/image`);
+check(
+  "templates: a template's keys (from the database) open nothing — /o/, /tv/, /r/ pages and APIs, its venue and plan image give the identical denial of an unknown key",
+  tplKeys.isTemplate === true && tplKeyDenied.length === 0 && noAccessJson(tplKeyVenue) && noAccessJson(tplKeyPlan),
+  `${String(tplKeys.isTemplate)} ${tplKeyDenied.join(",")} ${tplKeyVenue.status} ${tplKeyPlan.status}`,
+);
+
+const swapRefused = [];
+for (const [method, path] of [
+  ["GET", eventApi(tplId)],
+  ["PATCH", eventApi(tplId)],
+  ["DELETE", eventApi(tplId)],
+  ["GET", `${eventApi(tplId)}/klient/venue`],
+  ["GET", `${eventApi(tplId)}/reset`],
+  ["GET", `${eventApi(tplId)}/ai-topics`],
+  ["POST", `${eventApi(tplId)}/links/tv`],
+  ["GET", `${eventApi(tplId)}/from-template/${String(tplId)}`],
+  ["GET", templateApi(eventA.id)],
+  ["DELETE", templateApi(eventA.id)],
+  ["GET", `${templateSala(eventA.id)}/venue`],
+  ["GET", `${eventApi(eventA.id)}/from-template/${String(eventA.id)}`],
+  ["GET", templateApi("abc")],
+  ["GET", templateApi(2_000_000_000)],
+  ["GET", `${templateSala("abc")}/venue`],
+  ["GET", `${eventApi(eventA.id)}/from-template/abc`],
+]) {
+  const res = await staffCall(sessionOwner, path, method === "PATCH" ? { method, json: { name: "x" } } : { method });
+  if (!noAccessJson(res)) swapRefused.push(`${method} ${path}: ${String(res.status)}`);
+}
+const tplAsEventPage = await staffCall(sessionOwner, eventPage(tplId));
+const tplAsPreview = await staffCall(sessionOwner, `${eventPage(tplId)}/sale`);
+const eventAsTplPage = await staffCall(sessionOwner, templatePage(eventA.id));
+check(
+  "templates: a template id through every event route and page, an event id through the template routes and page, malformed and unknown ids → the identical 404 / no-access page",
+  swapRefused.length === 0 &&
+    isNoAccessPage(tplAsEventPage) &&
+    isNoAccessPage(tplAsPreview) &&
+    isNoAccessPage(eventAsTplPage),
+  swapRefused.join("; "),
+);
+
+const outsiders = [];
+for (const [who, token] of [
+  ["waiter", sessionWaiter],
+  ["owner B", sessionB],
+  ["admin", sessionAdmin],
+]) {
+  for (const [method, path, json] of [
+    ["GET", templatesApiOf(restaurantA.id)],
+    ["POST", templatesApiOf(restaurantA.id), { name: "Obcy" }],
+    ["GET", templateApi(tplId)],
+    ["PATCH", templateApi(tplId), { name: "Obcy" }],
+    ["DELETE", templateApi(tplId)],
+    ["GET", `${templateSala(tplId)}/venue`],
+    ["POST", `${templateSala(tplId)}/rooms`, { name: "Obca" }],
+    ["GET", `${eventApi(eventA.id)}/from-template/${String(tplId)}`],
+    ["POST", `${eventApi(eventA.id)}/from-template/${String(tplId)}`],
+  ]) {
+    const res = await staffCall(token, path, json ? { method, json } : { method });
+    if (!noAccessJson(res)) outsiders.push(`${who} ${method} ${path}: ${String(res.status)}`);
+  }
+  const page = await staffCall(token, templatePage(tplId));
+  if (!isNoAccessPage(page)) outsiders.push(`${who} page: ${String(page.status)}`);
+}
+const ownerBFromA = await staffCall(sessionB, templatesApiOf(restaurantB.id), {
+  method: "POST",
+  json: { name: "Z cudzego", sourceEventId: eventA.id },
+});
+const noSessionTpl = await staffCall(null, templateApi(tplId));
+const noSessionSala = await staffCall(null, `${templateSala(tplId)}/venue`);
+const foreignTpl = await staffCall(sessionOwner, templatesApiOf(restaurantA.id), {
+  method: "POST",
+  json: { name: "Obcy Origin" },
+  extraHeaders: FOREIGN,
+});
+const foreignSala = await staffCall(sessionOwner, `${templateSala(tplId)}/rooms`, {
+  method: "POST",
+  json: { name: "Obcy Origin" },
+  extraHeaders: FOREIGN,
+});
+const badName = await staffCall(sessionOwner, templatesApiOf(restaurantA.id), { method: "POST", json: { name: "  " } });
+const extraField = await staffCall(sessionOwner, templatesApiOf(restaurantA.id), {
+  method: "POST",
+  json: { name: "x", guests: [] },
+});
+const tplUntouched = await staffCall(sessionOwner, templateApi(tplId));
+check(
+  "templates: a waiter, owner B and the admin outside support mode → the identical 404 on every template route and page; owner B cannot copy event A's room (404); no session → 401; a foreign Origin → 403; an empty name or an unknown field → 400; the template is unchanged",
+  outsiders.length === 0 &&
+    noAccessJson(ownerBFromA) &&
+    noSessionTpl.status === 401 &&
+    noSessionSala.status === 401 &&
+    foreignTpl.status === 403 &&
+    foreignSala.status === 403 &&
+    badName.status === 400 &&
+    errorOf(badName) === "Podaj nazwę szablonu." &&
+    extraField.status === 400 &&
+    tplUntouched.status === 200 &&
+    tplUntouched.data?.template?.name === TPL_NAME &&
+    tplUntouched.data.template.roomCount === 1,
+  `${outsiders.join("; ")} | ${ownerBFromA.status} ${noSessionTpl.status} ${foreignTpl.status} ${foreignSala.status} ${badName.status} ${extraField.status}`,
+);
+
+const tplPageOwner = await staffCall(sessionOwner, templatePage(tplId));
+const tplPageEn = await staffCall(sessionOwner, templatePage(tplId), {
+  extraHeaders: { Cookie: `${asStaff(sessionOwner)}; kp-lang=en` },
+});
+check(
+  "templates: the template page renders the name form and the venue editor (PL and EN)",
+  tplPageOwner.status === 200 &&
+    tplPageOwner.body.includes(`data-template-page="${String(tplId)}"`) &&
+    tplPageOwner.body.includes("data-template-header") &&
+    tplPageOwner.body.includes("Szablon sali") &&
+    tplPageEn.status === 200 &&
+    tplPageEn.body.includes("Venue template"),
+  `${tplPageOwner.status} ${tplPageEn.status}`,
+);
+
+// Event A's room → a template (a copy: the same tables, other rows).
+const venueA31 = await staffCall(sessionOwner, `${eventApi(eventA.id)}/klient/venue`);
+const fromEvent = await staffCall(sessionOwner, templatesApiOf(restaurantA.id), {
+  method: "POST",
+  json: { name: `Sala A smoke ${RUN_TAG}`, sourceEventId: eventA.id },
+});
+const fromEventId = fromEvent.data?.template?.id ?? 0;
+const fromEventVenue = await staffCall(sessionOwner, `${templateSala(fromEventId)}/venue`);
+const tableNamesOf = (res) => (res.data?.tables ?? []).map((table) => table.name).join("|");
+check(
+  "templates: „Zapisz salę jako szablon” copies event A's room (same tables, own rows); the event is unchanged",
+  venueA31.status === 200 &&
+    fromEvent.status === 201 &&
+    fromEvent.data?.template?.tableCount === venueA31.data?.tables?.length &&
+    fromEventVenue.status === 200 &&
+    tableNamesOf(fromEventVenue) === tableNamesOf(venueA31) &&
+    !(fromEventVenue.data?.tables ?? []).some((table) => venueA31.data.tables.some((other) => other.id === table.id)) &&
+    tableNamesOf(await staffCall(sessionOwner, `${eventApi(eventA.id)}/klient/venue`)) === tableNamesOf(venueA31),
+  `${venueA31.status} ${fromEvent.status} ${fromEventVenue.status}`,
+);
+
+// A new event from the template: its room is ready; another restaurant's template → 404.
+const tplBCreated = await staffCall(sessionB, templatesApiOf(restaurantB.id), {
+  method: "POST",
+  json: { name: `Sala B smoke ${RUN_TAG}` },
+});
+const tplBId = tplBCreated.data?.template?.id ?? 0;
+const fromTemplateEvent = await staffCall(sessionManager, eventsApiOf(restaurantA.id), {
+  method: "POST",
+  json: { name: `Z szablonu smoke ${RUN_TAG}`, date: shiftDate(today, 40), templateId: tplId },
+});
+const fromForeignTemplate = await staffCall(sessionOwner, eventsApiOf(restaurantA.id), {
+  method: "POST",
+  json: { name: `Z cudzego szablonu ${RUN_TAG}`, date: shiftDate(today, 40), templateId: tplBId },
+});
+const fromEventAsTemplate = await staffCall(sessionOwner, eventsApiOf(restaurantA.id), {
+  method: "POST",
+  json: { name: `Z wydarzenia ${RUN_TAG}`, date: shiftDate(today, 40), templateId: eventA.id },
+});
+const nEvent = fromTemplateEvent.data?.event;
+const nVenue = nEvent ? await staffCall(sessionOwner, `${eventApi(nEvent.id)}/klient/venue`) : null;
+const tplVenueNow = await staffCall(sessionOwner, `${templateSala(tplId)}/venue`);
+const eventCountAfter = await listedCountA();
+check(
+  "templates: a manager creates an event from the template — the client's link opens a copy of its room (T1, T2, own rows); another restaurant's template or an event id as the template → 404; the platform counter grows by the event only",
+  tplBCreated.status === 201 &&
+    fromTemplateEvent.status === 201 &&
+    hasFreshLinks(nEvent) &&
+    nVenue?.status === 200 &&
+    tableNamesOf(nVenue) === "T1|T2" &&
+    nVenue.data?.plan?.byteSize === TINY_PNG.length &&
+    !(nVenue.data?.tables ?? []).some((table) => tplVenueNow.data?.tables?.some((other) => other.id === table.id)) &&
+    noAccessJson(fromForeignTemplate) &&
+    noAccessJson(fromEventAsTemplate) &&
+    eventCountAfter === eventCountBefore + 1,
+  `${tplBCreated.status} ${fromTemplateEvent.status} ${nVenue?.status} ${tableNamesOf(nVenue ?? {})} ${fromForeignTemplate.status} ${fromEventAsTemplate.status} ${eventCountBefore}→${eventCountAfter}`,
+);
+
+// „Zaktualizuj z szablonu”: two guests seated by the client; the template loses T2 and T1 shrinks to 2 seats.
+const nClientApi = `/api/o/${keyOfPath(nEvent?.links?.organizer)}`;
+const S15_GUESTS = [`Ula S15 ${RUN_TAG}`, `Iza S15 ${RUN_TAG}`, `Ewa S15 ${RUN_TAG}`];
+const nGuests = await request(`${nClientApi}/guests`, { method: "POST", json: { text: S15_GUESTS.join("\n") } });
+const guestIdOf = (name) => nGuests.data?.guests?.find((guest) => guest.displayName === name)?.id ?? 0;
+const nTableId = (name) => nVenue?.data?.tables?.find((table) => table.name === name)?.id ?? 0;
+const seatsN = [];
+for (const [guest, table, seat] of [
+  [S15_GUESTS[0], "T1", 3],
+  [S15_GUESTS[1], "T2", 5],
+  [S15_GUESTS[2], "T1", 1],
+]) {
+  const res = await request(`${nClientApi}/seating/guests/${String(guestIdOf(guest))}`, {
+    method: "PUT",
+    json: { tableId: nTableId(table), seat },
+  });
+  seatsN.push(res.status);
+}
+const tplT2Id = tplVenueNow.data?.tables?.find((table) => table.name === "T2")?.id ?? 0;
+const tplT1Id = tplVenueNow.data?.tables?.find((table) => table.name === "T1")?.id ?? 0;
+const tplDropT2 = await staffCall(sessionOwner, `${templateSala(tplId)}/tables/${String(tplT2Id)}`, {
+  method: "DELETE",
+});
+const tplShrinkT1 = await staffCall(sessionOwner, `${templateSala(tplId)}/tables/${String(tplT1Id)}`, {
+  method: "PATCH",
+  json: { seatCount: 2 },
+});
+const nVenueUnchanged = await staffCall(sessionOwner, `${eventApi(nEvent?.id ?? 0)}/klient/venue`);
+check(
+  "templates: changing the template (delete T2, shrink T1) never touches the event created from it",
+  nGuests.status === 201 &&
+    seatsN.every((status) => status === 200) &&
+    tplDropT2.status === 200 &&
+    tplShrinkT1.status === 200 &&
+    tableNamesOf(nVenueUnchanged) === "T1|T2" &&
+    nVenueUnchanged.data?.tables?.find((table) => table.name === "T1")?.seatCount === 4,
+  `${nGuests.status} ${seatsN.join(",")} ${tplDropT2.status} ${tplShrinkT1.status}`,
+);
+
+const updateApi = `${eventApi(nEvent?.id ?? 0)}/from-template/${String(tplId)}`;
+const preview31 = await staffCall(sessionManager, updateApi);
+const lost31 = (preview31.data?.preview?.lost ?? []).map(
+  (seat) => `${seat.guestName}@${seat.table}:${String(seat.seat)}`,
+);
+const foreignApply = await staffCall(sessionManager, updateApi, { method: "POST", extraHeaders: FOREIGN });
+const applied31 = await staffCall(sessionManager, updateApi, { method: "POST" });
+const boardN = await request(`${nClientApi}/seating`);
+const seatedNames = (boardN.data?.assignments ?? []).map(
+  (row) => boardN.data.guestList.guests.find((guest) => guest.id === row.guestId)?.displayName,
+);
+const nVenueUpdated = await staffCall(sessionOwner, `${eventApi(nEvent?.id ?? 0)}/klient/venue`);
+check(
+  "templates: „Zaktualizuj z szablonu” previews who loses a seat (the guests at T2 and above T1's new size), a foreign Origin → 403, then the manager's apply unseats exactly them, keeps the rest and the room becomes the template's",
+  preview31.status === 200 &&
+    JSON.stringify(lost31) === JSON.stringify([`${S15_GUESTS[0]}@T1:3`, `${S15_GUESTS[1]}@T2:5`]) &&
+    JSON.stringify(preview31.data.preview.tablesRemoved) === JSON.stringify(["T2"]) &&
+    JSON.stringify(preview31.data.preview.tablesResized) === JSON.stringify(["T1"]) &&
+    foreignApply.status === 403 &&
+    applied31.status === 200 &&
+    applied31.data?.result?.seatsBefore === 3 &&
+    applied31.data.result.seatsAfter === 1 &&
+    applied31.data.result.tablesRemoved === 1 &&
+    applied31.data.preview?.lost?.length === 0 &&
+    JSON.stringify(seatedNames) === JSON.stringify([S15_GUESTS[2]]) &&
+    tableNamesOf(nVenueUpdated) === "T1" &&
+    nVenueUpdated.data?.tables?.[0]?.seatCount === 2,
+  `${preview31.status} ${JSON.stringify(lost31)} ${foreignApply.status} ${applied31.status} ${JSON.stringify(applied31.data?.result)} ${JSON.stringify(seatedNames)}`,
+);
+
+// The admin in support mode reads templates, never writes; then leaves.
+const enter31 = await enterSupport(sessionAdmin, restaurantA.id);
+const supportTplApi = await staffCall(sessionAdmin, templateApi(tplId));
+const supportTplList = await staffCall(sessionAdmin, templatesApiOf(restaurantA.id));
+const supportTplVenue = await staffCall(sessionAdmin, `${templateSala(tplId)}/venue`);
+const supportTplPage = await staffCall(sessionAdmin, templatePage(tplId));
+const supportTplWrites = [];
+for (const [method, path, json] of [
+  ["PATCH", templateApi(tplId), { name: "Wsparcie" }],
+  ["DELETE", templateApi(tplId)],
+  ["POST", `${templateSala(tplId)}/rooms`, { name: "Wsparcie" }],
+  ["POST", templatesApiOf(restaurantA.id), { name: "Wsparcie" }],
+  ["POST", updateApi],
+]) {
+  const res = await staffCall(sessionAdmin, path, json ? { method, json } : { method });
+  if (!noAccessJson(res)) supportTplWrites.push(`${method} ${path}: ${String(res.status)}`);
+}
+const exit31 = await endSupportOf(sessionAdmin, restaurantA.id);
+check(
+  "templates: the admin in support mode reads the templates, their room and the page (static, read-only, no name form); every write → the identical 404",
+  enter31.status === 201 &&
+    supportTplApi.status === 200 &&
+    supportTplList.status === 200 &&
+    supportTplVenue.status === 200 &&
+    supportTplPage.status === 200 &&
+    supportTplPage.body.includes("data-read-only") &&
+    !supportTplPage.body.includes("data-template-header") &&
+    supportTplWrites.length === 0 &&
+    exit31.status === 200,
+  `${enter31.status} ${supportTplApi.status} ${supportTplVenue.status} ${supportTplPage.status} ${supportTplWrites.join("; ")} ${exit31.status}`,
+);
+
+// Rename and delete: the events created from it keep their own rooms.
+const renamed31 = await staffCall(sessionManager, templateApi(tplId), {
+  method: "PATCH",
+  json: { name: `${TPL_NAME} 2` },
+});
+const deleted31 = await staffCall(sessionManager, templateApi(tplId), { method: "DELETE" });
+const goneTpl = await staffCall(sessionOwner, templateApi(tplId));
+const goneTplSala = await staffCall(sessionOwner, `${templateSala(tplId)}/venue`);
+const nAfterDelete = await staffCall(sessionOwner, `${eventApi(nEvent?.id ?? 0)}/klient/venue`);
+const fromEventDeleted = await staffCall(sessionOwner, templateApi(fromEventId), { method: "DELETE" });
+const tplBDeleted = await staffCall(sessionB, templateApi(tplBId), { method: "DELETE" });
+check(
+  "templates: the manager renames and deletes the template; afterwards it is the identical 404 and the event made from it keeps its room",
+  renamed31.status === 200 &&
+    renamed31.data?.template?.name === `${TPL_NAME} 2` &&
+    deleted31.status === 200 &&
+    deleted31.data?.deleted === true &&
+    deleted31.data.restaurantId === restaurantA.id &&
+    noAccessJson(goneTpl) &&
+    noAccessJson(goneTplSala) &&
+    tableNamesOf(nAfterDelete) === "T1" &&
+    fromEventDeleted.status === 200 &&
+    tplBDeleted.status === 200,
+  `${renamed31.status} ${deleted31.status} ${goneTpl.status} ${nAfterDelete.status} ${fromEventDeleted.status} ${tplBDeleted.status}`,
+);
+
+// 32. Menu catalog with courses (menu-catalog-courses, S-16; FR-037, FR-027, US-07). The manager keeps restaurant A's
+// catalog (five courses, prices), an event of A created here gets a reduced menu, the client orders only from it (free
+// text → 400 while the menu is active, lines take the menu's spelling, course and the event's price), a catalog price
+// change never moves an ordered line, the tablet lists the kitchen's prep by course without prices, and switching the
+// menu off brings free text back. A waiter, owner B and the admin outside support mode → the identical 404 on every
+// menu route; owner B cannot put its own item on A's event; no session → 401; a foreign Origin → 403; support mode
+// reads only. Uses the sessions of 25–31. Runs last: restaurant A has a catalog afterwards.
+const menuApiOf = (restaurantId) => `/api/panel/restaurants/${String(restaurantId)}/menu`;
+const menuItemApi = (restaurantId, itemId) => `${menuApiOf(restaurantId)}/${String(itemId)}`;
+const eventMenuApi = (id) => `${eventApi(id)}/menu`;
+const menuPageOf = (restaurantId) => `/panel/restauracje/${String(restaurantId)}/menu`;
+
+const e32 = await staffCall(sessionOwner, eventsApiOf(restaurantA.id), {
+  method: "POST",
+  json: { name: `Menu smoke ${RUN_TAG}`, date: futureDate },
+});
+const e32Id = e32.data?.event?.id ?? 0;
+const e32Key = keyOfPath(e32.data?.event?.links?.organizer);
+const e32Tablet = keyOfPath(e32.data?.event?.links?.restaurant);
+const e32Api = `/api/o/${e32Key}`;
+const before32 = await request(`${e32Api}/orders`);
+const legacy32 = await request(`${e32Api}/orders`, { method: "POST", json: { name: "Barszcz", quantity: 1 } });
+check(
+  "menu: a new event of a restaurant without a catalog takes free text as before (menu inactive)",
+  e32.status === 201 &&
+    before32.status === 200 &&
+    before32.data?.menu?.active === false &&
+    legacy32.status === 201 &&
+    legacy32.data?.items?.[0]?.course === null,
+  `${e32.status} ${before32.status} ${JSON.stringify(before32.data?.menu)} ${legacy32.status}`,
+);
+
+const MENU32 = [
+  ["Tatar", "starter", "32"],
+  ["Rosół", "soup", "18,50"],
+  ["Schabowy", "main", "45"],
+  ["Pierogi", "main", "29"],
+  ["Sernik", "dessert", "16"],
+  ["Lemoniada", "drinks", "12"],
+];
+const added32 = [];
+for (const [name, course, price] of MENU32) {
+  added32.push(
+    await staffCall(sessionManager, menuApiOf(restaurantA.id), { method: "POST", json: { name, course, price } }),
+  );
+}
+const catalog32 = added32.at(-1)?.data;
+const itemId32 = (name) => catalog32?.items?.find((item) => item.name === name)?.id ?? 0;
+check(
+  "menu: the manager adds dishes and drinks in all five courses → 201, the catalog by course (starters, soups, mains, desserts, drinks) with prices in grosze",
+  added32.every((res) => res.status === 201) &&
+    JSON.stringify(catalog32?.items?.map((item) => [item.name, item.course, item.priceGrosze])) ===
+      JSON.stringify([
+        ["Tatar", "starter", 3200],
+        ["Rosół", "soup", 1850],
+        ["Pierogi", "main", 2900],
+        ["Schabowy", "main", 4500],
+        ["Sernik", "dessert", 1600],
+        ["Lemoniada", "drinks", 1200],
+      ]),
+  added32.map((res) => res.status).join(" "),
+);
+
+const badName32 = await staffCall(sessionManager, menuApiOf(restaurantA.id), {
+  method: "POST",
+  json: { name: "  ", course: "main", price: "1" },
+});
+const badCourse32 = await staffCall(sessionManager, menuApiOf(restaurantA.id), {
+  method: "POST",
+  json: { name: "Śniadanie", course: "breakfast", price: "1" },
+});
+const badPrice32 = await staffCall(sessionManager, menuApiOf(restaurantA.id), {
+  method: "POST",
+  json: { name: "Śniadanie", course: "main", price: "abc" },
+});
+const extra32 = await staffCall(sessionManager, menuApiOf(restaurantA.id), {
+  method: "POST",
+  json: { name: "Śniadanie", course: "main", price: "1", id: 5 },
+});
+const dup32 = await staffCall(sessionManager, menuApiOf(restaurantA.id), {
+  method: "POST",
+  json: { name: "rosół", course: "main", price: "1" },
+});
+const patched32 = await staffCall(sessionManager, menuItemApi(restaurantA.id, itemId32("Sernik")), {
+  method: "PATCH",
+  json: { price: "17" },
+});
+check(
+  "menu: an empty name, an unknown course, a bad price and an unknown field → 400; the same name in another letter case → 409; a price change → 200",
+  badName32.status === 400 &&
+    badCourse32.status === 400 &&
+    badCourse32.data?.error === "Wybierz kurs." &&
+    badPrice32.status === 400 &&
+    extra32.status === 400 &&
+    dup32.status === 409 &&
+    patched32.status === 200 &&
+    patched32.data?.items?.find((item) => item.name === "Sernik")?.priceGrosze === 1700,
+  `${badName32.status} ${badCourse32.status} ${badPrice32.status} ${extra32.status} ${dup32.status} ${patched32.status}`,
+);
+
+const itemB32 = await staffCall(sessionB, menuApiOf(restaurantB.id), {
+  method: "POST",
+  json: { name: "Danie B", course: "main", price: "10" },
+});
+const itemB32Id = itemB32.data?.items?.[0]?.id ?? 0;
+const outsiders32 = [];
+for (const [who, token] of [
+  ["waiter", sessionWaiter],
+  ["owner B", sessionB],
+  ["admin", sessionAdmin],
+]) {
+  for (const [method, path, json] of [
+    ["GET", menuApiOf(restaurantA.id)],
+    ["POST", menuApiOf(restaurantA.id), { name: "Obce", course: "main", price: "1" }],
+    ["PATCH", menuItemApi(restaurantA.id, itemId32("Tatar")), { price: "1" }],
+    ["DELETE", menuItemApi(restaurantA.id, itemId32("Tatar"))],
+    ["GET", eventMenuApi(e32Id)],
+    ["PUT", eventMenuApi(e32Id), { mode: "off" }],
+  ]) {
+    const res = await staffCall(token, path, json ? { method, json } : { method });
+    if (!noAccessJson(res)) outsiders32.push(`${who} ${method} ${path}: ${String(res.status)}`);
+  }
+  const page = await staffCall(token, menuPageOf(restaurantA.id));
+  if (!isNoAccessPage(page)) outsiders32.push(`${who} page: ${String(page.status)}`);
+}
+const foreignIds32 = [];
+for (const [method, path, json] of [
+  ["PATCH", menuItemApi(restaurantA.id, itemB32Id), { price: "1" }],
+  ["DELETE", menuItemApi(restaurantA.id, itemB32Id)],
+  ["PATCH", menuItemApi(restaurantA.id, "abc"), { price: "1" }],
+  ["DELETE", menuItemApi(restaurantA.id, 2_000_000_000)],
+  ["PUT", eventMenuApi(e32Id), { mode: "reduced", itemIds: [itemId32("Tatar"), itemB32Id] }],
+  // (owner A also belongs to B by now — section 28 — so B's event is checked through owner B's session above)
+  ["GET", eventMenuApi(2_000_000_000)],
+  ["GET", eventMenuApi("abc")],
+]) {
+  const res = await staffCall(sessionOwner, path, json ? { method, json } : { method });
+  if (!noAccessJson(res)) foreignIds32.push(`${method} ${path}: ${String(res.status)}`);
+}
+const ownerBOwn = await staffCall(sessionB, menuApiOf(restaurantB.id));
+const noSession32 = await staffCall(null, menuApiOf(restaurantA.id));
+const noSessionEvent32 = await staffCall(null, eventMenuApi(e32Id));
+const foreign32 = await staffCall(sessionOwner, menuApiOf(restaurantA.id), {
+  method: "POST",
+  json: { name: "Obcy Origin", course: "main", price: "1" },
+  extraHeaders: FOREIGN,
+});
+const foreignEvent32 = await staffCall(sessionOwner, eventMenuApi(e32Id), {
+  method: "PUT",
+  json: { mode: "off" },
+  extraHeaders: FOREIGN,
+});
+const stillFull32 = await staffCall(sessionOwner, eventMenuApi(e32Id));
+check(
+  "menu: a waiter, owner B and the admin outside support mode → the identical 404 on every menu route and page; B's item on A's catalog or A's event, unknown and malformed ids → the same 404, nothing changed; no session → 401; a foreign Origin → 403",
+  itemB32.status === 201 &&
+    outsiders32.length === 0 &&
+    foreignIds32.length === 0 &&
+    ownerBOwn.status === 200 &&
+    ownerBOwn.data?.items?.length === 1 &&
+    noSession32.status === 401 &&
+    noSessionEvent32.status === 401 &&
+    foreign32.status === 403 &&
+    foreignEvent32.status === 403 &&
+    stillFull32.status === 200 &&
+    stillFull32.data?.mode === "full" &&
+    stillFull32.data.items.every((item) => item.available),
+  `${outsiders32.join("; ")} | ${foreignIds32.join("; ")} | ${noSession32.status} ${foreign32.status} ${foreignEvent32.status} ${stillFull32.data?.mode}`,
+);
+
+const reduced32 = await staffCall(sessionManager, eventMenuApi(e32Id), {
+  method: "PUT",
+  json: { mode: "reduced", itemIds: ["Tatar", "Rosół", "Schabowy", "Lemoniada"].map(itemId32) },
+});
+const board32 = await request(`${e32Api}/orders`);
+check(
+  "menu: the manager sets a reduced menu; the client's board shows exactly those items by course with prices, without catalog ids",
+  reduced32.status === 200 &&
+    reduced32.data?.mode === "reduced" &&
+    reduced32.data.items.filter((item) => item.available).length === 4 &&
+    board32.status === 200 &&
+    board32.data?.menu?.active === true &&
+    JSON.stringify(board32.data.menu.items) ===
+      JSON.stringify([
+        { name: "Tatar", course: "starter", priceGrosze: 3200 },
+        { name: "Rosół", course: "soup", priceGrosze: 1850 },
+        { name: "Schabowy", course: "main", priceGrosze: 4500 },
+        { name: "Lemoniada", course: "drinks", priceGrosze: 1200 },
+      ]),
+  `${reduced32.status} ${board32.status} ${JSON.stringify(board32.data?.menu)}`,
+);
+
+const freeText32 = await request(`${e32Api}/orders`, { method: "POST", json: { name: "Kebab", quantity: 1 } });
+const offMenu32 = await request(`${e32Api}/orders`, { method: "POST", json: { name: "Sernik", quantity: 1 } });
+const withPrice32 = await request(`${e32Api}/orders`, {
+  method: "POST",
+  json: { name: "Rosół", quantity: 1, price: "1" },
+});
+const fromMenu32 = await request(`${e32Api}/orders`, { method: "POST", json: { name: "rosół", quantity: 2 } });
+const rosolLine = fromMenu32.data?.items?.find((item) => item.course === "soup");
+const legacyLine = fromMenu32.data?.items?.find((item) => item.name === "Barszcz");
+const legacyEdit32 = await request(`${e32Api}/orders/${String(legacyLine?.id ?? 0)}`, {
+  method: "PATCH",
+  json: { quantity: 3 },
+});
+const renameOff32 = await request(`${e32Api}/orders/${String(rosolLine?.id ?? 0)}`, {
+  method: "PATCH",
+  json: { name: "Kebab" },
+});
+check(
+  "menu: the client's free text and an item outside the reduced menu → 400; a price in the body → 400; a menu item in any letter case → 201 with the menu's spelling, course and price; a line from before the menu still edits; a rename off the menu → 400",
+  freeText32.status === 400 &&
+    freeText32.data?.error === "Tej pozycji nie ma w menu wydarzenia. Wybierz z listy." &&
+    offMenu32.status === 400 &&
+    withPrice32.status === 400 &&
+    fromMenu32.status === 201 &&
+    rosolLine?.name === "Rosół" &&
+    rosolLine.unitPriceGrosze === 1850 &&
+    rosolLine.quantity === 2 &&
+    legacyEdit32.status === 200 &&
+    renameOff32.status === 400,
+  `${freeText32.status} ${offMenu32.status} ${withPrice32.status} ${fromMenu32.status} ${JSON.stringify(rosolLine)} ${legacyEdit32.status} ${renameOff32.status}`,
+);
+
+const repriced32 = await staffCall(sessionManager, menuItemApi(restaurantA.id, itemId32("Rosół")), {
+  method: "PATCH",
+  json: { price: "25" },
+});
+const afterPrice32 = await request(`${e32Api}/orders`);
+const tablet32 = await request(`/api/r/${e32Tablet}/orders`);
+check(
+  "menu: a catalog price change keeps the ordered line's price and the event's price of that name (the bill does not move); the tablet's prep is grouped by course (soup before the free-text line), without prices",
+  repriced32.status === 200 &&
+    repriced32.data?.items?.find((item) => item.name === "Rosół")?.priceGrosze === 2500 &&
+    afterPrice32.data?.items?.find((item) => item.course === "soup")?.unitPriceGrosze === 1850 &&
+    afterPrice32.data?.menu?.items?.find((item) => item.name === "Rosół")?.priceGrosze === 1850 &&
+    tablet32.status === 200 &&
+    JSON.stringify(tablet32.data?.prep?.map((line) => [line.course, line.name, line.quantity])) ===
+      JSON.stringify([
+        ["soup", "Rosół", 2],
+        [null, "Barszcz", 3],
+      ]) &&
+    !/Grosze|price/i.test(tablet32.body),
+  `${repriced32.status} ${JSON.stringify(afterPrice32.data?.items?.map((item) => [item.name, item.unitPriceGrosze]))} ${tablet32.status} ${JSON.stringify(tablet32.data?.prep)}`,
+);
+
+const catalogPage32 = await staffCall(sessionManager, menuPageOf(restaurantA.id));
+const catalogPageEn32 = await staffCall(sessionManager, menuPageOf(restaurantA.id), {
+  extraHeaders: { Cookie: `${asStaff(sessionManager)}; kp-lang=en` },
+});
+const restaurantPage32 = await staffCall(sessionManager, restaurantPageOf(restaurantA.id));
+const eventPage32 = await staffCall(sessionManager, eventPage(e32Id));
+const clientPage32 = await request(`/o/${e32Key}/zamowienia`);
+check(
+  "menu: the catalog page (PL and EN), the restaurant page's „Menu lokalu” section, the event card's „Menu wydarzenia” and the client's order page with the menu list render",
+  catalogPage32.status === 200 &&
+    catalogPage32.body.includes(`data-menu-page="${String(restaurantA.id)}"`) &&
+    catalogPage32.body.includes("data-menu-catalog") &&
+    catalogPage32.body.includes("Dania główne") &&
+    catalogPageEn32.status === 200 &&
+    catalogPageEn32.body.includes("Restaurant menu") &&
+    restaurantPage32.body.includes("data-menu-section") &&
+    eventPage32.status === 200 &&
+    eventPage32.body.includes('data-event-menu="reduced"') &&
+    clientPage32.status === 200 &&
+    clientPage32.body.includes("data-menu-select") &&
+    clientPage32.body.includes("Przystawki"),
+  `${catalogPage32.status} ${catalogPageEn32.status} ${restaurantPage32.status} ${eventPage32.status} ${clientPage32.status}`,
+);
+
+const enter32 = await enterSupport(sessionAdmin, restaurantA.id);
+const supportCatalog32 = await staffCall(sessionAdmin, menuApiOf(restaurantA.id));
+const supportEventMenu32 = await staffCall(sessionAdmin, eventMenuApi(e32Id));
+const supportPage32 = await staffCall(sessionAdmin, menuPageOf(restaurantA.id));
+const supportWrites32 = [];
+for (const [method, path, json] of [
+  ["POST", menuApiOf(restaurantA.id), { name: "Wsparcie", course: "main", price: "1" }],
+  ["PATCH", menuItemApi(restaurantA.id, itemId32("Tatar")), { price: "1" }],
+  ["DELETE", menuItemApi(restaurantA.id, itemId32("Tatar"))],
+  ["PUT", eventMenuApi(e32Id), { mode: "off" }],
+]) {
+  const res = await staffCall(sessionAdmin, path, json ? { method, json } : { method });
+  if (!noAccessJson(res)) supportWrites32.push(`${method} ${path}: ${String(res.status)}`);
+}
+const exit32 = await endSupportOf(sessionAdmin, restaurantA.id);
+check(
+  "menu: the admin in support mode reads the catalog, the event menu and a static catalog page (no forms); every write → the identical 404",
+  enter32.status === 201 &&
+    supportCatalog32.status === 200 &&
+    supportCatalog32.data?.items?.length === MENU32.length &&
+    supportEventMenu32.status === 200 &&
+    supportPage32.status === 200 &&
+    supportPage32.body.includes("data-menu-item") &&
+    !supportPage32.body.includes("data-menu-catalog") &&
+    supportWrites32.length === 0 &&
+    exit32.status === 200,
+  `${enter32.status} ${supportCatalog32.status} ${supportEventMenu32.status} ${supportPage32.status} ${supportWrites32.join("; ")} ${exit32.status}`,
+);
+
+const off32 = await staffCall(sessionOwner, eventMenuApi(e32Id), { method: "PUT", json: { mode: "off" } });
+const freeAgain32 = await request(`${e32Api}/orders`, { method: "POST", json: { name: "Kebab", quantity: 1 } });
+const removed32 = await staffCall(sessionOwner, menuItemApi(restaurantA.id, itemId32("Rosół")), { method: "DELETE" });
+const afterRemove32 = await request(`${e32Api}/orders`);
+const deleted32 = await staffCall(sessionOwner, eventApi(e32Id), { method: "DELETE" });
+check(
+  "menu: switching the event's menu off brings free text back; deleting a catalog item keeps the line ordered from it (name, course, price); the event is deleted",
+  off32.status === 200 &&
+    off32.data?.mode === "off" &&
+    off32.data.items.every((item) => !item.available) &&
+    freeAgain32.status === 201 &&
+    removed32.status === 200 &&
+    afterRemove32.data?.menu?.active === false &&
+    JSON.stringify(
+      afterRemove32.data?.items
+        ?.filter((item) => item.course === "soup")
+        .map((item) => [item.name, item.unitPriceGrosze]),
+    ) === JSON.stringify([["Rosół", 1850]]) &&
+    deleted32.status === 200,
+  `${off32.status} ${freeAgain32.status} ${removed32.status} ${deleted32.status}`,
+);
+
+// 33. Event modules (event-modules, S-17; FR-031, US-07, NFR-023). A new event of A (panel) has AI topics and the
+// guessing game off and the paid AI topics locked. Each module switched off by the client → its organizer routes 409
+// `module-off` (link and the staff dispatcher alike), its guest routes the identical 404 of a wrong key, the guest
+// token and the TV token change, its data survives → on again → the data is back. The venue (owner, manager) offers
+// or withdraws a module (never lead-gated), the client switches only offered ones (lead rule: staff through the
+// dispatcher while „Lokal prowadzi”), a paid module waits for the platform administrator's unlock, which works only
+// inside a support visit and lands in the owner's log. A waiter, owner B and unknown or malformed ids → the identical
+// 404; no session → 401; a foreign Origin → 403. Events A/B (created with every module) keep every v1 module on.
+const modulesApi = (id) => `${eventApi(id)}/modules`;
+const unlockApi = (id, module) => `/api/panel/platform/events/${String(id)}/modules/${module}`;
+const activeOf = (res) =>
+  Object.fromEntries((Array.isArray(res.data?.modules) ? res.data.modules : []).map((m) => [m.key, m.active]));
+const isModuleOff = (res, module) =>
+  res.status === 409 && res.data?.code === "module-off" && res.data?.module === module;
+
+const modulesA = await request(`/api/o/${eventA.organizerKey}/modules`);
+check(
+  "modules: events A/B (every module) keep questions, AI topics, the game, the draw and the TV screen on",
+  modulesA.status === 200 &&
+    ["questions", "aiTopics", "guessing", "seatingDraw", "tvSpotlight"].every(
+      (key) => activeOf(modulesA)[key] === true,
+    ),
+  `${modulesA.status} ${JSON.stringify(activeOf(modulesA))}`,
+);
+
+const e33 = await staffCall(sessionOwner, eventsApiOf(restaurantA.id), {
+  method: "POST",
+  json: { name: `Moduły smoke ${RUN_TAG}`, date: futureDate },
+});
+const e33Id = e33.data?.event?.id ?? 0;
+const e33Key = keyOfPath(e33.data?.event?.links?.organizer);
+const e33Tv = keyOfPath(e33.data?.event?.links?.tv);
+const e33Api = `/api/o/${e33Key}`;
+const defaults33 = await request(`${e33Api}/modules`);
+const guessesOff33 = await request(`${e33Api}/guesses`);
+const aiOff33 = await request(`${e33Api}/ai-topics`, { method: "POST", json: { category: null } });
+const aiEntry33 = defaults33.data?.modules?.find((m) => m.key === "aiTopics");
+check(
+  "modules: a new event has questions, the draw and the TV screen on, AI topics and the game off (AI paid and locked); the game's and AI's organizer routes → 409 module-off",
+  e33.status === 201 &&
+    defaults33.status === 200 &&
+    JSON.stringify(activeOf(defaults33)) ===
+      JSON.stringify({
+        questions: true,
+        aiTopics: false,
+        guessing: false,
+        seatingDraw: true,
+        tvSpotlight: true,
+        pubQuiz: false,
+      }) &&
+    aiEntry33?.paid === true &&
+    aiEntry33.unlocked === false &&
+    isModuleOff(guessesOff33, "guessing") &&
+    isModuleOff(aiOff33, "aiTopics"),
+  `${e33.status} ${defaults33.status} ${JSON.stringify(activeOf(defaults33))} ${guessesOff33.status} ${aiOff33.status}`,
+);
+
+// A guest with access, for the phone side.
+await request(`${e33Api}/guests`, { method: "POST", json: { text: "Ala Moduł\nOla Moduł" } });
+await request(`${e33Api}/guest-links`, { method: "PATCH", json: { enabled: true } });
+const links33 = await request(`${e33Api}/guest-links`);
+const g33 = links33.data?.guests?.[0]?.key ?? "";
+const gApi33 = `/api/g/${g33}`;
+const badGuess33 = await request(`/api/g/${"A".repeat(24)}/guess`, { method: "PUT", json: { amount: "100" } });
+const guessOffGuest33 = await request(`${gApi33}/guess`, { method: "PUT", json: { amount: "100" } });
+const stateOff33 = await request(`${gApi33}/state`);
+check(
+  "modules: with the game off the guest's guess route gives the identical denial of a wrong key and the phone state says the game is off",
+  g33.length === 24 &&
+    noAccessJson(badGuess33) &&
+    guessOffGuest33.status === 404 &&
+    guessOffGuest33.body === badGuess33.body &&
+    stateOff33.status === 200 &&
+    stateOff33.data?.modules?.guessing === false &&
+    stateOff33.data?.modules?.questions === true,
+  `${g33.length} ${guessOffGuest33.status} ${guessOffGuest33.body} ${JSON.stringify(stateOff33.data?.modules)}`,
+);
+// The gate reads the pathname Astro's router matches (fully decoded): a percent-encoded letter, also encoded twice,
+// reaches the same gate — the organizer's identical 409 module-off, the guest's identical 404 of a wrong key.
+const sameAnswer33 = (a, b) =>
+  a.status === b.status && a.body === b.body && a.cacheControl === b.cacheControl && a.robots === b.robots;
+const encodedGuesses33 = await request(`${e33Api}/%67uesses`);
+const twiceEncodedGuesses33 = await request(`${e33Api}/%2567uesses`);
+const encodedAi33 = await request(`${e33Api}/%61i-topics`, { method: "POST", json: { category: null } });
+const encodedGuess33 = await request(`${gApi33}/%67uess`, { method: "PUT", json: { amount: "100" } });
+const encodedGuestAi33 = await request(`${gApi33}/%61i-topics`, { method: "POST", json: { category: null } });
+const badGuestAi33 = await request(`/api/g/${"A".repeat(24)}/ai-topics`, {
+  method: "POST",
+  json: { category: null },
+});
+check(
+  "modules: percent-encoded module paths (/%67uesses, /%2567uesses, /%61i-topics; the guest's /%67uess, /%61i-topics) get the identical 409 module-off / 404 of the plain path",
+  isModuleOff(encodedGuesses33, "guessing") &&
+    sameAnswer33(encodedGuesses33, guessesOff33) &&
+    sameAnswer33(twiceEncodedGuesses33, guessesOff33) &&
+    isModuleOff(encodedAi33, "aiTopics") &&
+    sameAnswer33(encodedAi33, aiOff33) &&
+    sameAnswer33(encodedGuess33, guessOffGuest33) &&
+    encodedGuestAi33.status === 404 &&
+    sameAnswer33(encodedGuestAi33, badGuestAi33),
+  [encodedGuesses33, twiceEncodedGuesses33, encodedAi33, encodedGuess33, encodedGuestAi33]
+    .map((res) => `${res.status} ${res.data?.code ?? ""}`)
+    .join(", "),
+);
+
+const enable = (module, enabled, api = e33Api) =>
+  request(`${api}/modules`, { method: "PUT", json: { module, enabled } });
+const gameOn33 = await enable("guessing", true);
+const saved33 = await request(`${gApi33}/guess`, { method: "PUT", json: { amount: "1500" } });
+const stateOn33 = await request(`${gApi33}/state`);
+const board33 = await request(`${e33Api}/guesses`);
+const gameOff33 = await enable("guessing", false);
+const boardOff33 = await request(`${e33Api}/guesses`);
+const panelOff33 = await staffCall(sessionOwner, `${eventApi(e33Id)}/klient/guesses`);
+const stateOff33b = await request(`${gApi33}/state?since=${encodeURIComponent(stateOn33.data?.version ?? "")}`);
+const shellOff33 = await request(`/o/${e33Key}`);
+const pageOff33 = await request(`/o/${e33Key}/strzaly`);
+const guestPage33 = await request(`/g/${g33}`);
+const gameBack33 = await enable("guessing", true);
+const boardBack33 = await request(`${e33Api}/guesses`);
+check(
+  "modules: the game on → a guess is saved; off → the board 409 (link and dispatcher), the phone's next poll drops it (new token), the shell card is gone, the page says it is off; on again → the same guess is back",
+  gameOn33.status === 200 &&
+    saved33.status === 200 &&
+    stateOn33.data?.modules?.guessing === true &&
+    board33.status === 200 &&
+    board33.data?.guests?.filter((g) => g.amountGrosze === 150000).length === 1 &&
+    gameOff33.status === 200 &&
+    isModuleOff(boardOff33, "guessing") &&
+    isModuleOff(panelOff33, "guessing") &&
+    stateOff33b.status === 200 &&
+    stateOff33b.data?.modules?.guessing === false &&
+    stateOff33b.data.version !== stateOn33.data?.version &&
+    shellOff33.status === 200 &&
+    shellOff33.body.includes("data-event-modules") &&
+    !shellOff33.body.includes(`/o/${e33Key}/strzaly`) &&
+    pageOff33.body.includes('data-module-off="guessing"') &&
+    /<div hidden=""[^>]*data-guest-module="guessing"/.test(guestPage33.body) &&
+    !/<div hidden=""[^>]*data-guest-module="questions"/.test(guestPage33.body) &&
+    gameBack33.status === 200 &&
+    boardBack33.status === 200 &&
+    boardBack33.data?.guests?.filter((g) => g.amountGrosze === 150000).length === 1,
+  `${gameOn33.status} ${saved33.status} ${board33.status} ${boardOff33.status} ${panelOff33.status} ${stateOff33b.status} ${pageOff33.status} ${boardBack33.status}`,
+);
+
+await request(`${e33Api}/questions`, {
+  method: "POST",
+  json: { category: "generyczne", text: "Pytanie modułu smoke?" },
+});
+const questions33 = await request(`${e33Api}/questions`);
+const qOff33 = await enable("questions", false);
+const qOrganizer33 = await request(`${e33Api}/questions`);
+const qGuest33 = await request(`${gApi33}/questions/draw`, { method: "POST", json: { category: null } });
+const qState33 = await request(`${gApi33}/state`);
+const qOn33 = await enable("questions", true);
+const qBack33 = await request(`${e33Api}/questions`);
+const qGuestBack33 = await request(`${gApi33}/questions/draw`, { method: "POST", json: { category: null } });
+check(
+  "modules: questions off → the base 409, the guest's draw the identical 404, the phone hides the section; on → the same base and the draw work",
+  questions33.status === 200 &&
+    qOff33.status === 200 &&
+    isModuleOff(qOrganizer33, "questions") &&
+    qGuest33.status === 404 &&
+    qGuest33.body === badGuess33.body &&
+    qState33.data?.modules?.questions === false &&
+    qOn33.status === 200 &&
+    qBack33.status === 200 &&
+    qBack33.data?.questions?.length === questions33.data?.questions?.length &&
+    qGuestBack33.status === 200,
+  `${questions33.status} ${qOrganizer33.status} ${qGuest33.status} ${qBack33.status} ${qGuestBack33.status}`,
+);
+
+const shown33 = await request(`${e33Api}/tv-spotlight`, {
+  method: "PUT",
+  json: { kind: "question", text: "Moduł na TV smoke?" },
+});
+const tvOn33 = await request(`/api/tv/${e33Tv}/seating`);
+const tvOff33 = await enable("tvSpotlight", false);
+const spotOff33 = await request(`${e33Api}/tv-spotlight`);
+const tvPollOff33 = await request(`/api/tv/${e33Tv}/seating?since=${encodeURIComponent(tvOn33.data?.version ?? "")}`);
+const tvBack33 = await enable("tvSpotlight", true);
+const tvPollBack33 = await request(`/api/tv/${e33Tv}/seating`);
+check(
+  "modules: „Pokaż na TV” off → its routes 409 and the TV's next poll drops the spotlight (new token); on → the same spotlight is back",
+  shown33.status === 200 &&
+    tvOn33.data?.spotlight?.text === "Moduł na TV smoke?" &&
+    tvOff33.status === 200 &&
+    isModuleOff(spotOff33, "tvSpotlight") &&
+    tvPollOff33.status === 200 &&
+    tvPollOff33.data?.spotlight === null &&
+    tvPollOff33.data.version !== tvOn33.data?.version &&
+    tvBack33.status === 200 &&
+    tvPollBack33.data?.spotlight?.text === "Moduł na TV smoke?",
+  `${shown33.status} ${spotOff33.status} ${tvPollOff33.status} ${JSON.stringify(tvPollOff33.data?.spotlight)} ${JSON.stringify(tvPollBack33.data?.spotlight)}`,
+);
+
+const drawOff33 = await enable("seatingDraw", false);
+const draftOff33 = await request(`${e33Api}/seating/draft`, { method: "POST", json: { seats: [] } });
+const historyOff33 = await request(`${e33Api}/seating/history`);
+const drawPage33 = await request(`/o/${e33Key}/rozsadzenie`);
+const drawOn33 = await enable("seatingDraw", true);
+check(
+  "modules: the seating draw off → its draft route 409 and no draw button; the history stays readable; on again",
+  drawOff33.status === 200 &&
+    isModuleOff(draftOff33, "seatingDraw") &&
+    historyOff33.status === 200 &&
+    drawPage33.status === 200 &&
+    !drawPage33.body.includes("data-draw-button") &&
+    drawOn33.status === 200,
+  `${draftOff33.status} ${historyOff33.status} ${drawPage33.status}`,
+);
+
+const withdraw33 = await staffCall(sessionOwner, modulesApi(e33Id), {
+  method: "PUT",
+  json: { module: "questions", available: false },
+});
+const clientView33 = await request(`${e33Api}/modules`);
+const clientTry33 = await enable("questions", true);
+const offer33 = await staffCall(sessionManager, modulesApi(e33Id), {
+  method: "PUT",
+  json: { module: "questions", available: true },
+});
+const lockedTry33 = await enable("aiTopics", true);
+check(
+  "modules: the owner withdraws questions (the client sees it unavailable and cannot switch it on: 409 module-unavailable), the manager offers it again (the client's switch kept); a locked paid module → 409 module-locked",
+  withdraw33.status === 200 &&
+    activeOf(withdraw33).questions === false &&
+    clientView33.data?.modules?.find((m) => m.key === "questions")?.available === false &&
+    clientTry33.status === 409 &&
+    clientTry33.data?.code === "module-unavailable" &&
+    offer33.status === 200 &&
+    activeOf(offer33).questions === true &&
+    lockedTry33.status === 409 &&
+    lockedTry33.data?.code === "module-locked",
+  `${withdraw33.status} ${clientTry33.status} ${offer33.status} ${lockedTry33.status}`,
+);
+
+const leadOn33 = await staffCall(sessionOwner, eventApi(e33Id), { method: "PATCH", json: { venueLeads: true } });
+const clientLed33 = await enable("guessing", false);
+const staffLed33 = await staffCall(sessionOwner, `${eventApi(e33Id)}/klient/modules`, {
+  method: "PUT",
+  json: { module: "guessing", enabled: false },
+});
+const staffOffer33 = await staffCall(sessionOwner, modulesApi(e33Id), {
+  method: "PUT",
+  json: { module: "pubQuiz", available: false },
+});
+const leadOff33 = await staffCall(sessionOwner, eventApi(e33Id), { method: "PATCH", json: { venueLeads: false } });
+const staffNotLed33 = await staffCall(sessionOwner, `${eventApi(e33Id)}/klient/modules`, {
+  method: "PUT",
+  json: { module: "guessing", enabled: true },
+});
+const clientAgain33 = await enable("guessing", true);
+check(
+  "modules: while the venue leads the client's switch → 409 venue-leads and the staff switch through the dispatcher; the venue's offer works whoever leads; the client leads again → the staff's switch 409 client-leads",
+  leadOn33.status === 200 &&
+    clientLed33.status === 409 &&
+    clientLed33.data?.code === "venue-leads" &&
+    staffLed33.status === 200 &&
+    activeOf(staffLed33).guessing === false &&
+    staffOffer33.status === 200 &&
+    leadOff33.status === 200 &&
+    staffNotLed33.status === 409 &&
+    staffNotLed33.data?.code === "client-leads" &&
+    clientAgain33.status === 200,
+  `${leadOn33.status} ${clientLed33.status} ${staffLed33.status} ${staffOffer33.status} ${leadOff33.status} ${staffNotLed33.status} ${clientAgain33.status}`,
+);
+
+const outsiders33 = [];
+for (const [who, token] of [
+  ["waiter", sessionWaiter],
+  ["owner B", sessionB],
+]) {
+  for (const [method, json] of [["GET"], ["PUT", { module: "questions", available: false }]]) {
+    const res = await staffCall(token, modulesApi(e33Id), json ? { method, json } : { method });
+    if (!noAccessJson(res)) outsiders33.push(`${who} ${method}: ${String(res.status)}`);
+  }
+  const unlock = await staffCall(token, unlockApi(e33Id, "aiTopics"), { method: "PUT", json: { unlocked: true } });
+  if (!noAccessJson(unlock)) outsiders33.push(`${who} unlock: ${String(unlock.status)}`);
+}
+// (Owner A is also an owner of B since section 28, so B's side is checked with owner B's session above.)
+for (const path of [modulesApi(999999999), modulesApi("abc")]) {
+  const res = await staffCall(sessionOwner, path);
+  if (!noAccessJson(res)) outsiders33.push(`owner ${path}: ${String(res.status)}`);
+}
+const ownerUnlock33 = await staffCall(sessionOwner, unlockApi(e33Id, "aiTopics"), {
+  method: "PUT",
+  json: { unlocked: true },
+});
+const noSession33 = await request(modulesApi(e33Id));
+const foreign33 = await staffCall(sessionOwner, modulesApi(e33Id), {
+  method: "PUT",
+  json: { module: "questions", available: true },
+  extraHeaders: { Origin: "https://evil.example" },
+});
+check(
+  "modules: a waiter, owner B, unknown and malformed event ids and a non-admin unlock → the identical 404; no session → 401; a foreign Origin → 403",
+  outsiders33.length === 0 && noAccessJson(ownerUnlock33) && noSession33.status === 401 && foreign33.status === 403,
+  `${outsiders33.join("; ")} ${ownerUnlock33.status} ${noSession33.status} ${foreign33.status}`,
+);
+
+const adminOutside33 = await staffCall(sessionAdmin, unlockApi(e33Id, "aiTopics"), {
+  method: "PUT",
+  json: { unlocked: true },
+});
+const enter33 = await enterSupport(sessionAdmin, restaurantA.id);
+const adminRead33 = await staffCall(sessionAdmin, modulesApi(e33Id));
+const adminVenue33 = await staffCall(sessionAdmin, modulesApi(e33Id), {
+  method: "PUT",
+  json: { module: "questions", available: false },
+});
+const adminForeign33 = await staffCall(sessionAdmin, unlockApi(e33Id, "aiTopics"), {
+  method: "PUT",
+  json: { unlocked: true },
+  extraHeaders: { Origin: "https://evil.example" },
+});
+const adminFree33 = await staffCall(sessionAdmin, unlockApi(e33Id, "guessing"), {
+  method: "PUT",
+  json: { unlocked: true },
+});
+const adminUnknown33 = [
+  await staffCall(sessionAdmin, unlockApi(999999999, "aiTopics"), { method: "PUT", json: { unlocked: true } }),
+  await staffCall(sessionAdmin, unlockApi("abc", "aiTopics"), { method: "PUT", json: { unlocked: true } }),
+  await staffCall(sessionAdmin, unlockApi(e33Id, "bogus"), { method: "PUT", json: { unlocked: true } }),
+  await staffCall(sessionAdmin, unlockApi(eventB.id, "aiTopics"), { method: "PUT", json: { unlocked: true } }),
+];
+const adminPage33 = await staffCall(sessionAdmin, eventPage(e33Id));
+const unlocked33 = await staffCall(sessionAdmin, unlockApi(e33Id, "aiTopics"), {
+  method: "PUT",
+  json: { unlocked: true },
+});
+const exit33 = await endSupportOf(sessionAdmin, restaurantA.id);
+const log33 = await readLogA();
+const unlockEntry33 = logOf(log33).find((entry) => entry.kind === "unlock" && entry.event?.id === e33Id);
+const aiOn33 = await enable("aiTopics", true);
+const aiGuest33 = await request(`${gApi33}/state`);
+check(
+  "modules: the admin unlocks a paid module only inside a support visit (outside → 404; venue writes 404; free module 400; unknown ids, another restaurant's event and modules 404; foreign Origin 403), the owner's log names it, then the client switches AI topics on",
+  noAccessJson(adminOutside33) &&
+    enter33.status === 201 &&
+    adminRead33.status === 200 &&
+    noAccessJson(adminVenue33) &&
+    adminForeign33.status === 403 &&
+    adminFree33.status === 400 &&
+    adminUnknown33.every(noAccessJson) &&
+    adminPage33.status === 200 &&
+    adminPage33.body.includes("data-event-modules-section") &&
+    unlocked33.status === 200 &&
+    unlocked33.data?.modules?.find((m) => m.key === "aiTopics")?.unlocked === true &&
+    exit33.status === 200 &&
+    unlockEntry33?.module === "aiTopics" &&
+    aiOn33.status === 200 &&
+    activeOf(aiOn33).aiTopics === true &&
+    aiGuest33.data?.modules?.aiTopics === true,
+  `${adminOutside33.status} ${enter33.status} ${adminRead33.status} ${adminVenue33.status} ${adminForeign33.status} ${adminFree33.status} ${adminUnknown33.map((r) => r.status).join(",")} ${adminPage33.status} ${unlocked33.status} ${exit33.status} ${JSON.stringify(unlockEntry33)} ${aiOn33.status}`,
+);
+
+const deleted33 = await staffCall(sessionOwner, eventApi(e33Id), { method: "DELETE" });
+check("modules: the smoke's event is deleted", deleted33.status === 200, String(deleted33.status));
+
+// 34. Branding (event-branding, S-18; FR-032). A new event of A (panel). The client names its company and uploads a
+// logo (PNG only through magic bytes: SVG → 415, > 512 KiB → 413, an extra field → 400); the logo comes back with
+// `nosniff` and the same bytes through the client, guest, TV and tablet keys, and an unknown kind is the `logoMissing`
+// 404. Event B's logo never shows through A's keys (and A's restaurant logo never through B's). The owner sets the
+// restaurant's colour (normalised, with its readable text colour), name and logo; the manager reads but cannot write;
+// a waiter, owner B and unknown or malformed ids → the identical 404; no session → 401; a foreign Origin → 403. The
+// lead rule: while „Lokal prowadzi” is on the client's PATCH → 409 venue-leads and the staff write through the
+// dispatcher. The pages carry the brand and never the platform's name; support mode reads only.
+const brandApiOf = (restaurantId) => `/api/panel/restaurants/${String(restaurantId)}/branding`;
+// „Brak logo.” — or „No logo.” on the tablet's area, which defaults to English.
+const LOGO_MISSING = [JSON.stringify({ error: "Brak logo." }), JSON.stringify({ error: "No logo." })];
+const isLogoMissing = (res) => res.status === 404 && LOGO_MISSING.includes(new TextDecoder().decode(res.bytes));
+const e34 = await staffCall(sessionOwner, eventsApiOf(restaurantA.id), {
+  method: "POST",
+  json: { name: `Marka smoke ${RUN_TAG}`, date: futureDate },
+});
+const e34Id = e34.data?.event?.id ?? 0;
+const e34Key = keyOfPath(e34.data?.event?.links?.organizer);
+const e34Tv = keyOfPath(e34.data?.event?.links?.tv);
+const e34Tablet = keyOfPath(e34.data?.event?.links?.restaurant);
+const e34Api = `/api/o/${e34Key}`;
+await request(`${e34Api}/guests`, { method: "POST", json: { text: "Ala Marka" } });
+await request(`${e34Api}/guest-links`, { method: "PATCH", json: { enabled: true } });
+const g34 = (await request(`${e34Api}/guest-links`)).data?.guests?.[0]?.key ?? "";
+const areas34 = [`/api/o/${e34Key}`, `/api/g/${g34}`, `/api/tv/${e34Tv}`, `/api/r/${e34Tablet}`];
+
+const unbranded34 = await request(`${e34Api}/branding`);
+const bLogo34 = await requestBytes(`/api/o/${eventB.organizerKey}/branding/logo`, {
+  method: "PUT",
+  body: TINY_PNG,
+  contentType: "image/png",
+});
+const aNone34 = await Promise.all(areas34.map((base) => requestBytes(`${base}/branding/logo?kind=event`)));
+const bServed34 = await requestBytes(`/api/g/${"A".repeat(24)}/branding/logo?kind=event`);
+check(
+  "branding: a new event starts unbranded (the restaurant's name only); event B's logo never shows through A's client, guest, TV or tablet key (404 „Brak logo.”), an unknown key → the identical no-access 404",
+  e34.status === 201 &&
+    g34.length === 24 &&
+    unbranded34.status === 200 &&
+    unbranded34.data?.client?.name === null &&
+    unbranded34.data?.client?.logo === null &&
+    unbranded34.data?.restaurant?.logo === null &&
+    bLogo34.status === 200 &&
+    aNone34.every(isLogoMissing) &&
+    bServed34.status === 404 &&
+    new TextDecoder().decode(bServed34.bytes) === JSON.stringify({ error: "Brak dostępu" }),
+  `${e34.status} ${g34.length} ${unbranded34.status} ${bLogo34.status} ${aNone34.map((r) => r.status).join(",")} ${bServed34.status}`,
+);
+
+const named34 = await request(`${e34Api}/branding`, { method: "PATCH", json: { name: "  Acme   Smoke " } });
+const tooLong34 = await request(`${e34Api}/branding`, { method: "PATCH", json: { name: "x".repeat(81) } });
+const extra34 = await request(`${e34Api}/branding`, { method: "PATCH", json: { name: "Acme", color: "#000000" } });
+const svg34 = await requestBytes(`${e34Api}/branding/logo`, {
+  method: "PUT",
+  body: new TextEncoder().encode('<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>'),
+  contentType: "image/svg+xml",
+});
+const big34 = await requestBytes(`${e34Api}/branding/logo`, {
+  method: "PUT",
+  body: new Uint8Array(512 * 1024 + 1),
+  contentType: "image/png",
+});
+const logo34 = await requestBytes(`${e34Api}/branding/logo`, {
+  method: "PUT",
+  body: TINY_PNG,
+  contentType: "image/png",
+});
+const served34 = await Promise.all(
+  areas34.map((base) =>
+    requestBytes(`${base}/branding/logo?kind=event&v=${String(logo34.data?.client?.logo?.version)}`),
+  ),
+);
+const oddKind34 = await requestBytes(`/api/g/${g34}/branding/logo?kind=platform`);
+const bOwn34 = await requestBytes(`/api/tv/${eventB.tvKey}/branding/logo?kind=event`);
+check(
+  "branding: the client names its company (normalised), 81 characters and an extra field → 400, SVG → 415, > 512 KiB → 413; the PNG logo comes back through the client, guest, TV and tablet keys with nosniff and the same bytes, an unknown kind → „Brak logo.”, event B still has its own",
+  named34.status === 200 &&
+    named34.data?.client?.name === "Acme Smoke" &&
+    tooLong34.status === 400 &&
+    extra34.status === 400 &&
+    svg34.status === 415 &&
+    big34.status === 413 &&
+    logo34.status === 200 &&
+    logo34.data?.client?.logo?.mimeType === "image/png" &&
+    served34.every(
+      (res) =>
+        res.status === 200 &&
+        res.contentType === "image/png" &&
+        res.nosniff === "nosniff" &&
+        res.cacheControl.includes("no-store") &&
+        sameBytes(res.bytes, TINY_PNG),
+    ) &&
+    isLogoMissing(oddKind34) &&
+    bOwn34.status === 200 &&
+    sameBytes(bOwn34.bytes, TINY_PNG),
+  `${named34.status} ${JSON.stringify(named34.data?.client)} ${tooLong34.status} ${extra34.status} ${svg34.status} ${big34.status} ${logo34.status} ${served34.map((r) => `${String(r.status)}/${r.nosniff}`).join(",")} ${oddKind34.status} ${bOwn34.status}`,
+);
+
+const before34 = await staffCall(sessionOwner, brandApiOf(restaurantA.id));
+const ownerBrand34 = await staffCall(sessionOwner, brandApiOf(restaurantA.id), {
+  method: "PATCH",
+  json: { color: "#1E3A8A", name: `Lokal marki ${RUN_TAG}` },
+});
+const badColor34 = await staffCall(sessionOwner, brandApiOf(restaurantA.id), {
+  method: "PATCH",
+  json: { color: "url(x)" },
+});
+const emptyName34 = await staffCall(sessionOwner, brandApiOf(restaurantA.id), { method: "PATCH", json: { name: " " } });
+const nothing34 = await staffCall(sessionOwner, brandApiOf(restaurantA.id), { method: "PATCH", json: {} });
+const rLogo34 = await requestBytes(`${brandApiOf(restaurantA.id)}/logo`, {
+  method: "PUT",
+  body: TINY_PNG,
+  contentType: "image/png",
+  cookie: asStaff(sessionOwner),
+});
+const rSvg34 = await requestBytes(`${brandApiOf(restaurantA.id)}/logo`, {
+  method: "PUT",
+  body: new TextEncoder().encode("<svg/>"),
+  contentType: "image/png",
+  cookie: asStaff(sessionOwner),
+});
+const rServed34 = await Promise.all(areas34.map((base) => requestBytes(`${base}/branding/logo?kind=restaurant`)));
+const rPanel34 = await requestBytes(`${brandApiOf(restaurantA.id)}/logo`, { cookie: asStaff(sessionOwner) });
+const bRestaurant34 = await requestBytes(`/api/g/${"A".repeat(24)}/branding/logo?kind=restaurant`);
+const bRestaurantKey34 = await requestBytes(`/api/o/${eventB.organizerKey}/branding/logo?kind=restaurant`);
+const guestBrand34 = await request(`${e34Api}/branding`);
+check(
+  "branding: the owner sets the colour (#1E3A8A → #1e3a8a with white text), renames the restaurant and uploads its logo; a bad colour, an empty name, an empty body and SVG bytes are refused; the logo shows through every key of A's event and the panel, never through event B (restaurant B has none)",
+  before34.status === 200 &&
+    ownerBrand34.status === 200 &&
+    ownerBrand34.data?.color === "#1e3a8a" &&
+    ownerBrand34.data?.textColor === "#ffffff" &&
+    ownerBrand34.data?.name === `Lokal marki ${RUN_TAG}` &&
+    badColor34.status === 400 &&
+    emptyName34.status === 400 &&
+    nothing34.status === 400 &&
+    rLogo34.status === 200 &&
+    rLogo34.data?.logo?.mimeType === "image/png" &&
+    rSvg34.status === 415 &&
+    rServed34.every((res) => res.status === 200 && res.nosniff === "nosniff" && sameBytes(res.bytes, TINY_PNG)) &&
+    rPanel34.status === 200 &&
+    rPanel34.nosniff === "nosniff" &&
+    sameBytes(rPanel34.bytes, TINY_PNG) &&
+    bRestaurant34.status === 404 &&
+    isLogoMissing(bRestaurantKey34) &&
+    guestBrand34.data?.restaurant?.color === "#1e3a8a" &&
+    guestBrand34.data?.restaurant?.name === `Lokal marki ${RUN_TAG}`,
+  `${before34.status} ${ownerBrand34.status} ${JSON.stringify(ownerBrand34.data)} ${badColor34.status} ${emptyName34.status} ${nothing34.status} ${rLogo34.status} ${rSvg34.status} ${rServed34.map((r) => r.status).join(",")} ${rPanel34.status} ${bRestaurantKey34.status}`,
+);
+
+const managerRead34 = await staffCall(sessionManager, brandApiOf(restaurantA.id));
+const managerWrite34 = await staffCall(sessionManager, brandApiOf(restaurantA.id), {
+  method: "PATCH",
+  json: { color: "#000000" },
+});
+const managerLogo34 = await requestBytes(`${brandApiOf(restaurantA.id)}/logo`, {
+  method: "PUT",
+  body: TINY_PNG,
+  contentType: "image/png",
+  cookie: asStaff(sessionManager),
+});
+const outsiders34 = [];
+for (const [who, token] of [
+  ["waiter", sessionWaiter],
+  ["owner B", sessionB],
+]) {
+  for (const [path, options] of [
+    [brandApiOf(restaurantA.id), {}],
+    [brandApiOf(restaurantA.id), { method: "PATCH", json: { color: "#000000" } }],
+    [`${brandApiOf(restaurantA.id)}/logo`, {}],
+    [`${brandApiOf(restaurantA.id)}/logo`, { method: "DELETE" }],
+  ]) {
+    const res = await staffCall(token, path, options);
+    if (!noAccessJson(res)) outsiders34.push(`${who} ${options.method ?? "GET"} ${path}: ${String(res.status)}`);
+  }
+}
+for (const path of [brandApiOf(999999999), brandApiOf("abc"), `${brandApiOf(999999999)}/logo`]) {
+  const res = await staffCall(sessionOwner, path);
+  if (!noAccessJson(res)) outsiders34.push(`owner ${path}: ${String(res.status)}`);
+}
+const noSession34 = await request(brandApiOf(restaurantA.id));
+const foreign34 = await staffCall(sessionOwner, brandApiOf(restaurantA.id), {
+  method: "PATCH",
+  json: { color: "#000000" },
+  extraHeaders: FOREIGN,
+});
+const stillBlue34 = await staffCall(sessionOwner, brandApiOf(restaurantA.id));
+check(
+  "branding: the manager reads the restaurant's brand but cannot change it (identical 404); a waiter, owner B and unknown or malformed ids → the identical 404; no session → 401; a foreign Origin → 403; nothing changed",
+  managerRead34.status === 200 &&
+    managerRead34.data?.color === "#1e3a8a" &&
+    noAccessJson(managerWrite34) &&
+    managerLogo34.status === 404 &&
+    managerLogo34.data?.error === "Brak dostępu" &&
+    outsiders34.length === 0 &&
+    noSession34.status === 401 &&
+    foreign34.status === 403 &&
+    stillBlue34.data?.color === "#1e3a8a",
+  `${managerRead34.status} ${managerWrite34.status} ${managerLogo34.status} ${outsiders34.join("; ")} ${noSession34.status} ${foreign34.status}`,
+);
+
+const leadOn34 = await staffCall(sessionOwner, eventApi(e34Id), { method: "PATCH", json: { venueLeads: true } });
+const clientLed34 = await request(`${e34Api}/branding`, { method: "PATCH", json: { name: "Klient" } });
+const clientLogoLed34 = await requestBytes(`${e34Api}/branding/logo`, { method: "DELETE" });
+const staffLed34 = await staffCall(sessionOwner, `${eventApi(e34Id)}/klient/branding`, {
+  method: "PATCH",
+  json: { name: "Firma personelu" },
+});
+const staffLogo34 = await requestBytes(`${eventApi(e34Id)}/klient/branding/logo?kind=event`, {
+  cookie: asStaff(sessionOwner),
+});
+const leadOff34 = await staffCall(sessionOwner, eventApi(e34Id), { method: "PATCH", json: { venueLeads: false } });
+const staffNotLed34 = await staffCall(sessionOwner, `${eventApi(e34Id)}/klient/branding`, {
+  method: "PATCH",
+  json: { name: "Znowu personel" },
+});
+check(
+  "branding: while the venue leads the client's brand writes → 409 venue-leads and the staff write through the dispatcher (and read the logo there); the client leads again → the staff's write 409 client-leads",
+  leadOn34.status === 200 &&
+    clientLed34.status === 409 &&
+    clientLed34.data?.code === "venue-leads" &&
+    clientLogoLed34.status === 409 &&
+    staffLed34.status === 200 &&
+    staffLed34.data?.client?.name === "Firma personelu" &&
+    staffLogo34.status === 200 &&
+    sameBytes(staffLogo34.bytes, TINY_PNG) &&
+    leadOff34.status === 200 &&
+    staffNotLed34.status === 409 &&
+    staffNotLed34.data?.code === "client-leads",
+  `${leadOn34.status} ${clientLed34.status} ${clientLogoLed34.status} ${staffLed34.status} ${staffLogo34.status} ${leadOff34.status} ${staffNotLed34.status}`,
+);
+
+const guestPage34 = await request(`/g/${g34}`);
+const tvPage34 = await request(`/tv/${e34Tv}`);
+const tabletPage34 = await request(`/r/${e34Tablet}`);
+const cards34 = await request(`/o/${e34Key}/karteczki`);
+const shell34 = await request(`/o/${e34Key}`);
+const ownerPage34 = await staffCall(sessionOwner, `/panel/restauracje/${String(restaurantA.id)}`);
+const managerPage34 = await staffCall(sessionManager, `/panel/restauracje/${String(restaurantA.id)}`);
+const eventPage34 = await staffCall(sessionOwner, `/panel/wydarzenia/${String(e34Id)}`);
+const home34 = await request("/");
+const whiteLabel = (res) =>
+  res.status === 200 &&
+  !res.body.includes("Kolacja podwyżkowa") &&
+  !res.body.includes("Raise dinner") &&
+  !res.body.includes("<title>Stolik</title>");
+const pageChecks34 = [
+  ["white-label", [guestPage34, tvPage34, tabletPage34, cards34].every(whiteLabel)],
+  ["guest header", guestPage34.body.includes('data-brand-header="page"')],
+  ["guest colour", guestPage34.body.includes("background-color: #1e3a8a; color: #ffffff;")],
+  ["guest restaurant name", guestPage34.body.includes(`Lokal marki ${RUN_TAG}`)],
+  ["guest client name", guestPage34.body.includes("Firma personelu")],
+  ["guest restaurant logo", guestPage34.body.includes(`/api/g/${g34}/branding/logo?kind=restaurant`)],
+  ["guest client logo", guestPage34.body.includes(`/api/g/${g34}/branding/logo?kind=event`)],
+  ["tv badge", tvPage34.body.includes('data-brand-header="tv"')],
+  ["tv logo", tvPage34.body.includes(`/api/tv/${e34Tv}/branding/logo?kind=restaurant`)],
+  ["tablet header", tabletPage34.body.includes('data-brand-header="page"')],
+  ["tablet logo", tabletPage34.body.includes(`/api/r/${e34Tablet}/branding/logo?kind=event`)],
+  ["cards brand", cards34.body.includes("data-card-brand")],
+  ["cards stripe", cards34.body.includes("border-top: 2.5mm solid #1e3a8a;")],
+  ["cards logo", cards34.body.includes(`/api/o/${e34Key}/branding/logo?kind=event`)],
+  ["shell section", shell34.body.includes("data-event-branding")],
+  ["shell editor", shell34.body.includes("data-event-branding-editor")],
+  ["owner section", ownerPage34.body.includes("data-restaurant-branding")],
+  ["owner editor", ownerPage34.body.includes("data-restaurant-branding-editor")],
+  ["manager read-only", managerPage34.body.includes("data-brand-read-only")],
+  ["manager no editor", !managerPage34.body.includes("data-restaurant-branding-editor")],
+  ["event card section", eventPage34.body.includes("data-event-branding-section")],
+  ["home product name", home34.body.includes("Stolik")],
+];
+check(
+  "branding: the guest's phone, the TV, the tablet and the QR cards show the restaurant's colour, name and logo and the client's name and logo, never the platform's name; the client shell, the owner's (editor) and the manager's (read-only) restaurant page and the event card carry their sections; the home page is the product's",
+  pageChecks34.every(([, ok]) => ok),
+  pageChecks34
+    .filter(([, ok]) => !ok)
+    .map(([name]) => name)
+    .join(", "),
+);
+
+const enter34 = await enterSupport(sessionAdmin, restaurantA.id);
+const adminRead34 = await staffCall(sessionAdmin, brandApiOf(restaurantA.id));
+const adminWrite34 = await staffCall(sessionAdmin, brandApiOf(restaurantA.id), {
+  method: "PATCH",
+  json: { color: "#000000" },
+});
+const adminPage34 = await staffCall(sessionAdmin, `/panel/restauracje/${String(restaurantA.id)}`);
+const exit34 = await endSupportOf(sessionAdmin, restaurantA.id);
+check(
+  "branding: in support mode the admin reads the restaurant's brand (the page read-only, without loading the logo) and cannot change it",
+  enter34.status === 201 &&
+    adminRead34.status === 200 &&
+    adminRead34.data?.color === "#1e3a8a" &&
+    noAccessJson(adminWrite34) &&
+    adminPage34.status === 200 &&
+    adminPage34.body.includes("data-brand-read-only") &&
+    !adminPage34.body.includes("/branding/logo?v=") &&
+    exit34.status === 200,
+  `${enter34.status} ${adminRead34.status} ${adminWrite34.status} ${adminPage34.status} ${exit34.status}`,
+);
+
+const restored34 = await staffCall(sessionOwner, brandApiOf(restaurantA.id), {
+  method: "PATCH",
+  json: { name: before34.data?.name ?? `Restauracja smoke A ${RUN_TAG}` },
+});
+const deleted34 = await staffCall(sessionOwner, eventApi(e34Id), { method: "DELETE" });
+check(
+  "branding: restaurant A gets its name back and the smoke's event is deleted",
+  restored34.status === 200 && deleted34.status === 200,
+  `${restored34.status} ${deleted34.status}`,
+);
+
+// 35. Scale (scale-150, S-19; FR-033, NFR-011). A new event of A (panel) filled through the organizer API to the new
+// limits: 150 guests (the 151st → 400), 3 rooms, 60 tables — 4 rectangular of 30 seats, the rest round of 4 — (a
+// 31-seat table and the 61st table → 400), every guest seated through one draft, published; the TV poll and a guest
+// poll at full size answer 200 with 60 tables and 150 names, then 204 with their own version. The answers' sizes and
+// times are printed (the load estimate in CLAUDE.md is built from `npm run load:local`). The event is deleted.
+const e35 = await staffCall(sessionOwner, eventsApiOf(restaurantA.id), {
+  method: "POST",
+  json: { name: `Skala smoke ${RUN_TAG}`, date: futureDate },
+});
+const e35Id = e35.data?.event?.id ?? 0;
+const e35Key = keyOfPath(e35.data?.event?.links?.organizer);
+const e35Tv = keyOfPath(e35.data?.event?.links?.tv);
+const e35Api = `/api/o/${e35Key}`;
+const names35 = Array.from({ length: 150 }, (_, index) => `Gość skali ${String(index + 1)}`);
+const guests35 = await request(`${e35Api}/guests`, { method: "POST", json: { text: names35.join("\n") } });
+const extraGuest35 = await request(`${e35Api}/guests`, { method: "POST", json: { text: "Gość skali 151" } });
+const rooms35 = [];
+for (const name of ["Sala A", "Sala B", "Sala C"]) {
+  const added = await request(`${e35Api}/rooms`, { method: "POST", json: { name } });
+  rooms35.push(added.data?.rooms?.find((room) => room.name === name)?.id ?? 0);
+}
+const tableStatuses35 = [];
+for (let index = 0; index < 60; index++) {
+  const long = index < 4;
+  const added = await request(`${e35Api}/tables`, {
+    method: "POST",
+    json: {
+      roomId: rooms35[index % 3],
+      name: `T${String(index + 1)}`,
+      seatCount: long ? 30 : 4,
+      shape: long ? "rectangular" : "round",
+      x: Math.round((0.05 + (index % 10) * 0.1) * 1000) / 1000,
+      y: Math.round((0.08 + Math.floor(index / 10) * 0.16) * 1000) / 1000,
+    },
+  });
+  tableStatuses35.push(added.status);
+}
+const tooBig35 = await request(`${e35Api}/tables`, {
+  method: "POST",
+  json: { roomId: rooms35[0], name: "Za duży", seatCount: 31, shape: "round", x: 0.5, y: 0.95 },
+});
+const extraTable35 = await request(`${e35Api}/tables`, {
+  method: "POST",
+  json: { roomId: rooms35[0], name: "T61", seatCount: 4, shape: "round", x: 0.5, y: 0.95 },
+});
+check(
+  "scale: an event takes 150 guests and 60 tables with 30-seat ones; the 151st guest, a 31-seat table and the 61st table → 400",
+  e35.status === 201 &&
+    guests35.status === 201 &&
+    (guests35.data?.guests?.length ?? 0) === 150 &&
+    extraGuest35.status === 400 &&
+    rooms35.every((id) => id > 0) &&
+    tableStatuses35.every((status) => status === 201) &&
+    tooBig35.status === 400 &&
+    extraTable35.status === 400,
+  `${e35.status} ${guests35.status}/${String(guests35.data?.guests?.length)} ${extraGuest35.status} ${tableStatuses35.filter((status) => status !== 201).join(",")} ${tooBig35.status} ${extraTable35.status}`,
+);
+
+const venue35 = await request(`${e35Api}/venue`);
+const seats35 = [];
+const ids35 = (guests35.data?.guests ?? []).map((guest) => guest.id);
+// The 30-seat tables first, so they are full.
+for (const table of [...(venue35.data?.tables ?? [])].sort((a, b) => b.seatCount - a.seatCount)) {
+  for (let seat = 1; seat <= table.seatCount && seats35.length < ids35.length; seat++) {
+    seats35.push({ guestId: ids35[seats35.length], tableId: table.id, seat });
+  }
+}
+const draft35 = await request(`${e35Api}/seating/draft`, { method: "POST", json: { seats: seats35 } });
+const publishStarted35 = performance.now();
+const publish35 = await request(`${e35Api}/seating/publish`, { method: "POST" });
+const publishMs35 = Math.round(performance.now() - publishStarted35);
+const tvStarted35 = performance.now();
+const tv35 = await request(`/api/tv/${e35Tv}/seating`);
+const tvMs35 = Math.round(performance.now() - tvStarted35);
+const tvNames35 = (tv35.data?.tables ?? []).reduce((sum, table) => sum + (table.seats?.length ?? 0), 0);
+const tvSame35 = await request(`/api/tv/${e35Tv}/seating?since=${encodeURIComponent(tv35.data?.version ?? "")}`);
+check(
+  "scale: one draft seats all 150 (30-seat tables full), publish 201; the TV poll answers 200 with 60 tables and 150 names, then 204 with its version",
+  venue35.status === 200 &&
+    (venue35.data?.tables?.length ?? 0) === 60 &&
+    seats35.length === 150 &&
+    draft35.status === 200 &&
+    publish35.status === 201 &&
+    tv35.status === 200 &&
+    (tv35.data?.tables?.length ?? 0) === 60 &&
+    tvNames35 === 150 &&
+    (tv35.data?.tables ?? []).filter((table) => table.seatCount === 30 && table.seats?.length === 30).length === 4 &&
+    tvSame35.status === 204,
+  `${draft35.status} ${publish35.status} (${String(publishMs35)} ms) tv ${tv35.status} ${String(Buffer.byteLength(tv35.body))} B ${String(tvMs35)} ms, ${String(tv35.data?.tables?.length)} tables ${String(tvNames35)} names, again ${tvSame35.status}`,
+);
+
+const links35 = await request(`${e35Api}/guest-links`, { method: "PATCH", json: { enabled: true } });
+const g35 = links35.data?.guests?.[0]?.key ?? "";
+const stateStarted35 = performance.now();
+const state35 = await request(`/api/g/${g35}/state`);
+const stateMs35 = Math.round(performance.now() - stateStarted35);
+const drawingNames35 = (state35.data?.drawing?.tables ?? []).reduce(
+  (sum, table) => sum + (table.seats?.length ?? 0),
+  0,
+);
+const stateSame35 = await request(`/api/g/${g35}/state?since=${encodeURIComponent(state35.data?.version ?? "")}`);
+const stateBytes35 = Buffer.byteLength(state35.body);
+check(
+  "scale: a guest poll at full size answers 200 with the seat, 30 tablemates' table and the whole drawing (60 tables, 150 names) under 100 KB, then 204 with its version",
+  links35.status === 200 &&
+    g35.length === 24 &&
+    state35.status === 200 &&
+    state35.data?.status === "seated" &&
+    (state35.data?.seat?.tablemates?.length ?? 0) === 29 &&
+    (state35.data?.drawing?.tables?.length ?? 0) === 60 &&
+    drawingNames35 === 150 &&
+    stateBytes35 < 100_000 &&
+    (state35.data?.version?.length ?? 99) <= 64 &&
+    stateSame35.status === 204,
+  `${links35.status} ${state35.status} ${String(stateBytes35)} B ${String(stateMs35)} ms, version ${String(state35.data?.version?.length)} chars, ${String(state35.data?.drawing?.tables?.length)} tables ${String(drawingNames35)} names, again ${stateSame35.status}`,
+);
+
+const deleted35 = await staffCall(sessionOwner, eventApi(e35Id), { method: "DELETE" });
+check("scale: the smoke's full-size event is deleted", deleted35.status === 200, String(deleted35.status));
+
+// 36. The floor — the waiter's day view (waiter-day-and-refills, S-21; FR-029, US-08). Events of A created for it:
+// one today (a guest and a line through the client's key), one tomorrow, one two days ago and one today but archived
+// (the noon edge is covered by unit tests with a fixed clock — the smoke runs at any hour). The waiter of A reads the
+// board with prices and the bill, adds a refill (priced by the venue; a body price → 400), marks a piece and a whole
+// line; edits, deletes and every other client route → the identical 404; outside the window, event B, malformed ids,
+// the platform admin (also in support mode, with no log row) → the identical 404; no session 401; foreign Origin 403;
+// „Lokal prowadzi” changes nothing for the floor. The pages: the floor page and „Dziś na sali”. Events deleted.
+const floorApiOf = (id) => `/api/panel/events/${String(id)}/obsluga`;
+const floorPageOf = (id) => `/panel/obsluga/${String(id)}`;
+const makeEvent36 = async (name, date) => {
+  const res = await staffCall(sessionOwner, eventsApiOf(restaurantA.id), {
+    method: "POST",
+    json: { name: `${name} ${RUN_TAG}`, date },
+  });
+  return res.data?.event ?? null;
+};
+const today36 = await makeEvent36("Sala dziś", today);
+const tomorrow36 = await makeEvent36("Sala jutro", shiftDate(today, 1));
+const past36 = await makeEvent36("Sala przedwczoraj", shiftDate(today, -2));
+const archived36 = await makeEvent36("Sala archiwum", today);
+const archivedPatch36 = await staffCall(sessionOwner, eventApi(archived36?.id ?? 0), {
+  method: "PATCH",
+  json: { archived: true },
+});
+const t36Id = today36?.id ?? 0;
+const t36Api = `/api/o/${keyOfPath(today36?.links?.organizer)}`;
+const guest36 = await request(`${t36Api}/guests`, { method: "POST", json: { text: `Gość sali ${RUN_TAG}` } });
+const guest36Id = guest36.data?.guests?.[0]?.id ?? 0;
+const clientBoard36 = await request(`${t36Api}/orders`);
+const dish36 = clientBoard36.data?.menu?.active ? (clientBoard36.data.menu.items[0]?.name ?? "") : "Zupa sali";
+const line36 = await request(`${t36Api}/orders`, {
+  method: "POST",
+  json: { name: dish36, quantity: 2, assignment: { guestId: guest36Id } },
+});
+const line36Id = line36.data?.items?.[0]?.id ?? 0;
+check(
+  "floor: four events of A for the floor (today, tomorrow, two days ago, archived today) and a line of 2 on today's",
+  [today36, tomorrow36, past36, archived36].every((event) => (event?.id ?? 0) > 0) &&
+    archivedPatch36.status === 200 &&
+    guest36Id > 0 &&
+    line36.status === 201 &&
+    line36Id > 0,
+  `${archivedPatch36.status} ${guest36.status} ${line36.status} ${line36.body.slice(0, 120)}`,
+);
+
+const floorRead36 = await staffCall(sessionWaiter, `${floorApiOf(t36Id)}/orders`);
+check(
+  "floor: the waiter of A reads today's board — lines with prices, the bill, the guests — with no keys",
+  floorRead36.status === 200 &&
+    floorRead36.cacheControl.includes("no-store") &&
+    Array.isArray(floorRead36.data?.items) &&
+    floorRead36.data.items.some((item) => item.id === line36Id && typeof item.unitPriceGrosze === "number") &&
+    typeof floorRead36.data?.totals?.totalGrosze === "number" &&
+    typeof floorRead36.data?.drinkTotals?.totalGrosze === "number" &&
+    ![today36?.links?.organizer, today36?.links?.tv, today36?.links?.restaurant].some(
+      (path) => typeof path === "string" && floorRead36.body.includes(keyOfPath(path)),
+    ),
+  `${floorRead36.status} ${floorRead36.body.slice(0, 160)}`,
+);
+
+const refill36 = await staffCall(sessionWaiter, `${floorApiOf(t36Id)}/orders`, {
+  method: "POST",
+  json: { name: dish36, quantity: 1, assignment: { guestId: guest36Id } },
+});
+const refillPriced36 = await staffCall(sessionWaiter, `${floorApiOf(t36Id)}/orders`, {
+  method: "POST",
+  json: { name: dish36, quantity: 1, price: "1" },
+});
+const drink36 = await staffCall(sessionWaiter, `${floorApiOf(t36Id)}/drinks`, {
+  method: "POST",
+  json: { name: "Woda sali", quantity: 2 },
+});
+const firstPrice36 = floorRead36.data?.items?.find((item) => item.id === line36Id)?.unitPriceGrosze;
+check(
+  "floor: the waiter adds a refill (201, the venue's price of the dish) and drinks on the bill (201); a body price → 400",
+  refill36.status === 201 &&
+    (refill36.data?.items?.length ?? 0) === 2 &&
+    refill36.data.items.every((item) => item.unitPriceGrosze === firstPrice36) &&
+    refillPriced36.status === 400 &&
+    drink36.status === 201 &&
+    (drink36.data?.drinks?.length ?? 0) === 1,
+  `${refill36.status} ${refillPriced36.status} ${drink36.status}`,
+);
+
+const piece36 = await staffCall(sessionWaiter, `${floorApiOf(t36Id)}/orders/${String(line36Id)}/pieces`, {
+  method: "PUT",
+  json: { piece: 1, delivered: true },
+});
+const pieceItem36 = piece36.data?.items?.find((item) => item.id === line36Id);
+const wholeLine36 = await staffCall(sessionWaiter, `${floorApiOf(t36Id)}/orders/${String(line36Id)}`, {
+  method: "PATCH",
+  json: { delivered: true },
+});
+const wholeItem36 = wholeLine36.data?.items?.find((item) => item.id === line36Id);
+const rename36 = await staffCall(sessionWaiter, `${floorApiOf(t36Id)}/orders/${String(line36Id)}`, {
+  method: "PATCH",
+  json: { name: "Inna nazwa" },
+});
+const mixed36 = await staffCall(sessionWaiter, `${floorApiOf(t36Id)}/orders/${String(line36Id)}`, {
+  method: "PATCH",
+  json: { delivered: false, quantity: 5 },
+});
+check(
+  "floor: the waiter marks one piece (the venue's mark), then the whole line „Wydane”; a rename or any other field → 400",
+  piece36.status === 200 &&
+    JSON.stringify(pieceItem36?.deliveredPieces) === "[1]" &&
+    pieceItem36?.marks?.[0]?.by === "organizer" &&
+    wholeLine36.status === 200 &&
+    JSON.stringify(wholeItem36?.deliveredPieces) === "[1,2]" &&
+    rename36.status === 400 &&
+    mixed36.status === 400,
+  `${piece36.status} ${JSON.stringify(pieceItem36?.deliveredPieces)} ${wholeLine36.status} ${rename36.status} ${mixed36.status}`,
+);
+
+const floorDenied36 = [];
+for (const [name, token, path, options] of [
+  ["delete a line", sessionWaiter, `${floorApiOf(t36Id)}/orders/${String(line36Id)}`, { method: "DELETE" }],
+  ["edit a drink", sessionWaiter, `${floorApiOf(t36Id)}/drinks/1`, { method: "PATCH", json: { quantity: 1 } }],
+  ["guests", sessionWaiter, `${floorApiOf(t36Id)}/guests`, {}],
+  ["guest links", sessionWaiter, `${floorApiOf(t36Id)}/guest-links`, {}],
+  ["seating", sessionWaiter, `${floorApiOf(t36Id)}/seating`, {}],
+  ["publish", sessionWaiter, `${floorApiOf(t36Id)}/seating/publish`, { method: "POST" }],
+  ["reset", sessionWaiter, `${floorApiOf(t36Id)}/reset`, {}],
+  ["unknown sub-path", sessionWaiter, `${floorApiOf(t36Id)}/nie-ma`, {}],
+  ["no sub-path", sessionWaiter, floorApiOf(t36Id), {}],
+  ["the event card", sessionWaiter, eventApi(t36Id), {}],
+  ["the event's links", sessionWaiter, `${eventApi(t36Id)}/links/tv`, { method: "POST" }],
+  ["the client dispatcher", sessionWaiter, `${eventApi(t36Id)}/klient/orders`, {}],
+  ["the team", sessionWaiter, `/api/panel/restaurants/${String(restaurantA.id)}/team`, {}],
+  ["tomorrow's event", sessionWaiter, `${floorApiOf(tomorrow36?.id ?? 0)}/orders`, {}],
+  ["the event of two days ago", sessionWaiter, `${floorApiOf(past36?.id ?? 0)}/orders`, {}],
+  ["today's archived event", sessionWaiter, `${floorApiOf(archived36?.id ?? 0)}/orders`, {}],
+  [
+    "tomorrow's event, a refill",
+    sessionWaiter,
+    `${floorApiOf(tomorrow36?.id ?? 0)}/orders`,
+    { method: "POST", json: { name: "X", quantity: 1 } },
+  ],
+  ["event B", sessionWaiter, `${floorApiOf(eventB.id)}/orders`, {}],
+  ["event A, owner B", sessionB, `${floorApiOf(t36Id)}/orders`, {}],
+  [
+    "event A, owner B, a mark",
+    sessionB,
+    `${floorApiOf(t36Id)}/orders/${String(line36Id)}/pieces`,
+    { method: "PUT", json: { piece: 2, delivered: false } },
+  ],
+  ["malformed id", sessionWaiter, `${floorApiOf("abc")}/orders`, {}],
+  ["out-of-int4 id", sessionWaiter, `${floorApiOf(99999999999)}/orders`, {}],
+  ["unknown id", sessionWaiter, `${floorApiOf(2147483000)}/orders`, {}],
+  ["the platform admin", sessionAdmin, `${floorApiOf(t36Id)}/orders`, {}],
+]) {
+  const res = await staffCall(token, path, options);
+  if (!noAccessJson(res)) floorDenied36.push(`${name}: ${String(res.status)}`);
+}
+check(
+  "floor: edits, deletes, other client routes, the event card, links, team, events outside the window, event B, owner B, malformed / unknown ids and the platform admin → the identical 404",
+  floorDenied36.length === 0,
+  floorDenied36.join("; "),
+);
+
+const noSession36 = await request(`${floorApiOf(t36Id)}/orders`);
+const foreign36 = await staffCall(sessionWaiter, `${floorApiOf(t36Id)}/orders`, {
+  method: "POST",
+  json: { name: dish36, quantity: 1 },
+  extraHeaders: FOREIGN,
+});
+check(
+  "floor: no session → 401, a foreign Origin → 403",
+  noSession36.status === 401 && foreign36.status === 403,
+  `${noSession36.status} ${foreign36.status}`,
+);
+
+const leads36 = await staffCall(sessionOwner, eventApi(t36Id), { method: "PATCH", json: { venueLeads: true } });
+const leadPiece36 = await staffCall(sessionWaiter, `${floorApiOf(t36Id)}/orders/${String(line36Id)}/pieces`, {
+  method: "PUT",
+  json: { piece: 2, delivered: false },
+});
+const clientLeadsOn36 = await request(`${t36Api}/orders/${String(line36Id)}/pieces`, {
+  method: "PUT",
+  json: { piece: 2, delivered: true },
+});
+const leadsOff36 = await staffCall(sessionOwner, eventApi(t36Id), { method: "PATCH", json: { venueLeads: false } });
+const managerFloor36 = sessionManager ? await staffCall(sessionManager, `${floorApiOf(t36Id)}/orders`) : null;
+check(
+  "floor: while „Lokal prowadzi” is on the waiter still marks (200; the client's link gets 409), and the owner works the floor too",
+  leads36.status === 200 &&
+    leadPiece36.status === 200 &&
+    clientLeadsOn36.status === 409 &&
+    leadsOff36.status === 200 &&
+    (await staffCall(sessionOwner, `${floorApiOf(t36Id)}/orders`)).status === 200 &&
+    (managerFloor36 === null || managerFloor36.status === 200 || noAccessJson(managerFloor36)),
+  `${leads36.status} ${leadPiece36.status} ${clientLeadsOn36.status} ${leadsOff36.status} ${managerFloor36?.status ?? "-"}`,
+);
+
+const logBefore36 = logOf(await readLogA()).length;
+const enter36 = await enterSupport(sessionAdmin, restaurantA.id);
+const supportFloor36 = await staffCall(sessionAdmin, `${floorApiOf(t36Id)}/orders`);
+const supportFloorPage36 = await staffCall(sessionAdmin, floorPageOf(t36Id));
+const supportMark36 = await staffCall(sessionAdmin, `${floorApiOf(t36Id)}/orders/${String(line36Id)}/pieces`, {
+  method: "PUT",
+  json: { piece: 2, delivered: true },
+});
+const exit36 = await endSupportOf(sessionAdmin, restaurantA.id);
+const logAfter36 = logOf(await readLogA());
+check(
+  "floor: the platform admin in support mode gets the identical 404 on the floor (API, page, a mark) and no access row",
+  enter36.status === 201 &&
+    noAccessJson(supportFloor36) &&
+    isNoAccessPage(supportFloorPage36) &&
+    noAccessJson(supportMark36) &&
+    exit36.status === 200 &&
+    logAfter36.length === logBefore36 + 2 &&
+    logAfter36[0]?.kind === "exit" &&
+    logAfter36[1]?.kind === "enter",
+  `${enter36.status} ${supportFloor36.status} ${supportFloorPage36.status} ${supportMark36.status} ${exit36.status} log +${String(logAfter36.length - logBefore36)} ${logAfter36[0]?.kind ?? "-"} ${logAfter36[1]?.kind ?? "-"}`,
+);
+
+const floorPage36 = await staffCall(sessionWaiter, floorPageOf(t36Id));
+const floorPageEn36 = await staffCall(sessionWaiter, `${floorPageOf(t36Id)}?lang=en`);
+const floorPageTomorrow36 = await staffCall(sessionWaiter, floorPageOf(tomorrow36?.id ?? 0));
+const floorPageB36 = await staffCall(sessionWaiter, floorPageOf(eventB.id));
+const restaurantPage36 = await staffCall(sessionWaiter, `/panel/restauracje/${String(restaurantA.id)}`);
+const floorRow36 = (id) => restaurantPage36.body.includes(`data-floor-event="${String(id)}"`);
+check(
+  "floor: the waiter's floor page (200, the event, „Obsługa sali”, the floor island) and „Dziś na sali” with today's events only; tomorrow and B → the no-access page",
+  floorPage36.status === 200 &&
+    floorPage36.body.includes(`data-floor-page="${String(t36Id)}"`) &&
+    floorPage36.body.includes("Obsługa sali") &&
+    floorPage36.body.includes(today36?.name ?? "-") &&
+    floorPage36.body.includes(floorApiOf(t36Id)) &&
+    !floorPage36.body.includes(keyOfPath(today36?.links?.organizer)) &&
+    floorPageEn36.status === 303 &&
+    isNoAccessPage(floorPageTomorrow36) &&
+    isNoAccessPage(floorPageB36) &&
+    restaurantPage36.status === 200 &&
+    restaurantPage36.body.includes("data-floor-list") &&
+    floorRow36(t36Id) &&
+    floorRow36(eventA.id) &&
+    !floorRow36(tomorrow36?.id ?? 0) &&
+    !floorRow36(past36?.id ?? 0) &&
+    !floorRow36(archived36?.id ?? 0) &&
+    restaurantPage36.body.includes(floorPageOf(t36Id)),
+  `${floorPage36.status} ${floorPageEn36.status} ${floorPageTomorrow36.status} ${floorPageB36.status} ${restaurantPage36.status}`,
+);
+
+const deleted36 = [];
+for (const event of [today36, tomorrow36, past36, archived36]) {
+  deleted36.push((await staffCall(sessionOwner, eventApi(event?.id ?? 0), { method: "DELETE" })).status);
+}
+check(
+  "floor: the smoke's floor events are deleted",
+  deleted36.every((status) => status === 200),
+  deleted36.join(" "),
+);
+
+// 37. The per-event waiter (event-waiter-access, S-21b; FR-023, FR-029, US-08). Events of A created for it (today,
+// tomorrow, two days ago, today but archived) and a template. Owners and managers add a waiter (a name → a one-time
+// link and a code, shown once); a waiter account, owner B, the admin outside support mode, malformed / unknown /
+// template ids → the identical 404; no session 401; foreign Origin 403; support mode lists names without credentials
+// and cannot add or revoke. The link page uses nothing up; the first redeem (link or code) uses up both and sets the
+// `kp-waiter` cookie; through it the S-21 floor of THAT event only. The two doors never cross (waiter cookie → panel,
+// staff session → waiter floor), a code is throttled per waiter, revoke / expiry / logout / deleting the event end the
+// session, archiving closes the floor and restoring opens it again. Events and template deleted.
+const waitersApiOf = (id) => `${eventApi(id)}/waiters`;
+const waiterFloorApiOf = (id) => `/api/kelner/sala/${String(id)}`;
+const waiterFloorPageOf = (id) => `/kelner/sala/${String(id)}`;
+const WAITER_COOKIE_RE = /(?:^|[\s,])kp-waiter=([A-Za-z0-9_-]{43});/;
+const waiterCookieOf = (res) => {
+  const token = WAITER_COOKIE_RE.exec(res.setCookie)?.[1];
+  return token ? `kp-waiter=${token}` : "";
+};
+const waiterCall = (cookie, path, options = {}) => request(path, { ...options, ...(cookie ? { cookie } : {}) });
+const enterFloor = (form, options = {}) => request("/api/kelner/wejscie", { method: "POST", form, ...options });
+const linkTokenOf = (issued) => (typeof issued?.path === "string" ? (issued.path.split("/")[2] ?? "") : "");
+const WAITER_NO_SESSION = "Brak wejścia kelnera na salę. Otwórz link albo wpisz kod od menedżera.";
+const waiterNoSession = (res) => res.status === 401 && res.data?.error === WAITER_NO_SESSION;
+const waiterList = (res) =>
+  Array.isArray(res.data?.waiters)
+    ? res.data.waiters
+    : Array.isArray(res.data?.waiters?.waiters)
+      ? res.data.waiters.waiters
+      : [];
+const addWaiter = (token, eventId, name) => staffCall(token, waitersApiOf(eventId), { method: "POST", json: { name } });
+const makeEvent37 = async (name, date) => {
+  const res = await staffCall(sessionOwner, eventsApiOf(restaurantA.id), {
+    method: "POST",
+    json: { name: `${name} ${RUN_TAG}`, date },
+  });
+  return res.data?.event ?? null;
+};
+const today37 = await makeEvent37("Kelner dziś", today);
+const tomorrow37 = await makeEvent37("Kelner jutro", shiftDate(today, 1));
+const past37 = await makeEvent37("Kelner przedwczoraj", shiftDate(today, -2));
+const archived37 = await makeEvent37("Kelner archiwum", today);
+const archivedPatch37 = await staffCall(sessionOwner, eventApi(archived37?.id ?? 0), {
+  method: "PATCH",
+  json: { archived: true },
+});
+const template37 =
+  (
+    await staffCall(sessionOwner, templatesApiOf(restaurantA.id), {
+      method: "POST",
+      json: { name: `Szablon kelnera ${RUN_TAG}` },
+    })
+  ).data?.template ?? null;
+const t37Id = today37?.id ?? 0;
+const t37Api = `/api/o/${keyOfPath(today37?.links?.organizer)}`;
+const guest37 = await request(`${t37Api}/guests`, { method: "POST", json: { text: `Gość kelnera ${RUN_TAG}` } });
+const guest37Id = guest37.data?.guests?.[0]?.id ?? 0;
+const clientBoard37 = await request(`${t37Api}/orders`);
+const dish37 = clientBoard37.data?.menu?.active ? (clientBoard37.data.menu.items[0]?.name ?? "") : "Zupa kelnera";
+const line37 = await request(`${t37Api}/orders`, {
+  method: "POST",
+  json: { name: dish37, quantity: 2, assignment: { guestId: guest37Id } },
+});
+const line37Id = line37.data?.items?.[0]?.id ?? 0;
+check(
+  "waiters: events of A (today, tomorrow, two days ago, archived today), a template and a line of 2 on today's",
+  [today37, tomorrow37, past37, archived37, template37].every((row) => (row?.id ?? 0) > 0) &&
+    archivedPatch37.status === 200 &&
+    guest37Id > 0 &&
+    line37.status === 201 &&
+    line37Id > 0,
+  `${archivedPatch37.status} ${guest37.status} ${line37.status} ${line37.body.slice(0, 120)}`,
+);
+
+const kuba37 = await addWaiter(sessionOwner, t37Id, `  Kuba   ${RUN_TAG} `);
+const kubaIssued = kuba37.data?.issued ?? null;
+const ola37 = await addWaiter(sessionManager, t37Id, `Ola ${RUN_TAG}`);
+const olaIssued = ola37.data?.issued ?? null;
+const list37 = await staffCall(sessionOwner, waitersApiOf(t37Id));
+const noonAfter37 = [10, 11].map((hour) => Date.parse(`${shiftDate(today, 1)}T${String(hour)}:00:00Z`));
+const CODE_PART = "[2-9A-HJKMNP-Z]{4}";
+check(
+  "waiters: the owner and the manager add a per-event waiter (201: a one-time /kelner/<token> link and an <id>-XXXX-XXXX code, valid until noon after the event, shown once); the list has names, „unused” and the expiry — never a link or a code",
+  kuba37.status === 201 &&
+    ola37.status === 201 &&
+    kubaIssued?.name === `Kuba ${RUN_TAG}` &&
+    /^\/kelner\/[A-Za-z0-9_-]{43}$/.test(kubaIssued?.path ?? "") &&
+    new RegExp(`^${String(kubaIssued?.id)}-${CODE_PART}-${CODE_PART}$`).test(kubaIssued?.code ?? "") &&
+    noonAfter37.includes(Date.parse(kubaIssued?.expiresAt ?? "")) &&
+    list37.status === 200 &&
+    list37.cacheControl.includes("no-store") &&
+    list37.data?.canAdd === true &&
+    waiterList(list37).length === 2 &&
+    waiterList(list37).every((waiter) => waiter.status === "unused") &&
+    !list37.body.includes("/kelner/") &&
+    !list37.body.includes(kubaIssued?.code ?? "-") &&
+    !list37.body.includes(olaIssued?.code ?? "-"),
+  `${kuba37.status} ${ola37.status} ${list37.status} ${kubaIssued?.expiresAt ?? "-"} ${kuba37.body.slice(0, 120)}`,
+);
+
+const denied37 = [];
+const kubaRevokePath = `${waitersApiOf(t37Id)}/${String(kubaIssued?.id ?? 0)}`;
+for (const [name, token, path, options] of [
+  ["a waiter account, list", sessionWaiter, waitersApiOf(t37Id), {}],
+  ["a waiter account, add", sessionWaiter, waitersApiOf(t37Id), { method: "POST", json: { name: "X" } }],
+  ["a waiter account, revoke", sessionWaiter, kubaRevokePath, { method: "DELETE" }],
+  ["owner B, list", sessionB, waitersApiOf(t37Id), {}],
+  ["owner B, add", sessionB, waitersApiOf(t37Id), { method: "POST", json: { name: "X" } }],
+  ["owner B, revoke", sessionB, kubaRevokePath, { method: "DELETE" }],
+  ["the admin outside support mode", sessionAdmin, waitersApiOf(t37Id), {}],
+  ["malformed event id", sessionOwner, waitersApiOf("abc"), {}],
+  ["out-of-int4 event id", sessionOwner, waitersApiOf(99999999999), {}],
+  ["unknown event id", sessionOwner, waitersApiOf(2147483000), {}],
+  ["a template", sessionOwner, waitersApiOf(template37?.id ?? 0), {}],
+  ["a template, add", sessionOwner, waitersApiOf(template37?.id ?? 0), { method: "POST", json: { name: "X" } }],
+  ["malformed waiter id", sessionOwner, `${waitersApiOf(t37Id)}/abc`, { method: "DELETE" }],
+  ["unknown waiter id", sessionOwner, `${waitersApiOf(t37Id)}/2147483000`, { method: "DELETE" }],
+  [
+    "the waiter through another event",
+    sessionOwner,
+    `${waitersApiOf(tomorrow37?.id ?? 0)}/${String(kubaIssued?.id ?? 0)}`,
+    { method: "DELETE" },
+  ],
+]) {
+  const res = await staffCall(token, path, options);
+  if (!noAccessJson(res)) denied37.push(`${name}: ${String(res.status)}`);
+}
+const noSession37 = await request(waitersApiOf(t37Id));
+const foreign37 = await staffCall(sessionOwner, waitersApiOf(t37Id), {
+  method: "POST",
+  json: { name: "X" },
+  extraHeaders: FOREIGN,
+});
+const stillTwo37 = await staffCall(sessionOwner, waitersApiOf(t37Id));
+check(
+  "waiters: a waiter account, owner B, the admin outside support mode, malformed / unknown / template ids and a waiter through another event → the identical 404; no session 401; a foreign Origin 403; nothing changed",
+  denied37.length === 0 &&
+    noSession37.status === 401 &&
+    foreign37.status === 403 &&
+    waiterList(stillTwo37).length === 2,
+  `${denied37.join("; ")} | ${noSession37.status} ${foreign37.status} ${waiterList(stillTwo37).length}`,
+);
+
+const blank37 = await addWaiter(sessionOwner, t37Id, "   ");
+const long37 = await addWaiter(sessionOwner, t37Id, "x".repeat(41));
+const extra37 = await staffCall(sessionOwner, waitersApiOf(t37Id), {
+  method: "POST",
+  json: { name: "Ewa", role: "owner" },
+});
+const tomorrowAdd37 = await addWaiter(sessionOwner, tomorrow37?.id ?? 0, `Jutro ${RUN_TAG}`);
+const pastAdd37 = await addWaiter(sessionOwner, past37?.id ?? 0, "Ewa");
+const archivedAdd37 = await addWaiter(sessionOwner, archived37?.id ?? 0, "Ewa");
+const pastList37 = await staffCall(sessionOwner, waitersApiOf(past37?.id ?? 0));
+check(
+  "waiters: an empty name / 41 characters / an extra field → 400; tomorrow's event 201; an event of two days ago and an archived one → 409 (canAdd false)",
+  blank37.status === 400 &&
+    blank37.data?.error === "Wpisz imię kelnera." &&
+    long37.status === 400 &&
+    extra37.status === 400 &&
+    tomorrowAdd37.status === 201 &&
+    pastAdd37.status === 409 &&
+    archivedAdd37.status === 409 &&
+    pastList37.status === 200 &&
+    pastList37.data?.canAdd === false,
+  `${blank37.status} ${long37.status} ${extra37.status} ${tomorrowAdd37.status} ${pastAdd37.status} ${archivedAdd37.status} ${String(pastList37.data?.canAdd)}`,
+);
+
+const enter37 = await enterSupport(sessionAdmin, restaurantA.id);
+const supportList37 = await staffCall(sessionAdmin, waitersApiOf(t37Id));
+const supportAdd37 = await staffCall(sessionAdmin, waitersApiOf(t37Id), { method: "POST", json: { name: "X" } });
+const supportRevoke37 = await staffCall(sessionAdmin, kubaRevokePath, { method: "DELETE" });
+const supportPage37 = await staffCall(sessionAdmin, eventPage(t37Id));
+const exit37 = await endSupportOf(sessionAdmin, restaurantA.id);
+const ownerPage37 = await staffCall(sessionOwner, eventPage(t37Id));
+check(
+  "waiters: support mode lists names and status (200, no link or code) and cannot add or revoke (404); its event page has no waiters section, the owner's has it",
+  enter37.status === 201 &&
+    supportList37.status === 200 &&
+    waiterList(supportList37).length === 2 &&
+    !supportList37.body.includes("/kelner/") &&
+    noAccessJson(supportAdd37) &&
+    noAccessJson(supportRevoke37) &&
+    supportPage37.status === 200 &&
+    !supportPage37.body.includes("data-event-waiters") &&
+    exit37.status === 200 &&
+    ownerPage37.status === 200 &&
+    ownerPage37.body.includes("data-event-waiters"),
+  `${enter37.status} ${supportList37.status} ${supportAdd37.status} ${supportRevoke37.status} ${supportPage37.status} ${exit37.status} ${ownerPage37.status}`,
+);
+
+const tomorrowIssued = tomorrowAdd37.data?.issued ?? null;
+const linkPage37 = await request(kubaIssued?.path ?? "/kelner/x");
+const linkPageAgain37 = await request(kubaIssued?.path ?? "/kelner/x");
+const linkUnknown37 = await request(`/kelner/${randomBytes(32).toString("base64url")}`);
+const linkMalformed37 = await request("/kelner/abc");
+const linkTomorrow37 = await request(tomorrowIssued?.path ?? "/kelner/y");
+check(
+  "waiters: the link page names the event and the waiter (200, no-store, DENY) and uses nothing up (200 again); unknown, malformed and tomorrow's links → the identical 404 page",
+  linkPage37.status === 200 &&
+    linkPage37.body.includes("data-waiter-link-page") &&
+    linkPage37.body.includes(today37?.name ?? "-") &&
+    linkPage37.body.includes(`Kuba ${RUN_TAG}`) &&
+    linkPage37.cacheControl.includes("no-store") &&
+    linkPage37.frameOptions === "DENY" &&
+    linkPageAgain37.status === 200 &&
+    linkUnknown37.status === 404 &&
+    linkUnknown37.body.includes("data-waiter-link-invalid") &&
+    linkMalformed37.status === 404 &&
+    linkMalformed37.body === linkUnknown37.body &&
+    linkTomorrow37.status === 404 &&
+    linkTomorrow37.body === linkUnknown37.body,
+  `${linkPage37.status} ${linkPageAgain37.status} ${linkUnknown37.status} ${linkMalformed37.status} ${linkTomorrow37.status}`,
+);
+
+const enterKuba = await enterFloor({ link: linkTokenOf(kubaIssued) });
+const kubaCookie = waiterCookieOf(enterKuba);
+const maxAge37 = Number(/Max-Age=(\d+)/.exec(enterKuba.setCookie)?.[1] ?? 0);
+const expiresIn37 = Math.floor((Date.parse(kubaIssued?.expiresAt ?? "") - Date.now()) / 1000);
+const enterKubaAgain = await enterFloor({ link: linkTokenOf(kubaIssued) });
+const kubaCodeUsed = await enterFloor({ kod: kubaIssued?.code ?? "" });
+const linkPageUsed37 = await request(kubaIssued?.path ?? "/kelner/x");
+const listAfterKuba37 = await staffCall(sessionOwner, waitersApiOf(t37Id));
+check(
+  "waiters: redeem by link → 303 to its event's floor with the kp-waiter cookie (HttpOnly, SameSite=Lax, Path=/, Max-Age until noon after the event); the link again and its code → /kelner?blad=niewazny; the used link page → 404; the list says „redeemed”",
+  redirectsTo(enterKuba, waiterFloorPageOf(t37Id)) &&
+    kubaCookie !== "" &&
+    /HttpOnly/i.test(enterKuba.setCookie) &&
+    /SameSite=Lax/i.test(enterKuba.setCookie) &&
+    /Path=\/(;|$)/.test(enterKuba.setCookie) &&
+    (behindTls || !/Secure/i.test(enterKuba.setCookie)) &&
+    Math.abs(maxAge37 - expiresIn37) <= 60 &&
+    redirectsTo(enterKubaAgain, "/kelner?blad=niewazny") &&
+    redirectsTo(kubaCodeUsed, "/kelner?blad=niewazny") &&
+    linkPageUsed37.status === 404 &&
+    waiterList(listAfterKuba37).find((waiter) => waiter.id === kubaIssued?.id)?.status === "redeemed",
+  `${enterKuba.status} ${enterKuba.location} ${enterKuba.setCookie.replace(WAITER_COOKIE_RE, "kp-waiter=<token>;")} ${maxAge37}/${expiresIn37} ${enterKubaAgain.location} ${kubaCodeUsed.location} ${linkPageUsed37.status}`,
+);
+
+const olaTyped = (olaIssued?.code ?? "").toLowerCase().replaceAll("-", "  ");
+const enterOla = await enterFloor({ kod: ` ${olaTyped} ` });
+const olaCookie = waiterCookieOf(enterOla);
+const olaLink37 = await enterFloor({ link: linkTokenOf(olaIssued) });
+const badCode37 = await enterFloor({ kod: "to nie jest kod" });
+const emptyForm37 = await enterFloor({});
+const foreignEnter37 = await enterFloor({ kod: olaIssued?.code ?? "" }, { extraHeaders: FOREIGN });
+check(
+  "waiters: redeem by code typed in lowercase with spaces → 303 to the floor with the cookie; then its link → niewazny; a malformed code and an empty form → niewazny; a foreign Origin → 403",
+  redirectsTo(enterOla, waiterFloorPageOf(t37Id)) &&
+    olaCookie !== "" &&
+    olaCookie !== kubaCookie &&
+    redirectsTo(olaLink37, "/kelner?blad=niewazny") &&
+    redirectsTo(badCode37, "/kelner?blad=niewazny") &&
+    redirectsTo(emptyForm37, "/kelner?blad=niewazny") &&
+    foreignEnter37.status === 403,
+  `${enterOla.status} ${enterOla.location} ${olaLink37.location} ${badCode37.location} ${emptyForm37.location} ${foreignEnter37.status}`,
+);
+
+const entry37 = await request("/kelner");
+const entryError37 = await request("/kelner?blad=niewazny");
+const entryActive37 = await waiterCall(olaCookie, "/kelner");
+const entryEn37 = await request("/kelner?lang=en");
+check(
+  "waiters: the entry page /kelner — the code form (200, DENY), the error text, and with a session „Wróć na salę” to its floor (no redirect)",
+  entry37.status === 200 &&
+    entry37.body.includes('action="/api/kelner/wejscie"') &&
+    entry37.body.includes('name="kod"') &&
+    entry37.frameOptions === "DENY" &&
+    !entry37.body.includes("data-waiter-active") &&
+    !entry37.body.includes("data-waiter-error") &&
+    entryError37.status === 200 &&
+    entryError37.body.includes("data-waiter-error") &&
+    entryActive37.status === 200 &&
+    entryActive37.body.includes(`data-waiter-active="${String(t37Id)}"`) &&
+    entryActive37.body.includes(`href="${waiterFloorPageOf(t37Id)}"`) &&
+    entryEn37.status === 303,
+  `${entry37.status} ${entryError37.status} ${entryActive37.status} ${entryEn37.status}`,
+);
+
+const floorRead37 = await waiterCall(kubaCookie, `${waiterFloorApiOf(t37Id)}/orders`);
+const firstPrice37 = floorRead37.data?.items?.find((item) => item.id === line37Id)?.unitPriceGrosze;
+check(
+  "waiters: through the cookie the waiter reads its event's board — lines with prices, the bill (no-store) — with no keys",
+  floorRead37.status === 200 &&
+    floorRead37.cacheControl.includes("no-store") &&
+    typeof firstPrice37 === "number" &&
+    typeof floorRead37.data?.totals?.totalGrosze === "number" &&
+    typeof floorRead37.data?.drinkTotals?.totalGrosze === "number" &&
+    ![today37?.links?.organizer, today37?.links?.tv, today37?.links?.restaurant].some(
+      (path) => typeof path === "string" && floorRead37.body.includes(keyOfPath(path)),
+    ),
+  `${floorRead37.status} ${floorRead37.body.slice(0, 160)}`,
+);
+
+const refill37 = await waiterCall(kubaCookie, `${waiterFloorApiOf(t37Id)}/orders`, {
+  method: "POST",
+  json: { name: dish37, quantity: 1, assignment: { guestId: guest37Id } },
+});
+const refillPriced37 = await waiterCall(kubaCookie, `${waiterFloorApiOf(t37Id)}/orders`, {
+  method: "POST",
+  json: { name: dish37, quantity: 1, price: "1" },
+});
+const drink37 = await waiterCall(kubaCookie, `${waiterFloorApiOf(t37Id)}/drinks`, {
+  method: "POST",
+  json: { name: "Woda kelnera", quantity: 2 },
+});
+const piece37 = await waiterCall(kubaCookie, `${waiterFloorApiOf(t37Id)}/orders/${String(line37Id)}/pieces`, {
+  method: "PUT",
+  json: { piece: 1, delivered: true },
+});
+const pieceItem37 = piece37.data?.items?.find((item) => item.id === line37Id);
+const wholeLine37 = await waiterCall(kubaCookie, `${waiterFloorApiOf(t37Id)}/orders/${String(line37Id)}`, {
+  method: "PATCH",
+  json: { delivered: true },
+});
+const wholeItem37 = wholeLine37.data?.items?.find((item) => item.id === line37Id);
+const rename37 = await waiterCall(kubaCookie, `${waiterFloorApiOf(t37Id)}/orders/${String(line37Id)}`, {
+  method: "PATCH",
+  json: { name: "Inna nazwa" },
+});
+check(
+  "waiters: the waiter adds a refill (201, the venue's price) and drinks (201), marks a piece (the venue's mark) and the whole line; a body price or a rename → 400",
+  refill37.status === 201 &&
+    (refill37.data?.items?.length ?? 0) === 2 &&
+    refill37.data.items.every((item) => item.unitPriceGrosze === firstPrice37) &&
+    refillPriced37.status === 400 &&
+    drink37.status === 201 &&
+    piece37.status === 200 &&
+    JSON.stringify(pieceItem37?.deliveredPieces) === "[1]" &&
+    pieceItem37?.marks?.[0]?.by === "organizer" &&
+    wholeLine37.status === 200 &&
+    JSON.stringify(wholeItem37?.deliveredPieces) === "[1,2]" &&
+    rename37.status === 400,
+  `${refill37.status} ${refillPriced37.status} ${drink37.status} ${piece37.status} ${wholeLine37.status} ${rename37.status}`,
+);
+
+const floorDenied37 = [];
+for (const [name, path, options] of [
+  ["delete a line", `${waiterFloorApiOf(t37Id)}/orders/${String(line37Id)}`, { method: "DELETE" }],
+  ["guests", `${waiterFloorApiOf(t37Id)}/guests`, {}],
+  ["guest links", `${waiterFloorApiOf(t37Id)}/guest-links`, {}],
+  ["seating", `${waiterFloorApiOf(t37Id)}/seating`, {}],
+  ["reset", `${waiterFloorApiOf(t37Id)}/reset`, {}],
+  ["unknown sub-path", `${waiterFloorApiOf(t37Id)}/nie-ma`, {}],
+  ["no sub-path", waiterFloorApiOf(t37Id), {}],
+  ["another of today's events (event A)", `${waiterFloorApiOf(eventA.id)}/orders`, {}],
+  ["tomorrow's event", `${waiterFloorApiOf(tomorrow37?.id ?? 0)}/orders`, {}],
+  ["event B", `${waiterFloorApiOf(eventB.id)}/orders`, {}],
+  ["event B, a refill", `${waiterFloorApiOf(eventB.id)}/orders`, { method: "POST", json: { name: "X", quantity: 1 } }],
+  ["malformed id", `${waiterFloorApiOf("abc")}/orders`, {}],
+  ["out-of-int4 id", `${waiterFloorApiOf(99999999999)}/orders`, {}],
+  ["unknown id", `${waiterFloorApiOf(2147483000)}/orders`, {}],
+]) {
+  const res = await waiterCall(kubaCookie, path, options);
+  if (!noAccessJson(res)) floorDenied37.push(`${name}: ${String(res.status)}`);
+}
+const floorForeign37 = await waiterCall(kubaCookie, `${waiterFloorApiOf(t37Id)}/orders`, {
+  method: "POST",
+  json: { name: dish37, quantity: 1 },
+  extraHeaders: FOREIGN,
+});
+check(
+  "waiters: deletes, other client routes, other events (A's other one, tomorrow's, B's), malformed / unknown ids → the identical 404; a foreign Origin → 403",
+  floorDenied37.length === 0 && floorForeign37.status === 403,
+  `${floorDenied37.join("; ")} | ${floorForeign37.status}`,
+);
+
+const floorPage37 = await waiterCall(kubaCookie, waiterFloorPageOf(t37Id));
+const floorPageOther37 = await waiterCall(kubaCookie, waiterFloorPageOf(eventA.id));
+check(
+  "waiters: the floor page (200: the event, the waiter's name, the floor island on /api/kelner/sala/<id>, „Wyloguj”; no link into /panel, no keys); another event → the no-access page",
+  floorPage37.status === 200 &&
+    floorPage37.body.includes(`data-waiter-floor="${String(t37Id)}"`) &&
+    floorPage37.body.includes(today37?.name ?? "-") &&
+    floorPage37.body.includes(`Kuba ${RUN_TAG}`) &&
+    floorPage37.body.includes(waiterFloorApiOf(t37Id)) &&
+    floorPage37.body.includes('action="/api/kelner/wyloguj"') &&
+    !floorPage37.body.includes('href="/panel') &&
+    !floorPage37.body.includes(keyOfPath(today37?.links?.organizer)) &&
+    isNoAccessPage(floorPageOther37),
+  `${floorPage37.status} ${floorPageOther37.status}`,
+);
+
+const waiterToPanel37 = await waiterCall(kubaCookie, "/panel");
+const waiterToPanelApi37 = await waiterCall(kubaCookie, "/api/panel/me");
+const waiterToStaffFloor37 = await waiterCall(kubaCookie, `/api/panel/events/${String(t37Id)}/obsluga/orders`);
+const staffToWaiterPage37 = await staffCall(sessionOwner, waiterFloorPageOf(t37Id));
+const staffToWaiterApi37 = await staffCall(sessionOwner, `${waiterFloorApiOf(t37Id)}/orders`);
+const noCookiePage37 = await request(waiterFloorPageOf(t37Id));
+const noCookieApi37 = await request(`${waiterFloorApiOf(t37Id)}/orders`);
+check(
+  "waiters: the doors never cross — the waiter cookie → /panel 303 /logowanie, panel APIs 401; a staff session (and none) → /kelner/sala 303 /kelner, /api/kelner/sala 401",
+  redirectsTo(waiterToPanel37, "/logowanie") &&
+    waiterToPanelApi37.status === 401 &&
+    waiterToStaffFloor37.status === 401 &&
+    redirectsTo(staffToWaiterPage37, "/kelner") &&
+    waiterNoSession(staffToWaiterApi37) &&
+    redirectsTo(noCookiePage37, "/kelner") &&
+    waiterNoSession(noCookieApi37),
+  `${waiterToPanel37.status} ${waiterToPanel37.location} ${waiterToPanelApi37.status} ${waiterToStaffFloor37.status} ${staffToWaiterPage37.status} ${staffToWaiterPage37.location} ${staffToWaiterApi37.status} ${noCookiePage37.status} ${noCookieApi37.status}`,
+);
+
+const thr37 = await addWaiter(sessionOwner, t37Id, `Próba ${RUN_TAG}`);
+const thrIssued = thr37.data?.issued ?? null;
+const thrSecret = (thrIssued?.code ?? "").split("-").slice(1).join("") === "22222222" ? "3333-3333" : "2222-2222";
+const wrong37 = [];
+for (let attempt = 0; attempt < 10; attempt++) {
+  wrong37.push(await enterFloor({ kod: `${String(thrIssued?.id ?? 0)}-${thrSecret}` }));
+}
+const rightThrottled37 = await enterFloor({ kod: thrIssued?.code ?? "" });
+const thrLink37 = await enterFloor({ link: linkTokenOf(thrIssued) });
+const thrCookie = waiterCookieOf(thrLink37);
+check(
+  "waiters: a code is throttled per waiter — after 10 wrong tries (niewazny) the right code → /kelner?blad=limit with Retry-After; the waiter's link still works",
+  thr37.status === 201 &&
+    wrong37.every((res) => redirectsTo(res, "/kelner?blad=niewazny")) &&
+    redirectsTo(rightThrottled37, "/kelner?blad=limit") &&
+    Number(rightThrottled37.retryAfter) > 0 &&
+    redirectsTo(thrLink37, waiterFloorPageOf(t37Id)) &&
+    thrCookie !== "",
+  `${wrong37.map((res) => res.location).join(",")} ${rightThrottled37.location} ${rightThrottled37.retryAfter} ${thrLink37.location}`,
+);
+
+const revokeKuba37 = await staffCall(sessionOwner, kubaRevokePath, { method: "DELETE" });
+const kubaAfterRevoke37 = await waiterCall(kubaCookie, `${waiterFloorApiOf(t37Id)}/orders`);
+const kubaPageAfterRevoke37 = await waiterCall(kubaCookie, waiterFloorPageOf(t37Id));
+check(
+  "waiters: revoke (the owner) → 200 without the waiter; its session → 401 with the cookie cleared, its floor page → 303 /kelner",
+  revokeKuba37.status === 200 &&
+    !waiterList(revokeKuba37).some((waiter) => waiter.id === kubaIssued?.id) &&
+    waiterNoSession(kubaAfterRevoke37) &&
+    /kp-waiter=;/.test(kubaAfterRevoke37.setCookie) &&
+    /Max-Age=0/.test(kubaAfterRevoke37.setCookie) &&
+    redirectsTo(kubaPageAfterRevoke37, "/kelner"),
+  `${revokeKuba37.status} ${kubaAfterRevoke37.status} ${kubaAfterRevoke37.setCookie} ${kubaPageAfterRevoke37.status}`,
+);
+
+const bWaiter37 = await addWaiter(sessionB, eventB.id, `Kelner B ${RUN_TAG}`);
+const bIssued = bWaiter37.data?.issued ?? null;
+const bEnter37 = await enterFloor({ link: linkTokenOf(bIssued) });
+const bCookie = waiterCookieOf(bEnter37);
+const bOwnFloor37 = await waiterCall(bCookie, `${waiterFloorApiOf(eventB.id)}/orders`);
+const bOnA37 = await waiterCall(bCookie, `${waiterFloorApiOf(t37Id)}/orders`);
+const bRevokeViaA37 = await staffCall(sessionOwner, `${waitersApiOf(t37Id)}/${String(bIssued?.id ?? 0)}`, {
+  method: "DELETE",
+});
+const bStill37 = await waiterCall(bCookie, `${waiterFloorApiOf(eventB.id)}/orders`);
+const bRevoke37 = await staffCall(sessionB, `${waitersApiOf(eventB.id)}/${String(bIssued?.id ?? 0)}`, {
+  method: "DELETE",
+});
+const bAfter37 = await waiterCall(bCookie, `${waiterFloorApiOf(eventB.id)}/orders`);
+check(
+  "waiters: isolation — B's waiter works B's floor (200) and gets the identical 404 on A's event; revoking it through A's event → 404 (it still works); owner B revokes it",
+  bWaiter37.status === 201 &&
+    redirectsTo(bEnter37, waiterFloorPageOf(eventB.id)) &&
+    bOwnFloor37.status === 200 &&
+    noAccessJson(bOnA37) &&
+    noAccessJson(bRevokeViaA37) &&
+    bStill37.status === 200 &&
+    bRevoke37.status === 200 &&
+    waiterNoSession(bAfter37),
+  `${bWaiter37.status} ${bEnter37.location} ${bOwnFloor37.status} ${bOnA37.status} ${bRevokeViaA37.status} ${bStill37.status} ${bRevoke37.status} ${bAfter37.status}`,
+);
+
+const expUnused37 = (await addWaiter(sessionOwner, t37Id, `Wygasa ${RUN_TAG}`)).data?.issued ?? null;
+const expUsed37 = (await addWaiter(sessionOwner, t37Id, `Wygasł ${RUN_TAG}`)).data?.issued ?? null;
+const expCookie = waiterCookieOf(await enterFloor({ link: linkTokenOf(expUsed37) }));
+const expBefore37 = await waiterCall(expCookie, `${waiterFloorApiOf(t37Id)}/orders`);
+let expireError37 = "";
+try {
+  await expireEventWaiter(platformEnv, expUnused37?.id ?? 0);
+  await expireEventWaiter(platformEnv, expUsed37?.id ?? 0);
+} catch (error) {
+  expireError37 = error instanceof PlatformError ? error.message : String(error);
+}
+const expLinkPage37 = await request(expUnused37?.path ?? "/kelner/x");
+const expLinkEnter37 = await enterFloor({ link: linkTokenOf(expUnused37) });
+const expCodeEnter37 = await enterFloor({ kod: expUnused37?.code ?? "" });
+const expSession37 = await waiterCall(expCookie, `${waiterFloorApiOf(t37Id)}/orders`);
+const expList37 = waiterList(await staffCall(sessionOwner, waitersApiOf(t37Id)));
+check(
+  "waiters: expiry (moved into the past by the test seam) — the unused link page → 404, its link and code → niewazny, the open session → 401; the list says „expired”",
+  expireError37 === "" &&
+    expBefore37.status === 200 &&
+    expLinkPage37.status === 404 &&
+    redirectsTo(expLinkEnter37, "/kelner?blad=niewazny") &&
+    redirectsTo(expCodeEnter37, "/kelner?blad=niewazny") &&
+    waiterNoSession(expSession37) &&
+    [expUnused37?.id, expUsed37?.id].every((id) => expList37.find((waiter) => waiter.id === id)?.status === "expired"),
+  `${expireError37} ${expBefore37.status} ${expLinkPage37.status} ${expLinkEnter37.location} ${expCodeEnter37.location} ${expSession37.status}`,
+);
+
+const foreignLogout37 = await waiterCall(olaCookie, "/api/kelner/wyloguj", {
+  method: "POST",
+  form: {},
+  extraHeaders: FOREIGN,
+});
+const olaStill37 = await waiterCall(olaCookie, `${waiterFloorApiOf(t37Id)}/orders`);
+const logout37 = await waiterCall(olaCookie, "/api/kelner/wyloguj", { method: "POST", form: {} });
+const olaAfter37 = await waiterCall(olaCookie, `${waiterFloorApiOf(t37Id)}/orders`);
+check(
+  "waiters: logout — a foreign Origin → 403 (the session stays); „Wyloguj” → 303 /kelner?wylogowano=1 clearing the cookie; the session → 401",
+  foreignLogout37.status === 403 &&
+    olaStill37.status === 200 &&
+    redirectsTo(logout37, "/kelner?wylogowano=1") &&
+    /kp-waiter=;/.test(logout37.setCookie) &&
+    waiterNoSession(olaAfter37),
+  `${foreignLogout37.status} ${olaStill37.status} ${logout37.status} ${logout37.location} ${olaAfter37.status}`,
+);
+
+const archive37 = await staffCall(sessionOwner, eventApi(t37Id), { method: "PATCH", json: { archived: true } });
+const thrArchived37 = await waiterCall(thrCookie, `${waiterFloorApiOf(t37Id)}/orders`);
+const thrArchivedPage37 = await waiterCall(thrCookie, waiterFloorPageOf(t37Id));
+const restore37 = await staffCall(sessionOwner, eventApi(t37Id), { method: "PATCH", json: { archived: false } });
+const thrRestored37 = await waiterCall(thrCookie, `${waiterFloorApiOf(t37Id)}/orders`);
+const delete37 = await staffCall(sessionOwner, eventApi(t37Id), { method: "DELETE" });
+const thrDeleted37 = await waiterCall(thrCookie, `${waiterFloorApiOf(t37Id)}/orders`);
+check(
+  "waiters: archiving closes the waiter's floor (the identical 404, the no-access page) and restoring opens it again with the same cookie; deleting the event ends the session (401)",
+  archive37.status === 200 &&
+    noAccessJson(thrArchived37) &&
+    isNoAccessPage(thrArchivedPage37) &&
+    restore37.status === 200 &&
+    thrRestored37.status === 200 &&
+    delete37.status === 200 &&
+    waiterNoSession(thrDeleted37),
+  `${archive37.status} ${thrArchived37.status} ${thrArchivedPage37.status} ${restore37.status} ${thrRestored37.status} ${delete37.status} ${thrDeleted37.status}`,
+);
+
+const cleanup37 = [];
+for (const event of [tomorrow37, past37, archived37]) {
+  cleanup37.push((await staffCall(sessionOwner, eventApi(event?.id ?? 0), { method: "DELETE" })).status);
+}
+cleanup37.push((await staffCall(sessionOwner, templateApi(template37?.id ?? 0), { method: "DELETE" })).status);
+check(
+  "waiters: the section's other events and its template are deleted",
+  cleanup37.every((status) => status === 200),
+  cleanup37.join(" "),
+);
+
+// 38. Guest search on the venue map (guest-map-search, S-22; FR-048, US-08). A today event of A (panel) with two
+// guests at one table, published, guest links on and a per-event waiter. Every page that draws the FULL published map
+// renders the search field (`data-map-search`): the guest's phone, the kitchen tablet, the client's orders page, the
+// floor and the per-event waiter's floor; the tablet before the first publish has no map and no field; the TV renders
+// the names but never a search. The search runs in the browser over names the page already has, so the guest's and
+// the tablet's answers keep exactly their fields (key sets compared with src/types.ts). The event is deleted.
+const MAP_SEARCH_MARKER = "data-map-search";
+const fieldsOf38 = (value) =>
+  value && typeof value === "object" ? Object.keys(value).sort().join(" ") : String(value);
+const e38 = await staffCall(sessionOwner, eventsApiOf(restaurantA.id), {
+  method: "POST",
+  json: { name: `Wyszukiwanie smoke ${RUN_TAG}`, date: today },
+});
+const e38Id = e38.data?.event?.id ?? 0;
+const e38Api = `/api/o/${keyOfPath(e38.data?.event?.links?.organizer)}`;
+const e38Tv = keyOfPath(e38.data?.event?.links?.tv);
+const e38Restaurant = keyOfPath(e38.data?.event?.links?.restaurant);
+const guests38 = await request(`${e38Api}/guests`, {
+  method: "POST",
+  json: { text: `Żaneta Szukana ${RUN_TAG}\nŁukasz Szukany ${RUN_TAG}` },
+});
+const room38 = await request(`${e38Api}/rooms`, { method: "POST", json: { name: "Sala szukania" } });
+const roomId38 = room38.data?.rooms?.find((room) => room.name === "Sala szukania")?.id ?? 0;
+const table38 = await request(`${e38Api}/tables`, {
+  method: "POST",
+  json: { roomId: roomId38, name: "Stół szukania", seatCount: 4, shape: "round", x: 0.5, y: 0.5 },
+});
+const tableId38 = table38.data?.tables?.find((table) => table.name === "Stół szukania")?.id ?? 0;
+const tabletBefore38 = await request(`/r/${e38Restaurant}`);
+const ids38 = (guests38.data?.guests ?? []).map((guest) => guest.id);
+const draft38 = await request(`${e38Api}/seating/draft`, {
+  method: "POST",
+  json: { seats: ids38.map((guestId, index) => ({ guestId, tableId: tableId38, seat: index + 1 })) },
+});
+const publish38 = await request(`${e38Api}/seating/publish`, { method: "POST" });
+const links38 = await request(`${e38Api}/guest-links`, { method: "PATCH", json: { enabled: true } });
+const guestKey38 = links38.data?.guests?.[0]?.key ?? "";
+const waiter38 = await addWaiter(sessionOwner, e38Id, `Kelner szukania ${RUN_TAG}`);
+const waiterCookie38 = waiterCookieOf(await enterFloor({ link: linkTokenOf(waiter38.data?.issued ?? null) }));
+check(
+  "map search: a today event of A with two guests at one table, published, guest links on, a per-event waiter in",
+  e38.status === 201 &&
+    guests38.status === 201 &&
+    ids38.length === 2 &&
+    tableId38 > 0 &&
+    draft38.status === 200 &&
+    publish38.status === 201 &&
+    links38.status === 200 &&
+    guestKey38.length === 24 &&
+    waiterCookie38 !== "",
+  `${e38.status} ${guests38.status} ${table38.status} ${draft38.status} ${publish38.status} ${links38.status} ${waiter38.status}`,
+);
+
+const guestPage38 = await request(`/g/${guestKey38}`);
+const guestPageEn38 = await request(`/g/${guestKey38}`, { cookie: "kp-lang=en" });
+const tablet38 = await request(`/r/${e38Restaurant}`);
+const clientOrders38 = await request(`/o/${keyOfPath(e38.data?.event?.links?.organizer)}/zamowienia`);
+const floor38 = await staffCall(sessionOwner, floorPageOf(e38Id));
+const waiterFloor38 = await waiterCall(waiterCookie38, waiterFloorPageOf(e38Id));
+const tv38 = await request(`/tv/${e38Tv}`);
+check(
+  "map search: the field is on the guest's phone (PL label), the tablet, the client's orders page, the floor and the per-event waiter's floor; the tablet before the first publish has none; the TV shows the names and no search",
+  guestPage38.status === 200 &&
+    guestPage38.body.includes(MAP_SEARCH_MARKER) &&
+    guestPage38.body.includes("Znajdź gościa na planie") &&
+    tablet38.status === 200 &&
+    tablet38.body.includes(MAP_SEARCH_MARKER) &&
+    tablet38.body.includes("Find a guest on the plan") &&
+    clientOrders38.status === 200 &&
+    clientOrders38.body.includes(MAP_SEARCH_MARKER) &&
+    clientOrders38.body.includes("Szuka w opublikowanym rozsadzeniu") &&
+    floor38.status === 200 &&
+    floor38.body.includes(MAP_SEARCH_MARKER) &&
+    waiterFloor38.status === 200 &&
+    waiterFloor38.body.includes(MAP_SEARCH_MARKER) &&
+    tabletBefore38.status === 200 &&
+    !tabletBefore38.body.includes(MAP_SEARCH_MARKER) &&
+    tv38.status === 200 &&
+    tv38.body.includes(`Łukasz Szukany ${RUN_TAG}`) &&
+    !tv38.body.includes(MAP_SEARCH_MARKER) &&
+    !tv38.body.includes("Znajdź gościa"),
+  `${guestPage38.status} ${tablet38.status} ${clientOrders38.status} ${floor38.status} ${waiterFloor38.status} ${tabletBefore38.status} ${tv38.status}`,
+);
+check(
+  "map search: the guest's page in English has the English label",
+  guestPageEn38.status === 200 && guestPageEn38.body.includes("Find a guest on the plan"),
+  String(guestPageEn38.status),
+);
+
+const state38 = await request(`/api/g/${guestKey38}/state`);
+const tabletApi38 = await request(`/api/r/${e38Restaurant}/orders`);
+const drawingTable38 = state38.data?.drawing?.tables?.[0];
+check(
+  "map search: no new data — the guest's state and the tablet's view keep exactly their fields (state, seat, drawing table and seat; view and its seating)",
+  state38.status === 200 &&
+    // guest-rsvp-menu (S-25) added `rsvp` (null while RSVP is off); section 40 checks it. pub-quiz (S-28) added
+    // `quiz` (null while no quiz runs or the module is off); section 43 checks it.
+    fieldsOf38(state38.data) === "drawing guess modules name orders planVersion quiz rsvp seat status version" &&
+    fieldsOf38(state38.data?.seat) === "room seat seatCount shape table tablemates x y" &&
+    fieldsOf38(drawingTable38) === "name room rotation seatCount seats shape x y" &&
+    fieldsOf38(drawingTable38?.seats?.[0]) === "name seat" &&
+    tabletApi38.status === 200 &&
+    // guest-import-diets (S-23) added `diets` (the kitchen's diet board) to the tablet's view; section 39 checks it.
+    // The PR #4 review's RSVP extras added `rsvp` (the confirmed dishes' counts; null here — no dish options); section
+    // 40 checks it.
+    fieldsOf38(tabletApi38.data) === "diets placement prep rsvp seating totals version" &&
+    tabletApi38.data?.rsvp === null &&
+    fieldsOf38(tabletApi38.data?.seating) === "chairPitch planVersion publishedAt rooms tables version" &&
+    fieldsOf38(tabletApi38.data?.seating?.tables?.[0]?.seats?.[0]) === "name seat",
+  `${state38.status} [${fieldsOf38(state38.data)}] [${fieldsOf38(state38.data?.seat)}] [${fieldsOf38(drawingTable38)}] ${tabletApi38.status} [${fieldsOf38(tabletApi38.data)}] [${fieldsOf38(tabletApi38.data?.seating)}]`,
+);
+
+const deleted38 = await staffCall(sessionOwner, eventApi(e38Id), { method: "DELETE" });
+check("map search: the section's event is deleted", deleted38.status === 200, String(deleted38.status));
+
+// 39. Guest import and diets (guest-import-diets, S-23; FR-035, FR-036, NFR-021). A today event of A (panel). The
+// client imports guests from a CSV (BOM, `;`, header, quoted fields, diets in Polish) and a tab paste: the preview
+// answers rows and problems by line and saves nothing; the save is all or nothing (problems → 400, the limit → 400).
+// Diets are edited per guest (unknown tag / long note → 400). After a publish the diets sit at the seats on the
+// client's board, the staff's preview, the tablet (whose token covers a diet-only change; no ids or keys), the floor
+// and the per-event waiter's floor — and never in the guest's state (own or a tablemate's), the TV poll or their pages.
+// The lead rule applies to the import; event B's key and A's waiter / manager on B → the identical 404. Event deleted.
+const DIET_TAGS39 = [
+  "vegetarian",
+  "vegan",
+  "gluten-free",
+  "lactose-free",
+  "nut-allergy",
+  "seafood-allergy",
+  "halal",
+  "no-pork",
+];
+const NOTE39 = `Alergia na seler ${RUN_TAG}`;
+// Pages carry island props HTML-escaped (`&quot;`), so they are read with plain quotes.
+const dietLeak39 = (raw) => {
+  const body = raw.replaceAll("&quot;", '"');
+  return (
+    /"diets"|"dietNote"|"diet_note"|data-diet/.test(body) ||
+    DIET_TAGS39.some((tag) => body.includes(`"${tag}"`)) ||
+    body.includes(NOTE39)
+  );
+};
+const e39 = await staffCall(sessionOwner, eventsApiOf(restaurantA.id), {
+  method: "POST",
+  json: { name: `Import smoke ${RUN_TAG}`, date: today },
+});
+const e39Id = e39.data?.event?.id ?? 0;
+const e39Organizer = keyOfPath(e39.data?.event?.links?.organizer);
+const e39Api = `/api/o/${e39Organizer}`;
+const e39Tv = keyOfPath(e39.data?.event?.links?.tv);
+const e39Restaurant = keyOfPath(e39.data?.event?.links?.restaurant);
+const e39Klient = `${eventApi(e39Id)}/klient`;
+const ZOFIA39 = `Zofia Import ${RUN_TAG}`;
+const JAN39 = `Kowalski; Jan ${RUN_TAG}`;
+const MAREK39 = `Marek Import ${RUN_TAG}`;
+const PIOTR39 = `Piotr Import ${RUN_TAG}`;
+const CSV39 =
+  "﻿Imię;Dieta;Uwagi\r\n" +
+  `"${ZOFIA39}";"wegetariańska, bez glutenu";"${NOTE39}"\r\n` +
+  `"${JAN39}";alergia na orzechy;"bez cebuli, ""ostro"""\r\n` +
+  `${MAREK39};;\r\n` +
+  `${PIOTR39};halal i bez wieprzowiny;bez alkoholu\r\n`;
+const importOf39 = (text, preview = false, api = e39Api, token = null) =>
+  token === null
+    ? request(`${api}/guests/import`, { method: "POST", json: preview ? { text, preview: true } : { text } })
+    : staffCall(token, `${api}/guests/import`, { method: "POST", json: preview ? { text, preview: true } : { text } });
+const guestCount39 = async () => (await request(`${e39Api}/guests`)).data?.guests?.length ?? -1;
+
+const preview39 = await importOf39(CSV39, true);
+const previewRows39 = preview39.data?.rows ?? [];
+const afterPreview39 = await guestCount39();
+check(
+  "diets: a CSV preview (BOM, `;`, header, quoted fields with `;` and doubled quotes, diets in Polish) → 200 with four rows by line and their diets, ready; nothing saved",
+  e39.status === 201 &&
+    preview39.status === 200 &&
+    preview39.data?.ready === true &&
+    preview39.data?.separator === "semicolon" &&
+    preview39.data?.header === true &&
+    (preview39.data?.problems?.length ?? -1) === 0 &&
+    previewRows39.map((row) => row.line).join(",") === "2,3,4,5" &&
+    previewRows39[0]?.name === ZOFIA39 &&
+    JSON.stringify(previewRows39[0]?.diets) === JSON.stringify(["vegetarian", "gluten-free"]) &&
+    previewRows39[0]?.note === NOTE39 &&
+    previewRows39[1]?.name === JAN39 &&
+    previewRows39[1]?.note === 'bez cebuli, "ostro"' &&
+    JSON.stringify(previewRows39[3]?.diets) === JSON.stringify(["halal", "no-pork"]) &&
+    afterPreview39 === 0,
+  `${e39.status} ${preview39.status} ${preview39.body.slice(0, 200)} | ${afterPreview39}`,
+);
+
+const BAD39 = `Imię;Dieta;Uwagi\nAnia Zła ${RUN_TAG};keto;\nAnia Zła ${RUN_TAG};;\n;wegańska;\n${"x".repeat(41)};;\n`;
+const badPreview39 = await importOf39(BAD39, true);
+const badSave39 = await importOf39(BAD39);
+const problems39 = badPreview39.data?.problems ?? [];
+check(
+  "diets: a preview with an unknown diet, a repeated name, a diet without a name and a name too long → ready false, a problem per line; the save → 400 with the same problems; nothing saved",
+  badPreview39.status === 200 &&
+    badPreview39.data?.ready === false &&
+    problems39.length === 4 &&
+    ["Linia 2", "Linia 3", "Linia 4", "Linia 5"].every((line, index) => problems39[index]?.startsWith(line)) &&
+    problems39[0]?.includes("„keto”") &&
+    badSave39.status === 400 &&
+    JSON.stringify(badSave39.data?.problems) === JSON.stringify(problems39) &&
+    (await guestCount39()) === 0,
+  `${badPreview39.status} ${problems39.join(" | ")} | ${badSave39.status}`,
+);
+
+const save39 = await importOf39(CSV39);
+const zofia39 = guestNamed(save39, ZOFIA39);
+const jan39 = guestNamed(save39, JAN39);
+const marek39 = guestNamed(save39, MAREK39);
+const piotr39 = guestNamed(save39, PIOTR39);
+check(
+  "diets: the save → 201 with four added and the list carrying each guest's diets and note",
+  save39.status === 201 &&
+    save39.data?.added === 4 &&
+    (save39.data?.guests?.length ?? 0) === 4 &&
+    JSON.stringify(zofia39?.diets) === JSON.stringify(["vegetarian", "gluten-free"]) &&
+    zofia39?.dietNote === NOTE39 &&
+    JSON.stringify(jan39?.diets) === JSON.stringify(["nut-allergy"]) &&
+    JSON.stringify(marek39?.diets) === "[]" &&
+    marek39?.dietNote === null &&
+    piotr39?.dietNote === "bez alkoholu",
+  `${save39.status} ${save39.body.slice(0, 200)}`,
+);
+
+const EWA39 = `Ewa Tab ${RUN_TAG}`;
+const ADAM39 = `Adam Tab ${RUN_TAG}`;
+const tabOnList39 = await importOf39(`${EWA39}\twegańska\t\n${ZOFIA39}\t\t`, true);
+const tabPreview39 = await importOf39(`${EWA39}\twegańska\t\n${ADAM39}\t\tbez cebuli`, true);
+const tabSave39 = await importOf39(`${EWA39}\twegańska\t\n${ADAM39}\t\tbez cebuli`);
+const tooMany39 = await importOf39(
+  Array.from({ length: 145 }, (_, index) => `Nadmiar ${String(index + 1)} ${RUN_TAG}`).join("\n"),
+);
+check(
+  "diets: a tab paste — a name already on the list is a problem (nothing saved); without it 201; 151 guests → 400 and nothing saved",
+  tabOnList39.status === 200 &&
+    tabOnList39.data?.ready === false &&
+    tabOnList39.data?.separator === "tab" &&
+    (tabOnList39.data?.problems?.[0] ?? "").startsWith("Linia 2") &&
+    tabPreview39.data?.ready === true &&
+    tabSave39.status === 201 &&
+    tabSave39.data?.added === 2 &&
+    JSON.stringify(guestNamed(tabSave39, EWA39)?.diets) === JSON.stringify(["vegan"]) &&
+    guestNamed(tabSave39, ADAM39)?.dietNote === "bez cebuli" &&
+    tooMany39.status === 400 &&
+    (await guestCount39()) === 6,
+  `${tabOnList39.status} ${tabOnList39.body.slice(0, 160)} | ${tabSave39.status} ${tooMany39.status} ${tooMany39.body.slice(0, 120)}`,
+);
+
+const marekId39 = marek39?.id ?? 0;
+const unknownTag39 = await request(`${e39Api}/guests/${String(marekId39)}`, {
+  method: "PATCH",
+  json: { diets: ["keto"] },
+});
+const longNote39 = await request(`${e39Api}/guests/${String(marekId39)}`, {
+  method: "PATCH",
+  json: { dietNote: "x".repeat(121) },
+});
+const setDiet39 = await request(`${e39Api}/guests/${String(marekId39)}`, {
+  method: "PATCH",
+  json: { diets: ["lactose-free"], dietNote: "  bez   mleka " },
+});
+check(
+  "diets: a diet edit — an unknown tag → 400, a 121-character note → 400, a known tag and a note (normalized) → 200",
+  unknownTag39.status === 400 &&
+    longNote39.status === 400 &&
+    setDiet39.status === 200 &&
+    JSON.stringify(guestNamed(setDiet39, MAREK39)?.diets) === JSON.stringify(["lactose-free"]) &&
+    guestNamed(setDiet39, MAREK39)?.dietNote === "bez mleka",
+  `${unknownTag39.status} ${longNote39.status} ${setDiet39.status}`,
+);
+
+const room39 = await request(`${e39Api}/rooms`, { method: "POST", json: { name: "Sala importu" } });
+const roomId39 = room39.data?.rooms?.find((room) => room.name === "Sala importu")?.id ?? 0;
+const table39 = await request(`${e39Api}/tables`, {
+  method: "POST",
+  json: { roomId: roomId39, name: "Stół importu", seatCount: 6, shape: "round", x: 0.5, y: 0.5 },
+});
+const tableId39 = table39.data?.tables?.find((table) => table.name === "Stół importu")?.id ?? 0;
+const order39 = [ZOFIA39, MAREK39, JAN39, PIOTR39, EWA39, ADAM39];
+const all39 = (await request(`${e39Api}/guests`)).data?.guests ?? [];
+const idOf39 = (name) => all39.find((guest) => guest.displayName === name)?.id ?? 0;
+const draft39 = await request(`${e39Api}/seating/draft`, {
+  method: "POST",
+  json: { seats: order39.map((name, index) => ({ guestId: idOf39(name), tableId: tableId39, seat: index + 1 })) },
+});
+const publish39 = await request(`${e39Api}/seating/publish`, { method: "POST" });
+const links39 = await request(`${e39Api}/guest-links`, { method: "PATCH", json: { enabled: true } });
+const keyOf39 = (name) => links39.data?.guests?.find((guest) => guest.displayName === name)?.key ?? "";
+check(
+  "diets: the six guests seated at one table and published, guest links on",
+  tableId39 > 0 && draft39.status === 200 && publish39.status === 201 && keyOf39(ZOFIA39).length === 24,
+  `${room39.status} ${table39.status} ${draft39.status} ${publish39.status} ${links39.status}`,
+);
+
+const board39 = await request(`${e39Api}/orders`);
+const diets39 = board39.data?.diets;
+const seats39 = diets39?.tables?.[0]?.seats ?? [];
+const counts39 = Object.fromEntries((diets39?.counts ?? []).map((entry) => [entry.tag, entry.count]));
+check(
+  "diets: the client's order board has „Diety i alergie” — every seat with a diet or a note, the counts of present guests",
+  board39.status === 200 &&
+    diets39?.guests === 6 &&
+    diets39?.tables?.length === 1 &&
+    diets39.tables[0].name === "Stół importu" &&
+    seats39.length === 6 &&
+    seats39[0]?.seat === 1 &&
+    seats39[0]?.guestName === ZOFIA39 &&
+    seats39[0]?.note === NOTE39 &&
+    JSON.stringify(seats39[0]?.diets) === JSON.stringify(["vegetarian", "gluten-free"]) &&
+    fieldsOf38(seats39[0]) === "diets guestName note seat" &&
+    JSON.stringify(counts39) ===
+      JSON.stringify({
+        vegetarian: 1,
+        vegan: 1,
+        "gluten-free": 1,
+        "lactose-free": 1,
+        "nut-allergy": 1,
+        halal: 1,
+        "no-pork": 1,
+      }) &&
+    (diets39?.unplaced?.length ?? -1) === 0,
+  `${board39.status} ${JSON.stringify(diets39 ?? null).slice(0, 240)}`,
+);
+
+const tablet39 = await request(`/api/r/${e39Restaurant}/orders`);
+const tabletDiets39 = JSON.stringify(tablet39.data?.diets ?? null);
+const secrets39 = [e39Organizer, e39Tv, e39Restaurant, ...order39.map(keyOf39)].filter((key) => key !== "");
+const adamDiet39 = await request(`${e39Api}/guests/${String(idOf39(ADAM39))}`, {
+  method: "PATCH",
+  json: { diets: ["seafood-allergy"] },
+});
+const tabletAfter39 = await request(`/api/r/${e39Restaurant}/orders?since=${tablet39.data?.version ?? ""}`);
+const tabletSame39 = await request(`/api/r/${e39Restaurant}/orders?since=${tabletAfter39.data?.version ?? ""}`);
+check(
+  "diets: the tablet carries the same diets (no ids, no keys); a diet-only change is a new version (200, then 204)",
+  tablet39.status === 200 &&
+    tabletDiets39 === JSON.stringify(diets39) &&
+    !/"id"|"guestId"/.test(tabletDiets39) &&
+    !secrets39.some((key) => tablet39.body.includes(key)) &&
+    adamDiet39.status === 200 &&
+    tabletAfter39.status === 200 &&
+    tabletAfter39.data?.version !== tablet39.data?.version &&
+    (tabletAfter39.data?.diets?.counts ?? []).some((entry) => entry.tag === "seafood-allergy") &&
+    tabletSame39.status === 204,
+  `${tablet39.status} ${adamDiet39.status} ${tabletAfter39.status} ${tabletSame39.status}`,
+);
+
+const preview39Staff = await staffCall(sessionOwner, `${e39Klient}/orders`);
+const floor39 = await staffCall(sessionWaiter, `${floorApiOf(e39Id)}/orders`);
+const waiter39 = await addWaiter(sessionOwner, e39Id, `Kelner diet ${RUN_TAG}`);
+const waiterCookie39 = waiterCookieOf(await enterFloor({ link: linkTokenOf(waiter39.data?.issued ?? null) }));
+const waiterFloor39 = await waiterCall(waiterCookie39, `${waiterFloorApiOf(e39Id)}/orders`);
+const zofiaAt39 = (res) =>
+  (res.data?.diets?.tables?.[0]?.seats ?? []).find((seat) => seat.guestName === ZOFIA39)?.note === NOTE39;
+check(
+  "diets: the staff's preview, the floor (A's waiter) and the per-event waiter's floor carry the diets at the seats",
+  preview39Staff.status === 200 &&
+    zofiaAt39(preview39Staff) &&
+    floor39.status === 200 &&
+    zofiaAt39(floor39) &&
+    waiterCookie39 !== "" &&
+    waiterFloor39.status === 200 &&
+    zofiaAt39(waiterFloor39),
+  `${preview39Staff.status} ${floor39.status} ${waiter39.status} ${waiterFloor39.status}`,
+);
+
+const stateZofia39 = await request(`/api/g/${keyOf39(ZOFIA39)}/state`);
+const stateMarek39 = await request(`/api/g/${keyOf39(MAREK39)}/state`);
+const tvPoll39 = await request(`/api/tv/${e39Tv}/seating`);
+const guestPage39 = await request(`/g/${keyOf39(ZOFIA39)}`);
+const tvPage39 = await request(`/tv/${e39Tv}`);
+check(
+  "diets: never to guests or the TV — the dieted guest's state, a tablemate's (tablemates, drawing), the TV poll and both pages name the guests but carry no diet tag, field or note (the same detector finds them on the client's board)",
+  dietLeak39(board39.body) &&
+    stateZofia39.status === 200 &&
+    stateZofia39.body.includes(MAREK39) &&
+    !dietLeak39(stateZofia39.body) &&
+    stateMarek39.status === 200 &&
+    stateMarek39.body.includes(ZOFIA39) &&
+    !dietLeak39(stateMarek39.body) &&
+    tvPoll39.status === 200 &&
+    tvPoll39.body.includes(ZOFIA39) &&
+    !dietLeak39(tvPoll39.body) &&
+    guestPage39.status === 200 &&
+    !dietLeak39(guestPage39.body) &&
+    tvPage39.status === 200 &&
+    !dietLeak39(tvPage39.body),
+  `${stateZofia39.status} ${stateMarek39.status} ${tvPoll39.status} ${guestPage39.status} ${tvPage39.status}`,
+);
+
+const leadOn39 = await staffCall(sessionOwner, eventApi(e39Id), { method: "PATCH", json: { venueLeads: true } });
+const clientOn39 = await importOf39(`Lead Klient ${RUN_TAG}`);
+const clientPreviewOn39 = await importOf39(`Lead Klient ${RUN_TAG}`, true);
+const staffPreviewOn39 = await importOf39(`Lead Lokal ${RUN_TAG};wegańska`, true, e39Klient, sessionManager);
+const staffOn39 = await importOf39(`Lead Lokal ${RUN_TAG};wegańska`, false, e39Klient, sessionManager);
+const staffDietOn39 = await staffCall(sessionManager, `${e39Klient}/guests/${String(marekId39)}`, {
+  method: "PATCH",
+  json: { diets: ["vegan"] },
+});
+const leadOff39 = await staffCall(sessionOwner, eventApi(e39Id), { method: "PATCH", json: { venueLeads: false } });
+const staffOff39 = await importOf39(`Lead Późno ${RUN_TAG}`, false, e39Klient, sessionManager);
+check(
+  "diets: while the venue leads the client's import (and preview) → 409 venue-leads, the staff import and edit diets through the dispatcher (201 / 200); when the client leads again the staff import → 409 client-leads",
+  leadOn39.status === 200 &&
+    clientOn39.status === 409 &&
+    leadCode(clientOn39) === "venue-leads" &&
+    clientPreviewOn39.status === 409 &&
+    staffPreviewOn39.status === 200 &&
+    staffPreviewOn39.data?.ready === true &&
+    staffOn39.status === 201 &&
+    JSON.stringify(guestNamed(staffOn39, `Lead Lokal ${RUN_TAG}`)?.diets) === JSON.stringify(["vegan"]) &&
+    staffDietOn39.status === 200 &&
+    leadOff39.status === 200 &&
+    staffOff39.status === 409 &&
+    leadCode(staffOff39) === "client-leads" &&
+    (await guestCount39()) === 7,
+  `${leadOn39.status} ${clientOn39.status} ${clientPreviewOn39.status} ${staffPreviewOn39.status} ${staffOn39.status} ${staffDietOn39.status} ${leadOff39.status} ${staffOff39.status}`,
+);
+
+const zofiaId39 = idOf39(ZOFIA39);
+const bOnA39 = await request(`/api/o/${eventB.organizerKey}/guests/${String(zofiaId39)}`, {
+  method: "PATCH",
+  json: { diets: ["vegan"] },
+});
+const bOnUnknown39 = await request(`/api/o/${eventB.organizerKey}/guests/${String(UNKNOWN_ID)}`, {
+  method: "PATCH",
+  json: { diets: ["vegan"] },
+});
+const aOnB39 = await request(`${e39Api}/guests/${String(b1)}`, { method: "PATCH", json: { diets: ["vegan"] } });
+const aOnUnknown39 = await request(`${e39Api}/guests/${String(UNKNOWN_ID)}`, {
+  method: "PATCH",
+  json: { diets: ["vegan"] },
+});
+const denied39 = [];
+for (const [name, token, path] of [
+  ["A's manager through B's dispatcher", sessionManager, `${eventApi(eventB.id)}/klient/guests/import`],
+  ["A's waiter through B's dispatcher", sessionWaiter, `${eventApi(eventB.id)}/klient/guests/import`],
+  ["A's waiter through A's dispatcher", sessionWaiter, `${e39Klient}/guests/import`],
+  ["the floor", sessionWaiter, `${floorApiOf(e39Id)}/guests/import`],
+]) {
+  const res = await staffCall(token, path, { method: "POST", json: { text: `Obcy ${RUN_TAG}`, preview: true } });
+  if (!noAccessJson(res)) denied39.push(`${name}: ${String(res.status)}`);
+}
+const perEventImport39 = await waiterCall(waiterCookie39, `${waiterFloorApiOf(e39Id)}/guests/import`, {
+  method: "POST",
+  json: { text: `Obcy ${RUN_TAG}`, preview: true },
+});
+if (!noAccessJson(perEventImport39)) denied39.push(`the per-event waiter: ${String(perEventImport39.status)}`);
+const zofiaAfter39 = guestNamed(await request(`${e39Api}/guests`), ZOFIA39);
+check(
+  "diets: event B's key on A's guest and A's key on B's guest answer exactly like an unknown id; A's manager / waiter on B's dispatcher, a waiter on A's dispatcher and both floors → the identical 404; nothing changed",
+  bOnA39.status === 404 &&
+    bOnA39.body === bOnUnknown39.body &&
+    aOnB39.status === 404 &&
+    aOnB39.body === aOnUnknown39.body &&
+    denied39.length === 0 &&
+    JSON.stringify(zofiaAfter39?.diets) === JSON.stringify(["vegetarian", "gluten-free"]),
+  `${bOnA39.status} ${aOnB39.status} ${denied39.join("; ")}`,
+);
+
+const guestsPage39 = await request(`/o/${e39Organizer}/goscie`);
+const guestsPageEn39 = await request(`/o/${e39Organizer}/goscie`, { cookie: "kp-lang=en" });
+const ordersPage39 = await request(`/o/${e39Organizer}/zamowienia`);
+const seatingPage39 = await request(`/o/${e39Organizer}/rozsadzenie`);
+const tabletPage39 = await request(`/r/${e39Restaurant}`);
+const tabletPagePl39 = await request(`/r/${e39Restaurant}`, { cookie: "kp-lang-r=pl" });
+const floorPage39 = await staffCall(sessionWaiter, floorPageOf(e39Id));
+const waiterPage39 = await waiterCall(waiterCookie39, waiterFloorPageOf(e39Id));
+check(
+  "diets: the pages — the guest list with the import and the badges (PL, EN), the client's orders, the seating editor, the tablet (EN, PL), the floor and the per-event waiter's floor with „Diety i alergie”",
+  guestsPage39.status === 200 &&
+    guestsPage39.body.includes("data-guest-import") &&
+    guestsPage39.body.includes("Import gości z dietami") &&
+    guestsPage39.body.includes('data-diet="nut-allergy"') &&
+    guestsPage39.body.includes(NOTE39) &&
+    dietLeak39(tabletPage39.body) &&
+    guestsPageEn39.status === 200 &&
+    guestsPageEn39.body.includes("Import guests with diets") &&
+    ordersPage39.status === 200 &&
+    ordersPage39.body.includes("data-diet-section") &&
+    ordersPage39.body.includes("Diety i alergie (") &&
+    seatingPage39.status === 200 &&
+    seatingPage39.body.includes("data-diet-badges") &&
+    tabletPage39.status === 200 &&
+    tabletPage39.body.includes("data-diet-section") &&
+    tabletPage39.body.includes("Diets and allergies (") &&
+    tabletPage39.body.includes('data-diet-count="nut-allergy"') &&
+    tabletPagePl39.body.includes("Diety i alergie (") &&
+    floorPage39.status === 200 &&
+    floorPage39.body.includes("data-diet-section") &&
+    waiterPage39.status === 200 &&
+    waiterPage39.body.includes("data-diet-section"),
+  `${guestsPage39.status} ${guestsPageEn39.status} ${ordersPage39.status} ${seatingPage39.status} ${tabletPage39.status} ${floorPage39.status} ${waiterPage39.status}`,
+);
+
+const deleted39 = await staffCall(sessionOwner, eventApi(e39Id), { method: "DELETE" });
+check("diets: the section's event is deleted", deleted39.status === 200, String(deleted39.status));
+
+// 40. Guests' RSVP and dish choice (guest-rsvp-menu, S-25; FR-039, US-07). A new event of A (panel, in 10 days) with
+// three guests, guest links on and A's catalog as the event's full menu (section 32: Tatar, Pierogi, Schabowy, Sernik,
+// Lemoniada). Off by default (the phone's `rsvp` null, a guest's answer 409); the client's options (only names on the
+// event's menu, ≤ 12, no repeats, strict body) and deadline (Warsaw time; malformed → 400); the phone gets exactly its
+// own answer, the options' names and courses (no prices, ids or other guests) and the poll's token covers it (204 with
+// the same token, a new one after an answer); „no” = absent on the guest list; a dish not offered → 400; the counts on
+// the client's board, the staff's dispatcher, the preview, the event card and the shell; close → the guest 409 and the
+// read-only placement while the client still answers; the lead rule; event B's key / guest, a malformed id, owner B and
+// A's waiter → the identical 404; a deleted guest leaves the counts; the event deleted.
+const ANIA40 = `Ania RSVP ${RUN_TAG}`;
+const BARTEK40 = `Bartek RSVP ${RUN_TAG}`;
+const CELINA40 = `Celina RSVP ${RUN_TAG}`;
+const e40 = await staffCall(sessionOwner, eventsApiOf(restaurantA.id), {
+  method: "POST",
+  json: { name: `RSVP smoke ${RUN_TAG}`, date: shiftDate(today, 10) },
+});
+const e40Id = e40.data?.event?.id ?? 0;
+const e40Organizer = keyOfPath(e40.data?.event?.links?.organizer);
+const e40Api = `/api/o/${e40Organizer}`;
+const e40Tv = keyOfPath(e40.data?.event?.links?.tv);
+const e40Klient = `${eventApi(e40Id)}/klient`;
+const guests40 = await request(`${e40Api}/guests`, {
+  method: "POST",
+  json: { text: [ANIA40, BARTEK40, CELINA40].join("\n") },
+});
+const links40 = await request(`${e40Api}/guest-links`, { method: "PATCH", json: { enabled: true } });
+const keyOf40 = (name) => links40.data?.guests?.find((guest) => guest.displayName === name)?.key ?? "";
+const idOf40 = (name) => guestNamed(guests40, name)?.id ?? 0;
+const guestApi40 = (name) => `/api/g/${keyOf40(name)}`;
+const rsvpOf40 = (res) => res.data?.rsvp;
+const answer40 = (name, json) => request(`${guestApi40(name)}/rsvp`, { method: "PUT", json });
+const proxy40 = (name, json, api = e40Api, token = null) =>
+  token === null
+    ? request(`${api}/rsvp/guests/${String(idOf40(name))}`, { method: "PUT", json })
+    : staffCall(token, `${api}/rsvp/guests/${String(idOf40(name))}`, { method: "PUT", json });
+const settings40 = (json) => request(`${e40Api}/rsvp`, { method: "PATCH", json });
+const countsOf40 = (res) =>
+  [res.data?.counts?.coming, res.data?.counts?.notComing, res.data?.counts?.noAnswer].map(String).join("/");
+
+const offBoard40 = await request(`${e40Api}/rsvp`);
+const offState40 = await request(`${guestApi40(ANIA40)}/state`);
+const offAnswer40 = await answer40(ANIA40, { attending: true, dish: null });
+check(
+  "rsvp: off by default — the client's board has no deadline and offers the event's menu; the guest's state has `rsvp` null and a guest's answer → 409 rsvp-closed",
+  e40.status === 201 &&
+    guests40.status === 201 &&
+    keyOf40(ANIA40).length === 24 &&
+    offBoard40.status === 200 &&
+    offBoard40.data?.deadline === null &&
+    offBoard40.data?.open === false &&
+    JSON.stringify(offBoard40.data?.menu?.map((item) => item.name)) ===
+      JSON.stringify(["Tatar", "Pierogi", "Schabowy", "Sernik", "Lemoniada"]) &&
+    countsOf40(offBoard40) === "0/0/3" &&
+    offState40.status === 200 &&
+    rsvpOf40(offState40) === null &&
+    offAnswer40.status === 409 &&
+    leadCode(offAnswer40) === "rsvp-closed",
+  `${e40.status} ${guests40.status} ${offBoard40.status} ${offBoard40.body.slice(0, 160)} ${offState40.status} ${offAnswer40.status}`,
+);
+
+const notOnMenu40 = await settings40({ options: ["Kawior"] });
+const tooMany40 = await settings40({ options: Array.from({ length: 13 }, (_, index) => `Danie ${String(index)}`) });
+const repeated40 = await settings40({ options: ["Schabowy", "schabowy"] });
+const extra40 = await settings40({ options: [], price: 5 });
+const empty40 = await settings40({});
+const badDeadline40 = await settings40({ deadline: "jutro" });
+const both40 = await settings40({ deadline: `${shiftDate(today, 9)}T20:00`, close: true });
+const set40 = await settings40({
+  options: ["schabowy", "Pierogi", "Sernik"],
+  deadline: `${shiftDate(today, 9)}T20:00`,
+});
+check(
+  "rsvp: options not on the event's menu, 13 options, a repeat in another letter case, an extra field, an empty body, a malformed deadline and a deadline with „close” → 400; three dishes of the menu and a deadline → 200, open, the menu's spelling",
+  notOnMenu40.status === 400 &&
+    (notOnMenu40.data?.error ?? "").includes("Kawior") &&
+    tooMany40.status === 400 &&
+    repeated40.status === 400 &&
+    extra40.status === 400 &&
+    empty40.status === 400 &&
+    badDeadline40.status === 400 &&
+    both40.status === 400 &&
+    set40.status === 200 &&
+    set40.data?.open === true &&
+    typeof set40.data?.deadline === "string" &&
+    JSON.stringify(set40.data?.options?.map((option) => [option.name, option.available])) ===
+      JSON.stringify([
+        ["Pierogi", true],
+        ["Schabowy", true],
+        ["Sernik", true],
+      ]),
+  `${notOnMenu40.status} ${tooMany40.status} ${repeated40.status} ${extra40.status} ${empty40.status} ${badDeadline40.status} ${both40.status} ${set40.status} ${set40.body.slice(0, 200)}`,
+);
+
+const open40 = await request(`${guestApi40(ANIA40)}/state`);
+const openRsvp40 = rsvpOf40(open40);
+const same40 = await request(`${guestApi40(ANIA40)}/state?since=${open40.data?.version ?? ""}`);
+const secrets40 = [e40Organizer, e40Tv, keyOf40(BARTEK40), keyOf40(CELINA40)];
+check(
+  "rsvp: the guest's state carries exactly its own answer and the options' names and courses — no prices, ids, keys or other guests; the poll answers 204 for the same token",
+  open40.status === 200 &&
+    fieldsOf38(openRsvp40) === "attending byOrganizer deadline dish open options" &&
+    openRsvp40?.open === true &&
+    openRsvp40?.attending === null &&
+    openRsvp40?.deadline === set40.data?.deadline &&
+    (openRsvp40?.options ?? []).every((option) => fieldsOf38(option) === "course name") &&
+    JSON.stringify(openRsvp40?.options?.map((option) => option.name)) ===
+      JSON.stringify(["Pierogi", "Schabowy", "Sernik"]) &&
+    !/"price|"priceGrosze"|"id"|"menuItemId"|"guestId"/.test(open40.body) &&
+    !open40.body.includes(BARTEK40) &&
+    !open40.body.includes(CELINA40) &&
+    !secrets40.some((key) => key !== "" && open40.body.includes(key)) &&
+    same40.status === 204,
+  `${open40.status} [${fieldsOf38(openRsvp40)}] ${JSON.stringify(openRsvp40 ?? null).slice(0, 200)} ${same40.status}`,
+);
+
+const aniaYes40 = await answer40(ANIA40, { attending: true, dish: "schabowy" });
+const afterAnswer40 = await request(`${guestApi40(ANIA40)}/state?since=${open40.data?.version ?? ""}`);
+const sameAfter40 = await request(`${guestApi40(ANIA40)}/state?since=${aniaYes40.data?.version ?? ""}`);
+const bartekNo40 = await answer40(BARTEK40, { attending: false, dish: null });
+const notOffered40 = await answer40(CELINA40, { attending: true, dish: "Tatar" });
+const extraGuest40 = await answer40(CELINA40, { attending: true, dish: null, guestId: idOf40(ANIA40) });
+const list40 = await request(`${e40Api}/guests`);
+check(
+  "rsvp: a guest's „yes” with a dish (any letter case) → 200 with a new token (the old one now 200, the new one 204); „no” → the guest is absent on the client's list; a dish that is not an option → 400 dish-not-offered; a body naming a guest → 400",
+  aniaYes40.status === 200 &&
+    rsvpOf40(aniaYes40)?.attending === true &&
+    rsvpOf40(aniaYes40)?.dish === "Schabowy" &&
+    rsvpOf40(aniaYes40)?.byOrganizer === false &&
+    aniaYes40.data?.version !== open40.data?.version &&
+    afterAnswer40.status === 200 &&
+    sameAfter40.status === 204 &&
+    bartekNo40.status === 200 &&
+    rsvpOf40(bartekNo40)?.attending === false &&
+    rsvpOf40(bartekNo40)?.dish === null &&
+    guestNamed(list40, BARTEK40)?.isAbsent === true &&
+    guestNamed(list40, ANIA40)?.isAbsent === false &&
+    notOffered40.status === 400 &&
+    leadCode(notOffered40) === "dish-not-offered" &&
+    extraGuest40.status === 400,
+  `${aniaYes40.status} ${afterAnswer40.status} ${sameAfter40.status} ${bartekNo40.status} ${notOffered40.status} ${extraGuest40.status}`,
+);
+
+const board40 = await request(`${e40Api}/rsvp`);
+const staffBoard40 = await staffCall(sessionManager, `${e40Klient}/rsvp`);
+const preview40 = await staffCall(sessionOwner, `${eventPage(e40Id)}/potwierdzenia`);
+const card40 = await staffCall(sessionOwner, eventPage(e40Id));
+const shell40 = await request(`/o/${e40Organizer}`);
+const page40 = await request(`/o/${e40Organizer}/potwierdzenia`);
+const pageEn40 = await request(`/o/${e40Organizer}/potwierdzenia`, { cookie: "kp-lang=en" });
+const SUMMARY40 = "przyjdzie 1 · nie przyjdzie 1 · bez odpowiedzi 1";
+check(
+  "rsvp: the counts (coming / not coming / no answer, per dish) on the client's board, the staff's dispatcher, the preview, the event card's „Praca klienta” and the client's shell; the client's page in PL and EN",
+  board40.status === 200 &&
+    countsOf40(board40) === "1/1/1" &&
+    JSON.stringify(board40.data?.counts?.dishes) ===
+      JSON.stringify([{ name: "Schabowy", course: "main", count: 1, offered: true }]) &&
+    staffBoard40.status === 200 &&
+    JSON.stringify(staffBoard40.data?.counts) === JSON.stringify(board40.data?.counts) &&
+    preview40.status === 200 &&
+    preview40.body.includes("data-rsvp-manager") &&
+    preview40.body.includes('data-rsvp-count="coming"') &&
+    card40.status === 200 &&
+    card40.body.includes('data-client-section="potwierdzenia"') &&
+    card40.body.includes(SUMMARY40) &&
+    shell40.status === 200 &&
+    shell40.body.includes("data-rsvp-card") &&
+    shell40.body.includes(SUMMARY40) &&
+    page40.status === 200 &&
+    page40.body.includes("data-rsvp-manager") &&
+    page40.body.includes("Potwierdzenia i wybór dania") &&
+    pageEn40.status === 200 &&
+    pageEn40.body.includes("RSVP and dish choice"),
+  `${board40.status} ${countsOf40(board40)} ${staffBoard40.status} ${preview40.status} ${card40.status} ${shell40.status} ${page40.status} ${pageEn40.status}`,
+);
+
+const guestPage40 = await request(`/g/${keyOf40(CELINA40)}`);
+const guestPageEn40 = await request(`/g/${keyOf40(CELINA40)}`, { cookie: "kp-lang=en" });
+const tvPoll40 = await request(`/api/tv/${e40Tv}/seating`);
+check(
+  "rsvp: the guest's page shows the open RSVP above the seat (PL, EN); the TV poll carries nothing of it",
+  guestPage40.status === 200 &&
+    guestPage40.body.includes('data-guest-rsvp="open"') &&
+    guestPage40.body.includes("Potwierdź obecność") &&
+    guestPage40.body.indexOf('data-guest-rsvp="open"') < guestPage40.body.indexOf('id="seat-heading"') &&
+    guestPageEn40.status === 200 &&
+    guestPageEn40.body.includes("Confirm your attendance") &&
+    tvPoll40.status === 200 &&
+    !/rsvp|Schabowy|attending/i.test(tvPoll40.body),
+  `${guestPage40.status} ${guestPageEn40.status} ${tvPoll40.status}`,
+);
+
+// The kitchen tablet (the PR #4 review's RSVP extras): the confirmed dishes' counts only — no names, ids or prices —,
+// inside the tablet's polling token; null before the event had dish options (section 38).
+const e40Restaurant = keyOfPath(e40.data?.event?.links?.restaurant);
+const tablet40 = await request(`/api/r/${e40Restaurant}/orders`);
+const tabletSame40 = await request(`/api/r/${e40Restaurant}/orders?since=${tablet40.data?.version ?? ""}`);
+const tabletPage40 = await request(`/r/${e40Restaurant}`);
+const tabletPagePl40 = await request(`/r/${e40Restaurant}`, { cookie: "kp-lang-r=pl" });
+check(
+  "rsvp: the kitchen tablet shows the confirmed dishes' counts (coming 1, Schabowy ×1 as a main) with no guest name, id or price, the poll answers 204 for the same token; the page's „Confirmed dishes” (English by default, Polish with its cookie)",
+  tablet40.status === 200 &&
+    JSON.stringify(tablet40.data?.rsvp) ===
+      JSON.stringify({ coming: 1, noDish: 0, dishes: [{ course: "main", name: "Schabowy", count: 1 }] }) &&
+    !tablet40.body.includes(ANIA40) &&
+    !tablet40.body.includes(BARTEK40) &&
+    !tablet40.body.includes(CELINA40) &&
+    !/"price|"priceGrosze"|"id"|"guestId"/.test(tablet40.body) &&
+    tabletSame40.status === 204 &&
+    tabletPage40.status === 200 &&
+    tabletPage40.body.includes("data-rsvp-kitchen") &&
+    tabletPage40.body.includes("Confirmed dishes") &&
+    tabletPage40.body.includes('data-rsvp-kitchen-dish="Schabowy"') &&
+    !tabletPage40.body.includes(ANIA40) &&
+    tabletPagePl40.status === 200 &&
+    tabletPagePl40.body.includes("Potwierdzone dania"),
+  `${tablet40.status} ${JSON.stringify(tablet40.data?.rsvp ?? null)} ${tabletSame40.status} ${tabletPage40.status} ${tabletPagePl40.status}`,
+);
+
+const close40 = await settings40({ close: true });
+const closedAnswer40 = await answer40(CELINA40, { attending: true, dish: null });
+const closedState40 = await request(`${guestApi40(CELINA40)}/state`);
+const closedPage40 = await request(`/g/${keyOf40(ANIA40)}`);
+const proxyClosed40 = await proxy40(CELINA40, { attending: true, dish: "Pierogi" });
+check(
+  "rsvp: „Zamknij teraz” → the guests' answers 409 rsvp-closed, the phone shows the own answer read-only at the bottom; the client still answers for a guest (200, by the organizer)",
+  close40.status === 200 &&
+    close40.data?.open === false &&
+    closedAnswer40.status === 409 &&
+    leadCode(closedAnswer40) === "rsvp-closed" &&
+    rsvpOf40(closedState40)?.open === false &&
+    closedPage40.status === 200 &&
+    closedPage40.body.includes('data-guest-rsvp="closed"') &&
+    !closedPage40.body.includes('data-guest-rsvp="open"') &&
+    closedPage40.body.includes('data-rsvp-answer="yes"') &&
+    proxyClosed40.status === 200 &&
+    countsOf40(proxyClosed40) === "2/1/0" &&
+    proxyClosed40.data?.guests?.find((guest) => guest.displayName === CELINA40)?.byOrganizer === true,
+  `${close40.status} ${closedAnswer40.status} ${closedState40.status} ${closedPage40.status} ${proxyClosed40.status} ${countsOf40(proxyClosed40)}`,
+);
+
+const tabletAfter40 = await request(`/api/r/${e40Restaurant}/orders?since=${tablet40.data?.version ?? ""}`);
+check(
+  "rsvp: the client's answer for a guest reaches the kitchen tablet's next poll (200 with a new token; Pierogi ×1, Schabowy ×1, in course order)",
+  tabletAfter40.status === 200 &&
+    tabletAfter40.data?.version !== tablet40.data?.version &&
+    JSON.stringify(tabletAfter40.data?.rsvp) ===
+      JSON.stringify({
+        coming: 2,
+        noDish: 0,
+        dishes: [
+          { course: "main", name: "Pierogi", count: 1 },
+          { course: "main", name: "Schabowy", count: 1 },
+        ],
+      }),
+  `${tabletAfter40.status} ${JSON.stringify(tabletAfter40.data?.rsvp ?? null)}`,
+);
+
+// „Przenieś wybory do zamówień” (the PR #4 review's RSVP extras): Ania (Schabowy) and Celina (Pierogi, entered by the
+// client) are coming with a dish, Bartek is not. The preview writes nothing; the move adds one line per guest at their
+// own seat with the menu's spelling, course and price (no body); again → 200 and nothing added. The price is the one a
+// new line of that dish cost BEFORE the move (the board's `menu.items[].priceGrosze` with no lines yet = the catalog's
+// price): after the move that field is the moved line's own price, so comparing with it could never fail.
+const menuPrice40 = (board, name) => board?.menu?.items?.find((item) => item.name === name)?.priceGrosze;
+const lineOf40 = (board, name) => board?.items?.find((item) => item.guestId === idOf40(name));
+const movePreview40 = await request(`${e40Api}/rsvp/orders`);
+const ordersBefore40 = await request(`${e40Api}/orders`);
+const moved40 = await request(`${e40Api}/rsvp/orders`, { method: "POST" });
+const movedAgain40 = await request(`${e40Api}/rsvp/orders`, { method: "POST" });
+const movePage40 = await request(`/o/${e40Organizer}/potwierdzenia`);
+const movePageEn40 = await request(`/o/${e40Organizer}/potwierdzenia`, { cookie: "kp-lang=en" });
+const aniaLine40 = lineOf40(moved40.data?.board, ANIA40);
+const celinaLine40 = lineOf40(moved40.data?.board, CELINA40);
+check(
+  "rsvp: „Przenieś wybory do zamówień” — the preview (2 to add, nothing written), the move → 201 with one line per coming guest with a dish at their seat (menu spelling, course, price, quantity 1), again → 200 with nothing added (2 skipped); the page shows the card (PL/EN)",
+  movePreview40.status === 200 &&
+    JSON.stringify(movePreview40.data) === JSON.stringify({ added: 2, skipped: 0, notOnMenu: [] }) &&
+    ordersBefore40.status === 200 &&
+    ordersBefore40.data?.items?.length === 0 &&
+    moved40.status === 201 &&
+    JSON.stringify(moved40.data?.summary) === JSON.stringify({ added: 2, skipped: 0, notOnMenu: [] }) &&
+    moved40.data?.board?.items?.length === 2 &&
+    aniaLine40?.name === "Schabowy" &&
+    aniaLine40?.course === "main" &&
+    aniaLine40?.quantity === 1 &&
+    aniaLine40?.note === null &&
+    aniaLine40?.tableId === null &&
+    menuPrice40(ordersBefore40.data, "Schabowy") > 0 &&
+    menuPrice40(ordersBefore40.data, "Pierogi") > 0 &&
+    menuPrice40(ordersBefore40.data, "Schabowy") !== menuPrice40(ordersBefore40.data, "Pierogi") &&
+    aniaLine40?.unitPriceGrosze === menuPrice40(ordersBefore40.data, "Schabowy") &&
+    celinaLine40?.name === "Pierogi" &&
+    celinaLine40?.unitPriceGrosze === menuPrice40(ordersBefore40.data, "Pierogi") &&
+    !moved40.data?.board?.items?.some((item) => item.guestId === idOf40(BARTEK40)) &&
+    movedAgain40.status === 200 &&
+    JSON.stringify(movedAgain40.data?.summary) === JSON.stringify({ added: 0, skipped: 2, notOnMenu: [] }) &&
+    movedAgain40.data?.board?.items?.length === 2 &&
+    movePage40.status === 200 &&
+    movePage40.body.includes("data-rsvp-move") &&
+    movePage40.body.includes("Przenieś wybory do zamówień") &&
+    movePageEn40.body.includes("Move choices to orders"),
+  `${movePreview40.status} ${movePreview40.body.slice(0, 120)} ${moved40.status} ${JSON.stringify(moved40.data?.summary ?? null)} ${JSON.stringify(aniaLine40 ?? null).slice(0, 200)} ${String(celinaLine40?.unitPriceGrosze)} before ${String(menuPrice40(ordersBefore40.data, "Schabowy"))}/${String(menuPrice40(ordersBefore40.data, "Pierogi"))} ${movedAgain40.status} ${movePage40.status}`,
+);
+
+const leadOn40 = await staffCall(sessionOwner, eventApi(e40Id), { method: "PATCH", json: { venueLeads: true } });
+const clientOn40 = await proxy40(BARTEK40, { attending: null, dish: null });
+const clientSettingsOn40 = await settings40({ deadline: null });
+const staffOn40 = await proxy40(BARTEK40, { attending: null, dish: null }, e40Klient, sessionManager);
+const clientMoveOn40 = await request(`${e40Api}/rsvp/orders`, { method: "POST" });
+const staffMoveOn40 = await staffCall(sessionManager, `${e40Klient}/rsvp/orders`, { method: "POST" });
+const leadOff40 = await staffCall(sessionOwner, eventApi(e40Id), { method: "PATCH", json: { venueLeads: false } });
+const staffOff40 = await proxy40(BARTEK40, { attending: false, dish: null }, e40Klient, sessionManager);
+const staffMoveOff40 = await staffCall(sessionManager, `${e40Klient}/rsvp/orders`, { method: "POST" });
+const listAfterLead40 = await request(`${e40Api}/guests`);
+check(
+  "rsvp: while the venue leads the client's answer, settings and move → 409 venue-leads and the staff answer and move through the dispatcher („no answer” → present again; the move adds nothing new); when the client leads again the staff → 409 client-leads",
+  leadOn40.status === 200 &&
+    clientOn40.status === 409 &&
+    leadCode(clientOn40) === "venue-leads" &&
+    clientSettingsOn40.status === 409 &&
+    staffOn40.status === 200 &&
+    countsOf40(staffOn40) === "2/0/1" &&
+    clientMoveOn40.status === 409 &&
+    leadCode(clientMoveOn40) === "venue-leads" &&
+    staffMoveOn40.status === 200 &&
+    JSON.stringify(staffMoveOn40.data?.summary) === JSON.stringify({ added: 0, skipped: 2, notOnMenu: [] }) &&
+    leadOff40.status === 200 &&
+    staffOff40.status === 409 &&
+    leadCode(staffOff40) === "client-leads" &&
+    staffMoveOff40.status === 409 &&
+    leadCode(staffMoveOff40) === "client-leads" &&
+    guestNamed(listAfterLead40, BARTEK40)?.isAbsent === false,
+  `${leadOn40.status} ${clientOn40.status} ${clientSettingsOn40.status} ${staffOn40.status} ${clientMoveOn40.status} ${staffMoveOn40.status} ${leadOff40.status} ${staffOff40.status} ${staffMoveOff40.status}`,
+);
+
+const NO40 = { attending: false, dish: null };
+const bOnA40 = await request(`/api/o/${eventB.organizerKey}/rsvp/guests/${String(idOf40(ANIA40))}`, {
+  method: "PUT",
+  json: NO40,
+});
+const bOnUnknown40 = await request(`/api/o/${eventB.organizerKey}/rsvp/guests/${String(UNKNOWN_ID)}`, {
+  method: "PUT",
+  json: NO40,
+});
+const aOnB40 = await request(`${e40Api}/rsvp/guests/${String(b1)}`, { method: "PUT", json: NO40 });
+const aOnUnknown40 = await request(`${e40Api}/rsvp/guests/${String(UNKNOWN_ID)}`, { method: "PUT", json: NO40 });
+const aMalformed40 = await request(`${e40Api}/rsvp/guests/abc`, { method: "PUT", json: NO40 });
+const denied40 = [];
+for (const [name, token, path] of [
+  ["owner B on A's dispatcher", sessionB, `${e40Klient}/rsvp`],
+  ["A's waiter on A's dispatcher", sessionWaiter, `${e40Klient}/rsvp`],
+  ["a malformed event id", sessionOwner, "/api/panel/events/abc/klient/rsvp"],
+]) {
+  const res = await staffCall(token, path);
+  if (!noAccessJson(res)) denied40.push(`${name}: ${String(res.status)}`);
+}
+const ownerBPreview40 = await staffCall(sessionB, `${eventPage(e40Id)}/potwierdzenia`);
+const aniaAfter40 = (await request(`${e40Api}/rsvp`)).data?.guests?.find((guest) => guest.displayName === ANIA40);
+check(
+  "rsvp: event B's key on A's guest, A's key on B's guest and a malformed id answer exactly like an unknown id; owner B, A's waiter and a malformed event id → the identical 404 (preview page too); nothing changed",
+  bOnA40.status === 404 &&
+    bOnA40.body === bOnUnknown40.body &&
+    aOnB40.status === 404 &&
+    aOnB40.body === aOnUnknown40.body &&
+    aMalformed40.body === aOnUnknown40.body &&
+    denied40.length === 0 &&
+    ownerBPreview40.status === 404 &&
+    aniaAfter40?.attending === true &&
+    aniaAfter40?.dish === "Schabowy",
+  `${bOnA40.status} ${aOnB40.status} ${aMalformed40.status} ${denied40.join("; ")} ${ownerBPreview40.status}`,
+);
+
+const deleteAnia40 = await request(`${e40Api}/guests/${String(idOf40(ANIA40))}`, { method: "DELETE" });
+const afterDelete40 = await request(`${e40Api}/rsvp`);
+check(
+  "rsvp: deleting a guest removes their answer from the counts (and their dish)",
+  deleteAnia40.status === 200 &&
+    afterDelete40.data?.counts?.total === 2 &&
+    countsOf40(afterDelete40) === "1/0/1" &&
+    !(afterDelete40.data?.counts?.dishes ?? []).some((dish) => dish.name === "Schabowy"),
+  `${deleteAnia40.status} ${countsOf40(afterDelete40)} ${JSON.stringify(afterDelete40.data?.counts?.dishes ?? null)}`,
+);
+
+const deleted40 = await staffCall(sessionOwner, eventApi(e40Id), { method: "DELETE" });
+check("rsvp: the section's event is deleted", deleted40.status === 200, String(deleted40.status));
+
+// 41. Guest data retention, the export and the privacy notice (privacy-retention, S-26; FR-040, US-09, NFR-019). The
+// owner of A reads the term, previews a shorter one (retention-preview: a back-dated event R is counted, then
+// deleted) and sets it (30 → 7 days), the manager reads it, everyone else gets the identical 404; bad
+// bodies 400, no session 401, a foreign Origin 403. Event P of A (today, panel) is filled through its client link
+// (guests with diets, a group, a room and a table, a published seating, a guess, an order line with a note for a
+// guest, a person on the TV, guest links on); the manager exports it (JSON and both CSVs as attachments, no-store, no
+// key of P or of a guest); owner B, A's waiter, the admin (also in support mode, without a log row), P's client key and
+// no session → 404 / 401. A template of A (100 days back) and event Q of A (today) stay untouched; P's date moves 8
+// days back (past A's 7): its guest key opens nothing from the first request, the client's link, the TV and the tablet
+// show no guest any more, the bill stays, the pages show the purged note, the export has no guests; the CLI's purge
+// leaves the template, Q and event B as they were. The guest's privacy page: a draft in PL and EN naming the restaurant,
+// never the platform; an unknown key → the identical 404. The section's events and template are deleted.
+const retentionApiOf = (restaurantId) => `/api/panel/restaurants/${String(restaurantId)}/retention`;
+const exportApi41 = (id, format) => `${eventApi(id)}/export${format ? `?format=${format}` : ""}`;
+const download41 = async (token, path) => {
+  const response = await fetch(BASE_URL + path, {
+    redirect: "manual",
+    headers: token ? { Cookie: asStaff(token) } : {},
+  });
+  const bytes = new Uint8Array(await response.arrayBuffer());
+  return {
+    status: response.status,
+    type: response.headers.get("content-type") ?? "",
+    disposition: response.headers.get("content-disposition") ?? "",
+    cacheControl: response.headers.get("cache-control") ?? "",
+    bom: bytes[0] === 0xef && bytes[1] === 0xbb && bytes[2] === 0xbf,
+    body: new TextDecoder("utf-8", { ignoreBOM: true }).decode(bytes),
+  };
+};
+
+const ownerTerm41 = await staffCall(sessionOwner, retentionApiOf(restaurantA.id));
+
+// retention-preview (the PR #4 review's decision 6): while A's term is still 30 days, event R of A (today, one guest)
+// is moved 10 days back (the seam). The owner's preview of 7 days counts R with its date (nothing before the move);
+// 30 (the current term) and 60 count nothing; 0, 366, 7.5, a word and an empty value → 400 (PL/EN); the manager, A's
+// waiter and owner B → the identical 404; asking purges nothing (R keeps its guest); once R is deleted, 0 again.
+const previewOf41 = (days) => `${retentionApiOf(restaurantA.id)}?days=${days}`;
+const r41 = await staffCall(sessionOwner, eventsApiOf(restaurantA.id), {
+  method: "POST",
+  json: { name: `Retencja R ${RUN_TAG}`, date: today },
+});
+const r41Id = r41.data?.event?.id ?? 0;
+const r41Api = `/api/o/${keyOfPath(r41.data?.event?.links?.organizer)}`;
+const rGuest41 = await request(`${r41Api}/guests`, { method: "POST", json: { text: `Rafał Podgląd ${RUN_TAG}` } });
+const previewBefore41 = await staffCall(sessionOwner, previewOf41("7"));
+let movedR41 = "";
+try {
+  await setEventDate(platformEnv, r41Id, shiftDate(today, -10));
+} catch (error) {
+  movedR41 = error instanceof Error ? error.message : String(error);
+}
+const preview7of41 = await staffCall(sessionOwner, previewOf41("7"));
+const preview30of41 = await staffCall(sessionOwner, previewOf41("30"));
+const preview60of41 = await staffCall(sessionOwner, previewOf41("60"));
+const previewBad41 = [];
+for (const days of ["0", "366", "7.5", "abc", ""]) {
+  const res = await staffCall(sessionOwner, previewOf41(days));
+  if (res.status !== 400 || !String(res.data?.error).startsWith("Podaj liczbę dni od 1 do 365")) {
+    previewBad41.push(`${days}: ${String(res.status)}`);
+  }
+}
+const previewBadEn41 = await request(previewOf41("0"), { cookie: `${asStaff(sessionOwner)}; kp-lang=en` });
+const previewDenied41 = [];
+for (const [name, token] of [
+  ["the manager", sessionManager],
+  ["A's waiter", sessionWaiter],
+  ["owner B", sessionB],
+]) {
+  const res = await staffCall(token, previewOf41("7"));
+  if (!noAccessJson(res)) previewDenied41.push(`${name}: ${String(res.status)}`);
+}
+const rGuestsAfter41 = await request(`${r41Api}/guests`);
+const rDeleted41 = await staffCall(sessionOwner, eventApi(r41Id), { method: "DELETE" });
+const previewAfter41 = await staffCall(sessionOwner, previewOf41("7"));
+const nothingLost41 = (res, days) =>
+  res.status === 200 &&
+  JSON.stringify(res.data) ===
+    JSON.stringify({ restaurantId: restaurantA.id, guestRetentionDays: 30, days, events: 0, latestEventDate: null });
+check(
+  "retention preview: R (one guest) moved 10 days back — the owner's preview of 7 days counts it with its date (none before), 30 and 60 count nothing; 0, 366, 7.5, a word, an empty value → 400 (PL, EN); the manager, A's waiter, owner B → the identical 404; asking purges nothing; R deleted → nothing again",
+  r41.status === 201 &&
+    rGuest41.status === 201 &&
+    nothingLost41(previewBefore41, 7) &&
+    movedR41 === "" &&
+    preview7of41.status === 200 &&
+    JSON.stringify(preview7of41.data) ===
+      JSON.stringify({
+        restaurantId: restaurantA.id,
+        guestRetentionDays: 30,
+        days: 7,
+        events: 1,
+        latestEventDate: shiftDate(today, -10),
+      }) &&
+    nothingLost41(preview30of41, 30) &&
+    nothingLost41(preview60of41, 60) &&
+    previewBad41.length === 0 &&
+    previewBadEn41.status === 400 &&
+    String(previewBadEn41.data?.error).startsWith("Enter a number of days from 1 to 365") &&
+    previewDenied41.length === 0 &&
+    rGuestsAfter41.data?.guests?.length === 1 &&
+    rDeleted41.status === 200 &&
+    nothingLost41(previewAfter41, 7),
+  `${r41.status} ${rGuest41.status} ${previewBefore41.body.slice(0, 160)} ${movedR41} ${preview7of41.status} ${preview7of41.body.slice(0, 160)} ${preview30of41.body.slice(0, 120)} ${previewBad41.join("; ")} ${previewBadEn41.status} ${previewDenied41.join("; ")} ${String(rGuestsAfter41.data?.guests?.length)} ${rDeleted41.status} ${previewAfter41.body.slice(0, 120)}`,
+);
+
+const setTerm41 = await staffCall(sessionOwner, retentionApiOf(restaurantA.id), {
+  method: "PATCH",
+  json: { guestRetentionDays: 7 },
+});
+const managerTerm41 = await staffCall(sessionManager, retentionApiOf(restaurantA.id));
+const managerSet41 = await staffCall(sessionManager, retentionApiOf(restaurantA.id), {
+  method: "PATCH",
+  json: { guestRetentionDays: 9 },
+});
+const termDenied41 = [];
+for (const [name, token, path] of [
+  ["A's waiter", sessionWaiter, retentionApiOf(restaurantA.id)],
+  ["owner B on A", sessionB, retentionApiOf(restaurantA.id)],
+  ["the admin outside support", sessionAdmin, retentionApiOf(restaurantA.id)],
+  ["an unknown id", sessionOwner, retentionApiOf(UNKNOWN_ID)],
+  ["a malformed id", sessionOwner, "/api/panel/restaurants/abc/retention"],
+]) {
+  const res = await staffCall(token, path);
+  if (!noAccessJson(res)) termDenied41.push(`${name}: ${String(res.status)}`);
+}
+const badTerms41 = [];
+for (const json of [
+  { guestRetentionDays: 0 },
+  { guestRetentionDays: 366 },
+  { guestRetentionDays: 7.5 },
+  { guestRetentionDays: "30" },
+  { guestRetentionDays: 7, extra: 1 },
+  {},
+]) {
+  const res = await staffCall(sessionOwner, retentionApiOf(restaurantA.id), { method: "PATCH", json });
+  if (res.status !== 400) badTerms41.push(`${JSON.stringify(json)}: ${String(res.status)}`);
+}
+const noSessionTerm41 = await request(retentionApiOf(restaurantA.id));
+const foreignTerm41 = await staffCall(sessionOwner, retentionApiOf(restaurantA.id), {
+  method: "PATCH",
+  json: { guestRetentionDays: 9 },
+  extraHeaders: FOREIGN,
+});
+const termAfter41 = await staffCall(sessionOwner, retentionApiOf(restaurantA.id));
+check(
+  "retention: the owner reads 30 days and sets 7, the manager reads it and cannot write (404); A's waiter, owner B, the admin outside support, unknown and malformed ids → the identical 404; 0, 366, 7.5, a string, an extra field and an empty body → 400; no session 401; a foreign Origin 403; still 7",
+  ownerTerm41.status === 200 &&
+    JSON.stringify(ownerTerm41.data) ===
+      JSON.stringify({ restaurantId: restaurantA.id, guestRetentionDays: 30, minDays: 1, maxDays: 365 }) &&
+    setTerm41.status === 200 &&
+    setTerm41.data?.guestRetentionDays === 7 &&
+    managerTerm41.status === 200 &&
+    managerTerm41.data?.guestRetentionDays === 7 &&
+    noAccessJson(managerSet41) &&
+    termDenied41.length === 0 &&
+    badTerms41.length === 0 &&
+    noSessionTerm41.status === 401 &&
+    foreignTerm41.status === 403 &&
+    termAfter41.data?.guestRetentionDays === 7,
+  `${ownerTerm41.status} ${ownerTerm41.body.slice(0, 120)} ${setTerm41.status} ${managerTerm41.status} ${managerSet41.status} ${termDenied41.join("; ")} ${badTerms41.join("; ")} ${noSessionTerm41.status} ${foreignTerm41.status}`,
+);
+
+const ownerPage41 = await staffCall(sessionOwner, restaurantPageOf(restaurantA.id));
+const managerPage41 = await staffCall(sessionManager, restaurantPageOf(restaurantA.id));
+const waiterPage41 = await staffCall(sessionWaiter, restaurantPageOf(restaurantA.id));
+const ownerPageEn41 = await staffCall(sessionOwner, restaurantPageOf(restaurantA.id), {
+  cookie: `${asStaff(sessionOwner)}; kp-lang=en`,
+});
+check(
+  "retention: the restaurant page — the owner's form (PL, EN), the manager's read-only line, nothing for a waiter",
+  ownerPage41.status === 200 &&
+    ownerPage41.body.includes("data-retention-section") &&
+    ownerPage41.body.includes('data-retention-form="7"') &&
+    ownerPage41.body.includes("Prywatność danych gości") &&
+    ownerPageEn41.status === 200 &&
+    (ownerPageEn41.body.includes("Guests' data privacy") || ownerPageEn41.body.includes("Guests&#39; data privacy")) &&
+    managerPage41.status === 200 &&
+    managerPage41.body.includes('data-retention-read-only="7"') &&
+    !managerPage41.body.includes("data-retention-form") &&
+    waiterPage41.status === 200 &&
+    !waiterPage41.body.includes("data-retention-section"),
+  `${ownerPage41.status} ${ownerPageEn41.status} ${managerPage41.status} ${waiterPage41.status}`,
+);
+
+const ANIA41 = `Ania Retencja ${RUN_TAG}`;
+const BOREK41 = `Borek Retencja ${RUN_TAG}`;
+const CELA41 = `Cela Retencja ${RUN_TAG}`;
+const NOTE41 = `bez orzechów ${RUN_TAG}`;
+const LINE_NOTE41 = `bez cebuli ${RUN_TAG}`;
+const p41 = await staffCall(sessionOwner, eventsApiOf(restaurantA.id), {
+  method: "POST",
+  json: { name: `Retencja P ${RUN_TAG}`, date: today },
+});
+const p41Id = p41.data?.event?.id ?? 0;
+const p41Organizer = keyOfPath(p41.data?.event?.links?.organizer);
+const p41Tv = keyOfPath(p41.data?.event?.links?.tv);
+const p41Restaurant = keyOfPath(p41.data?.event?.links?.restaurant);
+const p41Api = `/api/o/${p41Organizer}`;
+const guests41 = await request(`${p41Api}/guests`, {
+  method: "POST",
+  json: { text: [ANIA41, BOREK41, CELA41].join("\n") },
+});
+const [ania41, borek41, cela41] = [ANIA41, BOREK41, CELA41].map((name) => guestNamed(guests41, name)?.id ?? 0);
+const diet41 = await request(`${p41Api}/guests/${String(ania41)}`, {
+  method: "PATCH",
+  json: { diets: ["vegan", "nut-allergy"], dietNote: NOTE41 },
+});
+const group41 = await request(`${p41Api}/groups`, { method: "POST", json: { guestIds: [ania41, borek41] } });
+const room41 = await request(`${p41Api}/rooms`, { method: "POST", json: { name: `Sala ${RUN_TAG}` } });
+const table41 = await request(`${p41Api}/tables`, {
+  method: "POST",
+  json: {
+    roomId: room41.data?.rooms?.[0]?.id ?? 0,
+    name: `Stół ${RUN_TAG}`,
+    seatCount: 4,
+    shape: "round",
+    x: 0.5,
+    y: 0.5,
+  },
+});
+const table41Id = table41.data?.tables?.[0]?.id ?? 0;
+for (const [guestId, seat] of [
+  [ania41, 1],
+  [borek41, 2],
+  [cela41, 3],
+]) {
+  await request(`${p41Api}/seating/guests/${String(guestId)}`, { method: "PUT", json: { tableId: table41Id, seat } });
+}
+const publish41 = await request(`${p41Api}/seating/publish`, { method: "POST" });
+const game41 = await request(`${p41Api}/modules`, { method: "PUT", json: { module: "guessing", enabled: true } });
+const guess41 = await request(`${p41Api}/guesses/${String(borek41)}`, { method: "PUT", json: { amount: "1234,50" } });
+const order41 = await request(`${p41Api}/orders`, {
+  method: "POST",
+  json: { name: "Pierogi", note: LINE_NOTE41, quantity: 2, assignment: { guestId: ania41 } },
+});
+const line41 = order41.data?.items?.find((item) => item.name === "Pierogi");
+const spot41 = await request(`${p41Api}/tv-spotlight/person`, { method: "POST" });
+const links41 = await request(`${p41Api}/guest-links`, { method: "PATCH", json: { enabled: true } });
+const guestKeys41 = (links41.data?.guests ?? []).map((guest) => guest.key);
+const aniaKey41 = linkOf(links41, ania41)?.key ?? "";
+check(
+  "retention: event P of A is filled through its client link — guests with a diet, a group, a published seating, a guess, an order line with a note for a guest, a person on the TV, guest links on",
+  p41.status === 201 &&
+    guests41.status === 201 &&
+    diet41.status === 200 &&
+    group41.status === 201 &&
+    table41.status === 201 &&
+    publish41.status === 201 &&
+    game41.status === 200 &&
+    guess41.status === 200 &&
+    order41.status === 201 &&
+    typeof line41?.unitPriceGrosze === "number" &&
+    line41.unitPriceGrosze > 0 &&
+    spot41.status === 200 &&
+    spot41.data?.spotlight?.kind === "person" &&
+    links41.status === 200 &&
+    guestKeys41.length === 3 &&
+    aniaKey41.length === 24,
+  `${p41.status} ${guests41.status} ${diet41.status} ${group41.status} ${table41.status} ${publish41.status} ${game41.status} ${guess41.status} ${order41.status} ${order41.body.slice(0, 120)} ${spot41.status} ${links41.status}`,
+);
+
+const secrets41 = [p41Organizer, p41Tv, p41Restaurant, ...guestKeys41].filter((key) => key !== "");
+const json41 = await download41(sessionManager, exportApi41(p41Id));
+const guestsCsv41 = await download41(sessionManager, exportApi41(p41Id, "guests-csv"));
+const ordersCsv41 = await download41(sessionManager, exportApi41(p41Id, "orders-csv"));
+const badFormat41 = await staffCall(sessionManager, exportApi41(p41Id, "xlsx"));
+let exported41 = null;
+try {
+  exported41 = JSON.parse(json41.body);
+} catch {
+  // checked below
+}
+const aniaExport41 = exported41?.guests?.find((guest) => guest.name === ANIA41);
+check(
+  "export: the manager downloads P as JSON (attachment, no-store) with the diets, the group, the seat, the guess, the order line with its price and note and the bill — no id, no key of P and no guest key; both CSVs (BOM, PL headers, the bill's total); an unknown format → 400",
+  json41.status === 200 &&
+    json41.type.startsWith("application/json") &&
+    json41.disposition === `attachment; filename="wydarzenie-${String(p41Id)}-${today}.json"` &&
+    json41.cacheControl.includes("no-store") &&
+    aniaExport41?.dietNote === NOTE41 &&
+    JSON.stringify(aniaExport41?.diets) === JSON.stringify(["vegan", "nut-allergy"]) &&
+    aniaExport41?.group === 1 &&
+    aniaExport41?.seat?.seat === 1 &&
+    exported41?.guests?.find((guest) => guest.name === BOREK41)?.guess?.amountGrosze === 123_450 &&
+    exported41?.orders?.lines?.[0]?.note === LINE_NOTE41 &&
+    exported41?.orders?.lines?.[0]?.place?.guest === ANIA41 &&
+    exported41?.orders?.billGrosze === line41.unitPriceGrosze * 2 &&
+    exported41?.event?.guestData?.retentionDays === 7 &&
+    exported41?.event?.guestData?.deleteAfter === shiftDate(today, 7) &&
+    !/"(id|\w+Id|\w*[Kk]ey|\w*[Tt]oken|\w*[Hh]ash)"\s*:/.test(json41.body) &&
+    !secrets41.some(
+      (key) => json41.body.includes(key) || guestsCsv41.body.includes(key) || ordersCsv41.body.includes(key),
+    ) &&
+    guestsCsv41.status === 200 &&
+    guestsCsv41.type.startsWith("text/csv") &&
+    guestsCsv41.disposition.endsWith('-goscie.csv"') &&
+    guestsCsv41.bom &&
+    guestsCsv41.body.includes("Gość;Obecność;Grupa;Diety i alergie") &&
+    guestsCsv41.body.includes(NOTE41) &&
+    ordersCsv41.status === 200 &&
+    ordersCsv41.disposition.endsWith('-zamowienia.csv"') &&
+    ordersCsv41.bom &&
+    ordersCsv41.body.includes("Rachunek razem") &&
+    badFormat41.status === 400,
+  `${json41.status} ${json41.type} ${json41.disposition} ${json41.body.slice(0, 160)} ${guestsCsv41.status} ${ordersCsv41.status} ${badFormat41.status}`,
+);
+
+const exportDenied41 = [];
+for (const [name, token, path] of [
+  ["owner B", sessionB, exportApi41(p41Id)],
+  ["A's waiter", sessionWaiter, exportApi41(p41Id)],
+  ["the admin outside support", sessionAdmin, exportApi41(p41Id)],
+  ["an unknown id", sessionManager, exportApi41(UNKNOWN_ID)],
+  ["a malformed id", sessionManager, "/api/panel/events/abc/export"],
+]) {
+  const res = await staffCall(token, path);
+  if (!noAccessJson(res)) exportDenied41.push(`${name}: ${String(res.status)}`);
+}
+const enter41 = await enterSupport(sessionAdmin, restaurantA.id);
+const logBefore41 = (await readLogA()).data?.entries?.[0];
+const supportExport41 = await staffCall(sessionAdmin, exportApi41(p41Id));
+const supportCsv41 = await staffCall(sessionAdmin, exportApi41(p41Id, "guests-csv"));
+const logAfter41 = (await readLogA()).data?.entries?.[0];
+const supportCard41 = await staffCall(sessionAdmin, eventPage(p41Id));
+const supportTerm41 = await staffCall(sessionAdmin, retentionApiOf(restaurantA.id));
+const supportPreview41 = await staffCall(sessionAdmin, `${retentionApiOf(restaurantA.id)}?days=3`);
+const supportSetTerm41 = await staffCall(sessionAdmin, retentionApiOf(restaurantA.id), {
+  method: "PATCH",
+  json: { guestRetentionDays: 9 },
+});
+const exit41 = await endSupportOf(sessionAdmin, restaurantA.id);
+const clientExport41 = await request(`${p41Api}/export`);
+const noSessionExport41 = await request(exportApi41(p41Id));
+check(
+  "export: owner B, A's waiter, the admin outside support, unknown and malformed ids → the identical 404; in support mode the export is the identical 404 with no log row (the term and its preview read, logged; its write 404; the card has no export links); P's client key has no export (404); no session 401",
+  exportDenied41.length === 0 &&
+    enter41.status === 201 &&
+    logBefore41?.kind === "enter" &&
+    noAccessJson(supportExport41) &&
+    noAccessJson(supportCsv41) &&
+    logAfter41?.id === logBefore41?.id &&
+    supportCard41.status === 200 &&
+    supportCard41.body.includes("data-event-privacy") &&
+    !supportCard41.body.includes("data-event-export") &&
+    supportTerm41.status === 200 &&
+    supportPreview41.status === 200 &&
+    supportPreview41.data?.days === 3 &&
+    noAccessJson(supportSetTerm41) &&
+    exit41.status === 200 &&
+    clientExport41.status === 404 &&
+    noSessionExport41.status === 401,
+  `${exportDenied41.join("; ")} ${enter41.status} ${logBefore41?.kind} ${supportExport41.status} ${supportCsv41.status} ${String(logAfter41?.id)} ${supportCard41.status} ${supportTerm41.status} ${supportSetTerm41.status} ${exit41.status} ${clientExport41.status} ${noSessionExport41.status}`,
+);
+
+// Untouched by P's purge: a template of A dated 100 days back, event Q of A (today) with a guest, event B.
+const tpl41 = await staffCall(sessionOwner, templatesApiOf(restaurantA.id), {
+  method: "POST",
+  json: { name: `Szablon retencji ${RUN_TAG}`, sourceEventId: p41Id },
+});
+const tpl41Id = tpl41.data?.template?.id ?? 0;
+let seam41 = "";
+try {
+  await setEventDate(platformEnv, tpl41Id, shiftDate(today, -100));
+} catch (error) {
+  seam41 = error instanceof Error ? error.message : String(error);
+}
+const q41 = await staffCall(sessionOwner, eventsApiOf(restaurantA.id), {
+  method: "POST",
+  json: { name: `Retencja Q ${RUN_TAG}`, date: today },
+});
+const q41Id = q41.data?.event?.id ?? 0;
+const q41Api = `/api/o/${keyOfPath(q41.data?.event?.links?.organizer)}`;
+const DOROTA41 = `Dorota Retencja ${RUN_TAG}`;
+const qGuests41 = await request(`${q41Api}/guests`, { method: "POST", json: { text: DOROTA41 } });
+const qLinks41 = await request(`${q41Api}/guest-links`, { method: "PATCH", json: { enabled: true } });
+const dorotaKey41 = qLinks41.data?.guests?.[0]?.key ?? "";
+const bGuestsBefore41 = (await request(`/api/o/${eventB.organizerKey}/guests`)).data?.guests?.length ?? -1;
+
+// review-fixes: a date change that would delete P's guest data at once is refused (409 date-would-purge, nothing
+// changes); a date whose last kept day is today is fine. The purge itself then comes through the seam (the DB write a
+// back-dated event or a shortened term amounts to).
+const harmless41 = await staffCall(sessionOwner, eventApi(p41Id), {
+  method: "PATCH",
+  json: { date: shiftDate(today, -7) },
+});
+const harmlessGuests41 = await request(`${p41Api}/guests`);
+const refused41 = await staffCall(sessionOwner, eventApi(p41Id), {
+  method: "PATCH",
+  json: { name: `Retencja P ${RUN_TAG}`, date: shiftDate(today, -8) },
+});
+const refusedEn41 = await request(eventApi(p41Id), {
+  method: "PATCH",
+  json: { date: shiftDate(today, -400) },
+  cookie: `${asStaff(sessionManager)}; kp-lang=en`,
+});
+const refusedCard41 = await staffCall(sessionOwner, eventApi(p41Id));
+const refusedGuests41 = await request(`${p41Api}/guests`);
+const refusedState41 = await request(`/api/g/${aniaKey41}/state`);
+check(
+  "retention: moving P's date so its guest data would be purged at once → 409 date-would-purge naming the last kept day (PL/EN), nothing changes; a date whose last kept day is today is saved",
+  harmless41.status === 200 &&
+    harmless41.data?.event?.date === shiftDate(today, -7) &&
+    harmlessGuests41.data?.guests?.length === 3 &&
+    refused41.status === 409 &&
+    refused41.data?.code === "date-would-purge" &&
+    typeof refused41.data?.error === "string" &&
+    refused41.data.error.startsWith("Nie zmieniono daty") &&
+    refused41.data.error.includes("7 dni") &&
+    refusedEn41.status === 409 &&
+    refusedEn41.data?.code === "date-would-purge" &&
+    String(refusedEn41.data?.error).startsWith("The date was not changed") &&
+    refusedCard41.data?.event?.date === shiftDate(today, -7) &&
+    refusedGuests41.data?.guests?.length === 3 &&
+    refusedState41.status === 200,
+  `${harmless41.status} ${String(harmless41.data?.event?.date)} ${refused41.status} ${refused41.body.slice(0, 160)} ${refusedEn41.status} ${refusedEn41.body.slice(0, 80)} ${String(refusedCard41.data?.event?.date)} ${String(refusedGuests41.data?.guests?.length)} ${refusedState41.status}`,
+);
+
+let moved41 = "";
+try {
+  await setEventDate(platformEnv, p41Id, shiftDate(today, -8));
+} catch (error) {
+  moved41 = error instanceof Error ? error.message : String(error);
+}
+const guestState41 = await request(`/api/g/${aniaKey41}/state`);
+const guestPage41 = await request(`/g/${aniaKey41}`);
+const pGuests41 = await request(`${p41Api}/guests`);
+const pPublished41 = await request(`${p41Api}/seating/published`);
+const pSpot41 = await request(`${p41Api}/tv-spotlight`);
+const pOrders41 = await request(`${p41Api}/orders`);
+const pLinks41 = await request(`${p41Api}/guest-links`);
+const pTv41 = await request(`/api/tv/${p41Tv}/seating`);
+const pTablet41 = await request(`/api/r/${p41Restaurant}/orders`);
+const pLine41 = pOrders41.data?.items?.find((item) => item.name === "Pierogi");
+const names41 = [ANIA41, BOREK41, CELA41];
+check(
+  "retention: P moved 8 days back (past A's 7; the seam) — the first request of its guest key is the identical 404; the client's link then shows no guests, no published seating, no TV person, no guest links, the order line without its note or guest but with its price; the TV and the tablet show no name",
+  moved41 === "" &&
+    noAccessJson(guestState41) &&
+    guestPage41.status === 404 &&
+    guestPage41.body.includes(NO_ACCESS_TEXT) &&
+    pGuests41.status === 200 &&
+    pGuests41.data?.guests?.length === 0 &&
+    pGuests41.data?.groups?.length === 0 &&
+    pPublished41.status === 200 &&
+    pPublished41.data?.published === null &&
+    pSpot41.status === 200 &&
+    pSpot41.data?.spotlight === null &&
+    pLinks41.data?.enabled === false &&
+    pOrders41.status === 200 &&
+    pLine41?.note === null &&
+    pLine41?.guestId === null &&
+    pLine41?.unitPriceGrosze === line41?.unitPriceGrosze &&
+    pLine41?.quantity === 2 &&
+    pTv41.status === 200 &&
+    pTablet41.status === 200 &&
+    !names41.some(
+      (name) => pTv41.body.includes(name) || pTablet41.body.includes(name) || pOrders41.body.includes(name),
+    ),
+  `${moved41 || "moved"} ${guestState41.status} ${guestPage41.status} ${pGuests41.status} ${pGuests41.body.slice(0, 120)} ${pPublished41.body.slice(0, 80)} ${pSpot41.body.slice(0, 80)} ${pOrders41.status} ${pTv41.status} ${pTablet41.status}`,
+);
+
+const shell41 = await request(`/o/${p41Organizer}`);
+const card41 = await staffCall(sessionOwner, eventPage(p41Id));
+const purgedExport41 = await download41(sessionManager, exportApi41(p41Id));
+let purgedData41 = null;
+try {
+  purgedData41 = JSON.parse(purgedExport41.body);
+} catch {
+  // checked below
+}
+const qShell41 = await request(q41Api.replace("/api/o/", "/o/"));
+check(
+  "retention: the client's shell and the event card say the guests' data is deleted; the export has no guests and the deletion date, the bill stays; Q's shell names the day its data goes",
+  shell41.status === 200 &&
+    shell41.body.includes("data-guest-data-purged") &&
+    shell41.body.includes("Dane gości usunięte") &&
+    card41.status === 200 &&
+    card41.body.includes("data-guest-data-purged") &&
+    card41.body.includes("data-event-export") &&
+    purgedExport41.status === 200 &&
+    Array.isArray(purgedData41?.guests) &&
+    purgedData41.guests.length === 0 &&
+    typeof purgedData41?.event?.guestData?.purgedAt === "string" &&
+    purgedData41?.orders?.billGrosze === exported41?.orders?.billGrosze &&
+    !names41.some((name) => purgedExport41.body.includes(name)) &&
+    qShell41.status === 200 &&
+    qShell41.body.includes(`data-guest-retention="${shiftDate(today, 7)}"`),
+  `${shell41.status} ${card41.status} ${purgedExport41.status} ${purgedExport41.body.slice(0, 200)} ${qShell41.status}`,
+);
+
+let cli41 = [];
+let cliError41 = "";
+try {
+  cli41 = await purgeExpiredGuestData(platformEnv, { restaurantId: restaurantA.id });
+} catch (error) {
+  cliError41 = error instanceof Error ? error.message : String(error);
+}
+const tplAfter41 = await staffCall(sessionOwner, templateApi(tpl41Id));
+const qAfter41 = await request(`${q41Api}/guests`);
+const bGuestsAfter41 = (await request(`/api/o/${eventB.organizerKey}/guests`)).data?.guests?.length ?? -2;
+check(
+  "retention: the CLI's purge of restaurant A never touches the template (100 days back), event Q (today) or P again; event B keeps its guests",
+  tpl41.status === 201 &&
+    seam41 === "" &&
+    cliError41 === "" &&
+    !cli41.some((event) => [tpl41Id, q41Id, p41Id].includes(event.id)) &&
+    tplAfter41.status === 200 &&
+    tplAfter41.data?.template?.roomCount === 1 &&
+    tplAfter41.data?.template?.tableCount === 1 &&
+    q41.status === 201 &&
+    qGuests41.status === 201 &&
+    qAfter41.data?.guests?.length === 1 &&
+    bGuestsBefore41 > 0 &&
+    bGuestsAfter41 === bGuestsBefore41,
+  `${tpl41.status} ${seam41} ${cliError41} ${JSON.stringify(cli41.map((event) => event.id))} ${tplAfter41.status} ${tplAfter41.body.slice(0, 160)} ${String(qAfter41.data?.guests?.length)} ${bGuestsBefore41} ${bGuestsAfter41}`,
+);
+
+const brand41 = await staffCall(sessionOwner, `/api/panel/restaurants/${String(restaurantA.id)}/branding`);
+const restaurantName41 = brand41.data?.name ?? "";
+const privacy41 = await request(`/g/${dorotaKey41}/prywatnosc`);
+const privacyEn41 = await request(`/g/${dorotaKey41}/prywatnosc`, { cookie: "kp-lang=en" });
+const qGuestPage41 = await request(`/g/${dorotaKey41}`);
+const privacyUnknown41 = await request(`/g/${"Z".repeat(24)}/prywatnosc`);
+const privacyTv41 = await request(`/g/${keyOfPath(q41.data?.event?.links?.tv)}/prywatnosc`);
+check(
+  "privacy notice: the guest's page links to it; a draft for legal review (PL, EN) naming the restaurant and the 7-day term, never the platform; an unknown key and another role's key → the identical 404",
+  privacy41.status === 200 &&
+    privacy41.body.includes("data-privacy-draft") &&
+    privacy41.body.includes("Wersja robocza — do przeglądu prawnika") &&
+    restaurantName41 !== "" &&
+    privacy41.body.includes(restaurantName41) &&
+    privacy41.body.includes("7 dni po wydarzeniu") &&
+    privacy41.body.includes(`/g/${dorotaKey41}`) &&
+    !privacy41.body.includes("Stolik") &&
+    privacyEn41.status === 200 &&
+    privacyEn41.body.includes("Draft — for legal review") &&
+    !privacyEn41.body.includes("Stolik") &&
+    qGuestPage41.status === 200 &&
+    qGuestPage41.body.includes("data-privacy-link") &&
+    qGuestPage41.body.includes(`/g/${dorotaKey41}/prywatnosc`) &&
+    privacyUnknown41.status === 404 &&
+    privacyUnknown41.body.includes(NO_ACCESS_TEXT) &&
+    privacyTv41.status === 404 &&
+    privacyTv41.body === privacyUnknown41.body,
+  `${privacy41.status} ${privacyEn41.status} ${qGuestPage41.status} ${privacyUnknown41.status} ${privacyTv41.status} ${restaurantName41}`,
+);
+
+const cleanup41 = [];
+for (const path of [eventApi(p41Id), eventApi(q41Id), templateApi(tpl41Id)]) {
+  const res = await staffCall(sessionOwner, path, { method: "DELETE" });
+  if (res.status !== 200) cleanup41.push(`${path}: ${String(res.status)}`);
+}
+const restoreTerm41 = await staffCall(sessionOwner, retentionApiOf(restaurantA.id), {
+  method: "PATCH",
+  json: { guestRetentionDays: 30 },
+});
+check(
+  "retention: the section's events and template are deleted, A's term is back to 30 days",
+  cleanup41.length === 0 && restoreTerm41.status === 200,
+  `${cleanup41.join("; ")} ${restoreTerm41.status}`,
+);
+
+// 41b. Guest erasure (guest-erasure; the PR #4 review's decision 1, GDPR art. 17). A today event of A (panel) with
+// two guests at one table, published, guest links on, the leaving guest drawn as the person on the TV. Deleting that
+// guest through the client's link erases the name at once — no republish: the TV's poll with its old version answers
+// 200 without the name and without the spotlight, the other guest's phone (old version → 200) lists no tablemate and
+// draws the chair empty, the tablet's poll answers 200 without the name, the TV page has no trace of it, the client's
+// board stays up to date (nothing to publish), and the new versions answer 204 again. The event is deleted.
+const STAYS41B = `Zostaje Smoke ${RUN_TAG}`;
+const GOES41B = `Odchodzi Smoke ${RUN_TAG}`;
+const e41b = await staffCall(sessionOwner, eventsApiOf(restaurantA.id), {
+  method: "POST",
+  json: { name: `Usunięcie gościa ${RUN_TAG}`, date: today },
+});
+const e41bId = e41b.data?.event?.id ?? 0;
+const e41bApi = `/api/o/${keyOfPath(e41b.data?.event?.links?.organizer)}`;
+const e41bTv = keyOfPath(e41b.data?.event?.links?.tv);
+const e41bTablet = keyOfPath(e41b.data?.event?.links?.restaurant);
+const guests41b = await request(`${e41bApi}/guests`, { method: "POST", json: { text: `${STAYS41B}\n${GOES41B}` } });
+const staysId41b = guestNamed(guests41b, STAYS41B)?.id ?? 0;
+const goesId41b = guestNamed(guests41b, GOES41B)?.id ?? 0;
+const room41b = await request(`${e41bApi}/rooms`, { method: "POST", json: { name: "Sala usunięcia" } });
+const roomId41b = room41b.data?.rooms?.find((room) => room.name === "Sala usunięcia")?.id ?? 0;
+const table41b = await request(`${e41bApi}/tables`, {
+  method: "POST",
+  json: { roomId: roomId41b, name: "Stół usunięcia", seatCount: 4, shape: "round", x: 0.5, y: 0.5 },
+});
+const tableId41b = table41b.data?.tables?.find((table) => table.name === "Stół usunięcia")?.id ?? 0;
+const draft41b = await request(`${e41bApi}/seating/draft`, {
+  method: "POST",
+  json: {
+    seats: [
+      { guestId: staysId41b, tableId: tableId41b, seat: 1 },
+      { guestId: goesId41b, tableId: tableId41b, seat: 2 },
+    ],
+  },
+});
+const publish41b = await request(`${e41bApi}/seating/publish`, { method: "POST" });
+const links41b = await request(`${e41bApi}/guest-links`, { method: "PATCH", json: { enabled: true } });
+const staysKey41b = links41b.data?.guests?.find((guest) => guest.id === staysId41b)?.key ?? "";
+// Two present guests: the draw never repeats the person on the TV, so the leaving guest comes up within two draws.
+let person41b = null;
+for (let attempt = 0; attempt < 4 && person41b?.data?.spotlight?.text !== GOES41B; attempt++) {
+  person41b = await request(`${e41bApi}/tv-spotlight/person`, { method: "POST" });
+}
+const tvApi41b = `/api/tv/${e41bTv}/seating`;
+const guestApi41b = `/api/g/${staysKey41b}/state`;
+const tabletApi41b = `/api/r/${e41bTablet}/orders`;
+const tvBefore41b = await request(tvApi41b);
+const guestBefore41b = await request(guestApi41b);
+const tabletBefore41b = await request(tabletApi41b);
+check(
+  "erasure: a today event of A, two guests published at one table, guest links on, the leaving guest on the TV as the person and at the other guest's table",
+  e41b.status === 201 &&
+    staysId41b > 0 &&
+    goesId41b > 0 &&
+    tableId41b > 0 &&
+    draft41b.status === 200 &&
+    publish41b.status === 201 &&
+    staysKey41b.length === 24 &&
+    person41b?.status === 200 &&
+    person41b.data?.spotlight?.kind === "person" &&
+    tvBefore41b.status === 200 &&
+    tvBefore41b.data?.spotlight?.text === GOES41B &&
+    tvBefore41b.body.includes(GOES41B) &&
+    guestBefore41b.status === 200 &&
+    guestBefore41b.data?.seat?.tablemates?.some((mate) => mate.name === GOES41B) &&
+    tabletBefore41b.status === 200 &&
+    tabletBefore41b.body.includes(GOES41B),
+  `${e41b.status} ${guests41b.status} ${table41b.status} ${draft41b.status} ${publish41b.status} ${links41b.status} ${person41b?.status} ${tvBefore41b.status} ${guestBefore41b.status} ${tabletBefore41b.status}`,
+);
+
+const since41b = (path, res) => `${path}?since=${encodeURIComponent(res.data?.version ?? "")}`;
+const unchangedTv41b = await request(since41b(tvApi41b, tvBefore41b));
+const unchangedGuest41b = await request(since41b(guestApi41b, guestBefore41b));
+const deleted41b = await request(`${e41bApi}/guests/${String(goesId41b)}`, { method: "DELETE" });
+const tvAfter41b = await request(since41b(tvApi41b, tvBefore41b));
+const guestAfter41b = await request(since41b(guestApi41b, guestBefore41b));
+const tabletAfter41b = await request(since41b(tabletApi41b, tabletBefore41b));
+const tvPage41b = await request(`/tv/${e41bTv}`);
+const board41b = await request(`${e41bApi}/seating`);
+const tvAgain41b = await request(since41b(tvApi41b, tvAfter41b));
+const guestAgain41b = await request(since41b(guestApi41b, guestAfter41b));
+const tabletAgain41b = await request(since41b(tabletApi41b, tabletAfter41b));
+const drawingNames41b = (guestAfter41b.data?.drawing?.tables ?? []).flatMap((table) =>
+  (table.seats ?? []).map((seat) => seat.name),
+);
+check(
+  "erasure: deleting the guest erases the name at once — the TV's and the phone's old versions answer 200 without it (no spotlight, no tablemate, an empty chair), the tablet's too, the TV page has none, the board stays up to date; the new versions answer 204",
+  unchangedTv41b.status === 204 &&
+    unchangedGuest41b.status === 204 &&
+    deleted41b.status === 200 &&
+    tvAfter41b.status === 200 &&
+    tvAfter41b.data?.version !== tvBefore41b.data?.version &&
+    tvAfter41b.data?.spotlight === null &&
+    !tvAfter41b.body.includes(GOES41B) &&
+    tvAfter41b.body.includes(STAYS41B) &&
+    guestAfter41b.status === 200 &&
+    !guestAfter41b.body.includes(GOES41B) &&
+    Array.isArray(guestAfter41b.data?.seat?.tablemates) &&
+    guestAfter41b.data.seat.tablemates.length === 0 &&
+    drawingNames41b.length === 1 &&
+    drawingNames41b[0] === STAYS41B &&
+    tabletAfter41b.status === 200 &&
+    !tabletAfter41b.body.includes(GOES41B) &&
+    tabletAfter41b.body.includes(STAYS41B) &&
+    tvPage41b.status === 200 &&
+    !tvPage41b.body.includes(GOES41B) &&
+    tvPage41b.body.includes(STAYS41B) &&
+    board41b.status === 200 &&
+    board41b.data?.upToDate === true &&
+    tvAgain41b.status === 204 &&
+    guestAgain41b.status === 204 &&
+    tabletAgain41b.status === 204,
+  `${unchangedTv41b.status} ${unchangedGuest41b.status} ${deleted41b.status} ${tvAfter41b.status} ${guestAfter41b.status} ${tabletAfter41b.status} ${tvPage41b.status} ${String(board41b.data?.upToDate)} ${tvAgain41b.status} ${guestAgain41b.status} ${tabletAgain41b.status}`,
+);
+const eventDeleted41b = await staffCall(sessionOwner, eventApi(e41bId), { method: "DELETE" });
+check("erasure: the section's event is deleted", eventDeleted41b.status === 200, String(eventDeleted41b.status));
+
+// 42. The staff's offline readout (staff-offline-readout, S-27; FR-047, US-08, NFR-017). The kitchen tablet, the staff
+// floor and the per-event waiter's floor keep the last state they read on the DEVICE (localStorage; a browser-only
+// feature, checked by unit tests), so the server's part is three readout pages behind the same guards as their live
+// pages, with no saved data in their HTML (the copy comes from the browser), and the signals the browser relies on: the
+// app's denial carries the guard's X-Robots-Tag, the staff areas redirect without a session, the worker script is
+// served. A today event of A (panel) with two guests at one table, published, a line of 2 served in part and a
+// per-event waiter; a second today event of A with its own waiter. Both events deleted.
+const tomorrow42 = shiftDate(today, 1);
+const makeEvent42 = (name, date = today) =>
+  staffCall(sessionOwner, eventsApiOf(restaurantA.id), { method: "POST", json: { name: `${name} ${RUN_TAG}`, date } });
+const e42 = await makeEvent42("Odczyt obsługi");
+const other42 = await makeEvent42("Odczyt obsługi 2");
+const later42 = await makeEvent42("Odczyt obsługi jutro", tomorrow42);
+const e42Id = e42.data?.event?.id ?? 0;
+const other42Id = other42.data?.event?.id ?? 0;
+const later42Id = later42.data?.event?.id ?? 0;
+const e42Api = `/api/o/${keyOfPath(e42.data?.event?.links?.organizer)}`;
+const tablet42 = keyOfPath(e42.data?.event?.links?.restaurant);
+const tv42 = keyOfPath(e42.data?.event?.links?.tv);
+const tabletReadout42 = (key) => `/r/${key}/odczyt`;
+const floorReadout42 = (id) => `${floorPageOf(id)}/odczyt`;
+const waiterReadout42 = (id) => `${waiterFloorPageOf(id)}/odczyt`;
+const tabletBefore42 = await request(tabletReadout42(tablet42));
+const HANKA42 = `Hanka Odczytowa ${RUN_TAG}`;
+const IGOR42 = `Igor Odczytowy ${RUN_TAG}`;
+const guests42 = await request(`${e42Api}/guests`, { method: "POST", json: { text: `${HANKA42}\n${IGOR42}` } });
+const room42 = await request(`${e42Api}/rooms`, { method: "POST", json: { name: "Sala odczytu" } });
+const table42 = await request(`${e42Api}/tables`, {
+  method: "POST",
+  json: {
+    roomId: room42.data?.rooms?.find((room) => room.name === "Sala odczytu")?.id ?? 0,
+    name: "Stół odczytu",
+    seatCount: 4,
+    shape: "round",
+    x: 0.5,
+    y: 0.5,
+  },
+});
+const tableId42 = table42.data?.tables?.find((table) => table.name === "Stół odczytu")?.id ?? 0;
+const ids42 = (guests42.data?.guests ?? []).map((guest) => guest.id);
+const draft42 = await request(`${e42Api}/seating/draft`, {
+  method: "POST",
+  json: { seats: ids42.map((guestId, index) => ({ guestId, tableId: tableId42, seat: index + 1 })) },
+});
+const publish42 = await request(`${e42Api}/seating/publish`, { method: "POST" });
+const board42 = await request(`${e42Api}/orders`);
+const dish42 = board42.data?.menu?.active ? (board42.data.menu.items[0]?.name ?? "") : `Barszcz odczytu ${RUN_TAG}`;
+const line42 = await request(`${e42Api}/orders`, {
+  method: "POST",
+  json: { name: dish42, quantity: 2, assignment: { guestId: ids42[0] ?? 0 } },
+});
+const lineId42 = line42.data?.items?.find((item) => item.name === dish42)?.id ?? 0;
+const piece42 = await request(`${e42Api}/orders/${String(lineId42)}/pieces`, {
+  method: "PUT",
+  json: { piece: 1, delivered: true },
+});
+const waiter42 = await addWaiter(sessionOwner, e42Id, `Kelner odczytu ${RUN_TAG}`);
+const waiterCookie42 = waiterCookieOf(await enterFloor({ link: linkTokenOf(waiter42.data?.issued ?? null) }));
+const otherWaiter42 = await addWaiter(sessionOwner, other42Id, `Kelner odczytu 2 ${RUN_TAG}`);
+const otherCookie42 = waiterCookieOf(await enterFloor({ link: linkTokenOf(otherWaiter42.data?.issued ?? null) }));
+check(
+  "staff readout: today events of A (one with two guests at one table, published, a line of 2 served in part, a per-event waiter; one with its own waiter) and a tomorrow one",
+  e42.status === 201 &&
+    other42.status === 201 &&
+    later42.status === 201 &&
+    ids42.length === 2 &&
+    tableId42 > 0 &&
+    draft42.status === 200 &&
+    publish42.status === 201 &&
+    line42.status === 201 &&
+    piece42.status === 200 &&
+    waiterCookie42 !== "" &&
+    otherCookie42 !== "",
+  `${e42.status} ${other42.status} ${later42.status} ${guests42.status} ${table42.status} ${draft42.status} ${publish42.status} ${line42.status} ${piece42.status} ${waiter42.status} ${otherWaiter42.status}`,
+);
+
+const secrets42 = [HANKA42, IGOR42, dish42, keyOfPath(e42.data?.event?.links?.organizer), tv42];
+const dataFree42 = (res) => !secrets42.some((value) => value !== "" && res.body.includes(value));
+const tablet42Page = await request(tabletReadout42(tablet42));
+const tabletPl42 = await request(tabletReadout42(tablet42), { cookie: "kp-lang-r=pl" });
+const expiry42 = new RegExp(`expiresAt&quot;:\\[0,&quot;${tomorrow42}T1[01]:00:00\\.000Z&quot;`);
+const tabletLive42 = await request(`/r/${tablet42}`);
+const unknown42 = await request(tabletReadout42("Q".repeat(24)));
+const tvKey42 = await request(tabletReadout42(tv42));
+check(
+  "staff readout: /r/<key>/odczyt is the tablet's readout (200, English by default, Polish with its cookie, the scope's expiry at noon after the event, no-store and X-Robots-Tag) — before the first publish too — with no guest, dish or other key in its HTML; the tablet page links it; a TV key and an unknown key → the identical 404",
+  tabletBefore42.status === 200 &&
+    tablet42Page.status === 200 &&
+    tablet42Page.body.includes('data-staff-readout="tablet"') &&
+    tablet42Page.body.includes('lang="en"') &&
+    tablet42Page.body.includes("Offline readout") &&
+    expiry42.test(tablet42Page.body) &&
+    tablet42Page.cacheControl.includes("no-store") &&
+    tablet42Page.robots.includes("noindex") &&
+    dataFree42(tablet42Page) &&
+    dataFree42(tabletBefore42) &&
+    tabletPl42.status === 200 &&
+    tabletPl42.body.includes("Odczyt bez sieci") &&
+    tabletLive42.status === 200 &&
+    tabletLive42.body.includes("data-staff-readout-link") &&
+    tabletLive42.body.includes(tabletReadout42(tablet42)) &&
+    tabletLive42.body.includes(HANKA42) &&
+    // The tablet's area defaults to English, so its no-access page is compared with an unknown key's.
+    unknown42.status === 404 &&
+    unknown42.robots.includes("noindex") &&
+    !unknown42.body.includes("data-staff-readout") &&
+    tvKey42.status === 404 &&
+    tvKey42.body === unknown42.body,
+  `${tabletBefore42.status} ${tablet42Page.status} ${tablet42Page.robots} ${tabletPl42.status} ${tabletLive42.status} ${unknown42.status} ${tvKey42.status}`,
+);
+
+const floor42 = await staffCall(sessionWaiter, floorReadout42(e42Id));
+const floorLive42 = await staffCall(sessionWaiter, floorPageOf(e42Id));
+const floorDenied42 = [];
+for (const [name, token, path] of [
+  ["owner B", sessionB, floorReadout42(e42Id)],
+  ["the admin", sessionAdmin, floorReadout42(e42Id)],
+  ["a malformed id", sessionWaiter, "/panel/obsluga/abc/odczyt"],
+  ["an unknown id", sessionWaiter, floorReadout42(2147483000)],
+  ["tomorrow's event", sessionWaiter, floorReadout42(later42Id)],
+  ["event B", sessionWaiter, floorReadout42(eventB.id)],
+]) {
+  const res = await staffCall(token, path);
+  if (!isNoAccessPage(res)) floorDenied42.push(`${name}: ${String(res.status)}`);
+}
+const floorNoSession42 = await request(floorReadout42(e42Id));
+const floorApiNoSession42 = await request(`${floorApiOf(e42Id)}/orders`);
+const floorApiB42 = await staffCall(sessionB, `${floorApiOf(e42Id)}/orders`);
+check(
+  "staff readout: /panel/obsluga/<id>/odczyt opens for A's waiter (200, data-free, no-store) exactly like the floor, which links it; owner B, the admin, malformed / unknown ids, tomorrow's event and event B → the no-access page; no session → 303 /logowanie; the floor API without a session 401 and owner B's 404 carry X-Robots-Tag",
+  floor42.status === 200 &&
+    floor42.body.includes('data-staff-readout="floor"') &&
+    floor42.body.includes("Odczyt bez sieci") &&
+    floor42.cacheControl.includes("no-store") &&
+    dataFree42(floor42) &&
+    floorLive42.status === 200 &&
+    floorLive42.body.includes("data-staff-readout-link") &&
+    floorLive42.body.includes(floorReadout42(e42Id)) &&
+    floorDenied42.length === 0 &&
+    floorNoSession42.status === 303 &&
+    floorNoSession42.location.endsWith("/logowanie") &&
+    floorApiNoSession42.status === 401 &&
+    floorApiNoSession42.robots.includes("noindex") &&
+    noAccessJson(floorApiB42) &&
+    floorApiB42.robots.includes("noindex"),
+  `${floor42.status} ${floorLive42.status} ${floorDenied42.join("; ")} ${floorNoSession42.status} ${floorNoSession42.location} ${floorApiNoSession42.status} ${floorApiNoSession42.robots} ${floorApiB42.status} ${floorApiB42.robots}`,
+);
+
+const waiterPage42 = await waiterCall(waiterCookie42, waiterReadout42(e42Id));
+const waiterLive42 = await waiterCall(waiterCookie42, waiterFloorPageOf(e42Id));
+const waiterOther42 = await waiterCall(otherCookie42, waiterReadout42(e42Id));
+const waiterNoCookie42 = await request(waiterReadout42(e42Id));
+const waiterStaff42 = await staffCall(sessionWaiter, waiterReadout42(e42Id));
+const waiterApiNoCookie42 = await request(`${waiterFloorApiOf(e42Id)}/orders`);
+const waiterApiOther42 = await waiterCall(otherCookie42, `${waiterFloorApiOf(e42Id)}/orders`);
+check(
+  "staff readout: /kelner/sala/<id>/odczyt opens for its waiter (200, data-free), whose floor links it; another event's waiter → the no-access page; no waiter cookie and a staff session → 303 /kelner; the waiter API without a cookie 401 and another event's waiter 404 carry X-Robots-Tag",
+  waiterPage42.status === 200 &&
+    waiterPage42.body.includes('data-staff-readout="waiter"') &&
+    dataFree42(waiterPage42) &&
+    waiterLive42.status === 200 &&
+    waiterLive42.body.includes("data-staff-readout-link") &&
+    waiterLive42.body.includes(waiterReadout42(e42Id)) &&
+    isNoAccessPage(waiterOther42) &&
+    waiterNoCookie42.status === 303 &&
+    waiterNoCookie42.location.endsWith("/kelner") &&
+    waiterStaff42.status === 303 &&
+    waiterStaff42.location.endsWith("/kelner") &&
+    waiterApiNoCookie42.status === 401 &&
+    waiterApiNoCookie42.robots.includes("noindex") &&
+    noAccessJson(waiterApiOther42) &&
+    waiterApiOther42.robots.includes("noindex"),
+  `${waiterPage42.status} ${waiterLive42.status} ${waiterOther42.status} ${waiterNoCookie42.status} ${waiterNoCookie42.location} ${waiterStaff42.status} ${waiterApiNoCookie42.status} ${waiterApiNoCookie42.robots} ${waiterApiOther42.status} ${waiterApiOther42.robots}`,
+);
+
+const rotated42 = await staffCall(sessionOwner, `${eventApi(e42Id)}/links/restaurant`, { method: "POST" });
+const newTablet42 = keyOfPath(rotated42.data?.event?.links?.restaurant);
+const oldReadout42 = await request(tabletReadout42(tablet42));
+const oldApi42 = await request(`/api/r/${tablet42}/orders`);
+const unknownApi42 = await request(`/api/r/${"Q".repeat(24)}/orders`);
+const newReadout42 = await request(tabletReadout42(newTablet42));
+check(
+  "staff readout: after „Wymień link” the old tablet key's readout page and API answer the identical 404 with X-Robots-Tag (the browser drops its copy and worker on exactly that); the new key's readout opens",
+  rotated42.status === 200 &&
+    newTablet42.length === 24 &&
+    newTablet42 !== tablet42 &&
+    oldReadout42.status === 404 &&
+    oldReadout42.body === unknown42.body &&
+    oldReadout42.robots.includes("noindex") &&
+    oldApi42.status === 404 &&
+    oldApi42.body === unknownApi42.body &&
+    oldApi42.robots.includes("noindex") &&
+    newReadout42.status === 200,
+  `${rotated42.status} ${oldReadout42.status} ${oldReadout42.robots} ${oldApi42.status} ${oldApi42.robots} ${newReadout42.status}`,
+);
+
+// The PR #4 review's decision: the tablet keeps a copy only inside the event's floor window (its day in Warsaw until
+// noon the next one). Tomorrow's event's tablet link works today but offers no readout link, and its scope starts at
+// tomorrow's Warsaw midnight (today 22:00 or 23:00 UTC; the browser saves nothing before it — unit tests).
+const laterTablet42 = keyOfPath(later42.data?.event?.links?.restaurant);
+const laterLive42 = await request(`/r/${laterTablet42}`);
+const laterReadout42 = await request(tabletReadout42(laterTablet42));
+const startsTomorrow42 = new RegExp(`startsAt&quot;:\\[0,&quot;${today}T2[23]:00:00\\.000Z&quot;`);
+check(
+  "staff readout: tomorrow's event's tablet page works today without the readout link (no copy before its day); its readout scope starts at tomorrow's midnight in Warsaw; today's tablet page links its readout",
+  laterTablet42.length === 24 &&
+    laterLive42.status === 200 &&
+    !laterLive42.body.includes("data-staff-readout-link") &&
+    startsTomorrow42.test(laterLive42.body) &&
+    laterReadout42.status === 200 &&
+    startsTomorrow42.test(laterReadout42.body) &&
+    tabletLive42.body.includes("data-staff-readout-link"),
+  `${laterLive42.status} ${laterReadout42.status} ${laterLive42.body.includes("data-staff-readout-link")}`,
+);
+
+const login42 = await request("/logowanie");
+const kelnerNoCookie42 = await request("/kelner");
+const kelnerWithCookie42 = await waiterCall(waiterCookie42, "/kelner");
+const worker42 = await request("/organizer-sw.js");
+check(
+  "staff readout: /logowanie and /kelner without a waiter session clear the area's copies (data-clear-staff-readout), /kelner with one does not; the readout worker script is served as JavaScript and fetches the copy with redirect: manual",
+  login42.status === 200 &&
+    login42.body.includes('data-clear-staff-readout="floor"') &&
+    kelnerNoCookie42.status === 200 &&
+    kelnerNoCookie42.body.includes('data-clear-staff-readout="waiter"') &&
+    kelnerWithCookie42.status === 200 &&
+    !kelnerWithCookie42.body.includes("data-clear-staff-readout") &&
+    worker42.status === 200 &&
+    /javascript/.test(worker42.contentType) &&
+    worker42.body.includes('redirect: "manual"') &&
+    worker42.body.includes("/kelner/sala/"),
+  `${login42.status} ${kelnerNoCookie42.status} ${kelnerWithCookie42.status} ${worker42.status} ${worker42.contentType}`,
+);
+
+const deleted42 = [];
+for (const id of [e42Id, other42Id, later42Id]) {
+  deleted42.push((await staffCall(sessionOwner, eventApi(id), { method: "DELETE" })).status);
+}
+check(
+  "staff readout: the section's events are deleted",
+  deleted42.every((status) => status === 200),
+  deleted42.join(" "),
+);
+
+// 43. Pub quiz (pub-quiz, S-28; FR-049, NFR-023). A new event of A (panel) has the paid quiz offered, off and locked:
+// its organizer API (link and dispatcher) → 409 module-off, the guest's answer route the identical 404 of a wrong key,
+// the client's switch → 409 module-locked, the TV token keeps its 3 parts. The admin unlocks it inside a support visit
+// (the owner's log names it), the client switches it on and prepares three questions (invalid ones → 400). A run:
+// start (the intro on the TV and the phones; the TV token gains its 4th part while the quiz runs), a question (two
+// guests answer, one changes; the TV counts answers without names, the correct option or per-option counts, its HTML
+// carries no correct option; each phone sees only its own answer; the asked question is locked), close (a late answer
+// 409 quiz-closed; the TV reveals the correct option and the counts), event B's guest naming A's open question → the
+// identical 409, A's key on B's question → the identical 404 of an unknown id, a second question, the results (places,
+// names and points on the TV; the own place on each phone; a guest who did not play has none). The lead rule, the
+// module off (409 / 404 / no quiz on the TV and the phones) and on again (the run is back), „Reset prób” `quiz`
+// (answers gone, questions editable again), the panel's preview; the event is deleted.
+const e43 = await staffCall(sessionOwner, eventsApiOf(restaurantA.id), {
+  method: "POST",
+  json: { name: `Pub quiz smoke ${RUN_TAG}`, date: futureDate },
+});
+const e43Id = e43.data?.event?.id ?? 0;
+const e43Key = keyOfPath(e43.data?.event?.links?.organizer);
+const e43Tv = keyOfPath(e43.data?.event?.links?.tv);
+const e43Api = `/api/o/${e43Key}`;
+const quizApi43 = `${e43Api}/quiz`;
+const tvApi43 = `/api/tv/${e43Tv}/seating`;
+const klientRun43 = `${eventApi(e43Id)}/klient/quiz/run`;
+const partsOf43 = (res) => (typeof res.data?.version === "string" ? res.data.version.split(".").length : 0);
+const enable43 = (enabled) => request(`${e43Api}/modules`, { method: "PUT", json: { module: "pubQuiz", enabled } });
+const run43 = (json) => request(`${quizApi43}/run`, { method: "POST", json });
+const answer43 = (key, questionId, option) =>
+  request(`/api/g/${key}/quiz`, { method: "PUT", json: { questionId, option } });
+const stateOf43 = (key) => request(`/api/g/${key}/state`);
+// Astro's island props in the HTML: a correct option the page knows shows as `"correct":[0,<n>]`.
+const CORRECT_IN_HTML = /&quot;correct&quot;:\[0,\d/;
+
+await request(`${e43Api}/guests`, { method: "POST", json: { text: "Kasia Quiz\nBartek Quiz\nCelina Quiz" } });
+await request(`${e43Api}/guest-links`, { method: "PATCH", json: { enabled: true } });
+const links43 = await request(`${e43Api}/guest-links`);
+const keyOf43 = (name) => links43.data?.guests?.find((guest) => guest.displayName === name)?.key ?? "";
+const kasia43 = keyOf43("Kasia Quiz");
+const bartek43 = keyOf43("Bartek Quiz");
+const celina43 = keyOf43("Celina Quiz");
+
+const modules43 = await request(`${e43Api}/modules`);
+const quizEntry43 = modules43.data?.modules?.find((m) => m.key === "pubQuiz");
+const boardOff43 = await request(quizApi43);
+const staffOff43 = await staffCall(sessionOwner, `${eventApi(e43Id)}/klient/quiz`);
+const wrongKey43 = await request(`/api/g/${"A".repeat(24)}/quiz`, {
+  method: "PUT",
+  json: { questionId: 1, option: 0 },
+});
+const guestOff43 = await answer43(kasia43, 1, 0);
+const stateOff43 = await stateOf43(kasia43);
+const locked43 = await enable43(true);
+const tvOff43 = await request(tvApi43);
+const pageOff43 = await request(`/o/${e43Key}/quiz`);
+const shellOff43 = await request(`/o/${e43Key}`);
+const cardOff43 = await staffCall(sessionOwner, eventPage(e43Id));
+check(
+  "pub quiz: a new event has the paid quiz offered, off and locked — its organizer API (link and dispatcher) 409 module-off, the guest's answer route the identical 404 of a wrong key, the client's switch 409 module-locked; no quiz on the phone or the TV (3-part token), the page says it is off, no quiz card on the shell or the panel's event card",
+  e43.status === 201 &&
+    [kasia43, bartek43, celina43].every((key) => key.length === 24) &&
+    quizEntry43?.available === true &&
+    quizEntry43.enabled === false &&
+    quizEntry43.paid === true &&
+    quizEntry43.unlocked === false &&
+    quizEntry43.active === false &&
+    isModuleOff(boardOff43, "pubQuiz") &&
+    isModuleOff(staffOff43, "pubQuiz") &&
+    noAccessJson(wrongKey43) &&
+    guestOff43.status === 404 &&
+    guestOff43.body === wrongKey43.body &&
+    stateOff43.status === 200 &&
+    stateOff43.data?.quiz === null &&
+    stateOff43.data.modules?.pubQuiz === false &&
+    locked43.status === 409 &&
+    locked43.data?.code === "module-locked" &&
+    tvOff43.status === 200 &&
+    tvOff43.data?.quiz === null &&
+    partsOf43(tvOff43) === 3 &&
+    pageOff43.status === 200 &&
+    pageOff43.body.includes('data-module-off="pubQuiz"') &&
+    !pageOff43.body.includes("data-quiz-manager") &&
+    shellOff43.status === 200 &&
+    !shellOff43.body.includes("data-quiz-card") &&
+    cardOff43.status === 200 &&
+    !cardOff43.body.includes(`/panel/wydarzenia/${String(e43Id)}/quiz`),
+  `${e43.status} ${JSON.stringify(quizEntry43)} ${boardOff43.status} ${staffOff43.status} ${guestOff43.status} ${stateOff43.status} ${locked43.status} ${locked43.body} ${tvOff43.status} ${String(tvOff43.data?.version)} ${pageOff43.status} ${cardOff43.status}`,
+);
+
+const enter43 = await enterSupport(sessionAdmin, restaurantA.id);
+const unlocked43 = await staffCall(sessionAdmin, unlockApi(e43Id, "pubQuiz"), {
+  method: "PUT",
+  json: { unlocked: true },
+});
+const exit43 = await endSupportOf(sessionAdmin, restaurantA.id);
+const unlockEntry43 = logOf(await readLogA()).find((entry) => entry.kind === "unlock" && entry.event?.id === e43Id);
+const on43 = await enable43(true);
+const tvOn43 = await request(tvApi43);
+const stateOn43 = await stateOf43(kasia43);
+const pagePl43 = await request(`/o/${e43Key}/quiz`);
+const pageEn43 = await request(`/o/${e43Key}/quiz`, { cookie: "kp-lang=en" });
+const shellOn43 = await request(`/o/${e43Key}`);
+const cardOn43 = await staffCall(sessionOwner, eventPage(e43Id));
+check(
+  "pub quiz: the admin unlocks it inside a support visit (the owner's log names it), the client switches it on; the page runs the quiz (PL / EN), the shell and the panel's event card link it; no quiz on the TV (its token keeps 3 parts while no quiz runs) or the phone yet",
+  enter43.status === 201 &&
+    unlocked43.status === 200 &&
+    unlocked43.data?.modules?.find((m) => m.key === "pubQuiz")?.unlocked === true &&
+    exit43.status === 200 &&
+    unlockEntry43?.module === "pubQuiz" &&
+    on43.status === 200 &&
+    activeOf(on43).pubQuiz === true &&
+    tvOn43.status === 200 &&
+    tvOn43.data?.quiz === null &&
+    partsOf43(tvOn43) === 3 &&
+    stateOn43.status === 200 &&
+    stateOn43.data?.quiz === null &&
+    stateOn43.data.modules?.pubQuiz === true &&
+    stateOn43.data.version !== stateOff43.data?.version &&
+    pagePl43.status === 200 &&
+    pagePl43.body.includes("data-quiz-manager") &&
+    pagePl43.body.includes("Prowadzenie quizu") &&
+    pageEn43.status === 200 &&
+    pageEn43.body.includes("data-quiz-manager") &&
+    pageEn43.body.includes("Running the quiz") &&
+    shellOn43.status === 200 &&
+    shellOn43.body.includes("data-quiz-card") &&
+    cardOn43.status === 200 &&
+    cardOn43.body.includes(`/panel/wydarzenia/${String(e43Id)}/quiz`),
+  `${enter43.status} ${unlocked43.status} ${exit43.status} ${JSON.stringify(unlockEntry43)} ${on43.status} ${tvOn43.status} ${String(tvOn43.data?.version)} ${stateOn43.status} ${pagePl43.status} ${pageEn43.status} ${shellOn43.status} ${cardOn43.status}`,
+);
+
+const invalid43 = [];
+for (const [label, json] of [
+  ["one option", { text: "Pytanie?", options: ["Tak"], correct: 0 }],
+  ["five options", { text: "Pytanie?", options: ["A1", "B1", "C1", "D1", "E1"], correct: 0 }],
+  ["duplicate options", { text: "Pytanie?", options: ["Tak", " TAK "], correct: 0 }],
+  ["the correct option out of range", { text: "Pytanie?", options: ["Tak", "Nie"], correct: 2 }],
+  ["a gap between options", { text: "Pytanie?", options: ["Tak", "", "Nie"], correct: 0 }],
+  ["an empty text", { text: "   ", options: ["Tak", "Nie"], correct: 0 }],
+  ["an extra field", { text: "Pytanie?", options: ["Tak", "Nie"], correct: 0, guestId: 1 }],
+]) {
+  const res = await request(`${quizApi43}/questions`, { method: "POST", json });
+  if (res.status !== 400 || typeof res.data?.error !== "string") invalid43.push(`${label}: ${String(res.status)}`);
+}
+const QUIZ43 = [
+  { text: "Stolica Polski?", options: ["Kraków", "Warszawa", "Gdańsk"], correct: 1 },
+  { text: "Ile nóg ma pająk?", options: ["6", "8"], correct: 1 },
+  { text: "Kolor nieba w pogodny dzień?", options: ["Niebieski", "Zielony", "Czerwony", "Żółty"], correct: 0 },
+];
+const added43 = [];
+for (const json of QUIZ43) added43.push(await request(`${quizApi43}/questions`, { method: "POST", json }));
+const board43 = added43[2]?.data;
+const [q1Id43, q2Id43, q3Id43] = (board43?.questions ?? []).map((question) => question.id);
+check(
+  "pub quiz: invalid questions → 400 with a message (one or five options, duplicates in any letter case, the correct option out of range, a gap, an empty text, an extra field); three questions prepared (201, numbered in order, nothing asked)",
+  invalid43.length === 0 &&
+    added43.every((res) => res.status === 201) &&
+    board43?.questions?.length === 3 &&
+    board43.questions.map((question) => question.number).join(",") === "1,2,3" &&
+    board43.questions.every((question) => question.askedAt === null && question.answers === 0) &&
+    board43.run === null &&
+    board43.guestCount === 3,
+  `${invalid43.join("; ")} ${added43.map((res) => res.status).join(",")} ${added43[2]?.body.slice(0, 200)}`,
+);
+
+const start43 = await run43({ action: "start" });
+const tvIntro43 = await request(`${tvApi43}?since=${encodeURIComponent(tvOn43.data?.version ?? "")}`);
+const kasiaIntro43 = await stateOf43(kasia43);
+const early43 = await answer43(kasia43, q1Id43, 1);
+check(
+  "pub quiz: start → the intro on the TV (new 4-part token) and the phones; an answer before any question → 409 quiz-closed",
+  start43.status === 200 &&
+    start43.data?.run?.phase === "intro" &&
+    tvIntro43.status === 200 &&
+    tvIntro43.data?.quiz?.phase === "intro" &&
+    tvIntro43.data.quiz.total === 3 &&
+    tvIntro43.data.quiz.question === null &&
+    tvIntro43.data.quiz.results === null &&
+    partsOf43(tvIntro43) === 4 &&
+    tvIntro43.data.version !== tvOn43.data?.version &&
+    kasiaIntro43.data?.quiz?.phase === "intro" &&
+    kasiaIntro43.data.quiz.total === 3 &&
+    kasiaIntro43.data.quiz.question === null &&
+    early43.status === 409 &&
+    early43.data?.code === "quiz-closed",
+  `${start43.status} ${tvIntro43.status} ${JSON.stringify(tvIntro43.data?.quiz)} ${JSON.stringify(kasiaIntro43.data?.quiz)} ${early43.status} ${early43.body}`,
+);
+
+const bGuestState43 = await request(guestStateApi(bGuestKey));
+const ask43 = await run43({ action: "ask", questionId: q1Id43 });
+const kasiaAnswer43 = await answer43(kasia43, q1Id43, 1);
+const bartekFirst43 = await answer43(bartek43, q1Id43, 1);
+const bartekChange43 = await answer43(bartek43, q1Id43, 0);
+const outOfRange43 = await answer43(kasia43, q1Id43, 3);
+const bOnA43 = await answer43(bGuestKey, q1Id43, 0);
+const tvQuestion43 = await request(tvApi43);
+const tvPageQuestion43 = await request(`/tv/${e43Tv}`);
+const kasiaQuestion43 = await stateOf43(kasia43);
+const kasiaPage43 = await request(`/g/${kasia43}`);
+const boardQuestion43 = await request(quizApi43);
+const tvQuiz43 = tvQuestion43.data?.quiz;
+check(
+  "pub quiz: a question → two guests answer, one changes (each answer 200 with the phone's own state); the TV shows the question with `answered: 2` and no names, ids, correct option or counts, nor does its HTML; a phone sees only its own answer (no correct option, in its HTML neither); the client's board counts per option; an option the question lacks → 400",
+  ask43.status === 200 &&
+    ask43.data?.run?.phase === "question" &&
+    ask43.data.run.questionId === q1Id43 &&
+    kasiaAnswer43.status === 200 &&
+    kasiaAnswer43.data?.quiz?.answer === 1 &&
+    bartekFirst43.status === 200 &&
+    bartekChange43.status === 200 &&
+    bartekChange43.data?.quiz?.answer === 0 &&
+    outOfRange43.status === 400 &&
+    tvQuestion43.status === 200 &&
+    tvQuiz43?.phase === "question" &&
+    tvQuiz43.question?.number === 1 &&
+    tvQuiz43.question.text === "Stolica Polski?" &&
+    tvQuiz43.question.options.join("|") === "Kraków|Warszawa|Gdańsk" &&
+    tvQuiz43.question.answered === 2 &&
+    tvQuiz43.question.correct === null &&
+    tvQuiz43.question.counts === null &&
+    tvQuiz43.results === null &&
+    !/"(id|questionId|guestId)"/.test(JSON.stringify(tvQuiz43)) &&
+    !tvQuestion43.body.includes("Kasia") &&
+    !tvQuestion43.body.includes("Bartek") &&
+    tvPageQuestion43.status === 200 &&
+    tvPageQuestion43.body.includes("Stolica Polski?") &&
+    !CORRECT_IN_HTML.test(tvPageQuestion43.body) &&
+    kasiaQuestion43.data?.quiz?.phase === "question" &&
+    kasiaQuestion43.data.quiz.question?.id === q1Id43 &&
+    kasiaQuestion43.data.quiz.question.correct === null &&
+    kasiaQuestion43.data.quiz.answer === 1 &&
+    kasiaQuestion43.data.version.length <= 64 &&
+    !kasiaQuestion43.body.includes("Bartek") &&
+    kasiaPage43.status === 200 &&
+    kasiaPage43.body.includes('data-guest-quiz="question"') &&
+    !CORRECT_IN_HTML.test(kasiaPage43.body) &&
+    !kasiaPage43.body.includes("Bartek") &&
+    JSON.stringify(boardQuestion43.data?.questions?.[0]?.counts) === "[1,1,0]",
+  `${ask43.status} ${kasiaAnswer43.status} ${bartekFirst43.status} ${bartekChange43.status} ${outOfRange43.status} ${JSON.stringify(tvQuiz43)} ${tvPageQuestion43.status} ${JSON.stringify(kasiaQuestion43.data?.quiz)} ${kasiaPage43.status}`,
+);
+
+const editAsked43 = await request(`${quizApi43}/questions/${String(q1Id43)}`, {
+  method: "PATCH",
+  json: { text: "Zmiana?" },
+});
+const deleteOnTv43 = await request(`${quizApi43}/questions/${String(q1Id43)}`, { method: "DELETE" });
+const askWhileOpen43 = await run43({ action: "ask", questionId: q2Id43 });
+const resultsWhileOpen43 = await run43({ action: "results" });
+check(
+  "pub quiz: the asked question is locked (edit 409 quiz-question-locked, delete 409 quiz-question-on-tv) and nothing else goes on the TV while it is open (409 quiz-question-open); event B's guest naming A's open question → the identical 409 of a closed one",
+  editAsked43.status === 409 &&
+    editAsked43.data?.code === "quiz-question-locked" &&
+    deleteOnTv43.status === 409 &&
+    deleteOnTv43.data?.code === "quiz-question-on-tv" &&
+    askWhileOpen43.status === 409 &&
+    askWhileOpen43.data?.code === "quiz-question-open" &&
+    resultsWhileOpen43.status === 409 &&
+    resultsWhileOpen43.data?.code === "quiz-question-open" &&
+    bGuestState43.status === 200 &&
+    bOnA43.status === 409 &&
+    bOnA43.body === early43.body,
+  `${editAsked43.status} ${editAsked43.body} ${deleteOnTv43.status} ${askWhileOpen43.status} ${resultsWhileOpen43.status} ${bGuestState43.status} ${bOnA43.status} ${bOnA43.body}`,
+);
+
+const close43 = await run43({ action: "close" });
+const late43 = await answer43(celina43, q1Id43, 1);
+const tvReveal43 = await request(tvApi43);
+const tvPageReveal43 = await request(`/tv/${e43Tv}`);
+const kasiaReveal43 = await stateOf43(kasia43);
+const bartekReveal43 = await stateOf43(bartek43);
+const closeAgain43 = await run43({ action: "close" });
+const askAgain43 = await run43({ action: "ask", questionId: q1Id43 });
+check(
+  "pub quiz: close → a late answer 409 quiz-closed (the same body); the TV reveals the correct option with the counts (its HTML too); each phone gets the correct option, its own verdict and points; closing again 409 quiz-no-open-question, asking the closed question again 409 quiz-question-asked",
+  close43.status === 200 &&
+    close43.data?.run?.phase === "reveal" &&
+    late43.status === 409 &&
+    late43.body === early43.body &&
+    tvReveal43.data?.quiz?.phase === "reveal" &&
+    tvReveal43.data.quiz.question?.correct === 1 &&
+    JSON.stringify(tvReveal43.data.quiz.question.counts) === "[1,1,0]" &&
+    tvReveal43.data.quiz.question.answered === 2 &&
+    tvReveal43.data.quiz.closed === 1 &&
+    !tvReveal43.body.includes("Kasia") &&
+    CORRECT_IN_HTML.test(tvPageReveal43.body) &&
+    kasiaReveal43.data?.quiz?.phase === "reveal" &&
+    kasiaReveal43.data.quiz.question?.correct === 1 &&
+    kasiaReveal43.data.quiz.answer === 1 &&
+    kasiaReveal43.data.quiz.points === 1 &&
+    kasiaReveal43.data.quiz.closed === 1 &&
+    bartekReveal43.data?.quiz?.answer === 0 &&
+    bartekReveal43.data.quiz.points === 0 &&
+    closeAgain43.status === 409 &&
+    closeAgain43.data?.code === "quiz-no-open-question" &&
+    askAgain43.status === 409 &&
+    askAgain43.data?.code === "quiz-question-asked",
+  `${close43.status} ${late43.status} ${late43.body} ${JSON.stringify(tvReveal43.data?.quiz)} ${JSON.stringify(kasiaReveal43.data?.quiz)} ${closeAgain43.status} ${askAgain43.status}`,
+);
+
+const bQuestion43 = await request(`/api/o/${eventB.organizerKey}/quiz/questions`, {
+  method: "POST",
+  json: { text: "Pytanie wydarzenia B?", options: ["Tak", "Nie"], correct: 0 },
+});
+const bQuestionId43 = bQuestion43.data?.questions?.at(-1)?.id ?? 0;
+const crossEdit43 = await request(`${quizApi43}/questions/${String(bQuestionId43)}`, {
+  method: "PATCH",
+  json: { text: "Cudze?" },
+});
+const unknownEdit43 = await request(`${quizApi43}/questions/${String(UNKNOWN_ID)}`, {
+  method: "PATCH",
+  json: { text: "Cudze?" },
+});
+const crossDelete43 = await request(`${quizApi43}/questions/${String(bQuestionId43)}`, { method: "DELETE" });
+const unknownDelete43 = await request(`${quizApi43}/questions/${String(UNKNOWN_ID)}`, { method: "DELETE" });
+const crossAsk43 = await run43({ action: "ask", questionId: bQuestionId43 });
+const unknownAsk43 = await run43({ action: "ask", questionId: UNKNOWN_ID });
+const bAfter43 = await request(`/api/o/${eventB.organizerKey}/quiz`);
+const bCleanup43 = await request(`/api/o/${eventB.organizerKey}/quiz/questions/${String(bQuestionId43)}`, {
+  method: "DELETE",
+});
+check(
+  "pub quiz: A's organizer key on event B's question (edit, delete, ask) → the identical 404 of an unknown id, B's question untouched (then deleted by B)",
+  bQuestion43.status === 201 &&
+    bQuestionId43 > 0 &&
+    crossEdit43.status === 404 &&
+    crossEdit43.body === unknownEdit43.body &&
+    crossDelete43.status === 404 &&
+    crossDelete43.body === unknownDelete43.body &&
+    crossAsk43.status === 404 &&
+    crossAsk43.body === unknownAsk43.body &&
+    bAfter43.data?.questions?.find((question) => question.id === bQuestionId43)?.text === "Pytanie wydarzenia B?" &&
+    bAfter43.data.questions.find((question) => question.id === bQuestionId43)?.askedAt === null &&
+    bCleanup43.status === 200,
+  `${bQuestion43.status} ${crossEdit43.status} ${crossEdit43.body} ${unknownEdit43.body} ${crossDelete43.status} ${crossAsk43.status} ${crossAsk43.body} ${unknownAsk43.body} ${bCleanup43.status}`,
+);
+
+const askSecond43 = await run43({ action: "ask", questionId: q2Id43 });
+const secondAnswers43 = [await answer43(kasia43, q2Id43, 1), await answer43(bartek43, q2Id43, 1)];
+const closeSecond43 = await run43({ action: "close" });
+const results43 = await run43({ action: "results" });
+const tvResults43 = await request(tvApi43);
+const kasiaResults43 = await stateOf43(kasia43);
+const bartekResults43 = await stateOf43(bartek43);
+const celinaResults43 = await stateOf43(celina43);
+check(
+  "pub quiz: a second question, then the results — the client's standings (1. Kasia 2 pts, 2. Bartek 1 pt), the TV names places 1–3 with points (no ids), each phone its own place among the players and points, a guest who did not play gets no place",
+  askSecond43.status === 200 &&
+    secondAnswers43.every((res) => res.status === 200) &&
+    closeSecond43.status === 200 &&
+    results43.status === 200 &&
+    results43.data?.run?.phase === "results" &&
+    JSON.stringify(results43.data.standings.map((row) => [row.place, row.name, row.points])) ===
+      JSON.stringify([
+        [1, "Kasia Quiz", 2],
+        [2, "Bartek Quiz", 1],
+      ]) &&
+    tvResults43.data?.quiz?.phase === "results" &&
+    tvResults43.data.quiz.question === null &&
+    JSON.stringify(tvResults43.data.quiz.results) ===
+      JSON.stringify({
+        players: 2,
+        entries: [
+          { place: 1, name: "Kasia Quiz", points: 2 },
+          { place: 2, name: "Bartek Quiz", points: 1 },
+        ],
+        more: 0,
+      }) &&
+    !/"(id|guestId)"/.test(JSON.stringify(tvResults43.data.quiz)) &&
+    JSON.stringify(kasiaResults43.data?.quiz?.result) === JSON.stringify({ place: 1, players: 2 }) &&
+    kasiaResults43.data.quiz.points === 2 &&
+    !kasiaResults43.body.includes("Bartek") &&
+    JSON.stringify(bartekResults43.data?.quiz?.result) === JSON.stringify({ place: 2, players: 2 }) &&
+    bartekResults43.data.quiz.points === 1 &&
+    celinaResults43.data?.quiz?.phase === "results" &&
+    celinaResults43.data.quiz.result === null &&
+    celinaResults43.data.quiz.points === 0,
+  `${askSecond43.status} ${secondAnswers43.map((res) => res.status).join(",")} ${closeSecond43.status} ${results43.status} ${JSON.stringify(results43.data?.standings)} ${JSON.stringify(tvResults43.data?.quiz)} ${JSON.stringify(kasiaResults43.data?.quiz)} ${JSON.stringify(celinaResults43.data?.quiz)}`,
+);
+
+const leadOn43 = await staffCall(sessionOwner, eventApi(e43Id), { method: "PATCH", json: { venueLeads: true } });
+const clientLed43 = await run43({ action: "ask", questionId: q3Id43 });
+const staffAsk43 = await staffCall(sessionOwner, klientRun43, {
+  method: "POST",
+  json: { action: "ask", questionId: q3Id43 },
+});
+const guestLed43 = await answer43(kasia43, q3Id43, 0);
+const staffClose43 = await staffCall(sessionManager, klientRun43, { method: "POST", json: { action: "close" } });
+const leadOff43 = await staffCall(sessionOwner, eventApi(e43Id), { method: "PATCH", json: { venueLeads: false } });
+const staffNotLed43 = await staffCall(sessionOwner, klientRun43, { method: "POST", json: { action: "results" } });
+const clientResults43 = await run43({ action: "results" });
+check(
+  "pub quiz: while the venue leads the client's step → 409 venue-leads and the staff run it through the dispatcher (owner and manager), guests still answer; the client leads again → the staff's step 409 client-leads, the client's results count the new answer",
+  leadOn43.status === 200 &&
+    clientLed43.status === 409 &&
+    clientLed43.data?.code === "venue-leads" &&
+    staffAsk43.status === 200 &&
+    staffAsk43.data?.run?.questionId === q3Id43 &&
+    guestLed43.status === 200 &&
+    staffClose43.status === 200 &&
+    staffClose43.data?.run?.phase === "reveal" &&
+    leadOff43.status === 200 &&
+    staffNotLed43.status === 409 &&
+    staffNotLed43.data?.code === "client-leads" &&
+    clientResults43.status === 200 &&
+    clientResults43.data?.standings?.[0]?.points === 3,
+  `${leadOn43.status} ${clientLed43.status} ${staffAsk43.status} ${guestLed43.status} ${staffClose43.status} ${leadOff43.status} ${staffNotLed43.status} ${clientResults43.status} ${JSON.stringify(clientResults43.data?.standings)}`,
+);
+
+const tvBeforeOff43 = await request(tvApi43);
+const off43 = await enable43(false);
+const boardModuleOff43 = await request(quizApi43);
+const guestModuleOff43 = await answer43(kasia43, q3Id43, 0);
+const tvModuleOff43 = await request(`${tvApi43}?since=${encodeURIComponent(tvBeforeOff43.data?.version ?? "")}`);
+const kasiaModuleOff43 = await stateOf43(kasia43);
+const kasiaPageOff43 = await request(`/g/${kasia43}`);
+const back43 = await enable43(true);
+const boardBack43 = await request(quizApi43);
+const tvBack43 = await request(tvApi43);
+check(
+  "pub quiz: the module off → its organizer API 409 module-off, the guest's route the identical 404, the TV's next poll and the phone drop the quiz (3-part token, the phone's section hidden); on again → the same run and standings are back",
+  off43.status === 200 &&
+    isModuleOff(boardModuleOff43, "pubQuiz") &&
+    guestModuleOff43.status === 404 &&
+    guestModuleOff43.body === wrongKey43.body &&
+    tvModuleOff43.status === 200 &&
+    tvModuleOff43.data?.quiz === null &&
+    partsOf43(tvModuleOff43) === 3 &&
+    kasiaModuleOff43.data?.quiz === null &&
+    kasiaModuleOff43.data.modules?.pubQuiz === false &&
+    /<div hidden=""[^>]*data-guest-module="pubQuiz"/.test(kasiaPageOff43.body) &&
+    back43.status === 200 &&
+    boardBack43.data?.run?.phase === "results" &&
+    boardBack43.data.standings.length === 2 &&
+    tvBack43.data?.quiz?.phase === "results",
+  `${off43.status} ${boardModuleOff43.status} ${guestModuleOff43.status} ${tvModuleOff43.status} ${String(tvModuleOff43.data?.version)} ${JSON.stringify(kasiaModuleOff43.data?.quiz)} ${back43.status} ${boardBack43.status} ${tvBack43.status}`,
+);
+
+const trialPreview43 = await request(`${e43Api}/trial-reset`);
+const trial43 = await request(`${e43Api}/trial-reset`, { method: "POST", json: { parts: ["quiz"] } });
+const boardReset43 = await request(quizApi43);
+const editReset43 = await request(`${quizApi43}/questions/${String(q1Id43)}`, {
+  method: "PATCH",
+  json: { text: "Stolica Polski to?" },
+});
+const tvReset43 = await request(tvApi43);
+const kasiaReset43 = await stateOf43(kasia43);
+check(
+  "pub quiz: „Reset prób” with the part quiz (its counts in the preview) takes the answers, scores and the run — the questions stay and are editable again; no quiz on the TV or the phone",
+  trialPreview43.status === 200 &&
+    trialPreview43.data?.counts?.quizAnswers === 5 &&
+    trialPreview43.data.counts.quizAsked === 3 &&
+    trial43.status === 200 &&
+    JSON.stringify(trial43.data?.parts) === JSON.stringify(["quiz"]) &&
+    boardReset43.data?.run === null &&
+    boardReset43.data.questions.length === 3 &&
+    boardReset43.data.questions.every((question) => question.askedAt === null && question.answers === 0) &&
+    boardReset43.data.standings.length === 0 &&
+    editReset43.status === 200 &&
+    editReset43.data?.questions?.[0]?.text === "Stolica Polski to?" &&
+    tvReset43.data?.quiz === null &&
+    kasiaReset43.data?.quiz === null,
+  `${trialPreview43.status} ${JSON.stringify(trialPreview43.data?.counts)} ${trial43.status} ${trial43.body.slice(0, 200)} ${boardReset43.status} ${editReset43.status}`,
+);
+
+const preview43 = await staffCall(sessionManager, `${eventPage(e43Id)}/quiz`);
+const previewWaiter43 = await staffCall(sessionWaiter, `${eventPage(e43Id)}/quiz`);
+check(
+  "pub quiz: the panel's preview /panel/wydarzenia/<id>/quiz opens for the manager (the client leads: a preview), not for a waiter",
+  preview43.status === 200 &&
+    preview43.body.includes("data-quiz-manager") &&
+    preview43.body.includes('data-lead-banner="staff-preview"') &&
+    previewWaiter43.status === 404,
+  `${preview43.status} ${previewWaiter43.status}`,
+);
+
+const deleted43 = await staffCall(sessionOwner, eventApi(e43Id), { method: "DELETE" });
+check("pub quiz: the section's event is deleted", deleted43.status === 200, String(deleted43.status));
+
+// 44. Room prints (room-prints, S-24; FR-038). The client and the venue print the board „Znajdź swój stolik”, table
+// cards, place cards and the staff list (diets) from the latest PUBLISHED seating, with the brand; waiters print the
+// staff list from their floor. A today event of A (panel) filled through its client link: two guests (one with a diet
+// and a note of this run), a room, a table of 4, a draft, a publish, a client logo. The client's print HTML carries no
+// key (relative links, the logo through /o/<key>/wydruki/logo); diets only on the staff list; panel prints for owners
+// and managers (support mode reads the other prints without logo images, never the staff list — no log row either);
+// the staff floor and the per-event waiter print the staff list. The event, its waiter and a template of A are
+// deleted.
+const e44 = await staffCall(sessionOwner, eventsApiOf(restaurantA.id), {
+  method: "POST",
+  json: { name: `Wydruki ${RUN_TAG}`, date: today },
+});
+const e44Id = e44.data?.event?.id ?? 0;
+const org44 = keyOfPath(e44.data?.event?.links?.organizer);
+const tv44 = keyOfPath(e44.data?.event?.links?.tv);
+const tablet44 = keyOfPath(e44.data?.event?.links?.restaurant);
+const e44Api = `/api/o/${org44}`;
+const prints44 = `/o/${org44}/wydruki`;
+const print44 = (kind, query = "") => `${prints44}/${kind}${query}`;
+const panelPrint44 = (id, kind, query = "") => `${eventPage(id)}/wydruki/${kind}${query}`;
+const NOTE44 = `Bez orzechów laskowych ${RUN_TAG}`;
+const DIET44 = "alergia na orzechy";
+const ROZA44 = `Róża Drukowana ${RUN_TAG}`;
+const LEON44 = `Leon Drukowany ${RUN_TAG}`;
+const TABLE44 = `Stół wydruku ${RUN_TAG.slice(0, 6)}`;
+const before44 = await request(print44("tablica"));
+const guests44 = await request(`${e44Api}/guests`, { method: "POST", json: { text: `${ROZA44}\n${LEON44}` } });
+const roza44 = (guests44.data?.guests ?? []).find((guest) => guest.displayName === ROZA44)?.id ?? 0;
+const ids44 = (guests44.data?.guests ?? []).map((guest) => guest.id);
+const diet44 = await request(`${e44Api}/guests/${String(roza44)}`, {
+  method: "PATCH",
+  json: { diets: ["nut-allergy"], dietNote: NOTE44 },
+});
+const room44 = await request(`${e44Api}/rooms`, { method: "POST", json: { name: "Sala wydruków" } });
+const table44 = await request(`${e44Api}/tables`, {
+  method: "POST",
+  json: {
+    roomId: room44.data?.rooms?.find((room) => room.name === "Sala wydruków")?.id ?? 0,
+    name: TABLE44,
+    seatCount: 4,
+    shape: "round",
+    x: 0.5,
+    y: 0.5,
+  },
+});
+const tableId44 = table44.data?.tables?.find((table) => table.name === TABLE44)?.id ?? 0;
+const draft44 = await request(`${e44Api}/seating/draft`, {
+  method: "POST",
+  json: { seats: ids44.map((guestId, index) => ({ guestId, tableId: tableId44, seat: index + 1 })) },
+});
+const publish44 = await request(`${e44Api}/seating/publish`, { method: "POST" });
+const logo44 = await requestBytes(`${e44Api}/branding/logo`, {
+  method: "PUT",
+  body: TINY_PNG,
+  contentType: "image/png",
+});
+const links44 = await request(`${e44Api}/guest-links`);
+const guestKeys44 = (links44.data?.guests ?? []).map((guest) => guest.key);
+check(
+  "room prints: a today event of A with two guests (one with a nut allergy and a note), a table of 4, a published seating and a client logo; before the publish the board says nothing is published and has no sheet",
+  e44.status === 201 &&
+    ids44.length === 2 &&
+    diet44.status === 200 &&
+    tableId44 > 0 &&
+    draft44.status === 200 &&
+    publish44.status === 201 &&
+    logo44.status === 200 &&
+    guestKeys44.length === 2 &&
+    before44.status === 200 &&
+    before44.body.includes('data-print-empty="unpublished"') &&
+    !before44.body.includes("data-print-sheet"),
+  `${e44.status} ${guests44.status} ${diet44.status} ${table44.status} ${draft44.status} ${publish44.status} ${logo44.status} ${links44.status} ${before44.status}`,
+);
+
+const shell44 = await request(`/o/${org44}`);
+const hub44 = await request(prints44);
+const kinds44 = ["tablica", "karty-stolow", "winietki", "lista-obslugi"];
+check(
+  "room prints: the client shell has the „Wydruki dla sali” card, the hub lists the four prints with the QR cards and the published state",
+  shell44.status === 200 &&
+    shell44.body.includes("data-prints-card") &&
+    shell44.body.includes(prints44) &&
+    hub44.status === 200 &&
+    hub44.body.includes("data-print-links") &&
+    kinds44.every((kind) => hub44.body.includes(`data-print-link="${kind}"`)) &&
+    hub44.body.includes(`/o/${org44}/karteczki`) &&
+    hub44.body.includes('data-print-state="published"'),
+  `${shell44.status} ${hub44.status}`,
+);
+
+const secrets44 = [org44, tv44, tablet44, ...guestKeys44].filter((key) => key !== "");
+const keyFree44 = (res) => !secrets44.some((key) => res.body.includes(key));
+const count44 = (res, attribute) => res.body.split(attribute).length - 1;
+const board44 = await request(print44("tablica"));
+const cards44 = await request(print44("karty-stolow"));
+const cardsNames44 = await request(print44("karty-stolow", "?names=1"));
+const places44 = await request(print44("winietki"));
+const staff44 = await request(print44("lista-obslugi"));
+const clientPrints44 = [board44, cards44, cardsNames44, places44, staff44];
+const healthFree44 = (res) => !res.body.includes(NOTE44) && !res.body.includes(DIET44);
+check(
+  "room prints: every client print answers 200 from the published seating — the board with both names at the table, a table card (names only with names=1), a place card per guest, the staff list per seat — with the client logo through the relative ./logo and NO organizer, TV, tablet or guest key in its HTML",
+  clientPrints44.every((res) => res.status === 200 && keyFree44(res) && res.body.includes("data-print-sheet")) &&
+    board44.body.includes('data-room-print="tablica"') &&
+    board44.body.includes('data-print-format="a4"') &&
+    count44(board44, "data-board-guest") === 2 &&
+    board44.body.includes(ROZA44) &&
+    board44.body.includes(LEON44) &&
+    board44.body.includes(TABLE44) &&
+    board44.body.includes('data-print-logo="event"') &&
+    board44.body.includes('src="./logo?kind=event&amp;v=') &&
+    board44.body.includes("size: A4 portrait") &&
+    count44(cards44, "data-table-card") === 1 &&
+    cards44.body.includes(TABLE44) &&
+    !cards44.body.includes(ROZA44) &&
+    cardsNames44.body.includes(ROZA44) &&
+    count44(places44, "data-place-card") === 2 &&
+    places44.body.includes('data-print-format="tent-90x45"') &&
+    count44(staff44, "data-staff-seat") === 2 &&
+    staff44.body.includes('data-room-print="lista-obslugi"') &&
+    board44.body.includes('href="../wydruki"') &&
+    board44.body.includes('href="tablica?format=a3"'),
+  clientPrints44.map((res) => `${String(res.status)}:${String(keyFree44(res))}`).join(" "),
+);
+
+check(
+  "room prints: the diet and the note appear ONLY on the staff list (never on the board, the table cards with names or the place cards)",
+  staff44.body.includes(DIET44) &&
+    staff44.body.includes(NOTE44) &&
+    staff44.body.includes('data-diet="nut-allergy"') &&
+    [board44, cards44, cardsNames44, places44].every(healthFree44),
+  [board44, cards44, cardsNames44, places44].map((res) => String(healthFree44(res))).join(" "),
+);
+
+const a3_44 = await request(print44("tablica", "?format=a3"));
+const flat44 = await request(print44("winietki", "?format=flat-90x50"));
+const tent95_44 = await request(print44("winietki", "?format=tent-95x70"));
+const tableFlat44 = await request(print44("karty-stolow", "?format=flat&names=1"));
+const bogus44 = await request(print44("tablica", "?format=bogus"));
+const en44 = await request(print44("tablica"), { cookie: "kp-lang=en" });
+const lang44 = await request(print44("winietki", "?format=flat-90x50&lang=en"));
+check(
+  "room prints: formats — the A3 poster (@page A3, scaled sheet), flat and large folded place cards, flat table cards with names, an unknown format → the default; English with the kp-lang cookie; ?lang=en keeps the format through the 303",
+  a3_44.status === 200 &&
+    a3_44.body.includes('data-print-format="a3"') &&
+    a3_44.body.includes("size: A3 portrait") &&
+    a3_44.body.includes("--rp-w: 297mm") &&
+    flat44.status === 200 &&
+    flat44.body.includes('data-print-format="flat-90x50"') &&
+    count44(flat44, "data-place-card") === 2 &&
+    tent95_44.body.includes('data-print-format="tent-95x70"') &&
+    tableFlat44.body.includes('data-print-format="flat"') &&
+    tableFlat44.body.includes(LEON44) &&
+    bogus44.status === 200 &&
+    bogus44.body.includes('data-print-format="a4"') &&
+    en44.status === 200 &&
+    en44.body.includes('lang="en"') &&
+    en44.body.includes("Find your table") &&
+    lang44.status === 303 &&
+    lang44.location.endsWith("/winietki?format=flat-90x50"),
+  `${a3_44.status} ${flat44.status} ${tent95_44.status} ${tableFlat44.status} ${bogus44.status} ${en44.status} ${lang44.status} ${lang44.location}`,
+);
+
+const unknownKey44 = await request(`/o/${"Q".repeat(24)}/wydruki/tablica`);
+const tvKey44 = await request(`/o/${tv44}/wydruki/tablica`);
+const tvHub44 = await request(`/o/${tv44}/wydruki`);
+const kind44 = await request(print44("nic"));
+const logoRoute44 = await requestBytes(`${prints44}/logo?kind=event`);
+const logoApi44 = await requestBytes(`${e44Api}/branding/logo?kind=event`);
+const logoBogus44 = await request(`${prints44}/logo?kind=bogus`);
+const logoTv44 = await request(`/o/${tv44}/wydruki/logo?kind=event`);
+check(
+  "room prints: an unknown print → the no-access page; the TV key on a print and on the hub → the same 404 as an unknown key; the key-free logo route serves the client logo like the branding API (nosniff), an unknown kind → 404, a TV key → 404",
+  isNoAccessPage(kind44) &&
+    isNoAccessPage(unknownKey44) &&
+    tvKey44.status === 404 &&
+    tvKey44.body === unknownKey44.body &&
+    isNoAccessPage(tvHub44) &&
+    logoRoute44.status === 200 &&
+    logoRoute44.contentType === "image/png" &&
+    logoRoute44.nosniff === "nosniff" &&
+    sameBytes(logoRoute44.bytes, logoApi44.bytes) &&
+    logoBogus44.status === 404 &&
+    logoTv44.status === 404,
+  `${kind44.status} ${unknownKey44.status} ${tvKey44.status} ${tvHub44.status} ${logoRoute44.status} ${logoRoute44.contentType} ${logoBogus44.status} ${logoTv44.status}`,
+);
+
+const leon44 = ids44.find((id) => id !== roza44) ?? 0;
+const absent44 = await request(`${e44Api}/guests/${String(leon44)}`, { method: "PATCH", json: { isAbsent: true } });
+const changed44 = await request(print44("tablica"));
+const staffChanged44 = await request(print44("lista-obslugi"));
+check(
+  "room prints: a seated guest marked absent after the publish → the prints still show the published seating (both names) with the unpublished-changes note linking the seating relatively",
+  absent44.status === 200 &&
+    changed44.status === 200 &&
+    changed44.body.includes("data-print-unpublished") &&
+    changed44.body.includes('href="../rozsadzenie"') &&
+    count44(changed44, "data-board-guest") === 2 &&
+    changed44.body.includes(LEON44) &&
+    staffChanged44.body.includes("data-print-unpublished") &&
+    count44(staffChanged44, "data-staff-seat") === 2,
+  `${absent44.status} ${changed44.status} ${staffChanged44.status}`,
+);
+
+const card44 = await staffCall(sessionManager, eventPage(e44Id));
+const panelOwner44 = await staffCall(sessionOwner, panelPrint44(e44Id, "tablica"));
+const panelManager44 = await staffCall(sessionManager, panelPrint44(e44Id, "lista-obslugi"));
+const panelPlaces44 = await staffCall(sessionManager, panelPrint44(e44Id, "winietki", "?format=tent-95x70"));
+check(
+  "room prints: the event card has „Wydruki dla sali” with the four prints; the panel prints open for the owner and the manager, with the client logo through the dispatcher and the diet on the staff list",
+  card44.status === 200 &&
+    card44.body.includes("data-event-prints") &&
+    kinds44.every((kind) => card44.body.includes(`href="${panelPrint44(e44Id, kind)}"`)) &&
+    panelOwner44.status === 200 &&
+    panelOwner44.body.includes('data-room-print="tablica"') &&
+    panelOwner44.body.includes(ROZA44) &&
+    panelOwner44.body.includes(`/api/panel/events/${String(e44Id)}/klient/branding/logo?kind=event`) &&
+    keyFree44(panelOwner44) &&
+    panelManager44.status === 200 &&
+    panelManager44.body.includes(NOTE44) &&
+    panelManager44.body.includes(DIET44) &&
+    panelPlaces44.status === 200 &&
+    count44(panelPlaces44, "data-place-card") === 2,
+  `${card44.status} ${panelOwner44.status} ${panelManager44.status} ${panelPlaces44.status}`,
+);
+
+const template44 = await staffCall(sessionOwner, templatesApiOf(restaurantA.id), {
+  method: "POST",
+  json: { name: `Szablon wydruków ${RUN_TAG}` },
+});
+const template44Id = template44.data?.template?.id ?? 0;
+const panelDenied44 = [];
+for (const [name, token, path] of [
+  ["a waiter account", sessionWaiter, panelPrint44(e44Id, "tablica")],
+  ["owner B", sessionB, panelPrint44(e44Id, "lista-obslugi")],
+  ["the admin outside support", sessionAdmin, panelPrint44(e44Id, "tablica")],
+  ["event B (manager of A)", sessionManager, panelPrint44(eventB.id, "tablica")],
+  ["a malformed id", sessionOwner, "/panel/wydarzenia/abc/wydruki/tablica"],
+  ["an unknown id", sessionOwner, panelPrint44(2_000_000_000, "tablica")],
+  ["a template of A", sessionOwner, panelPrint44(template44Id, "tablica")],
+  ["an unknown print", sessionOwner, panelPrint44(e44Id, "nic")],
+]) {
+  const res = await staffCall(token, path);
+  if (!isNoAccessPage(res)) panelDenied44.push(`${name}: ${String(res.status)}`);
+}
+const panelNoSession44 = await request(panelPrint44(e44Id, "tablica"));
+const templateDeleted44 = await staffCall(sessionOwner, templateApi(template44Id), { method: "DELETE" });
+check(
+  "room prints: a waiter account, owner B, the admin outside support, event B's id, malformed and unknown ids, a template of A and an unknown print → the no-access page; no session → 303 /logowanie",
+  template44.status === 201 &&
+    template44Id > 0 &&
+    panelDenied44.length === 0 &&
+    panelNoSession44.status === 303 &&
+    panelNoSession44.location.endsWith("/logowanie") &&
+    templateDeleted44.status === 200,
+  `${template44.status} ${panelDenied44.join("; ")} ${panelNoSession44.status} ${panelNoSession44.location} ${templateDeleted44.status}`,
+);
+
+const leads44 = await staffCall(sessionOwner, eventApi(e44Id), { method: "PATCH", json: { venueLeads: true } });
+const clientLeads44 = await request(print44("karty-stolow"));
+const panelLeads44 = await staffCall(sessionManager, panelPrint44(e44Id, "karty-stolow"));
+check(
+  "room prints: prints are reads — with „Lokal prowadzi” on, the client's and the panel's prints still answer 200",
+  leads44.status === 200 && clientLeads44.status === 200 && panelLeads44.status === 200,
+  `${leads44.status} ${clientLeads44.status} ${panelLeads44.status}`,
+);
+
+const enter44 = await enterSupport(sessionAdmin, restaurantA.id);
+const logBefore44 = (await readLogA()).data?.entries?.[0];
+const support44 = await staffCall(sessionAdmin, panelPrint44(e44Id, "lista-obslugi"));
+const logAfter44 = (await readLogA()).data?.entries?.[0];
+const supportBoard44 = await staffCall(sessionAdmin, panelPrint44(e44Id, "tablica"));
+const supportCard44 = await staffCall(sessionAdmin, eventPage(e44Id));
+const exit44 = await endSupportOf(sessionAdmin, restaurantA.id);
+check(
+  "room prints: in support mode the staff list is the no-access page with no log row (diets — the PR #4 review's decision 2, like the export); the admin reads the board (names, the support banner) without the diet or any logo image, and the event card lists the prints without the staff list; then support ends",
+  enter44.status === 201 &&
+    isNoAccessPage(support44) &&
+    !support44.body.includes(NOTE44) &&
+    logBefore44?.id !== undefined &&
+    logAfter44?.id === logBefore44.id &&
+    supportBoard44.status === 200 &&
+    supportBoard44.body.includes("data-support-banner") &&
+    !supportBoard44.body.includes(NOTE44) &&
+    !supportBoard44.body.includes("data-print-logo") &&
+    !supportBoard44.body.includes("/branding/logo") &&
+    keyFree44(supportBoard44) &&
+    supportCard44.status === 200 &&
+    supportCard44.body.includes("data-event-prints") &&
+    supportCard44.body.includes('data-print-link="tablica"') &&
+    !supportCard44.body.includes('data-print-link="lista-obslugi"') &&
+    exit44.status === 200,
+  `${enter44.status} ${support44.status} ${String(logBefore44?.id)}/${String(logAfter44?.id)} ${supportBoard44.status} ${supportCard44.status} ${exit44.status}`,
+);
+
+const floorList44 = `${floorPageOf(e44Id)}/lista-obslugi`;
+const floorPage44 = await staffCall(sessionWaiter, floorPageOf(e44Id));
+const floorPrint44 = await staffCall(sessionWaiter, floorList44);
+const floorB44 = await staffCall(sessionB, floorList44);
+const floorAdmin44 = await staffCall(sessionAdmin, floorList44);
+const floorNoSession44 = await request(floorList44);
+const waiter44 = await addWaiter(sessionOwner, e44Id, `Kelner wydruków ${RUN_TAG}`);
+const waiterCookie44 = waiterCookieOf(await enterFloor({ link: linkTokenOf(waiter44.data?.issued ?? null) }));
+const waiterList44 = `${waiterFloorPageOf(e44Id)}/lista-obslugi`;
+const waiterPage44 = await waiterCall(waiterCookie44, waiterFloorPageOf(e44Id));
+const waiterPrint44 = await waiterCall(waiterCookie44, waiterList44);
+const waiterOther44 = await waiterCall(waiterCookie44, `${waiterFloorPageOf(eventB.id)}/lista-obslugi`);
+const waiterNoCookie44 = await request(waiterList44);
+check(
+  "room prints: the staff floor links its staff list, which opens for A's waiter with the diet and no logo image (owner B and the admin → the no-access page, no session → 303 /logowanie); the per-event waiter's floor links its own (200 with the diet; another event → the no-access page; no cookie → 303 /kelner)",
+  floorPage44.status === 200 &&
+    floorPage44.body.includes("data-floor-print-link") &&
+    floorPage44.body.includes(floorList44) &&
+    floorPrint44.status === 200 &&
+    floorPrint44.body.includes(NOTE44) &&
+    floorPrint44.body.includes(DIET44) &&
+    !floorPrint44.body.includes("data-print-logo") &&
+    floorPrint44.body.includes(`href="${floorPageOf(e44Id)}"`) &&
+    isNoAccessPage(floorB44) &&
+    isNoAccessPage(floorAdmin44) &&
+    floorNoSession44.status === 303 &&
+    floorNoSession44.location.endsWith("/logowanie") &&
+    waiterCookie44 !== "" &&
+    waiterPage44.status === 200 &&
+    waiterPage44.body.includes("data-floor-print-link") &&
+    waiterPage44.body.includes(waiterList44) &&
+    waiterPrint44.status === 200 &&
+    waiterPrint44.body.includes(NOTE44) &&
+    !waiterPrint44.body.includes("/panel/") &&
+    isNoAccessPage(waiterOther44) &&
+    waiterNoCookie44.status === 303 &&
+    waiterNoCookie44.location.endsWith("/kelner"),
+  `${floorPage44.status} ${floorPrint44.status} ${floorB44.status} ${floorAdmin44.status} ${floorNoSession44.status} ${waiter44.status} ${waiterPage44.status} ${waiterPrint44.status} ${waiterOther44.status} ${waiterNoCookie44.status}`,
+);
+
+const deleted44 = await staffCall(sessionOwner, eventApi(e44Id), { method: "DELETE" });
+check("room prints: the section's event is deleted", deleted44.status === 200, String(deleted44.status));
+
+// 45. landing-legal (S-30; FR-041): the public product page and the DRAFT terms and privacy policy — PL and EN, the
+// draft marker and placeholders, the headers, the way to the login, the links on every staff door and NEVER on a
+// guest, TV, tablet, print or client page (white-label). Static pages: nothing is created here.
+const EMAIL45 = /[\w.+-]+@[\w-]+\.[\w.-]+/;
+const home45 = await request("/");
+const homeEn45 = await request("/", { cookie: "kp-lang=en" });
+const terms45 = await request("/regulamin");
+const termsEn45 = await request("/regulamin", { cookie: "kp-lang=en" });
+const policy45 = await request("/polityka-prywatnosci");
+const policyEn45 = await request("/polityka-prywatnosci", { cookie: "kp-lang=en" });
+const switch45 = await request("/regulamin?lang=en");
+const LANDING_SECTIONS45 = ["hero", "audience", "features", "steps", "privacy", "access"];
+const legalLinks45 = (res) =>
+  res.body.includes("data-legal-links") &&
+  res.body.includes('href="/regulamin"') &&
+  res.body.includes('href="/polityka-prywatnosci"');
+const homeChecks45 = [
+  ["status", home45.status === 200 && homeEn45.status === 200],
+  ["no-store", home45.cacheControl.includes("no-store")],
+  ["lang", home45.body.includes('<html lang="pl"') && homeEn45.body.includes('<html lang="en"')],
+  ["product name", home45.body.includes("Stolik") && homeEn45.body.includes("Stolik")],
+  ["login links", ["header", "hero", "access"].every((place) => home45.body.includes(`data-landing-login="${place}"`))],
+  ["login target", home45.body.includes('href="/logowanie"')],
+  ["login PL/EN", home45.body.includes("Zaloguj się") && homeEn45.body.includes("Log in")],
+  ["sections", LANDING_SECTIONS45.every((id) => home45.body.includes(`data-landing-section="${id}"`))],
+  ["legal links", legalLinks45(home45) && legalLinks45(homeEn45)],
+  ["drafts named", home45.body.includes("wersja robocza") && homeEn45.body.includes("draft")],
+  ["no form", !home45.body.includes("<form")],
+  ["no e-mail", !EMAIL45.test(home45.body) && !EMAIL45.test(homeEn45.body)],
+];
+check(
+  "landing: / is the product page in PL and EN — product name, the login in the header, the hero and the access section, every section, the links to both drafts, no form, no e-mail address, not cached",
+  homeChecks45.every(([, ok]) => ok),
+  homeChecks45
+    .filter(([, ok]) => !ok)
+    .map(([name]) => name)
+    .join(", "),
+);
+
+const draftChecks45 = (kind, pl, en, plField, enField) => [
+  [`${kind} status`, pl.status === 200 && en.status === 200],
+  [
+    `${kind} document`,
+    pl.body.includes(`data-legal-document="${kind}"`) && en.body.includes(`data-legal-document="${kind}"`),
+  ],
+  [`${kind} lang`, pl.body.includes('<html lang="pl"') && en.body.includes('<html lang="en"')],
+  [
+    `${kind} draft banner`,
+    pl.body.includes("data-legal-draft") &&
+      pl.body.includes("Wersja robocza — do przeglądu prawnika") &&
+      en.body.includes("data-legal-draft") &&
+      en.body.includes("Draft — for legal review"),
+  ],
+  [`${kind} toc`, pl.body.includes("data-legal-toc") && pl.body.includes("data-legal-section=")],
+  [
+    `${kind} placeholders`,
+    pl.body.includes("data-legal-placeholder") && pl.body.includes(plField) && en.body.includes(enField),
+  ],
+  [`${kind} robots`, [pl, en].every((res) => res.robots.includes("noindex"))],
+  [`${kind} no-store`, [pl, en].every((res) => res.cacheControl.includes("no-store"))],
+  [`${kind} product name`, pl.body.includes("Stolik")],
+  [`${kind} no e-mail`, !EMAIL45.test(pl.body) && !EMAIL45.test(en.body)],
+  [`${kind} home link`, pl.body.includes('href="/"')],
+];
+const legalChecks45 = [
+  ...draftChecks45("terms", terms45, termsEn45, "[nazwa operatora]", "[operator name]"),
+  ...draftChecks45("privacy", policy45, policyEn45, "[e-mail kontaktowy]", "[contact e-mail]"),
+  ["cross links", terms45.body.includes('href="/polityka-prywatnosci"') && policy45.body.includes('href="/regulamin"')],
+  [
+    "cookies named",
+    ["kp-session", "kp-waiter", "kp-lang", "kp-lang-r"].every(
+      (name) => policy45.body.includes(name) && policyEn45.body.includes(name),
+    ),
+  ],
+  [
+    "switch",
+    switch45.status === 303 && switch45.location.endsWith("/regulamin") && switch45.setCookie.includes("kp-lang=en"),
+  ],
+];
+check(
+  "legal drafts: /regulamin and /polityka-prywatnosci in PL and EN carry the draft banner („Wersja robocza — do przeglądu prawnika” / „Draft — for legal review”), the table of contents and marked placeholders, no e-mail address, noindex and no-store; the policy names every cookie; ?lang=en switches and returns",
+  legalChecks45.every(([, ok]) => ok),
+  legalChecks45
+    .filter(([, ok]) => !ok)
+    .map(([name]) => name)
+    .join(", "),
+);
+
+const login45 = await request("/logowanie");
+const linkPage45 = await request(`/haslo/${randomBytes(32).toString("base64url")}`);
+const kelner45 = await request("/kelner");
+const panel45 = await staffCall(sessionOwner, "/panel");
+check(
+  "legal links: the staff doors (/logowanie with the product page link, an invalid /haslo/<token>, /kelner, the owner's /panel) link both drafts",
+  login45.status === 200 &&
+    legalLinks45(login45) &&
+    login45.body.includes('href="/"') &&
+    linkPage45.status === 404 &&
+    legalLinks45(linkPage45) &&
+    kelner45.status === 200 &&
+    legalLinks45(kelner45) &&
+    panel45.status === 200 &&
+    legalLinks45(panel45),
+  `${login45.status} ${linkPage45.status} ${kelner45.status} ${panel45.status}`,
+);
+
+const whiteLabel45 = [guestPage34, tvPage34, tabletPage34, cards34, shell34, privacy41, privacyEn41];
+check(
+  "legal links: the guest's page and privacy notice, the TV, the tablet, the QR cards and the client shell never link the platform's documents (white-label)",
+  whiteLabel45.every(
+    (res) =>
+      res.status === 200 &&
+      !res.body.includes("data-legal-links") &&
+      !res.body.includes("/regulamin") &&
+      !res.body.includes("/polityka-prywatnosci"),
+  ),
+  whiteLabel45.map((res) => String(res.status)).join(" "),
+);
+
+// 46. The daily guest data clean-up (retention-schedule; the PR #4 review's decision 3). POST /api/jobs/retention is
+// the Lambda Web Adapter's pass-through path for the EventBridge Scheduler's input; the Function URL is public, so
+// without the right RETENTION_TOKEN everything gets the identical 404 with no-store — no body, a wrong token (of the
+// same length and a long one), malformed JSON, another job, an extra field, the deploy's dryRun self-check with a wrong
+// token (without RETENTION_TOKEN: any dryRun), `dryRun: false` (not a way to ask for a real run), `dryRun: "true"`, GET,
+// PUT — and a JSON POST without an Origin reaches the route (the adapter sends no Origin: not Astro's 403 for
+// cross-site forms). With RETENTION_TOKEN set for the server AND this smoke, the right token runs the job: event S of A
+// (one guest) moved 40 days back (past A's 30); first the dryRun self-check answers `{ dryRun, events, complete }` only
+// (events = what the DB lists as expired, S among them) and S still holds its data afterwards (still listed — checked
+// over PostgREST, never through the app, whose guards would purge S); then the real run purges it (it leaves the expired
+// list without any read of S; the answer has counts only), a second run finds nothing; S is deleted. Without the token
+// the positive part is skipped (printed). The job is global: it purges every expired event of the local database,
+// exactly like the panel's lazy sweep the smoke's page views already run.
+const JOB46 = "/api/jobs/retention";
+const JOB_NAME46 = "guest-data-retention";
+const jobToken46 = process.env.RETENTION_TOKEN ?? "";
+const job46 = (options) => request(JOB46, { noOrigin: true, ...options });
+const wrongToken46 = jobToken46 ? `${jobToken46.slice(0, -1)}${jobToken46.endsWith("A") ? "B" : "A"}` : "A".repeat(64);
+const anyToken46 = jobToken46 || wrongToken46;
+const denied46 = [];
+for (const [name, options] of [
+  ["no body", { method: "POST", extraHeaders: { "Content-Type": "application/json" } }],
+  ["a wrong token", { method: "POST", json: { job: JOB_NAME46, token: wrongToken46 } }],
+  ["a long wrong token", { method: "POST", json: { job: JOB_NAME46, token: "B".repeat(512) } }],
+  ["malformed JSON", { method: "POST", rawBody: "{" }],
+  ["another job", { method: "POST", json: { job: "other", token: anyToken46 } }],
+  ["an extra field", { method: "POST", json: { job: JOB_NAME46, token: anyToken46, extra: 1 } }],
+  [
+    jobToken46 ? "a dryRun with a wrong token" : "a dryRun (no RETENTION_TOKEN)",
+    { method: "POST", json: { job: JOB_NAME46, token: wrongToken46, dryRun: true } },
+  ],
+  ["dryRun: false", { method: "POST", json: { job: JOB_NAME46, token: anyToken46, dryRun: false } }],
+  ['dryRun: "true"', { method: "POST", json: { job: JOB_NAME46, token: anyToken46, dryRun: "true" } }],
+  ["GET", { method: "GET" }],
+  ["PUT", { method: "PUT", json: { job: JOB_NAME46, token: anyToken46 } }],
+]) {
+  const res = await job46(options);
+  if (!noAccessJson(res) || !res.cacheControl.includes("no-store") || res.robots === "") {
+    denied46.push(`${name}: ${String(res.status)} ${res.body.slice(0, 60)}`);
+  }
+}
+check(
+  'retention job: POST /api/jobs/retention without the right token — no body, a wrong token (same length, long), malformed JSON, another job, an extra field, the dryRun self-check with a wrong token (or without RETENTION_TOKEN), dryRun: false, dryRun: "true", GET, PUT — is the identical 404 with no-store; a JSON POST without an Origin reaches the route',
+  denied46.length === 0,
+  denied46.join("; "),
+);
+
+if (!jobToken46) {
+  console.log(
+    "SKIP  retention job: the right token runs the clean-up — RETENTION_TOKEN is not set for this smoke (start the preview and the smoke with the same RETENTION_TOKEN to run it)",
+  );
+} else {
+  const s46 = await staffCall(sessionOwner, eventsApiOf(restaurantA.id), {
+    method: "POST",
+    json: { name: `Retencja nocna ${RUN_TAG}`, date: today },
+  });
+  const s46Id = s46.data?.event?.id ?? 0;
+  const s46Api = `/api/o/${keyOfPath(s46.data?.event?.links?.organizer)}`;
+  const sGuest46 = await request(`${s46Api}/guests`, { method: "POST", json: { text: `Nocny Gość ${RUN_TAG}` } });
+  let moved46 = "";
+  let listedBefore46 = [];
+  let listedGlobal46 = [];
+  let listedAfterDry46 = [];
+  let listedAfter46 = [];
+  try {
+    await setEventDate(platformEnv, s46Id, shiftDate(today, -40));
+    listedBefore46 = await purgeExpiredGuestData(platformEnv, { restaurantId: restaurantA.id, dryRun: true });
+    listedGlobal46 = await purgeExpiredGuestData(platformEnv, { dryRun: true });
+  } catch (error) {
+    moved46 = error instanceof Error ? error.message : String(error);
+  }
+  // The deploy's self-check: the schedule's input plus dryRun — counts only, nothing deleted.
+  const dry46 = await job46({ method: "POST", json: { job: JOB_NAME46, token: jobToken46, dryRun: true } });
+  try {
+    listedAfterDry46 = await purgeExpiredGuestData(platformEnv, { restaurantId: restaurantA.id, dryRun: true });
+  } catch (error) {
+    moved46 = error instanceof Error ? error.message : String(error);
+  }
+  check(
+    "retention job: the dryRun self-check with the right token answers { dryRun: true, events, complete } only (events = the expired events the DB lists, S among them; no id or name) and deletes nothing — S still holds its guest's data afterwards",
+    s46.status === 201 &&
+      sGuest46.status === 201 &&
+      moved46 === "" &&
+      listedBefore46.some((event) => event.id === s46Id) &&
+      dry46.status === 200 &&
+      dry46.cacheControl.includes("no-store") &&
+      Object.keys(dry46.data ?? {})
+        .sort()
+        .join(",") === "complete,dryRun,events" &&
+      dry46.data.dryRun === true &&
+      dry46.data.complete === true &&
+      dry46.data.events >= 1 &&
+      dry46.data.events === listedGlobal46.length &&
+      !dry46.body.includes(`Nocny Gość ${RUN_TAG}`) &&
+      listedAfterDry46.some((event) => event.id === s46Id),
+    `${s46.status} ${sGuest46.status} ${moved46} ${dry46.status} ${dry46.body.slice(0, 200)} ${String(listedGlobal46.length)} ${JSON.stringify(listedAfterDry46.map((event) => event.id))}`,
+  );
+  const run46 = await job46({ method: "POST", json: { job: JOB_NAME46, token: jobToken46 } });
+  try {
+    listedAfter46 = await purgeExpiredGuestData(platformEnv, { restaurantId: restaurantA.id, dryRun: true });
+  } catch (error) {
+    moved46 = error instanceof Error ? error.message : String(error);
+  }
+  const again46 = await job46({ method: "POST", json: { job: JOB_NAME46, token: jobToken46 } });
+  const sGuestsAfter46 = await request(`${s46Api}/guests`);
+  const sDeleted46 = await staffCall(sessionOwner, eventApi(s46Id), { method: "DELETE" });
+  const RESULT_KEYS46 = "complete,events,groups,guests,notes,skipped,snapshots,spotlight,waiters";
+  const countsOnly46 = (res) =>
+    res.status === 200 &&
+    res.cacheControl.includes("no-store") &&
+    Object.keys(res.data ?? {})
+      .sort()
+      .join(",") === RESULT_KEYS46 &&
+    Object.entries(res.data).every(([key, value]) =>
+      key === "complete" ? typeof value === "boolean" : Number.isInteger(value) && value >= 0,
+    );
+  check(
+    "retention job: the right token runs the clean-up — S of A (one guest, 40 days back) leaves the expired list in that run (≥ 1 event, ≥ 1 guest; counts only, no id or name), a second run purges nothing and is complete; S shows no guest, then is deleted",
+    s46.status === 201 &&
+      sGuest46.status === 201 &&
+      moved46 === "" &&
+      listedBefore46.some((event) => event.id === s46Id) &&
+      countsOnly46(run46) &&
+      run46.data.events >= 1 &&
+      run46.data.guests >= 1 &&
+      run46.data.complete === true &&
+      !run46.body.includes(`Nocny Gość ${RUN_TAG}`) &&
+      !listedAfter46.some((event) => event.id === s46Id) &&
+      countsOnly46(again46) &&
+      again46.data.events === 0 &&
+      again46.data.complete === true &&
+      sGuestsAfter46.data?.guests?.length === 0 &&
+      sDeleted46.status === 200,
+    `${s46.status} ${sGuest46.status} ${moved46} ${JSON.stringify(listedBefore46.map((event) => event.id))} ${run46.status} ${run46.body.slice(0, 200)} ${JSON.stringify(listedAfter46.map((event) => event.id))} ${again46.body.slice(0, 200)} ${String(sGuestsAfter46.data?.guests?.length)} ${sDeleted46.status}`,
+  );
+}
 
 finish();

@@ -1,0 +1,209 @@
+import { defineMessages } from "@/lib/i18n/locale";
+import { pluralEn, pluralPl } from "@/lib/i18n/plural";
+
+// Texts of the guests' RSVP (guest-rsvp-menu, S-25; FR-039): the guest's phone section, the client's page (also the
+// panel's preview), the shell / panel card summary and the API messages, both languages (i18n). Dish and guest names
+// are DB content and never translated. Pure.
+
+export const rsvpMessages = defineMessages(
+  {
+    // Guest phone.
+    guestHeading: "Potwierdź obecność",
+    guestClosedHeading: "Twoje potwierdzenie",
+    guestDeadline: (when: string) => `Odpowiedzi do ${when}.`,
+    yes: "Przyjdę",
+    no: "Nie przyjdę",
+    attendanceGroup: "Czy przyjdziesz?",
+    dishLabel: "Wybierz danie",
+    dishHint: "Wybór możesz zmienić do terminu.",
+    noDishChosen: "Nie wybrano jeszcze dania.",
+    savedComing: (dish: string | null) => (dish ? `Zapisano: przyjdę, danie: ${dish}.` : "Zapisano: przyjdę."),
+    savedNotComing: "Zapisano: nie przyjdę.",
+    byOrganizer: "Odpowiedź wpisał organizator.",
+    closed: "Odpowiedzi są już zamknięte.",
+    closedHint: "Zmienić odpowiedź może teraz tylko organizator.",
+    yourAnswer: "Twoja odpowiedź",
+    noAnswer: "Brak odpowiedzi",
+    dishText: (dish: string) => `Danie: ${dish}`,
+    offline: "Brak połączenia — odpowiedź nie została zapisana.",
+    notOffered: "Tego dania nie ma już do wyboru.",
+    // API problems.
+    deadlineInvalid: "Podaj prawidłową datę i godzinę terminu.",
+    closeAndDeadline: "Podaj termin albo zamknij odpowiedzi teraz — nie oba naraz.",
+    tooManyOptions: (max: number) => `Najwyżej ${String(max)} dań do wyboru.`,
+    duplicateOption: (name: string) => `Danie „${name}” jest na liście dwa razy.`,
+    notOnMenu: (name: string) => `Dania „${name}” nie ma w menu tego wydarzenia.`,
+    emptyOption: "Nazwa dania nie może być pusta.",
+    // Client page.
+    pageTitle: (event: string) => `${event} — potwierdzenia gości`,
+    heading: "Potwierdzenia i wybór dania",
+    intro:
+      "Goście odpowiadają na swoich osobistych linkach do terminu. Odpowiedź każdego gościa możesz wpisać lub zmienić także po terminie.",
+    backToPanel: "← Panel organizatora",
+    deadlineHeading: "Termin odpowiedzi",
+    stateOff: "Potwierdzenia są wyłączone — goście nie widzą tego pytania.",
+    stateOpen: (when: string) => `Goście odpowiadają do ${when}.`,
+    stateClosed: (when: string) => `Zamknięte (${when}) — goście widzą swoją odpowiedź tylko do odczytu.`,
+    deadlineLabel: "Zbieraj odpowiedzi do (czas polski)",
+    setDeadline: "Ustaw termin",
+    closeNow: "Zamknij teraz",
+    turnOff: "Wyłącz potwierdzenia",
+    confirmClose: "Zamknąć odpowiedzi teraz? Goście zobaczą swoją odpowiedź tylko do odczytu.",
+    confirmOff: "Wyłączyć potwierdzenia? Goście przestaną widzieć to pytanie; zapisane odpowiedzi zostaną.",
+    linksOff: "Linki gości są wyłączone — goście nie zobaczą pytania, dopóki ich nie włączysz.",
+    linksPage: "Linki gości",
+    attendanceNote:
+      "„Nie przyjdzie” oznacza gościa jako nieobecnego (losowanie i publikacja go pomijają) — to ta sama nieobecność co na liście gości.",
+    optionsHeading: "Dania do wyboru",
+    optionsIntro: "Lokal udostępnia menu wydarzenia; wybierz dania, z których wybierają goście (zwykle 2–4).",
+    menuInactive: "Lokal nie udostępnił menu dla tego wydarzenia — goście potwierdzają tylko obecność.",
+    noOptions: "Bez wyboru dania — goście potwierdzają tylko obecność.",
+    optionUnavailable: "nie ma go już w menu",
+    saveOptions: "Zapisz dania",
+    countsHeading: "Zliczenia",
+    coming: "Przyjdzie",
+    notComing: "Nie przyjdzie",
+    noAnswerCount: "Bez odpowiedzi",
+    noDish: "Bez wybranego dania",
+    dishesHeading: "Wybrane dania (przyjdą)",
+    notOnList: "poza listą",
+    answersHeading: "Odpowiedzi gości",
+    noGuests: "Na liście nie ma jeszcze gości.",
+    attendanceLabel: (name: string) => `Obecność: ${name}`,
+    dishSelectLabel: (name: string) => `Danie: ${name}`,
+    optionComing: "Przyjdzie",
+    optionNotComing: "Nie przyjdzie",
+    optionNoAnswer: "Bez odpowiedzi",
+    dishNone: "— bez dania —",
+    byOrganizerShort: "wpisane przez organizatora",
+    byGuestShort: "odpowiedź gościa",
+    saving: "Zapisywanie…",
+    dismiss: "Zamknij",
+    optionsOffMenu: (names: string) => `Poza menu wydarzenia (goście ich nie widzą, zapis je usunie): ${names}.`,
+    optionsLimit: (max: number) => `Najwyżej ${String(max)} dań.`,
+    answeredAt: (when: string) => `· ${when}`,
+    // Summary (shell card, panel card).
+    summaryOff: "Wyłączone",
+    summaryOpen: (when: string) => `do ${when}`,
+    summaryClosed: "zamknięte",
+    summaryCounts: (coming: number, notComing: number, noAnswer: number) =>
+      `przyjdzie ${String(coming)} · nie przyjdzie ${String(notComing)} · bez odpowiedzi ${String(noAnswer)}`,
+    // „Przenieś wybory do zamówień” (the PR #4 review's RSVP extras).
+    moveHeading: "Wybory gości w zamówieniu",
+    moveIntro:
+      "Każdy gość, który przyjdzie i wybrał danie, dostaje jedną pozycję zamówienia z tym daniem przy swoim miejscu (cenę ustala lokal). Kto ma już to danie w zamówieniu, zostaje pominięty, więc po nowych odpowiedziach można przenieść ponownie.",
+    moveButton: "Przenieś wybory do zamówień",
+    moveChecking: "Sprawdzam…",
+    confirmMove: (added: number, skipped: number) =>
+      `Dodać do zamówienia ${String(added)} ${pluralPl(added, "pozycję", "pozycje", "pozycji")} (po jednej dla każdego gościa z wybranym daniem)?` +
+      (skipped > 0 ? ` Pominięci (danie już jest w zamówieniu): ${String(skipped)}.` : ""),
+    moved: (added: number, skipped: number) =>
+      `Dodano do zamówienia ${String(added)} ${pluralPl(added, "pozycję", "pozycje", "pozycji")}.` +
+      (skipped > 0 ? ` Pominięto: ${String(skipped)} (danie już było w zamówieniu).` : ""),
+    moveNothing: (skipped: number): string =>
+      skipped > 0
+        ? "Nie ma nic do przeniesienia: wybory gości są już w zamówieniu."
+        : "Nie ma nic do przeniesienia: nikt z przychodzących nie wybrał jeszcze dania.",
+    moveNotOnMenu: (names: string) =>
+      `Tych dań nie ma w menu wydarzenia: ${names}. Zmień wybór tych gości albo poproś lokal o menu i spróbuj ponownie — nic nie zostało dodane.`,
+    ordersLink: "Przejdź do zamówień",
+  },
+  {
+    guestHeading: "Confirm your attendance",
+    guestClosedHeading: "Your RSVP",
+    guestDeadline: (when: string) => `Answers until ${when}.`,
+    yes: "I'll come",
+    no: "I can't come",
+    attendanceGroup: "Will you come?",
+    dishLabel: "Choose your dish",
+    dishHint: "You can change it until the deadline.",
+    noDishChosen: "No dish chosen yet.",
+    savedComing: (dish: string | null) => (dish ? `Saved: coming, dish: ${dish}.` : "Saved: coming."),
+    savedNotComing: "Saved: not coming.",
+    byOrganizer: "The organizer entered this answer.",
+    closed: "Answers are closed.",
+    closedHint: "Only the organizer can change your answer now.",
+    yourAnswer: "Your answer",
+    noAnswer: "No answer",
+    dishText: (dish: string) => `Dish: ${dish}`,
+    offline: "No connection — the answer was not saved.",
+    notOffered: "This dish is no longer available.",
+    deadlineInvalid: "Enter a valid date and time for the deadline.",
+    closeAndDeadline: "Set a deadline or close answers now — not both.",
+    tooManyOptions: (max: number) => `At most ${String(max)} dishes to choose from.`,
+    duplicateOption: (name: string) => `The dish “${name}” is on the list twice.`,
+    notOnMenu: (name: string) => `The dish “${name}” is not on this event's menu.`,
+    emptyOption: "A dish name cannot be empty.",
+    pageTitle: (event: string) => `${event} — guests' RSVP`,
+    heading: "RSVP and dish choice",
+    intro:
+      "Guests answer on their personal links until the deadline. You can enter or change any guest's answer, also after the deadline.",
+    backToPanel: "← Organizer panel",
+    deadlineHeading: "Answer deadline",
+    stateOff: "RSVP is off — guests do not see this question.",
+    stateOpen: (when: string) => `Guests answer until ${when}.`,
+    stateClosed: (when: string) => `Closed (${when}) — guests see their answer read-only.`,
+    deadlineLabel: "Collect answers until (Polish time)",
+    setDeadline: "Set the deadline",
+    closeNow: "Close now",
+    turnOff: "Turn RSVP off",
+    confirmClose: "Close answers now? Guests will see their answer read-only.",
+    confirmOff: "Turn RSVP off? Guests will no longer see this question; saved answers stay.",
+    linksOff: "Guest links are off — guests will not see the question until you turn them on.",
+    linksPage: "Guest links",
+    attendanceNote:
+      "“Not coming” marks the guest absent (the draw and the publish skip them) — the same absence as on the guest list.",
+    optionsHeading: "Dishes to choose from",
+    optionsIntro: "The venue offers the event's menu; pick the dishes guests choose from (usually 2–4).",
+    menuInactive: "The venue has not offered a menu for this event — guests only confirm attendance.",
+    noOptions: "No dish choice — guests only confirm attendance.",
+    optionUnavailable: "no longer on the menu",
+    saveOptions: "Save dishes",
+    countsHeading: "Counts",
+    coming: "Coming",
+    notComing: "Not coming",
+    noAnswerCount: "No answer",
+    noDish: "Without a dish",
+    dishesHeading: "Chosen dishes (coming)",
+    notOnList: "not on the list",
+    answersHeading: "Guests' answers",
+    noGuests: "There are no guests on the list yet.",
+    attendanceLabel: (name: string) => `Attendance: ${name}`,
+    dishSelectLabel: (name: string) => `Dish: ${name}`,
+    optionComing: "Coming",
+    optionNotComing: "Not coming",
+    optionNoAnswer: "No answer",
+    dishNone: "— no dish —",
+    byOrganizerShort: "entered by the organizer",
+    byGuestShort: "guest's answer",
+    saving: "Saving…",
+    dismiss: "Dismiss",
+    optionsOffMenu: (names: string) =>
+      `Not on the event's menu (guests do not see them, saving removes them): ${names}.`,
+    optionsLimit: (max: number) => `At most ${String(max)} dishes.`,
+    answeredAt: (when: string) => `· ${when}`,
+    summaryOff: "Off",
+    summaryOpen: (when: string) => `until ${when}`,
+    summaryClosed: "closed",
+    summaryCounts: (coming: number, notComing: number, noAnswer: number) =>
+      `coming ${String(coming)} · not coming ${String(notComing)} · no answer ${String(noAnswer)}`,
+    moveHeading: "Guests' choices in the order",
+    moveIntro:
+      "Every guest who is coming and chose a dish gets one order line with that dish at their seat (the venue sets the price). Guests who already have that dish in the order are skipped, so you can move again after new answers.",
+    moveButton: "Move choices to orders",
+    moveChecking: "Checking…",
+    confirmMove: (added: number, skipped: number) =>
+      `Add ${String(added)} ${pluralEn(added, "line", "lines")} to the order (one for each guest with a chosen dish)?` +
+      (skipped > 0 ? ` Skipped (the dish is already in the order): ${String(skipped)}.` : ""),
+    moved: (added: number, skipped: number) =>
+      `Added ${String(added)} ${pluralEn(added, "line", "lines")} to the order.` +
+      (skipped > 0 ? ` Skipped: ${String(skipped)} (the dish was already in the order).` : ""),
+    moveNothing: (skipped: number): string =>
+      skipped > 0
+        ? "Nothing to move: the guests' choices are already in the order."
+        : "Nothing to move: nobody coming has chosen a dish yet.",
+    moveNotOnMenu: (names: string) =>
+      `These dishes are not on the event's menu: ${names}. Change those guests' dish or ask the venue about the menu and try again — nothing was added.`,
+    ordersLink: "Go to orders",
+  },
+);

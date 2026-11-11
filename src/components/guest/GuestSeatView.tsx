@@ -1,7 +1,9 @@
 import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useGuestState } from "@/components/hooks/useGuestState";
+import { useMapSearch } from "@/components/hooks/useMapSearch";
+import { MapSearch } from "@/components/map-search/MapSearch";
 import { Button } from "@/components/ui/button";
-import { VenueDrawing, type VenueDrawingTable } from "@/components/venue-drawing/VenueDrawing";
+import { VenueDrawing, type DrawingMark, type VenueDrawingTable } from "@/components/venue-drawing/VenueDrawing";
 import { noAccessMessages } from "@/lib/access/messages";
 import { guestPhoneMessages } from "@/lib/guest-links/messages";
 import { describeGuestSeat } from "@/lib/guest-links/state";
@@ -63,18 +65,50 @@ function Tablemates({ tablemates, locale }: { tablemates: TablemateDto[]; locale
 
 const DEFAULT_ASPECT = 16 / 9;
 
-// Where the plan's scroll box should look after a zoom: the guest's own table, or the point that was in the middle.
-type ZoomAnchor = { kind: "own" } | { kind: "point"; x: number; y: number };
+// Where the plan's scroll box should look after a zoom: the guest's own table, a found guest's table
+// (guest-map-search), or the point that was in the middle.
+type ZoomAnchor = { kind: "own" } | { kind: "table"; key: string } | { kind: "point"; x: number; y: number };
+
+// The table of the guest found by the search (guest-map-search): `nonce` grows with every explicit pick (a click or
+// Enter), which also brings the map into view; the only hit while typing has nonce 0 and only scrolls the map.
+interface MapTarget {
+  table: string;
+  nonce: number;
+}
+
+function targetId(target: MapTarget | null): string | null {
+  return target === null ? null : `${String(target.nonce)}\u0000${target.table}`;
+}
+
+// Scrolls the plan's box so the table (by its key, the table's name) is in the middle.
+function scrollToTable(box: HTMLDivElement, key: string, smooth: boolean) {
+  const group = [...box.querySelectorAll<SVGGElement>("g[data-table]")].find(
+    (element) => element.dataset.table === key,
+  );
+  if (!group) {
+    return;
+  }
+  const area = box.getBoundingClientRect();
+  const rect = group.getBoundingClientRect();
+  box.scrollBy({
+    left: rect.left + rect.width / 2 - (area.left + area.width / 2),
+    top: rect.top + rect.height / 2 - (area.top + area.height / 2),
+    behavior: smooth ? "smooth" : "instant",
+  });
+}
 
 // The whole venue on a phone (guest-venue-names): every published name at its chair, the guest's table and chair in
 // red, drawn wider than the screen and scrolled. The first zoom makes the names readable (measured in the page), then
-// the plan scrolls to the guest's table; „−”/„+” keep the middle of the view, „Mój stolik” scrolls back.
+// the plan scrolls to the guest's table — or to the table of the guest found by the search (violet marks); „−”/„+”
+// keep the middle of the view, „Mój stolik” scrolls back.
 function VenueMap({
   aspect,
   drawing,
   tables,
   ownTable,
   ownSeat,
+  marks,
+  target,
   locale,
 }: {
   aspect: number;
@@ -82,18 +116,31 @@ function VenueMap({
   tables: VenueDrawingTable[];
   ownTable: string;
   ownSeat: number;
+  marks: readonly DrawingMark[];
+  target: MapTarget | null;
   locale: Locale;
 }) {
   const t = guestPhoneMessages(locale);
   const scrollRef = useRef<HTMLDivElement>(null);
   // null until the names were measured at zoom 1 (before the first paint).
   const [zoom, setZoom] = useState<number | null>(null);
-  const anchor = useRef<ZoomAnchor>({ kind: "own" });
+  const anchor = useRef<ZoomAnchor>(target ? { kind: "table", key: target.table } : { kind: "own" });
+  const lastTarget = useRef(targetId(target));
+  // The last pick brought into view (the page scrolls to the map once per pick).
+  const revealed = useRef(0);
   // The guest's place the view was last scrolled for: a new one (a redraw, a republish that moved the table) scrolls
   // to the own table again.
   const own = tables.find((table) => table.key === ownTable);
   const place = [ownTable, ownSeat, own?.x, own?.y, own?.rotation, aspect].map(String).join("\u0000");
   const lastPlace = useRef(place);
+
+  // An explicit pick brings the map itself into the page's view (once per pick).
+  function reveal(box: HTMLDivElement) {
+    if (target !== null && target.nonce > revealed.current) {
+      revealed.current = target.nonce;
+      box.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    }
+  }
 
   useLayoutEffect(() => {
     const box = scrollRef.current;
@@ -111,22 +158,39 @@ function VenueMap({
       lastPlace.current = place;
       anchor.current = { kind: "own" };
     }
-    const target = anchor.current;
-    if (target.kind === "point") {
-      box.scrollLeft = target.x * box.scrollWidth - box.clientWidth / 2;
-      box.scrollTop = target.y * box.scrollHeight - box.clientHeight / 2;
+    const view = anchor.current;
+    if (view.kind === "point") {
+      box.scrollLeft = view.x * box.scrollWidth - box.clientWidth / 2;
+      box.scrollTop = view.y * box.scrollHeight - box.clientHeight / 2;
       return;
     }
-    const own = [...box.querySelectorAll<SVGGElement>("g[data-table]")].find(
-      (group) => group.dataset.table === ownTable,
-    );
-    if (own) {
-      const area = box.getBoundingClientRect();
-      const rect = own.getBoundingClientRect();
-      box.scrollLeft += rect.left + rect.width / 2 - (area.left + area.width / 2);
-      box.scrollTop += rect.top + rect.height / 2 - (area.top + area.height / 2);
+    scrollToTable(box, view.kind === "own" ? ownTable : view.key, false);
+    if (view.kind === "table") {
+      reveal(box);
     }
+    // Only a new zoom or a new own place re-centres; the search's target has its own effect below.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [zoom, ownTable, place]);
+
+  // guest-map-search: a new found table becomes the anchor and is scrolled to at the current zoom (or after the first
+  // measure, by the effect above); a cleared search leaves the view where it is.
+  const currentTarget = targetId(target);
+  useLayoutEffect(() => {
+    if (lastTarget.current === currentTarget) {
+      return;
+    }
+    lastTarget.current = currentTarget;
+    const box = scrollRef.current;
+    if (target === null) {
+      return;
+    }
+    anchor.current = { kind: "table", key: target.table };
+    if (box && zoom !== null) {
+      scrollToTable(box, target.table, true);
+      reveal(box);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentTarget, zoom]);
 
   function zoomBy(direction: 1 | -1) {
     const box = scrollRef.current;
@@ -145,17 +209,8 @@ function VenueMap({
     anchor.current = { kind: "own" };
     // The same zoom does not re-run the effect: scroll here.
     const box = scrollRef.current;
-    const own = box
-      ? [...box.querySelectorAll<SVGGElement>("g[data-table]")].find((group) => group.dataset.table === ownTable)
-      : undefined;
-    if (box && own) {
-      const area = box.getBoundingClientRect();
-      const rect = own.getBoundingClientRect();
-      box.scrollBy({
-        left: rect.left + rect.width / 2 - (area.left + area.width / 2),
-        top: rect.top + rect.height / 2 - (area.top + area.height / 2),
-        behavior: "smooth",
-      });
+    if (box) {
+      scrollToTable(box, ownTable, true);
     }
   }
 
@@ -204,6 +259,7 @@ function VenueMap({
             tables={tables}
             variant="phone"
             highlight={{ table: ownTable, seat: ownSeat }}
+            marks={marks}
             label={t.venueDrawingLabel(ownTable)}
             locale={locale}
             className="w-full"
@@ -216,7 +272,9 @@ function VenueMap({
 
 // The guest's table drawn with the names at their chairs (the guest's own chair highlighted), and on request the
 // whole venue with every published name (guest-venue-names) — exactly what the TV shows — the guest's table and chair
-// in red. The guest's own chair carries their current name.
+// in red. The guest's own chair carries their current name. guest-map-search (S-22): a search over exactly those
+// names (nothing the phone does not already have) lists the guests found and lights their chairs violet; picking one
+// opens the whole venue and scrolls to that table. The field is outside the toggled plan, so the server renders it.
 function SeatDrawing({
   apiBase,
   drawing,
@@ -240,8 +298,9 @@ function SeatDrawing({
   // The plan photo's aspect ratio (the drawing's coordinates are fractions of it); a photo that fails to load counts
   // as the default.
   const [aspect, setAspect] = useState<{ version: number; value: number } | null>(null);
+  // With their room's name (the search lists it).
   const tables = useMemo(
-    (): VenueDrawingTable[] =>
+    (): (VenueDrawingTable & { room: string })[] =>
       drawing.tables.map((table) => {
         const mine = table.name === seat.table;
         // A state from a server without the names (only during a deploy) draws empty chairs.
@@ -261,6 +320,14 @@ function SeatDrawing({
     () => tables.filter((table) => table.key === seat.table).map((table) => ({ ...table, highlighted: false })),
     [tables, seat.table],
   );
+  const search = useMapSearch(tables);
+  // Bumped by every explicit pick: the map opens (once) and scrolls to the found table again.
+  const [picks, setPicks] = useState(0);
+  const activeTable = search.active?.table ?? null;
+  const target = useMemo(
+    (): MapTarget | null => (activeTable === null ? null : { table: activeTable, nonce: picks }),
+    [activeTable, picks],
+  );
   const ratio = aspect !== null && aspect.version === planVersion ? aspect.value : DEFAULT_ASPECT;
   // The whole venue waits for the real aspect: drawn at the default first, every table would move (and the view would
   // lose the guest's table) when the photo arrives.
@@ -277,6 +344,7 @@ function SeatDrawing({
           tables={ownTable}
           variant="phone"
           highlight={highlight}
+          marks={search.marks}
           focus={seat.table}
           label={t.tableDrawingLabel(seat.table, seat.seat)}
           locale={locale}
@@ -295,6 +363,15 @@ function SeatDrawing({
       >
         {showVenue ? t.hideVenue : t.showVenue}
       </Button>
+      <MapSearch
+        search={search}
+        locale={locale}
+        onPick={() => {
+          setPlanWanted(true);
+          setShowVenue(true);
+          setPicks((count) => count + 1);
+        }}
+      />
       {planWanted && planVersion !== null && (
         <img
           src={planImagePath(apiBase, planVersion)}
@@ -326,6 +403,8 @@ function SeatDrawing({
           tables={tables}
           ownTable={seat.table}
           ownSeat={seat.seat}
+          marks={search.marks}
+          target={target}
           locale={locale}
         />
       )}

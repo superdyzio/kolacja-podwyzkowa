@@ -109,6 +109,7 @@ describe("toTvSeating", () => {
     expect(tv.tables.map((t) => t.name)).toEqual(["Kominek", "Okno"]);
     expect(tv.tables[1]).toEqual({
       name: "Okno",
+      room: "Sala",
       shape: "round",
       seatCount: 8,
       x: 0.1,
@@ -127,6 +128,19 @@ describe("seatingVersion", () => {
   it("joins the snapshot id and the plan version", () => {
     expect(seatingVersion(12, 1761529200000)).toBe("12.1761529200000");
     expect(seatingVersion(null, null)).toBe("0.0");
+  });
+
+  it("marks the seats erased since the publish on the snapshot part, and only then (guest-erasure)", () => {
+    expect(seatingVersion(12, 1761529200000, 0)).toBe("12.1761529200000");
+    expect(seatingVersion(12, 1761529200000, 1)).toBe("12-1.1761529200000");
+    expect(seatingVersion(12, 1761529200000, 2)).toBe("12-2.1761529200000");
+    // Never the token of another snapshot or plan version.
+    expect(seatingVersion(12, 1761529200000, 1)).not.toBe(seatingVersion(121, 1761529200000));
+  });
+
+  it("is the TV's version of a snapshot with erased seats", () => {
+    expect(toTvSeating({ ...snapshotOf(base, 7), erasedSeats: 3 }, 5).version).toBe("7-3.5");
+    expect(toTvSeating(snapshotOf(base, 7), 5).version).toBe("7.5");
   });
 });
 

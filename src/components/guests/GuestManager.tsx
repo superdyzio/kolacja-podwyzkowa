@@ -8,6 +8,7 @@ import type { Locale } from "@/lib/i18n";
 import type { GuestDto, GuestListDto } from "@/types";
 import { GuestAddForms } from "./GuestAddForms";
 import { GuestGroups } from "./GuestGroups";
+import { GuestImportForm } from "./GuestImportForm";
 import { GuestRow } from "./GuestRow";
 
 interface Props {
@@ -37,7 +38,8 @@ function deleteQuestion(guest: GuestDto, partners: string[], locale: Locale): st
   return question;
 }
 
-// Organizer guest page island (FR-001..FR-003): add/paste, rename, delete, absent/present, groups of 2–5.
+// Organizer guest page island (FR-001..FR-003): add/paste, rename, delete, absent/present, groups of 2–5; the import
+// with diets and each guest's diet (guest-import-diets, S-23).
 export function GuestManager({ apiBase, initialList, locale }: Props) {
   const t = guestManagerMessages(locale);
   const { list, pending, failure, send, dismissFailure } = useGuestList(apiBase, initialList, locale);
@@ -103,6 +105,13 @@ export function GuestManager({ apiBase, initialList, locale }: Props) {
         onAdd={(text) => send({ method: "POST", path: "/guests", body: { text } })}
       />
 
+      <GuestImportForm
+        apiBase={apiBase}
+        locale={locale}
+        pending={pending}
+        onSave={(text) => send({ method: "POST", path: "/guests/import", body: { text } })}
+      />
+
       <GuestGroups
         groups={list.groups}
         nameById={nameById}
@@ -137,6 +146,9 @@ export function GuestManager({ apiBase, initialList, locale }: Props) {
                   }
                   onToggleAbsent={() =>
                     void send({ method: "PATCH", path: `/guests/${guest.id}`, body: { isAbsent: !guest.isAbsent } })
+                  }
+                  onSaveDiet={(diets, dietNote) =>
+                    send({ method: "PATCH", path: `/guests/${guest.id}`, body: { diets, dietNote } })
                   }
                   onDelete={() => {
                     if (window.confirm(deleteQuestion(guest, partners, locale))) {

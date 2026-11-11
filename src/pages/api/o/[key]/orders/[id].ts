@@ -4,15 +4,17 @@ import {
   deleteOrderItem,
   getOrderBoard,
   orderMessages,
+  priceForRenamedLine,
   toOrderItemPatch,
   UpdateOrderItemBody,
   updateOrderItem,
 } from "@/lib/orders";
+import { findMenuItem, getAvailableMenu, menuMessages } from "@/lib/menu";
 import { organizerApi } from "@/lib/organizer-api";
 
 export const prerender = false;
 
-// One order line (restaurant-orders), organizer only. PATCH any subset of { name, note, quantity, price,
+// One order line (restaurant-orders), organizer only. PATCH any subset of { name, note, quantity,
 // assignment, delivered } → the board; DELETE → the board. 404 for an unknown line, 400 with the form's message,
 // 409 when the guest/table no longer exists.
 
@@ -33,14 +35,30 @@ export const PATCH: APIRoute = async ({ locals, params, request }) => {
   if (!patch.ok) {
     return jsonError(400, patch.message);
   }
-  const result = await updateOrderItem(api.db, id, patch.value);
+  // client-restaurant-split (FR-027): a line renamed to another dish takes that dish's price (else the menu's, else
+  // 0). menu-catalog-courses (S-16): while the event has a menu, the other dish must be on it; a spelling fix and
+  // every other change of a line (also a free-text line from before the menu) stay allowed.
+  let rename = {};
+  if (patch.value.name !== undefined) {
+    const menu = await getAvailableMenu(api.db, api.access.event.id);
+    const item = findMenuItem(menu, patch.value.name);
+    const name = item?.name ?? patch.value.name;
+    const repriced = await priceForRenamedLine(api.db, api.access.event.id, "dish", id, name, item?.priceGrosze ?? 0);
+    if (repriced !== null) {
+      if (menu.length > 0 && !item) {
+        return jsonError(400, menuMessages(locals.locale).notOnMenu);
+      }
+      rename = { name, unitPriceGrosze: repriced, course: item?.course ?? null, menuItemId: item?.id ?? null };
+    }
+  }
+  const result = await updateOrderItem(api.db, api.access.event.id, id, { ...patch.value, ...rename });
   switch (result.status) {
     case "not-found":
       return jsonError(404, orderMessages(locals.locale).itemNotFound);
     case "place-gone":
       return jsonError(409, orderMessages(locals.locale).placeGone);
     case "updated":
-      return jsonResponse(await getOrderBoard(api.db));
+      return jsonResponse(await getOrderBoard(api.db, api.access.event.id));
   }
 };
 
@@ -53,9 +71,9 @@ export const DELETE: APIRoute = async ({ locals, params }) => {
   if (id === null) {
     return jsonError(404, orderMessages(locals.locale).itemNotFound);
   }
-  const result = await deleteOrderItem(api.db, id);
+  const result = await deleteOrderItem(api.db, api.access.event.id, id);
   if (result.status === "not-found") {
     return jsonError(404, orderMessages(locals.locale).itemNotFound);
   }
-  return jsonResponse(await getOrderBoard(api.db));
+  return jsonResponse(await getOrderBoard(api.db, api.access.event.id));
 };

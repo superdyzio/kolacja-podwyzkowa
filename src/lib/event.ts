@@ -1,50 +1,83 @@
-import { generateAccessKey } from "@/lib/access/keys";
 import { loadStarterQuestions } from "@/lib/questions/service";
 import type { DbClient } from "@/lib/supabase-client";
 
-// The dinner is a singleton row (id = 1) in public.event. Functions take the client as a parameter so they can be
-// tested against the local DB without Astro. Supabase errors always throw: a broken DB must never look like
-// "no event" or "no access".
+// Restaurants and their events (multi-tenant-events). Every event belongs to exactly one restaurant; its organizer,
+// TV and restaurant link keys come from column defaults (18 random bytes in base64url), so creating an event is one
+// plain insert. Functions take the client as a parameter so they can be tested against the local DB without Astro.
+// Supabase errors always throw: a broken DB must never look like "no event" or "no access".
+//
+// The restaurant panel creates events through createEvent (restaurant-events, S-11: src/lib/events/service.ts), as do
+// the integration tests; the scripts (npm run event:create, smoke, demo) insert the same rows over PostgREST
+// (scripts/lib/platform.mjs). An event without a date gets today's (Europe/Warsaw) from the column default.
 
-export const EVENT_ID = 1;
+const FOREIGN_KEY_VIOLATION = "23503";
 
-const UNIQUE_VIOLATION = "23505";
-
-export type CreateEventResult =
-  { status: "created"; organizerKey: string; tvKey: string } | { status: "already-exists" };
-
-export async function hasEvent(db: DbClient): Promise<boolean> {
-  const { data, error } = await db.from("event").select("id").eq("id", EVENT_ID).maybeSingle();
-  if (error) {
-    throw new Error(`Nie udało się odczytać wydarzenia: ${error.message}`);
-  }
-  return data !== null;
+export interface RestaurantDto {
+  id: number;
+  name: string;
 }
 
-export async function createEvent(db: DbClient): Promise<CreateEventResult> {
-  const organizerKey = generateAccessKey();
-  let tvKey = generateAccessKey();
-  while (tvKey === organizerKey) {
-    tvKey = generateAccessKey();
-  }
+export interface CreatedEventDto {
+  id: number;
+  name: string;
+  organizerKey: string;
+  tvKey: string;
+  restaurantKey: string;
+}
 
-  const { error } = await db.from("event").insert({ id: EVENT_ID, organizer_key: organizerKey, tv_key: tvKey });
+export type CreateEventResult = { status: "created"; event: CreatedEventDto } | { status: "restaurant-not-found" };
+
+export async function createRestaurant(db: DbClient, name: string): Promise<RestaurantDto> {
+  const { data, error } = await db.from("restaurant").insert({ name: name.trim() }).select("id, name").single();
   if (error) {
-    // The singleton primary key turns a second (or concurrent) creation into a unique violation.
-    if (error.code === UNIQUE_VIOLATION) {
-      return { status: "already-exists" };
+    throw new Error(`Nie udało się utworzyć restauracji: ${error.message}`);
+  }
+  return { id: data.id, name: data.name };
+}
+
+// Creates an event of the restaurant and loads the starter question base into it (S-07). `date` ("YYYY-MM-DD") and
+// `expectedGuests` are optional (restaurant-events): omitted, the DB defaults apply (today, none).
+export async function createEvent(
+  db: DbClient,
+  {
+    restaurantId,
+    name,
+    date,
+    expectedGuests,
+  }: { restaurantId: number; name: string; date?: string; expectedGuests?: number | null },
+): Promise<CreateEventResult> {
+  const { data, error } = await db
+    .from("event")
+    .insert({
+      restaurant_id: restaurantId,
+      name: name.trim(),
+      ...(date === undefined ? {} : { event_date: date }),
+      ...(expectedGuests === undefined ? {} : { expected_guests: expectedGuests }),
+    })
+    .select("id, name, organizer_key, tv_key, restaurant_key")
+    .single();
+  if (error) {
+    if (error.code === FOREIGN_KEY_VIOLATION) {
+      return { status: "restaurant-not-found" };
     }
     throw new Error(`Nie udało się utworzyć wydarzenia: ${error.message}`);
   }
 
-  // S-07: a new event starts with the starter question base. Best effort: the caller's redirect is the only moment
-  // the organizer link is handed out, so a failure here must never turn it into an error page. The organizer can
-  // load the base later ("Wczytaj bazę startową"). Only the creator gets here, so a racing creation seeds nothing.
+  // Best effort, as before: the organizer can load the base later („Wczytaj bazę startową”).
   try {
-    await loadStarterQuestions(db);
+    await loadStarterQuestions(db, data.id);
   } catch (seedError) {
-    // eslint-disable-next-line no-console -- the only trace of a failed seed (Worker logs); the event itself is fine
+    // eslint-disable-next-line no-console -- the only trace of a failed seed (server logs); the event itself is fine
     console.error("Nie udało się wczytać bazy startowej pytań:", seedError);
   }
-  return { status: "created", organizerKey, tvKey };
+  return {
+    status: "created",
+    event: {
+      id: data.id,
+      name: data.name,
+      organizerKey: data.organizer_key,
+      tvKey: data.tv_key,
+      restaurantKey: data.restaurant_key,
+    },
+  };
 }

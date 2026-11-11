@@ -1,9 +1,12 @@
 ---
 import NoAccess from "@/components/NoAccess.astro";
+import BrandHeader from "@/components/branding/BrandHeader.astro";
 import { TvSeatingView } from "@/components/tv/TvSeatingView";
 import Layout from "@/layouts/Layout.astro";
 import { accessFor, tvPath } from "@/lib/access";
+import { getEventBranding } from "@/lib/branding";
 import { getDb } from "@/lib/db";
+import { ROOM_PIN_PARAM, parseRoomPin, resolveRoomPin, tvRoomNames } from "@/lib/tv-rooms";
 import { getTvScreen } from "@/lib/tv-spotlight";
 import { tvScreenMessages } from "@/lib/tv-spotlight/messages";
 
@@ -20,12 +23,23 @@ if (!access || !db) {
   Astro.response.status = 404;
 }
 
-const view =
+const initial =
   access && db
+    ? await getTvScreen(db, access.event.id, access.event.modules.tvSpotlight, access.event.modules.pubQuiz)
+    : null;
+// tv-room-rotation (S-20): `?sala=<room name>` pins this TV to one room of THIS event. Resolved here against the
+// published rooms: only a room's own name reaches the HTML, never the raw parameter; anything else = no pin.
+const fixedRoom = initial
+  ? resolveRoomPin(parseRoomPin(Astro.url.searchParams.get(ROOM_PIN_PARAM)), tvRoomNames(initial.tables))
+  : null;
+const view =
+  access && db && initial
     ? {
         name: access.event.name,
         apiBase: `/api${tvPath(Astro.params.key ?? "")}`,
-        initial: await getTvScreen(db),
+        initial,
+        // event-branding (S-18): a small corner badge with the restaurant's and the client's brand (page load only).
+        branding: await getEventBranding(db, access.event.id),
       }
     : null;
 ---
@@ -33,7 +47,15 @@ const view =
 {view ? (
   <Layout title={tvScreenMessages(locale).pageTitle(view.name)} languageSwitch={false}>
     <main class="fixed inset-0 overflow-hidden bg-neutral-950 text-white">
-      <TvSeatingView client:load apiBase={view.apiBase} initial={view.initial} eventName={view.name} locale={locale} />
+      <TvSeatingView
+        client:load
+        apiBase={view.apiBase}
+        initial={view.initial}
+        eventName={view.name}
+        fixedRoom={fixedRoom}
+        locale={locale}
+      />
+      <BrandHeader branding={view.branding} base={`${view.apiBase}/branding`} locale={locale} variant="tv" />
     </main>
   </Layout>
 ) : (

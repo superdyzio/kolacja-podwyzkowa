@@ -2,6 +2,7 @@ export {
   AddDrinkBody,
   AddOrderItemBody,
   OrderAssignment,
+  SetPriceBody,
   UpdateDrinkBody,
   UpdateOrderItemBody,
   type OrderAssignmentInput,
@@ -29,7 +30,17 @@ export {
   type DrinkPatch,
   type UpdateDrinkResult,
 } from "./drinks-service";
-export { toDrinkInput, toDrinkPatch, toOrderItemInput, toOrderItemPatch, type InputResult } from "./input";
+export {
+  toDrinkInput,
+  toDrinkPatch,
+  toOrderItemInput,
+  toOrderItemPatch,
+  type InputResult,
+  type UnpricedDrinkInput,
+  type UnpricedDrinkPatch,
+  type UnpricedOrderItemInput,
+  type UnpricedOrderItemPatch,
+} from "./input";
 export {
   deliveredCount,
   guestOrdersKey,
@@ -40,6 +51,14 @@ export {
   type PieceLine,
 } from "./pieces";
 export { placeOrders, type PlaceableLine, type PlacementSource } from "./placement";
+export { newestPriceFor, priceAfterRename, priceList, PRICE_KINDS } from "./prices";
+export {
+  getPriceList,
+  priceForNewLine,
+  priceForRenamedLine,
+  setEventPrice,
+  type SetPriceResult,
+} from "./prices-service";
 export { organizerPrepList, prepList } from "./prep";
 export { fingerprint, toRestaurantItem, toRestaurantView } from "./restaurant";
 export {
@@ -91,5 +110,5 @@ export {
   type OrderItemPatch,
   type UpdateOrderItemResult,
 } from "./service";
-export { drinkMessages, guestOrderMessages, orderMessages, restaurantMessages } from "./messages";
+export { drinkMessages, guestOrderMessages, orderMessages, priceMessages, restaurantMessages } from "./messages";
 export { describeLines, describeToServe, formatOrderSummary } from "./summary";

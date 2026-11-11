@@ -1,0 +1,65 @@
+---
+import NoAccess from "@/components/NoAccess.astro";
+import LeadBanner from "@/components/lead/LeadBanner.astro";
+import ReadOnlyFrame from "@/components/lead/ReadOnlyFrame.astro";
+import ModuleOff from "@/components/modules/ModuleOff.astro";
+import { OfflineSync } from "@/components/offline/OfflineSync";
+import { QuizManager } from "@/components/quiz/QuizManager";
+import Layout from "@/layouts/Layout.astro";
+import { accessFor, organizerPath } from "@/lib/access";
+import { getDb } from "@/lib/db";
+import { getQuizBoard, quizMessages } from "@/lib/quiz";
+
+// The client's pub quiz (pub-quiz, S-28; FR-049): prepare the questions, run the quiz on the TV and the guests'
+// phones, the live standings. The middleware has already checked the key; this is the second, role-specific check.
+// The paid module switched off shows a note instead (its data stays, nothing is read). While the venue leads, the
+// page is view-only (the staff run it through the panel's preview).
+const locale = Astro.locals.locale;
+const t = quizMessages(locale);
+const access = accessFor(Astro.locals, "organizer");
+const db = access ? getDb() : null;
+const quizOn = access?.event.modules.pubQuiz ?? false;
+const board = access && db && quizOn ? await getQuizBoard(db, access.event.id) : null;
+if (!access || !db || (quizOn && !board)) {
+  Astro.response.status = 404;
+}
+
+const view =
+  access && db && (!quizOn || board)
+    ? {
+        name: access.event.name,
+        venueLeads: access.event.venueLeads,
+        panelPath: organizerPath(access.event.organizerKey),
+        apiBase: `/api${organizerPath(access.event.organizerKey)}`,
+        board,
+      }
+    : null;
+---
+
+{view ? (
+  <Layout title={t.pageTitle(view.name)}>
+    <main class="mx-auto flex max-w-3xl flex-col gap-6 p-4 sm:p-8">
+      <header class="flex flex-col gap-2">
+        <a
+          href={view.panelPath}
+          class="self-start py-2 text-sm text-muted-foreground underline-offset-4 hover:underline"
+        >
+          {t.backToPanel}
+        </a>
+        <h1 class="text-3xl font-bold">{t.heading}</h1>
+        <p class="text-sm text-muted-foreground">{t.intro}</p>
+      </header>
+      {view.venueLeads && <LeadBanner kind="client" locale={locale} />}
+      <OfflineSync client:load apiBase={view.apiBase} locale={locale} />
+      {view.board ? (
+        <ReadOnlyFrame readOnly={view.venueLeads} locale={locale}>
+          <QuizManager client:load apiBase={view.apiBase} initial={view.board} locale={locale} />
+        </ReadOnlyFrame>
+      ) : (
+        <ModuleOff module="pubQuiz" backPath={view.panelPath} locale={locale} />
+      )}
+    </main>
+  </Layout>
+) : (
+  <NoAccess />
+)}

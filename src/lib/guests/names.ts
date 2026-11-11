@@ -9,7 +9,7 @@ import { guestsMessages } from "./messages";
 // letter case, so two guests never look the same on the TV plan or on the QR cards. The DB enforces the same rules
 // (check constraint + unique index on lower(display_name)) as a backstop.
 
-export const MAX_GUESTS = 100;
+export const MAX_GUESTS = 150;
 export const MAX_DISPLAY_NAME_LENGTH = 40;
 export const MIN_GROUP_SIZE = 2;
 export const MAX_GROUP_SIZE = 5;

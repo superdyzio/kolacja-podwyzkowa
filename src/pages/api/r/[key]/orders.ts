@@ -17,7 +17,7 @@ export const GET: APIRoute = async ({ locals, url }) => {
   if (api instanceof Response) {
     return api;
   }
-  const view = await getRestaurantView(api.db);
+  const view = await getRestaurantView(api.db, api.access.event.id);
   const since = url.searchParams.get("since");
   if (since !== null && since.length <= MAX_VERSION_LENGTH && since === view.version) {
     return new Response(null, { status: 204 });

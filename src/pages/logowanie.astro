@@ -1,0 +1,68 @@
+---
+import Layout from "@/layouts/Layout.astro";
+import LegalLinks from "@/components/legal/LegalLinks.astro";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { authErrorText, authMessages } from "@/lib/auth/messages";
+import { EMAIL_MAX_LENGTH } from "@/lib/auth/email";
+import { PRODUCT_NAME } from "@/lib/i18n/product";
+import { HOME_PATH } from "@/lib/legal/paths";
+
+// Staff login (staff-accounts, F-03): a plain form posting to /api/auth/login, which answers 303 (the panel, or back
+// here with ?blad=<code>). The middleware sends a logged-in person on to the panel. The typed e-mail never goes into
+// a URL, so after an error it is typed again (the browser's autofill helps). The product's name links the product page,
+// the footer the DRAFT terms and privacy policy (landing-legal, S-30).
+const t = authMessages(Astro.locals.locale);
+const error = authErrorText(Astro.url.searchParams.get("blad"), Astro.locals.locale);
+const loggedOut = Astro.url.searchParams.get("wylogowano") === "1";
+---
+
+<Layout title={t.loginTitle}>
+  <main class="mx-auto flex min-h-screen max-w-md flex-col justify-center gap-6 p-6" data-clear-staff-readout="floor">
+    <header class="flex flex-col gap-1">
+      <a href={HOME_PATH} class="self-start text-sm text-muted-foreground underline-offset-4 hover:underline">
+        {PRODUCT_NAME}
+      </a>
+      <h1 class="text-3xl font-bold">{t.loginHeading}</h1>
+      <p class="text-muted-foreground">{t.loginIntro}</p>
+    </header>
+    {error && (
+      <p
+        role="alert"
+        aria-label={t.errorRegion}
+        class="rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm"
+      >
+        {error}
+      </p>
+    )}
+    {loggedOut && !error && (
+      <p role="status" aria-label={t.noticeRegion} class="rounded-md border bg-muted p-3 text-sm">
+        {t.loggedOut}
+      </p>
+    )}
+    <form method="post" action="/api/auth/login" class="flex flex-col gap-4">
+      <div class="flex flex-col gap-2">
+        <label for="email" class="font-medium">
+          {t.emailLabel}
+        </label>
+        <Input id="email" name="email" type="email" autoComplete="username" maxLength={EMAIL_MAX_LENGTH} required />
+      </div>
+      <div class="flex flex-col gap-2">
+        <label for="password" class="font-medium">
+          {t.passwordLabel}
+        </label>
+        <Input id="password" name="password" type="password" autoComplete="current-password" required />
+      </div>
+      <Button type="submit">{t.loginButton}</Button>
+    </form>
+    <p class="text-sm text-muted-foreground">{t.forgotHint}</p>
+    <LegalLinks class="border-t pt-4" />
+  </main>
+</Layout>
+
+<script>
+  // staff-offline-readout (S-27): no staff session here, so no floor copy and no floor readout worker either.
+  import { clearStaffReadoutsOnPage } from "@/components/hooks/staff-offline-clear";
+
+  clearStaffReadoutsOnPage();
+</script>

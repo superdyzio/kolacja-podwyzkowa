@@ -1,0 +1,116 @@
+# Review PR #4 (M-2, `overnight/m2` → `main`) — 2026-11-10
+
+Sześciu recenzentów Fable 5.1 przejrzało PR równolegle, każdy pod innym kątem. Pracowali tylko do odczytu na commicie `163803b`, porównując go z `origin/main` (ok. 52 tys. dodanych linii w `src/`, `supabase/`, `scripts/` i 17 migracji). Każde zgłoszenie sprawdzili poprawiacze Opus 5.5 w kodzie przed zmianą. Pracowali w trzech paczkach, jedna po drugiej. Pełne raporty recenzentów (numery linii według `163803b`) są w `context/foundation/m2-review/review-<n>-*.md`.
+
+Kąty: 1 dostęp i izolacja restauracji, 2 prywatność i dane, 3 migracje i funkcje bazy, 4 logika biznesowa względem PRD v2, 5 frontend, PL/EN i dostępność, 6 rzetelność testów, smoke, skryptów i CLAUDE.md.
+
+**Wynik końcowy** (po poprawkach z review i decyzjach użytkownika, `e429104`, sprawdzone przeze mnie, `AI_PROVIDER=mock`): 154 pliki / 1652 testy zielone, 6 pominiętych; lint 0, astro check 0 błędów; build OK; smoke 892 PASS / 0 FAIL / 1 SKIP bez `RETENTION_TOKEN` i 893 PASS / 0 FAIL / 0 SKIP z tokenem testowym; `npm run demo` dwa razy z rzędu OK. Nowe migracje po review: `20261111070000_review_fixes`, `20261111080000_guest_erasure` (z rozmysłem usuwa imiona gości skasowanych wcześniej), `20261111090000_retention_preview`, `20261111100000_rsvp_reset` — wszystkie przed kodem.
+
+## Naprawione
+
+| # | Waga | Kąt | Co | Commit |
+| --- | --- | --- | --- | --- |
+| 1 | wysoka | 6 | `npm run deploy:aws` drukował po wdrożeniu kroki z `delete from public.event;` w SQL Editorze. Na platformie z wieloma restauracjami usunęłoby to wszystkie wydarzenia ze wszystkim, co od nich zależy. Kroki są teraz w czystej funkcji `nextSteps` (test pilnuje, że nie ma w nich SQL ani smoke), a README „Pierwsze uruchomienie” robi sprawdzenie tylko w panelu. Stare `delete from public.restaurant` z README i tak by nie przeszło. | c63a49d, e4edf76 |
+| 2 | wysoka | 4 | Pomyłka w dacie wydarzenia (cofnięcie poza termin danych gości) po cichu i nieodwracalnie kasowała dane gości przy następnym zapytaniu. Teraz `PATCH` daty takiego wydarzenia z danymi gości zwraca 409 `date-would-purge` z komunikatem PL/EN (ostatni dzień przechowywania, sugestia eksportu) i nic nie zapisuje. Tworzenie wydarzeń z dawną datą i ustawienie terminu działają bez zmian. | cfe263a |
+| 3 | średnia | 1 | „Nowy link” administratora dla właściciela z hasłem pozwalał wejść jako właściciel bez wpisu w dzienniku. Teraz `issue_owner_link` w jednej transakcji tworzy token i wpis `link` (zaproszenie albo reset, e-mail, ważność), widoczny w „Dzienniku wejść administratora” każdej restauracji tego konta. Ograniczenie samej funkcji zostaje Twoją decyzją. | cfe263a |
+| 4 | średnia | 1 | Przełącznik języka `?lang=` buduje teraz przekierowanie tylko na ścieżkę w tej samej domenie (`localeSwitchTarget`). Dziś Astro i tak scala `//`, więc to zabezpieczenie na przyszłość. | c466953 |
+| 5 | średnia (częściowo) | 5 | Podglądy tylko do odczytu: etykieta i notka są teraz poza częścią `inert`, a `ModuleOff` z linkiem powrotu zastępuje ramkę w podglądzie panelu. | c63a49d |
+| 6 | niska | 3 | Czyszczenie danych gości bierze teraz blokadę quizu `(3013, event)` w kolejności `reset_event`, co zamyka okno zakleszczenia z `quiz_run_action('results')`. | cfe263a |
+| 7 | niska | 4 | Licznik pytań quizu na TV nie odświeżał się przy dodaniu lub usunięciu pytania w trakcie quizu. Trigger nadaje teraz nową rewizję, a format tokenu TV się nie zmienił. | cfe263a |
+| 8 | niska | 4 | Wyścig „usuń pytanie” z „zadaj”: usuwanie przechodzi przez `delete_quiz_question` pod blokadą `(3013, event)`, z tymi samymi kodami odpowiedzi. | cfe263a |
+| 9 | niska | 3 | Zmiana hasła kończy teraz wizyty wsparcia bieżącej sesji (wpis `exit`), zgodnie z CLAUDE.md. | cfe263a |
+| 10 | niska | 3 | Jawne `grant execute … to service_role` na 45 funkcjach M-2 i `usage` na sekwencji quizu. Wcześniej działało tylko dzięki domyślnym uprawnieniom Supabase. | cfe263a |
+| 11 | niska | 6 | `npm run retention` na bazie innej niż lokalna odmawia (exit 1, nic nie usuwa), gdy zegar laptopa różni się od nagłówka `Date` serwera o więcej niż 5 minut. Dotyczy też `--dry-run`. | c63a49d |
+| 12 | niska | 6 | `load:local` sprawdza wynik sprzątania i wymienia, co zostało. | c63a49d |
+| 13 | niska | 2 | Informacja o prywatności gościa (PL/EN) opisuje teraz grupy, quiz (odpowiedzi, punkty, miejsce), losowanie osoby na TV i podium quizu. Szkic polityki prywatności wymienia punkty i miejsca quizu. | c63a49d |
+| 14 | niska | 5 | Sale kelnerów po odmowie dostępu (zamknięta sala, archiwum, cofnięty kelner, koniec sesji) pokazują alert z drogą powrotu zamiast aktywnej tablicy. | c63a49d |
+| 15 | niska | 5 | Pola nazwy marki mają limit 80 znaków jak serwer (było 120). | c63a49d |
+| 16 | niska | 5 | Region `aria-live` TV ogłasza każdą zmianę, nie tylko pierwszą. | c63a49d |
+| 17 | niska | 4 | `floorWindowEnd` nie wywraca się już na wydarzeniu z datą 2100-12-31. Wcześniej strony tabletu i sal dawały wtedy 500. | c63a49d |
+
+Testy regresji: smoke sekcje 25 i 33 (zakodowane ścieżki, przełącznik języka), 26 i 29 (wpisy `link`), 41 (409 `date-would-purge`); testy integracyjne retencji, quizu i platformy; testy jednostkowe `localeSwitchTarget`, `nextSteps`, sprawdzania zegara i `floorWindowEnd`.
+
+## Nie potwierdzone
+
+- **Obejście bramki modułów i stref personelu przez kodowanie procentowe ścieżki** (kąt 1, zgłoszone jako wysokie i niskie). Nie odtworzyło się na zbudowanej aplikacji. `/api/o/<klucz>/%67uesses`, `%61i-topics`, `%71uiz`, `/%70anel`, `/api/%61uth/login` dostały te same 409, 404, 303 i 403 co zwykłe ścieżki. Powód: Astro 7.3 dekoduje ścieżkę i scala `//`, zanim middleware ją dostanie (`fetch-state.js`). Recenzent śledził tylko router. Smoke sprawdza to teraz stale (sekcje 25 i 33), a CLAUDE.md zabrania ponownego dekodowania w middleware (c466953).
+
+## Przyjęte bez zmian
+
+- Podgląd szablonu porównuje nazwy przez JS `toLowerCase()`, a `apply_venue_template` przez Postgres `lower()` (kąt 4, niska). Różnice są możliwe tylko dla egzotycznych liter. Zostawione.
+- Kąt 4 sprawdził też i uznał za zamierzone: cena 0 z wydarzenia wygrywa z katalogiem; każda odpowiedź gościa w quizie pobiera pełny ekran TV (obciążenie, nie błąd); odznaczenie nieobecności na liście zamienia „nie przyjdę” gościa na „przyjdzie (organizator)”; `seating/restore` i `history` nie podlegają modułowi losowania.
+
+## Do Twojej decyzji (nie ruszałem)
+
+1. **Usunięcie gościa nie usuwa jego imienia z opublikowanych rozsadzeń** ani z wpisu „osoba na TV” (kąt 2, średnia). TV, tablet, wydruki i telefony współbiesiadników pokazują imię do następnej publikacji, a stare migawki do czyszczenia po terminie, czyli do 365 dni. Migawki są celowo niezmienne (tokeny, odciski). Naprawa to trigger czyszczący `guest_name` (np. na pusty) i wpis TV przy usunięciu gościa. Ważne przy żądaniu usunięcia danych (art. 17 RODO).
+2. **Tryb wsparcia admina a diety** (kąt 2): podgląd i wydruk „lista dla obsługi” z dietami są dla admina dostępne, a eksport celowo nie. Do rozstrzygnięcia razem z już otwartym punktem „tryb wsparcia widzi diety”. Jedna reguła dla podglądu, wydruku i eksportu.
+3. **Usuwanie po terminie jest leniwe** (kąt 2, bez harmonogramu): uśpiony lokal trzyma dane gości w bazie bez końca, a informacja o prywatności obiecuje usunięcie „po terminie”. Rozwiązaniem jest harmonogram `npm run retention`, albo ostrożniejszy tekst.
+4. **Uwagi do zamówień „na środek stołu”** (dowolny tekst, np. wskazówki dietetyczne) widzą telefony wszystkich przy stole (kąt 2). To zachowanie sprzed M-2.
+5. **Cofnięcie daty bez furtki** (kąt 4, nasza poprawka #2): właściciel nie może z panelu celowo cofnąć daty wydarzenia z danymi gości poza termin. Możliwa furtka: flaga `confirmPurge` z potwierdzeniem w karcie.
+6. **Skrócenie terminu przechowywania** natychmiast usuwa dane starszych wydarzeń bez ostrzeżenia. To zalogowana decyzja S-26; można dodać ostrzeżenie z liczbą wydarzeń.
+7. **„Nowy link” administratora**: po poprawce #3 jest widoczny w dzienniku. Dalsze ograniczenie, np. reset tylko w trakcie wizyty wsparcia albo tylko zaproszenia, jest Twoją decyzją. Decyzje S-10, S-12 i S-13 w `overnight-log.md` o „Nowym linku” są przez to częściowo nieaktualne.
+8. **`inert` w podglądach**: czytnik ekranu nie odczyta treści podglądu tylko do odczytu (podgląd personelu, tryb wsparcia, strony klienta przy „Lokal prowadzi”). Naprawione tylko etykiety i link powrotu. Pełne rozwiązanie wymaga innego mechanizmu niż `inert`.
+
+## Decyzje użytkownika (2026-11-10, po review) — wszystkie rekomendacje przyjęte
+
+1. Usunięcie gościa czyści jego imię z opublikowanych rozsadzeń i z wpisu „osoba na TV” — **zrobione** (`8be8b19`, migracja `20261111080000_guest_erasure`). Trigger przy usunięciu gościa kasuje jego miejsca we wszystkich migawkach i wpis TV. TV, telefony i tablet gubią imię przy następnym odpytaniu, bez ponownej publikacji. **Uwaga przy wdrożeniu:** migracja z rozmysłem usuwa też imiona gości skasowanych wcześniej z dawnych migawek, więc najpierw eksport.
+2. Tryb wsparcia admina nie widzi diet: podgląd i wydruk bez diet, spójnie z eksportem — **zrobione** (`8be8b19`). Diety są wycięte z odpowiedzi dyspozytora i z podglądów. „Lista dla obsługi” daje adminowi tę samą stronę braku dostępu bez wpisu w dzienniku. Szkice prawne mówią, że admin nie widzi diet.
+3. Harmonogram retencji: codzienna reguła EventBridge Scheduler w `deploy:aws` (zgoda na zmianę architektury) — **zrobione** (`09b75b1`). Przy ustawionym `RETENTION_TOKEN` w `.env.aws` wdrożenie tworzy rolę `kolacja-podwyzkowa-scheduler` i harmonogram `kolacja-podwyzkowa-retention` (codziennie 04:15 Europe/Warsaw). Harmonogram wywołuje `POST /api/jobs/retention` przez adapter Lambdy; bez poprawnego tokenu trasa daje 404. Teksty prywatności mówią o codziennym sprzątaniu. **Niesprawdzone na AWS** (tylko `--dry-run` i testy): kroki dla Ciebie są w README „Wdrożenie na AWS” (token, `get-schedule`, test `aws lambda invoke`, log „Retencja danych gości”).
+4. Uwagi „na środek stołu” widoczne przy stole — zostaje bez zmian.
+5. Bez furtki do cofnięcia daty wydarzenia z danymi gości — zostaje bez zmian.
+6. Skrócenie terminu przechowywania pokazuje ostrzeżenie z liczbą wydarzeń, które stracą dane — **zrobione** (`09b75b1`, migracja `20261111090000_retention_preview`): `GET …/retention?days=<n>` i potwierdzenie w formularzu właściciela.
+7. „Nowy link” administratora z wpisem w dzienniku — zostaje bez zmian (decyzje S-10/S-12/S-13 w logu są przez to uzupełnione).
+8. `inert` w podglądach (czytnik ekranu) — odłożone na później.
+
+Punkty z raportu przebiegu 2:
+- ryzyka kelnera „na imprezę” (S-21b) — zaakceptowane;
+- tablet zapisuje odczyt bez sieci tylko w dniu imprezy (S-27) — **zrobione** (`e1e8f2d`): od północy dnia imprezy do południa następnego dnia; wcześniej strona działa na żywo bez kopii i bez linku do odczytu;
+- RSVP poza zakresem S-25 — **zrobione**, każdy dodatek w osobnym commicie (łatwo cofnąć):
+  - „Potwierdzone dania” na tablecie kuchni: liczby dań według kursów, bez imion, id i cen; nie trafiają do kopii offline (`c2986f0`);
+  - „Przenieś wybory do zamówień” na stronie potwierdzeń klienta (`GET|POST /api/o/<klucz>/rsvp/orders`): jedna linia na przychodzącego gościa z daniem, z bramką menu i ceną lokalu, ponowne użycie nic nie dodaje, obowiązuje reguła „kto prowadzi”. Bez blokady w bazie: dwa kliknięcia w tej samej chwili mogłyby dodać linie dwa razy (zapisane w CLAUDE.md) (`f928929`);
+  - część `rsvp` w „Reset danych”: czyści odpowiedzi, dania do wyboru i termin, a nieobecności zostają (migracja `20261111100000_rsvp_reset`; kod zaraz po migracji, jak przy pub quizie) (`e429104`). **Do Twojej oceny:** reset części `guests` pociąga też `rsvp`, więc czyści także dania do wyboru i termin. Quiz przy resecie gości zachowuje pytania. Jeśli wolisz, żeby reset gości zostawiał ustawienia RSVP, to druga migracja;
+- tryb wsparcia widzi diety (S-23) — rozstrzygnięte punktem 2.
+
+## Co recenzenci sprawdzili i uznali za poprawne (skrót; szczegóły w raportach)
+
+- **Dostęp (1):** każde id przechodzi przez centralne strażniki. Listy ról zgadzają się z tabelą PRD (menedżer nie zmienia ustawień lokalu i nie usuwa wydarzeń). `is_template` jest filtrowane przy każdym otwarciu wydarzenia, a wyłączone restauracje są zamknięte w każdym strażniku. Tryb wsparcia jest tylko do odczytu, daje jeden wpis na odczyt i nigdy nie pokazuje kluczy. Jednorazowe linki i kody są odporne na wyścig. Ciasteczka `kp-session` i `kp-waiter` są rozdzielone. Origin jest sprawdzany przed każdym odczytem bazy przy zmianach. Identyfikatory drugiego poziomu są zawężone do restauracji i wydarzenia.
+- **Prywatność (2):** czyszczenie po terminie obejmuje każdą tabelę z imionami, notatkami i dietami i pomija szablony. DTO gościa, TV i tabletu nie mają kluczy, id ani cen poza wyjątkami PRD. Diety są tylko u klienta, lokalu i kelnerów. W promptach AI nie ma danych gości. Wydruki klienta nie mają kluczy. Kopie offline personelu wygasają z oknem sali. Eksport nie zawiera id ani kluczy.
+- **Baza (3):** wszystkie 17 migracji zachowuje dane wydarzenia 1 (klucze, wiersze). Wszędzie jest RLS z `revoke` i `search_path = ''`. Wszystkie 13 starych sygnatur jest jawnie usuniętych, bez `security definer`. Blokady są brane w spójnej kolejności, kaskady nie sięgają za daleko, a `database.types.ts` zgadza się z SQL. Kolejność wdrożenia opisana w CLAUDE.md się zgadza.
+- **Logika (4):** strefa Europe/Warsaw i reguła południa są spójne w TS i SQL, także przy zmianie czasu. Granice terminu retencji są takie same w aplikacji i bazie. RSVP, quiz, menu z cenami w groszach, moduły, reguła „kto prowadzi”, szablony i import CSV działają zgodnie z PRD. Tokeny odpytywania budują ścieżki 204 i 200 z tych samych odczytów.
+- **Frontend (5):** hooki odpytywania sprzątają timery i anulują zapytania. Akcje nie dają się kliknąć dwa razy. Nie ma tekstów tylko w jednym języku. Strony robią jedno wywołanie strażnika. White-label jest zachowany. Nie ma rozjazdów hydracji. CSS wydruków jest poprawny.
+- **Rzetelność (6):** smoke (634 sprawdzenia w 45 sekcjach w chwili review) nie ma sprawdzeń, które nie mogą się wywrócić. Testy nie mają `.skip` ani `.only`, a `skipIf` są uzasadnione. Każdy skrypt ma strażnika lokalnej bazy albo jawne `--remote`, i nic nie może dosięgnąć wydarzenia 1. Paczka Lambdy sprawdza sekrety, nie ma nowych zależności. 12 sprawdzonych twierdzeń z CLAUDE.md zgadza się z kodem.
+
+## Druga runda review (2026-11-11, zakres `163803b..586c86e`)
+
+Trzy recenzje Fable 5.1 zmian po pierwszym review: bezpieczeństwo i prywatność (`m2-review/review-7-security.md`), baza (`review-8-db.md`), funkcje, frontend i skrypty (`review-9-features.md`). Nic krytycznego ani wysokiego. Poprawki Opus 5.5 w dwóch partiach.
+
+### Naprawione
+
+| # | Waga | Kąt | Co | Commit |
+|---|------|-----|----|--------|
+| 1 | niska | 7 | „Nowy link” dla właściciela, który sam jest administratorem platformy, pozwalał przejąć konto innego administratora. Teraz to ten sam 404. | `ac79526` (migracja `20261111110000_review2_fixes`) |
+| 2 | niska | 8 | Zaproszenia z „Nowa restauracja” i „Dodaj właściciela” nie trafiały do dziennika właściciela. Teraz dają wpis `link`, jak „Nowy link”. | `ac79526` |
+| 3 | niska | 8 | Usunięcie gościa w trakcie resetu albo czyszczenia po terminie mogło się zakleszczyć (błąd 500). Teraz `delete_guest` najpierw bierze blokadę rozsadzenia wydarzenia, w tej samej kolejności co reset i czyszczenie. | `ac79526` |
+| 4 | niska | 9 | „Przenieś wybory do zamówień” po zmianie nazwy dania w menu dodawało linię drugi raz. Teraz rozpoznaje istniejącą linię także po pozycji menu. | `ac2160f` |
+| 5 | niska | 7 | Nocne czyszczenie zależało od niesprawdzonego założenia o adapterze Lambdy. Teraz każde `deploy:aws` wywołuje funkcję raz z `dryRun: true` (tylko liczy, nic nie usuwa). Gdy odpowiedź nie jest liczbami, wdrożenie kończy się błędem z wyjaśnieniem. | `d02716f` |
+| 6 | niska | 7 | Rola harmonogramu ma dodatkowo warunek `aws:SourceArn`. Wskazuje grupę harmonogramów `default`, bo AWS odradza wskazywanie pojedynczego harmonogramu: takie zawężenie blokowałoby każde nocne uruchomienie. Istniejąca rola dostaje nową politykę przy każdym wdrożeniu. | `d02716f` |
+| 7 | niska | 9 | `RETENTION_TOKEN` jest teraz wymagany w `.env.aws`, bo teksty prywatności obiecują codzienne czyszczenie (decyzja 3). Lokalnie dalej jest opcjonalny. | `d02716f` |
+| 8 | niska | 9 | CI uruchamia smoke z tymczasowym tokenem, więc sekcja 46 sprawdza prawdziwe czyszczenie. Sekcja 40 porównuje teraz ceny z menu sprzed przeniesienia. Wcześniej to sprawdzenie nie mogło się wywrócić; teraz potwierdzone celowym zepsuciem. | `e57e329` |
+
+### Nie potwierdzone
+
+- Kąt 8: „Usuń trwale” wydarzenia z trwającym quizem miało kończyć się błędem 500. Nie odtworzyło się ani przy pytaniu na TV, ani przy wynikach (3–5 pytań). Postgres pomija odroczone sprawdzenie klucza, gdy wiersz quizu znika w tym samym poleceniu. Na przyszłość pilnuje tego test integracyjny, trigger bez zmian (`08102ae`).
+
+### Przyjęte bez zmian
+
+- Kąt 9: o linku „Odczyt bez sieci” na tablecie decyduje chwila załadowania strony. Tablet otwarty przed północą pokaże go dopiero po odświeżeniu; kopia i tak zapisuje się od północy.
+- Przeniesienie RSVP do zamówień nadal nie ma blokady w bazie, jak w pierwszej rundzie.
+
+### Do Twojej wiadomości
+
+- Administrator może dodać jako właściciela swoje własne konto z hasłem. Staje się wtedy członkiem restauracji bez wpisu w dzienniku, bo link nie powstaje; widać go tylko na liście zespołu. Zamknięcie tej furtki, np. zakazem dodawania kont administratorów jako członków, zmieniłoby macierz dostępu, więc to Twoja decyzja.
+- „Nowy link” dla właściciela, który jest administratorem platformy, pokazuje tylko ogólne „Brak dostępu”. To zawęża decyzję 7.
+- Przy wdrożeniu: M-2 ma teraz 22 migracje. Nowa `20261111110000_review2_fixes` musi wejść przed kodem, inaczej usuwanie gości daje 500; stary kod działa na zmigrowanej bazie. `deploy:aws`, także z `--dry-run`, nie wystartuje bez `RETENTION_TOKEN` w `.env.aws`. Po wdrożeniu skrypt sam sprawdza ścieżkę nocnego czyszczenia.
+
+### Weryfikacja końcowa (HEAD `e57e329`)
+
+Testy: 154 pliki, 1664 passed, 6 skipped. Lint bez uwag, `astro check` 0 błędów, build OK. Smoke: 892 PASS + 1 SKIP bez tokenu, 894 PASS / 0 SKIP z tokenem. Demo dwa razy OK.

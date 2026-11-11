@@ -4,6 +4,7 @@ import { MIN_OUTLINE_SIZE } from "@/lib/venue/editor";
 import {
   MAX_CHAIR_PITCH,
   MAX_SEATS,
+  MAX_TABLES,
   MAX_TABLE_NAME_LENGTH,
   MIN_CHAIR_PITCH,
   MIN_SEATS,
@@ -87,8 +88,8 @@ export interface RawLayout {
   tables: RawLayoutTable[];
 }
 
-// More than any venue here needs (MAX_TABLES is 40); the rest of an over-long answer is ignored.
-const MAX_PROPOSED_TABLES = 60;
+// More than any venue here needs (MAX_TABLES + 30); the rest of an over-long answer is ignored.
+const MAX_PROPOSED_TABLES = MAX_TABLES + 30;
 const MAX_PROPOSED_ROOMS = 20;
 
 const finite = z.number().refine(Number.isFinite);

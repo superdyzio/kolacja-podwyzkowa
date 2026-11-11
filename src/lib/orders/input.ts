@@ -4,37 +4,43 @@ import type { Locale } from "@/lib/i18n/locale";
 import type { AddDrinkBody, AddOrderItemBody, UpdateDrinkBody, UpdateOrderItemBody } from "./api";
 import { drinkQuantityMessage, isValidDrinkQuantity, parseDrinkName } from "./drinks";
 import type { DrinkInput, DrinkPatch } from "./drinks-service";
-import { isValidQuantity, parseDishName, parseNote, parseUnitPrice, quantityMessage } from "./rules";
+import { isValidQuantity, parseDishName, parseNote, quantityMessage } from "./rules";
 import type { OrderItemInput, OrderItemPatch } from "./service";
 
-// From a request body (already shape-checked by zod) to a service input with normalized texts and grosze, or the
-// first message for the form (in the request's language) (restaurant-orders). Pure.
+// From a request body (already shape-checked by zod) to a service input with normalized texts, or the first message
+// for the form (in the request's language) (restaurant-orders). Pure. Since client-restaurant-split no body carries a
+// price: the routes add the price of the line's name (prices-service.ts).
 
 export type InputResult<T> = { ok: true; value: T } | { ok: false; message: string };
+
+export type UnpricedOrderItemInput = Omit<OrderItemInput, "unitPriceGrosze">;
+export type UnpricedOrderItemPatch = Omit<OrderItemPatch, "unitPriceGrosze">;
+export type UnpricedDrinkInput = Omit<DrinkInput, "unitPriceGrosze">;
+export type UnpricedDrinkPatch = Omit<DrinkPatch, "unitPriceGrosze">;
 
 export function toOrderItemInput(
   body: z.infer<typeof AddOrderItemBody>,
   locale: Locale = "pl",
-): InputResult<OrderItemInput> {
+): InputResult<UnpricedOrderItemInput> {
   const patch = toOrderItemPatch(body, locale);
   if (!patch.ok) {
     return patch;
   }
-  const { name, note, quantity, unitPriceGrosze } = patch.value;
-  if (name === undefined || quantity === undefined || unitPriceGrosze === undefined) {
+  const { name, note, quantity } = patch.value;
+  if (name === undefined || quantity === undefined) {
     return { ok: false, message: httpMessages(locale).invalidData };
   }
   return {
     ok: true,
-    value: { name, note: note ?? null, quantity, unitPriceGrosze, assignment: body.assignment ?? null },
+    value: { name, note: note ?? null, quantity, assignment: body.assignment ?? null },
   };
 }
 
 export function toOrderItemPatch(
   body: z.infer<typeof UpdateOrderItemBody>,
   locale: Locale = "pl",
-): InputResult<OrderItemPatch> {
-  const patch: OrderItemPatch = {};
+): InputResult<UnpricedOrderItemPatch> {
+  const patch: UnpricedOrderItemPatch = {};
   if (body.name !== undefined) {
     const name = parseDishName(body.name, locale);
     if (!name.ok) {
@@ -55,13 +61,6 @@ export function toOrderItemPatch(
     }
     patch.quantity = body.quantity;
   }
-  if (body.price !== undefined) {
-    const price = parseUnitPrice(body.price, locale);
-    if (!price.ok) {
-      return price;
-    }
-    patch.unitPriceGrosze = price.grosze;
-  }
   if (body.assignment !== undefined) {
     patch.assignment = body.assignment;
   }
@@ -72,20 +71,26 @@ export function toOrderItemPatch(
 }
 
 // bill-drinks: a drink line from its body, every field checked like the form does.
-export function toDrinkInput(body: z.infer<typeof AddDrinkBody>, locale: Locale = "pl"): InputResult<DrinkInput> {
+export function toDrinkInput(
+  body: z.infer<typeof AddDrinkBody>,
+  locale: Locale = "pl",
+): InputResult<UnpricedDrinkInput> {
   const patch = toDrinkPatch(body, locale);
   if (!patch.ok) {
     return patch;
   }
-  const { name, quantity, unitPriceGrosze } = patch.value;
-  if (name === undefined || quantity === undefined || unitPriceGrosze === undefined) {
+  const { name, quantity } = patch.value;
+  if (name === undefined || quantity === undefined) {
     return { ok: false, message: httpMessages(locale).invalidData };
   }
-  return { ok: true, value: { name, quantity, unitPriceGrosze } };
+  return { ok: true, value: { name, quantity } };
 }
 
-export function toDrinkPatch(body: z.infer<typeof UpdateDrinkBody>, locale: Locale = "pl"): InputResult<DrinkPatch> {
-  const patch: DrinkPatch = {};
+export function toDrinkPatch(
+  body: z.infer<typeof UpdateDrinkBody>,
+  locale: Locale = "pl",
+): InputResult<UnpricedDrinkPatch> {
+  const patch: UnpricedDrinkPatch = {};
   if (body.name !== undefined) {
     const name = parseDrinkName(body.name, locale);
     if (!name.ok) {
@@ -98,13 +103,6 @@ export function toDrinkPatch(body: z.infer<typeof UpdateDrinkBody>, locale: Loca
       return { ok: false, message: drinkQuantityMessage(locale) };
     }
     patch.quantity = body.quantity;
-  }
-  if (body.price !== undefined) {
-    const price = parseUnitPrice(body.price, locale);
-    if (!price.ok) {
-      return price;
-    }
-    patch.unitPriceGrosze = price.grosze;
   }
   return { ok: true, value: patch };
 }

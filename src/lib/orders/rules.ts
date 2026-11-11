@@ -12,7 +12,8 @@ import { deliveredCount } from "./pieces";
 // trimmed); lengths count code points like Postgres char_length(). Prices are integer grosze, typed like the guesses
 // („49”, „49,90”, „49,90 zł”).
 
-export const MAX_ORDER_ITEMS = 400;
+// scale-150: four lines per guest at MAX_GUESTS = 150, as v1 had at 100.
+export const MAX_ORDER_ITEMS = 600;
 export const MAX_DISH_LENGTH = 80;
 export const MAX_NOTE_LENGTH = 120;
 export const MIN_QUANTITY = 1;

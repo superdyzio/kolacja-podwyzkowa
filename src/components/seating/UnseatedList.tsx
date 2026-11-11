@@ -1,3 +1,4 @@
+import type { DietTag } from "@/lib/diets/rules";
 import type { Locale } from "@/lib/i18n";
 import { seatingEditorMessages } from "@/lib/seating/messages";
 import { cn } from "@/lib/utils";
@@ -7,6 +8,8 @@ export interface UnseatedGuest {
   id: number;
   name: string;
   partners: string[];
+  diets: DietTag[];
+  dietNote: string | null;
 }
 
 interface Props {
@@ -85,7 +88,7 @@ function GuestButtons({
             )}
           >
             <span className="font-medium break-words">{guest.name}</span>
-            <GuestMarkers partners={guest.partners} locale={locale} />
+            <GuestMarkers partners={guest.partners} diets={guest.diets} dietNote={guest.dietNote} locale={locale} />
           </button>
         </li>
       ))}

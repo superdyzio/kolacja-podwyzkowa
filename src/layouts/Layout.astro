@@ -3,6 +3,7 @@ import "../styles/global.css";
 import Banner from "@/components/Banner.astro";
 import LanguageSwitch from "@/components/LanguageSwitch.astro";
 import { missingConfigs } from "@/lib/config-status";
+import { PRODUCT_NAME } from "@/lib/i18n/product";
 
 interface Props {
   title?: string;
@@ -11,7 +12,9 @@ interface Props {
 }
 
 const locale = Astro.locals.locale;
-const { title = locale === "en" ? "Raise dinner" : "Kolacja podwyżkowa", languageSwitch = true } = Astro.props;
+// event-branding (S-18): the default title is the product name, shown only on staff pages (home, login, panel); every
+// page of a guest, TV or tablet link passes its own title (the event name), so guests never see the platform name.
+const { title = PRODUCT_NAME, languageSwitch = true } = Astro.props;
 ---
 
 <!doctype html>

@@ -23,6 +23,7 @@ function line(id: number, fields: Partial<OrderItemDto> = {}): OrderItemDto {
   return {
     id,
     name: "Schabowy",
+    course: null,
     note: null,
     quantity: 1,
     unitPriceGrosze: 4_900,
@@ -126,23 +127,20 @@ describe("English messages", () => {
 });
 
 describe("request bodies", () => {
-  it("builds a full input with normalized texts and grosze", () => {
-    expect(
-      toOrderItemInput({ name: " Woda ", note: "", quantity: 2, price: "12", assignment: { tableId: 3 } }),
-    ).toEqual({
+  it("builds a full input with normalized texts and no price (the venue's, client-restaurant-split)", () => {
+    expect(toOrderItemInput({ name: " Woda ", note: "", quantity: 2, assignment: { tableId: 3 } })).toEqual({
       ok: true,
-      value: { name: "Woda", note: null, quantity: 2, unitPriceGrosze: 1_200, assignment: { tableId: 3 } },
+      value: { name: "Woda", note: null, quantity: 2, assignment: { tableId: 3 } },
     });
-    expect(toOrderItemInput({ name: "Woda", quantity: 1, price: "1" })).toMatchObject({
+    expect(toOrderItemInput({ name: "Woda", quantity: 1 })).toMatchObject({
       ok: true,
       value: { assignment: null, note: null },
     });
   });
 
   it("returns the first form message", () => {
-    expect(toOrderItemInput({ name: "", quantity: 1, price: "1" })).toEqual({ ok: false, message: DISH_EMPTY_MESSAGE });
+    expect(toOrderItemInput({ name: "", quantity: 1 })).toEqual({ ok: false, message: DISH_EMPTY_MESSAGE });
     expect(toOrderItemPatch({ quantity: 0 })).toEqual({ ok: false, message: QUANTITY_MESSAGE });
-    expect(toOrderItemPatch({ price: "-5" }).ok).toBe(false);
   });
 
   it("keeps a patch to the fields it names", () => {

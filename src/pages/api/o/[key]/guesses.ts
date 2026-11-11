@@ -23,7 +23,7 @@ export const GET: APIRoute = async ({ locals }) => {
   if (api instanceof Response) {
     return api;
   }
-  return jsonResponse(await getGuessBoard(api.db));
+  return jsonResponse(await getGuessBoard(api.db, api.access.event.id));
 };
 
 export const PATCH: APIRoute = async ({ locals, request }) => {
@@ -50,10 +50,10 @@ export const PATCH: APIRoute = async ({ locals, request }) => {
   }
 
   if (intakeOpen !== undefined) {
-    await setGuessIntakeOpen(api.db, intakeOpen);
+    await setGuessIntakeOpen(api.db, api.access.event.id, intakeOpen);
   }
   if (correctGrosze !== undefined) {
-    await setCorrectAmount(api.db, correctGrosze);
+    await setCorrectAmount(api.db, api.access.event.id, correctGrosze);
   }
-  return jsonResponse(await getGuessBoard(api.db));
+  return jsonResponse(await getGuessBoard(api.db, api.access.event.id));
 };

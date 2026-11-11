@@ -1,0 +1,24 @@
+---
+import type { Locale } from "@/lib/i18n";
+import { modulesMessages } from "@/lib/modules/messages";
+import type { ModuleKey } from "@/lib/modules/rules";
+
+// A page whose module is switched off (event-modules, S-17): says so and leads back to the event, instead of the
+// module's islands. The data waits for the module to come back.
+interface Props {
+  module: ModuleKey;
+  backPath: string;
+  locale: Locale;
+}
+
+const { module, backPath, locale } = Astro.props;
+const t = modulesMessages(locale);
+---
+
+<section class="flex flex-col gap-3 rounded-xl border border-dashed p-4 sm:p-6" data-module-off={module}>
+  <h2 class="text-xl font-semibold">{t.pageOffHeading}</h2>
+  <p class="text-sm text-muted-foreground">{t.pageOffText(t.names[module])}</p>
+  <a href={backPath} class="self-start py-2 text-sm underline-offset-4 hover:underline">
+    {t.backToEvent}
+  </a>
+</section>

@@ -8,8 +8,8 @@ import { getPlanImage } from "./service";
 // upload (never the uploader's header) and `nosniff` stops browsers from guessing another one. The middleware adds
 // `Cache-Control: no-store`; views put the plan version into the URL instead of relying on caching.
 
-export async function planImageResponse(db: DbClient, locale: Locale = "pl"): Promise<Response> {
-  const image = await getPlanImage(db);
+export async function planImageResponse(db: DbClient, eventId: number, locale: Locale = "pl"): Promise<Response> {
+  const image = await getPlanImage(db, eventId);
   if (!image) {
     return jsonError(404, venueMessages(locale).planMissing);
   }

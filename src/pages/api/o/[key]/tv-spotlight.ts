@@ -15,7 +15,7 @@ export const GET: APIRoute = async ({ locals }) => {
   if (api instanceof Response) {
     return api;
   }
-  const answer: TvSpotlightAnswerDto = { spotlight: await getTvSpotlight(api.db) };
+  const answer: TvSpotlightAnswerDto = { spotlight: await getTvSpotlight(api.db, api.access.event.id) };
   return jsonResponse(answer);
 };
 
@@ -28,7 +28,7 @@ export const PUT: APIRoute = async ({ locals, request }) => {
   if (!body.ok) {
     return body.response;
   }
-  const result = await showOnTv(api.db, body.data.kind, body.data.text);
+  const result = await showOnTv(api.db, api.access.event.id, body.data.kind, body.data.text);
   if (result.status === "invalid") {
     return jsonError(400, tvSpotlightMessages(locals.locale).invalid);
   }
@@ -41,7 +41,7 @@ export const DELETE: APIRoute = async ({ locals }) => {
   if (api instanceof Response) {
     return api;
   }
-  await hideTvSpotlight(api.db);
+  await hideTvSpotlight(api.db, api.access.event.id);
   const answer: TvSpotlightAnswerDto = { spotlight: null };
   return jsonResponse(answer);
 };

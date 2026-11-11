@@ -1,4 +1,5 @@
 import { defineMessages } from "@/lib/i18n/locale";
+import { pluralEn, pluralPl } from "@/lib/i18n/plural";
 
 // Texts of the guest list and groups (S-01), both languages (i18n): the pure rules' messages, the organizer API's
 // answers and the organizer page /o/<key>/goscie. Pure: imported by the routes and directly by the islands.
@@ -26,6 +27,18 @@ export const guestsMessages = defineMessages(
     groupNotFound: "Nie znaleziono grupy.",
     groupSize: (min: number, max: number) => `Grupa musi mieć od ${min} do ${max} osób.`,
     alreadyGrouped: "Ktoś z zaznaczonych jest już w grupie.",
+    // import.ts (guest-import-diets, S-23)
+    importNameMissing: (line: number) => `Linia ${line}: brak imienia — dieta lub uwagi bez osoby.`,
+    importOnList: (line: number, text: string) => `Linia ${line}: „${text}” — już jest na liście gości.`,
+    importUnknownDiet: (line: number, text: string, words: string) =>
+      `Linia ${line}: „${text}” — nieznana dieta: ${words}. Użyj diety z listy albo wpisz to w kolumnie uwag.`,
+    importNoteTooLong: (line: number, text: string) =>
+      `Linia ${line}: „${text}” — za długie uwagi (najwyżej 120 znaków).`,
+    importTooMany: (max: number, existing: number, rows: number) =>
+      `Za dużo gości: na liście jest ${existing}, import dodałby ${rows}, a limit to ${max}.`,
+    importTooManyLines: (max: number) => `Plik ma więcej niż ${max} wierszy — podziel go na części.`,
+    importEmpty: "Brak gości do dodania — sprawdź plik lub wklejkę.",
+    importTooLarge: "Plik lub wklejka jest za duża.",
   },
   {
     lineTooLong: (line: number, text: string, max: number) =>
@@ -46,6 +59,17 @@ export const guestsMessages = defineMessages(
     groupNotFound: "Group not found.",
     groupSize: (min: number, max: number) => `A group must have ${min} to ${max} people.`,
     alreadyGrouped: "Someone you selected is already in a group.",
+    importNameMissing: (line: number) => `Line ${line}: no name — a diet or notes without a person.`,
+    importOnList: (line: number, text: string) => `Line ${line}: “${text}” — already on the guest list.`,
+    importUnknownDiet: (line: number, text: string, words: string) =>
+      `Line ${line}: “${text}” — unknown diet: ${words}. Use a diet from the list or put it in the notes column.`,
+    importNoteTooLong: (line: number, text: string) =>
+      `Line ${line}: “${text}” — notes too long (at most 120 characters).`,
+    importTooMany: (max: number, existing: number, rows: number) =>
+      `Too many guests: the list has ${existing}, the import would add ${rows}, and the limit is ${max}.`,
+    importTooManyLines: (max: number) => `The file has more than ${max} rows — split it into parts.`,
+    importEmpty: "No guests to add — check the file or the paste.",
+    importTooLarge: "The file or the paste is too large.",
   },
 );
 
@@ -82,6 +106,29 @@ export const guestManagerMessages = defineMessages(
     addFromList: "Dodaj gości z listy",
     cancel: "Anuluj",
     pasteList: "Wklej listę gości",
+    // GuestImportForm (guest-import-diets, S-23)
+    importOpen: "Import z pliku lub arkusza",
+    importHeading: "Import gości z dietami",
+    importFileLabel: "Plik CSV lub TXT (w Excelu: „Zapisz jako” → CSV)",
+    importTextLabel: "…albo wklej wiersze skopiowane z arkusza",
+    importPlaceholder: "Imię;Dieta;Uwagi\nAnia;wegetariańska;\nKuba;bez glutenu, bez laktozy;alergia na seler",
+    importHint: (diets: string) =>
+      `Kolumny: imię, dieta, uwagi (nagłówek nie jest wymagany), rozdzielone tabulatorem, średnikiem lub przecinkiem. Diety: ${diets} — kilka po przecinku lub „i”; resztę wpisz w uwagach (najwyżej 120 znaków).`,
+    importFileLoaded: (name: string) => `Wczytano „${name}” — treść jest w polu poniżej.`,
+    importFileFailed: "Nie udało się odczytać pliku.",
+    importCheck: "Sprawdź",
+    importChecking: "Sprawdzam…",
+    importDetected: (separator: string, header: boolean) =>
+      `Rozpoznano: ${separator}${header ? ", z nagłówkiem" : ", bez nagłówka"}.`,
+    importSeparators: { tab: "tabulator", semicolon: "średnik", comma: "przecinek", none: "jedna kolumna" },
+    importPreviewHeading: (count: number) =>
+      `Podgląd: ${count} ${pluralPl(count, "gość", "gości", "gości")} do dodania`,
+    importLine: "Linia",
+    importName: "Imię",
+    importDiet: "Dieta i uwagi",
+    importProblems: (count: number) => `Do poprawienia: ${count} — nic nie zostanie dodane, dopóki lista ma błędy.`,
+    importSave: (count: number) => `Dodaj ${count} ${pluralPl(count, "gościa", "gości", "gości")}`,
+    importAdded: (count: number) => `Dodano ${count} ${pluralPl(count, "gościa", "gości", "gości")}.`,
     // GuestGroups
     groupsHeading: "Nierozdzielne grupy",
     noGroups: (min: number, max: number) =>
@@ -133,6 +180,27 @@ export const guestManagerMessages = defineMessages(
     addFromList: "Add guests from the list",
     cancel: "Cancel",
     pasteList: "Paste a guest list",
+    importOpen: "Import from a file or spreadsheet",
+    importHeading: "Import guests with diets",
+    importFileLabel: "CSV or TXT file (in Excel: “Save as” → CSV)",
+    importTextLabel: "…or paste rows copied from a spreadsheet",
+    importPlaceholder: "Name;Diet;Notes\nAnna;vegetarian;\nJake;gluten-free, lactose-free;celery allergy",
+    importHint: (diets: string) =>
+      `Columns: name, diet, notes (a header is optional), separated by tabs, semicolons or commas. Diets: ${diets} — several separated by commas or “and”; anything else goes into the notes (at most 120 characters).`,
+    importFileLoaded: (name: string) => `Loaded “${name}” — its text is in the field below.`,
+    importFileFailed: "Could not read the file.",
+    importCheck: "Check",
+    importChecking: "Checking…",
+    importDetected: (separator: string, header: boolean) =>
+      `Detected: ${separator}${header ? ", with a header" : ", no header"}.`,
+    importSeparators: { tab: "tab", semicolon: "semicolon", comma: "comma", none: "one column" },
+    importPreviewHeading: (count: number) => `Preview: ${count} ${pluralEn(count, "guest", "guests")} to add`,
+    importLine: "Line",
+    importName: "Name",
+    importDiet: "Diet and notes",
+    importProblems: (count: number) => `To fix: ${count} — nothing is added while the list has errors.`,
+    importSave: (count: number) => `Add ${count} ${pluralEn(count, "guest", "guests")}`,
+    importAdded: (count: number) => `Added ${count} ${pluralEn(count, "guest", "guests")}.`,
     groupsHeading: "Inseparable groups",
     noGroups: (min: number, max: number) =>
       `No groups yet. Select ${min} to ${max} people on the list and make a pair or a group — they will always sit together.`,

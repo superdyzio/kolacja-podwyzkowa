@@ -21,7 +21,7 @@ export const POST: APIRoute = async ({ locals, request }) => {
   }
 
   const messages = guestsMessages(locals.locale);
-  const result = await createGroup(api.db, body.data.guestIds);
+  const result = await createGroup(api.db, api.access.event.id, body.data.guestIds);
   switch (result.status) {
     case "invalid-size":
       return jsonError(400, messages.groupSize(MIN_GROUP_SIZE, MAX_GROUP_SIZE));
@@ -30,6 +30,6 @@ export const POST: APIRoute = async ({ locals, request }) => {
     case "already-grouped":
       return jsonError(409, messages.alreadyGrouped);
     case "created":
-      return jsonResponse(await getGuestList(api.db), 201);
+      return jsonResponse(await getGuestList(api.db, api.access.event.id), 201);
   }
 };

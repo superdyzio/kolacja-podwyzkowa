@@ -21,7 +21,10 @@ export const POST: APIRoute = async ({ locals, request }) => {
     return body.response;
   }
   const answer: QuestionDrawDto = {
-    question: await drawQuestion(api.db, { category: body.data.category, recent: body.data.recent ?? [] }),
+    question: await drawQuestion(api.db, api.access.event.id, {
+      category: body.data.category,
+      recent: body.data.recent ?? [],
+    }),
   };
   return jsonResponse(answer);
 };

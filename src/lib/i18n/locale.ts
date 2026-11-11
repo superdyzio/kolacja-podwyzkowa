@@ -11,6 +11,9 @@ export const DEFAULT_LOCALE: Locale = "pl";
 // The query parameter of the language switch.
 export const LOCALE_PARAM = "lang";
 
+// How long the language cookie keeps the choice: one year (also stated in the privacy policy draft, landing-legal).
+export const LOCALE_COOKIE_MAX_AGE_SECONDS = 60 * 60 * 24 * 365;
+
 const RESTAURANT_PATH = /^\/(api\/)?r(\/|$)/;
 
 export function isLocale(value: unknown): value is Locale {
@@ -33,6 +36,15 @@ export function defaultLocaleFor(pathname: string): Locale {
 
 export function resolveLocale(pathname: string, cookieValue: string | undefined): Locale {
   return isLocale(cookieValue) ? cookieValue : defaultLocaleFor(pathname);
+}
+
+// Where the language switch redirects: the request's own path and query (without `?lang=`), always as a same-origin
+// path. Astro already hands the middleware a normalized pathname (decoded, duplicate slashes collapsed), but this is
+// the one place a request path is echoed into a Location header, so leading slashes, backslashes and whitespace are
+// collapsed here too: `//evil.com/` or `/\evil.com/` would be a scheme-relative address on another host. Never decode
+// the path here (`/%2F%2Fevil.com/` stays an encoded, same-origin path).
+export function localeSwitchTarget(pathname: string, search: string): string {
+  return `/${pathname.replace(/^[\s/\\]+/, "")}${search}`;
 }
 
 // Picks this locale's entry of a { pl, en } dictionary. `en` must have the same shape as `pl` (a missing key or a

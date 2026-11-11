@@ -12,8 +12,9 @@ import {
   type QuestionTextProblem,
 } from "./text";
 
-// The event's question base and the draw (S-07, PRD FR-014, FR-015). Functions take the client as a parameter (no
-// `astro:*`), so they are tested against the local DB. Supabase errors always throw; expected outcomes (not found,
+// The event's question base and the draw (S-07, PRD FR-014, FR-015). Functions take the client and the event id
+// (multi-tenant-events: every read and write is limited to that event) as parameters (no `astro:*`), so they are
+// tested against the local DB. Supabase errors always throw; expected outcomes (not found,
 // duplicate, limits) come back as status unions.
 //
 // Every insert is one "on conflict (event_id, text_key) do nothing" upsert: text_key = lower(text) is unique per
@@ -76,8 +77,8 @@ function countStarterMissing(questions: readonly QuestionDto[]): number {
 }
 
 // The whole base: category order, then by id (the starter base keeps its list order).
-export async function getQuestionList(db: DbClient): Promise<QuestionListDto> {
-  const { data, error } = await db.from("question").select(COLUMNS);
+export async function getQuestionList(db: DbClient, eventId: number): Promise<QuestionListDto> {
+  const { data, error } = await db.from("question").select(COLUMNS).eq("event_id", eventId);
   if (error) {
     fail("odczytać bazy pytań", error.message);
   }
@@ -90,6 +91,7 @@ export async function getQuestionList(db: DbClient): Promise<QuestionListDto> {
 // base would grow past `limit` (a parameter only so tests can reach the boundary).
 export async function addQuestions(
   db: DbClient,
+  eventId: number,
   category: QuestionCategory,
   texts: readonly string[],
   limit: number = MAX_QUESTIONS,
@@ -102,7 +104,7 @@ export async function addQuestions(
     return { status: "added", added: [], duplicates: [] };
   }
 
-  const { data: existing, error: readError } = await db.from("question").select("text");
+  const { data: existing, error: readError } = await db.from("question").select("text").eq("event_id", eventId);
   if (readError) {
     fail("odczytać bazy pytań", readError.message);
   }
@@ -128,7 +130,7 @@ export async function addQuestions(
   const { data, error } = await db
     .from("question")
     .upsert(
-      fresh.map((text) => ({ category, text })),
+      fresh.map((text) => ({ event_id: eventId, category, text })),
       { onConflict: ON_CONFLICT, ignoreDuplicates: true },
     )
     .select(COLUMNS);
@@ -143,7 +145,12 @@ export async function addQuestions(
 }
 
 // Changes a question's text and/or category.
-export async function updateQuestion(db: DbClient, id: number, patch: QuestionPatch): Promise<UpdateQuestionResult> {
+export async function updateQuestion(
+  db: DbClient,
+  eventId: number,
+  id: number,
+  patch: QuestionPatch,
+): Promise<UpdateQuestionResult> {
   const update: { text?: string; category?: QuestionCategory } = {};
   if (patch.text !== undefined) {
     const text = normalizeQuestionText(patch.text);
@@ -159,8 +166,8 @@ export async function updateQuestion(db: DbClient, id: number, patch: QuestionPa
 
   const query =
     Object.keys(update).length > 0
-      ? db.from("question").update(update).eq("id", id).select(COLUMNS).maybeSingle()
-      : db.from("question").select(COLUMNS).eq("id", id).maybeSingle();
+      ? db.from("question").update(update).eq("id", id).eq("event_id", eventId).select(COLUMNS).maybeSingle()
+      : db.from("question").select(COLUMNS).eq("id", id).eq("event_id", eventId).maybeSingle();
   const { data, error } = await query;
   if (error) {
     if (error.code === UNIQUE_VIOLATION) {
@@ -171,8 +178,8 @@ export async function updateQuestion(db: DbClient, id: number, patch: QuestionPa
   return data ? { status: "updated", question: toQuestionDto(data) } : { status: "not-found" };
 }
 
-export async function deleteQuestion(db: DbClient, id: number): Promise<DeleteQuestionResult> {
-  const { data, error } = await db.from("question").delete().eq("id", id).select("id");
+export async function deleteQuestion(db: DbClient, eventId: number, id: number): Promise<DeleteQuestionResult> {
+  const { data, error } = await db.from("question").delete().eq("id", id).eq("event_id", eventId).select("id");
   if (error) {
     fail("usunąć pytania", error.message);
   }
@@ -181,10 +188,13 @@ export async function deleteQuestion(db: DbClient, id: number): Promise<DeleteQu
 
 // Adds every starter question that is not in the base yet (by text, in any category). Idempotent; never limited by
 // MAX_QUESTIONS (the starter base is small and known).
-export async function loadStarterQuestions(db: DbClient): Promise<{ added: number }> {
+export async function loadStarterQuestions(db: DbClient, eventId: number): Promise<{ added: number }> {
   const { data, error } = await db
     .from("question")
-    .upsert(starterQuestionRows(), { onConflict: ON_CONFLICT, ignoreDuplicates: true })
+    .upsert(
+      starterQuestionRows().map((row) => ({ ...row, event_id: eventId })),
+      { onConflict: ON_CONFLICT, ignoreDuplicates: true },
+    )
     .select("id");
   if (error) {
     fail("wczytać bazy startowej pytań", error.message);
@@ -196,10 +206,11 @@ export async function loadStarterQuestions(db: DbClient): Promise<{ added: numbe
 // The result goes only to whoever asked: nothing is stored.
 export async function drawQuestion(
   db: DbClient,
+  eventId: number,
   { category, recent }: DrawRequest,
   random: () => number = secureRandom,
 ): Promise<QuestionDto | null> {
-  const query = db.from("question").select(COLUMNS);
+  const query = db.from("question").select(COLUMNS).eq("event_id", eventId);
   const { data, error } = await (category ? query.eq("category", category) : query);
   if (error) {
     fail("wylosować pytania", error.message);

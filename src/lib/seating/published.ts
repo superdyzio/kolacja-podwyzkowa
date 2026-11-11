@@ -94,7 +94,8 @@ export function publishableFingerprint({ guestList, venue, assignments }: Seatin
   return fingerprint(tables, seats, { chairPitch: venue.chairPitch, rooms: outlinedRooms(venue) });
 }
 
-// The same shape for a stored snapshot. A table or guest deleted since (null id) never matches the live data.
+// The same shape for a stored snapshot. A table deleted since (null id) never matches the live data; a guest deleted
+// since has no seat row any more (guest-erasure), exactly like in what a publish would write now.
 export function snapshotFingerprint(snapshot: SeatingSnapshot): string {
   const tableIdBySnapshotTable = new Map(snapshot.tables.map((table) => [table.snapshotTableId, table.tableId]));
   const tables = snapshot.tables.map((table) => ({
@@ -122,14 +123,19 @@ export function isUpToDate(snapshot: SeatingSnapshot | null, input: SeatingInput
 }
 
 // The polling token: "<latest snapshot id>.<plan version>" (0 for none). Opaque to clients; compared for equality.
-export function seatingVersion(snapshotId: number | null, planVersion: number | null): string {
-  return `${snapshotId ?? 0}.${planVersion ?? 0}`;
+// guest-erasure: with `erasedSeats` above 0 (guests deleted since that publish, their seats removed from the snapshot)
+// the snapshot part becomes "<id>-<erased>", so the TV drops the names without a republish; an untouched snapshot
+// keeps its two-part token. The guests' token starts with the TWO-part token (getPublishedVersion().version) and
+// carries the erasures in its hashed part instead (its 64-character limit has no room for a longer prefix).
+export function seatingVersion(snapshotId: number | null, planVersion: number | null, erasedSeats = 0): string {
+  const snapshot = erasedSeats > 0 ? `${snapshotId ?? 0}-${erasedSeats}` : String(snapshotId ?? 0);
+  return `${snapshot}.${planVersion ?? 0}`;
 }
 
 // What the TV may see of a snapshot: tables in name order, seated names in seat order, the drawing (rotations,
-// pitch, outlined rooms) — no ids, no pins, no absences.
+// pitch, outlined rooms) — no ids, no pins, no absences. `version` is the TV's seating token (with the erasures).
 export function toTvSeating(snapshot: SeatingSnapshot | null, planVersion: number | null): TvSeatingDto {
-  const version = seatingVersion(snapshot?.id ?? null, planVersion);
+  const version = seatingVersion(snapshot?.id ?? null, planVersion, snapshot?.erasedSeats ?? 0);
   if (!snapshot) {
     return { version, planVersion, publishedAt: null, tables: [], chairPitch: DEFAULT_CHAIR_PITCH, rooms: [] };
   }
@@ -137,6 +143,7 @@ export function toTvSeating(snapshot: SeatingSnapshot | null, planVersion: numbe
     .sort((a, b) => compareTableNames(a.name, b.name) || a.snapshotTableId - b.snapshotTableId)
     .map((table): TvTableDto => ({
       name: table.name,
+      room: table.roomName,
       shape: table.shape,
       seatCount: table.seatCount,
       x: table.x,

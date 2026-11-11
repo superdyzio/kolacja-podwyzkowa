@@ -18,9 +18,9 @@ export const DELETE: APIRoute = async ({ locals, params }) => {
     return jsonError(404, notFound);
   }
 
-  const result = await dissolveGroup(api.db, id);
+  const result = await dissolveGroup(api.db, api.access.event.id, id);
   if (result.status === "not-found") {
     return jsonError(404, notFound);
   }
-  return jsonResponse(await getGuestList(api.db));
+  return jsonResponse(await getGuestList(api.db, api.access.event.id));
 };

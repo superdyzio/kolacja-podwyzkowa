@@ -43,7 +43,7 @@ export const PUT: APIRoute = async ({ locals, params, request }) => {
     return body.response;
   }
 
-  const result = await seatGuest(api.db, guestId, body.data.tableId, body.data.seat);
+  const result = await seatGuest(api.db, api.access.event.id, guestId, body.data.tableId, body.data.seat);
   switch (result.status) {
     case "guest-not-found":
       return jsonError(404, seatingMessages(locals.locale).guestNotFound);
@@ -56,7 +56,7 @@ export const PUT: APIRoute = async ({ locals, params, request }) => {
     case "seat-pinned":
       return jsonError(409, seatPinnedMessage(result.occupantName, locals.locale));
     case "seated":
-      return jsonResponse(await getSeatingBoard(api.db));
+      return jsonResponse(await getSeatingBoard(api.db, api.access.event.id));
   }
 };
 
@@ -74,14 +74,14 @@ export const PATCH: APIRoute = async ({ locals, params, request }) => {
     return body.response;
   }
 
-  const result = await setPinned(api.db, guestId, body.data.pinned);
+  const result = await setPinned(api.db, api.access.event.id, guestId, body.data.pinned);
   switch (result.status) {
     case "guest-not-found":
       return jsonError(404, seatingMessages(locals.locale).guestNotFound);
     case "not-seated":
       return jsonError(409, seatingMessages(locals.locale).notSeated);
     case "updated":
-      return jsonResponse(await getSeatingBoard(api.db));
+      return jsonResponse(await getSeatingBoard(api.db, api.access.event.id));
   }
 };
 
@@ -95,13 +95,13 @@ export const DELETE: APIRoute = async ({ locals, params }) => {
     return jsonError(404, seatingMessages(locals.locale).guestNotFound);
   }
 
-  const result = await unseatGuest(api.db, guestId);
+  const result = await unseatGuest(api.db, api.access.event.id, guestId);
   switch (result.status) {
     case "guest-not-found":
       return jsonError(404, seatingMessages(locals.locale).guestNotFound);
     case "pinned":
       return jsonError(409, guestPinnedMessage(result.guestName, locals.locale));
     case "unseated":
-      return jsonResponse(await getSeatingBoard(api.db));
+      return jsonResponse(await getSeatingBoard(api.db, api.access.event.id));
   }
 };

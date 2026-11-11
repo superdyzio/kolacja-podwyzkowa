@@ -1,0 +1,36 @@
+---
+import NoAccess from "@/components/NoAccess.astro";
+import RoomPrint from "@/components/prints/RoomPrint.astro";
+import Layout from "@/layouts/Layout.astro";
+import { floorPath } from "@/lib/floor";
+import { findFloorEvent } from "@/lib/panel-api";
+import { getRoomPrintSource, printMessages } from "@/lib/prints";
+
+// The staff list to print from the floor (room-prints, S-24; FR-038, US-08): /panel/obsluga/<id>/lista-obslugi for a
+// member of the event's restaurant (owner, manager, waiter) while the event is on the floor — the same guard as the
+// floor itself (no session → 303 /logowanie; the platform administrator, another restaurant, outside the window → the
+// no-access page with 404). Seat, guest, diets and notes per published table; no logo images (names and the colour).
+const locale = Astro.locals.locale;
+const t = printMessages(locale);
+const panel = await findFloorEvent(Astro.locals, Astro.params.id);
+const source = panel ? await getRoomPrintSource(panel.db, panel.event.id, { diets: true }) : null;
+if (!panel || !source) {
+  Astro.response.status = 404;
+}
+---
+
+{panel && source ? (
+  <Layout title={t.pageTitle(t.kinds["lista-obslugi"], source.event.name)} languageSwitch={false}>
+    <RoomPrint
+      options={{ kind: "lista-obslugi" }}
+      source={source}
+      logoBase={null}
+      back={{ href: floorPath(panel.event.id), label: t.backToFloor }}
+      seatingHref={null}
+      support={null}
+      locale={locale}
+    />
+  </Layout>
+) : (
+  <NoAccess />
+)}

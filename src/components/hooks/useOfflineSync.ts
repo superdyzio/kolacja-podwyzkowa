@@ -1,14 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { readOfflineState } from "@/lib/offline/sync";
 import { clearOfflineCache, saveOfflineGuesses, saveOfflineSeating } from "./offline-cache-store";
-import { registerOrganizerWorker } from "./offline-worker";
+import { isOrganizerApiBase, registerOrganizerWorker } from "./offline-worker";
 
 // Keeps the organizer's offline memory (S-09) fresh and says whether the server can be reached. A setTimeout chain,
 // one read at a time (8 s limit): at mount, every 30 s while the page is visible, every 5 s while offline, at once
 // when the page becomes visible or the browser reports "online"; the browser's "offline" event switches to offline
 // at once. A successful read saves both parts with the time of the read („Stan z …”); the app's denial forgets this
 // link's saved state. It also registers the organizer's service worker (offline-worker.ts), which serves the saved
-// readout page when an organizer page cannot be loaded at all.
+// readout page when an organizer page cannot be loaded at all. Only for the client's own link (isOrganizerApiBase).
 
 const SYNC_MS = 30_000;
 const RETRY_MS = 5_000;
@@ -22,6 +22,11 @@ export function useOfflineSync(apiBase: string) {
   const syncRef = useRef<() => void>(() => undefined);
 
   useEffect(() => {
+    // The panel's copy of an island (client-restaurant-split): no memory, no worker, no reads; the status stays
+    // "unknown" (never "offline").
+    if (!isOrganizerApiBase(apiBase)) {
+      return;
+    }
     let stopped = false;
     let timer: number | undefined;
     let controller: AbortController | null = null;
@@ -62,8 +67,11 @@ export function useOfflineSync(apiBase: string) {
         if (result.status === "ok") {
           const savedAt = new Date().toISOString();
           saveOfflineSeating(apiBase, result.published, savedAt);
-          // The guesses page saves every board it confirms; one saved while this read ran is fresher.
-          saveOfflineGuesses(apiBase, result.board, savedAt, startedAtMs);
+          // The guesses page saves every board it confirms; one saved while this read ran is fresher. No board = the
+          // guessing game is switched off (event-modules): the saved one stays.
+          if (result.board) {
+            saveOfflineGuesses(apiBase, result.board, savedAt, startedAtMs);
+          }
           markOffline(false);
         } else if (result.status === "gone") {
           clearOfflineCache(apiBase);

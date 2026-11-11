@@ -16,7 +16,16 @@ export const RESET_PARTS = [
   "orders",
   "questions",
   "guestLinks",
+  "quiz",
+  "rsvp",
 ] as const satisfies readonly ResetPart[];
+
+// „Reset prób” on the client link (client-restaurant-split, FR-028): what the client clears between rehearsals —
+// guests, the venue, orders, questions and links stay; pub-quiz (S-28): the quiz's answers and run (its questions
+// stay). The full reset is the venue's.
+export const TRIAL_RESET_PARTS = ["guesses", "seating", "quiz"] as const satisfies readonly ResetPart[];
+
+export type TrialResetPart = (typeof TRIAL_RESET_PARTS)[number];
 
 export function isResetPart(value: unknown): value is ResetPart {
   return typeof value === "string" && (RESET_PARTS as readonly string[]).includes(value);
@@ -35,16 +44,19 @@ export function resetPartDescriptions(locale: Locale = "pl"): Readonly<Record<Re
 export const RESET_PART_LABELS = resetPartLabels("pl");
 export const RESET_PART_DESCRIPTIONS = resetPartDescriptions("pl");
 
-// What a part takes with it: without guests there are no guesses, AI attempts or seats; without tables no seats.
+// What a part takes with it: without guests there are no guesses, AI attempts, seats, quiz answers or RSVP answers
+// (rsvp-reset: `rsvp` also clears the dish options and the deadline); without tables no seats.
 export const RESET_IMPLIES: Readonly<Record<ResetPart, readonly ResetPart[]>> = {
   guesses: [],
   aiUsage: [],
   seating: [],
-  guests: ["guesses", "aiUsage", "seating"],
+  guests: ["guesses", "aiUsage", "seating", "quiz", "rsvp"],
   venue: ["seating"],
   orders: [],
   questions: [],
   guestLinks: [],
+  quiz: [],
+  rsvp: [],
 };
 
 // The chosen parts with everything they imply, deduplicated, in canonical order.
@@ -79,10 +91,15 @@ export function toggleResetPart(explicit: readonly ResetPart[], part: ResetPart)
   return RESET_PARTS.filter((other) => other === part || explicit.includes(other));
 }
 
-export function selectAllResetParts(): ResetPart[] {
-  return [...RESET_PARTS];
+// „Zaznacz wszystko” over the parts the modal offers (every part, or the trial parts).
+export function selectAllResetParts(offered: readonly ResetPart[] = RESET_PARTS): ResetPart[] {
+  return RESET_PARTS.filter((part) => offered.includes(part));
 }
 
-export function isEveryResetPartSelected(explicit: readonly ResetPart[]): boolean {
-  return expandResetParts(explicit).length === RESET_PARTS.length;
+export function isEveryResetPartSelected(
+  explicit: readonly ResetPart[],
+  offered: readonly ResetPart[] = RESET_PARTS,
+): boolean {
+  const selected = expandResetParts(explicit);
+  return offered.every((part) => selected.includes(part));
 }

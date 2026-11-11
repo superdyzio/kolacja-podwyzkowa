@@ -20,7 +20,7 @@ export const POST: APIRoute = async ({ locals, request }) => {
     return body.response;
   }
 
-  const result = await addRoom(api.db, body.data.name);
+  const result = await addRoom(api.db, api.access.event.id, body.data.name);
   switch (result.status) {
     case "invalid":
       return jsonError(400, describeRoomNameProblem(result.reason, locals.locale));
@@ -29,6 +29,6 @@ export const POST: APIRoute = async ({ locals, request }) => {
     case "too-many":
       return jsonError(400, roomsLimitMessage(locals.locale));
     case "added":
-      return jsonResponse(await getVenue(api.db), 201);
+      return jsonResponse(await getVenue(api.db, api.access.event.id), 201);
   }
 };

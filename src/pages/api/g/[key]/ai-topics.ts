@@ -27,6 +27,7 @@ export const POST: APIRoute = async ({ locals, request }) => {
   const provider = getAiProvider();
   const result = await generateTopic(
     api.db,
+    api.access.event.id,
     provider,
     { guestId, category: body.data.category, locale: locals.locale },
     { simulateFailure: mockFailureRequested(provider, request.headers) },
@@ -34,7 +35,7 @@ export const POST: APIRoute = async ({ locals, request }) => {
   if (result.status === "not-found") {
     return jsonError(404, noAccessMessages(locals.locale).title);
   }
-  const quota = await getGuestAiQuota(api.db, guestId);
+  const quota = await getGuestAiQuota(api.db, api.access.event.id, guestId);
   const messages = aiTopicLimitMessages(locals.locale);
   switch (result.status) {
     case "generated": {

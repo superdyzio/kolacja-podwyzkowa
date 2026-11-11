@@ -1,10 +1,11 @@
 ---
 import NoAccess from "@/components/NoAccess.astro";
+import LeadBanner from "@/components/lead/LeadBanner.astro";
+import ReadOnlyFrame from "@/components/lead/ReadOnlyFrame.astro";
 import { OfflineSync } from "@/components/offline/OfflineSync";
 import { OrderManager } from "@/components/orders/OrderManager";
-import { RestaurantLinkCard } from "@/components/orders/RestaurantLinkCard";
 import Layout from "@/layouts/Layout.astro";
-import { accessFor, organizerPath, restaurantPath } from "@/lib/access";
+import { accessFor, organizerPath } from "@/lib/access";
 import { getDb } from "@/lib/db";
 import { getOrderBoard } from "@/lib/orders";
 import { orderMessages } from "@/lib/orders/messages";
@@ -23,11 +24,11 @@ const view =
   access && db
     ? {
         name: access.event.name,
+        // client-restaurant-split: while the venue leads, the page is view-only.
+        venueLeads: access.event.venueLeads,
         panelPath: organizerPath(access.event.organizerKey),
         apiBase: `/api${organizerPath(access.event.organizerKey)}`,
-        origin: Astro.url.origin,
-        restaurantPath: restaurantPath(access.event.restaurantKey),
-        board: await getOrderBoard(db),
+        board: await getOrderBoard(db, access.event.id),
       }
     : null;
 ---
@@ -45,15 +46,11 @@ const view =
         <h1 class="text-3xl font-bold">{t.heading}</h1>
         <p class="text-sm text-muted-foreground">{t.intro}</p>
       </header>
+      {view.venueLeads && <LeadBanner kind="client" locale={locale} />}
       <OfflineSync client:load apiBase={view.apiBase} locale={locale} />
-      <RestaurantLinkCard
-        client:load
-        apiBase={view.apiBase}
-        origin={view.origin}
-        initialPath={view.restaurantPath}
-        locale={locale}
-      />
-      <OrderManager client:load apiBase={view.apiBase} initial={view.board} locale={locale} />
+      <ReadOnlyFrame readOnly={view.venueLeads} locale={locale}>
+        <OrderManager client:load apiBase={view.apiBase} initial={view.board} locale={locale} />
+      </ReadOnlyFrame>
     </main>
   </Layout>
 ) : (

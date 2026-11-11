@@ -1,0 +1,73 @@
+---
+import Layout from "@/layouts/Layout.astro";
+import NoAccess from "@/components/NoAccess.astro";
+import { OrderManager } from "@/components/orders/OrderManager";
+import { formatEventDate } from "@/lib/events/dates";
+import { floorApiBase, floorMessages, floorPath } from "@/lib/floor";
+import { floorReadoutScope, staffOfflineMessages } from "@/lib/offline";
+import { getOrderBoard } from "@/lib/orders";
+import { findFloorEvent } from "@/lib/panel-api";
+import { printMessages } from "@/lib/prints/messages";
+
+// The floor — the waiter's day view (waiter-day-and-refills, S-21; PRD v2 FR-029, US-08): /panel/obsluga/<event id>
+// for a member of the event's restaurant (owner, manager, waiter) while the event runs today (its day until noon of
+// the next one, Europe/Warsaw). The client's order page in floor mode: the bill, the prep list, the serving plan with
+// the guests, every line with its price, „Wydane” per line and per piece, the add form (refills, priced by the venue)
+// and drinks add-only — never edits, deletes, links or settings. Allowed whoever leads the event. ONE guard call;
+// anything else (another restaurant, outside the window, the platform administrator) → the no-access page (404).
+const locale = Astro.locals.locale;
+const t = floorMessages(locale);
+const panel = await findFloorEvent(Astro.locals, Astro.params.id);
+if (!panel) {
+  Astro.response.status = 404;
+}
+const eventId = panel?.event.id ?? 0;
+const board = panel ? await getOrderBoard(panel.db, eventId) : null;
+// staff-offline-readout (S-27): this device keeps a price-free copy for /panel/obsluga/<id>/odczyt (this account).
+const readout = panel ? floorReadoutScope(eventId, panel.staff.accountId, panel.date) : null;
+---
+
+{panel && board && readout ? (
+  <Layout title={t.title(panel.event.name)}>
+    <main class="mx-auto flex max-w-6xl flex-col gap-6 p-4 sm:p-8" data-floor-page={eventId}>
+      <header class="flex flex-col gap-2">
+        <a
+          href={`/panel/restauracje/${String(panel.event.restaurantId)}`}
+          class="self-start py-2 text-sm text-muted-foreground underline-offset-4 hover:underline"
+        >
+          {t.back}
+        </a>
+        <h1 class="text-3xl font-bold">{panel.event.name}</h1>
+        <p class="text-muted-foreground">
+          {t.heading}
+          {` · ${formatEventDate(panel.date, locale)}`}
+        </p>
+        <p class="text-sm text-muted-foreground">{t.intro}</p>
+        <a
+          href={readout.readoutPath}
+          class="self-start py-2 text-sm text-muted-foreground underline-offset-4 hover:underline"
+          data-staff-readout-link
+        >
+          {staffOfflineMessages(locale).readoutLink}
+        </a>
+        <a
+          href={`${floorPath(eventId)}/lista-obslugi`}
+          class="self-start py-2 text-sm text-muted-foreground underline-offset-4 hover:underline"
+          data-floor-print-link
+        >
+          {printMessages(locale).floorLink}
+        </a>
+      </header>
+      <OrderManager
+        client:load
+        apiBase={floorApiBase(eventId)}
+        initial={board}
+        floor={true}
+        locale={locale}
+        readout={readout}
+      />
+    </main>
+  </Layout>
+) : (
+  <NoAccess />
+)}

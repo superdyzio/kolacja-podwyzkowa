@@ -1,0 +1,281 @@
+---
+import Layout from "@/layouts/Layout.astro";
+import NoAccess from "@/components/NoAccess.astro";
+import { GuessManager } from "@/components/guesses/GuessManager";
+import { GuestLinksManager } from "@/components/guest-links/GuestLinksManager";
+import { GuestManager } from "@/components/guests/GuestManager";
+import LeadBanner from "@/components/lead/LeadBanner.astro";
+import ReadOnlyFrame from "@/components/lead/ReadOnlyFrame.astro";
+import { OrderManager } from "@/components/orders/OrderManager";
+import { PriceListEditor } from "@/components/orders/PriceListEditor";
+import ModuleOff from "@/components/modules/ModuleOff.astro";
+import { QuestionManager } from "@/components/questions/QuestionManager";
+import { QuizManager } from "@/components/quiz/QuizManager";
+import { RsvpManager } from "@/components/rsvp/RsvpManager";
+import { SeatingEditor } from "@/components/seating/SeatingEditor";
+import SupportBanner from "@/components/support/SupportBanner.astro";
+import { VenueEditor } from "@/components/venue/VenueEditor";
+import { organizerPath } from "@/lib/access";
+import { clientAiUsage } from "@/lib/ai-topics/limits";
+import { getAiTopicUsage } from "@/lib/ai-topics/service";
+import { getClientAccess } from "@/lib/client-routes/access";
+import { clientWorkMessages } from "@/lib/client-routes/messages";
+import {
+  isClientSection,
+  KEY_SECTIONS,
+  panelClientApiBase,
+  panelEventApiBase,
+  panelEventPath,
+  previewMode,
+} from "@/lib/client-routes/sections";
+import { EVENT_STAFF_ROLES } from "@/lib/events";
+import { getGuestLinks } from "@/lib/guest-links";
+import { getGuessBoard } from "@/lib/guesses";
+import { withoutDiets } from "@/lib/diets/support";
+import { getGuestList } from "@/lib/guests";
+import { getOrderBoard, priceList } from "@/lib/orders";
+import { findPanelEvent } from "@/lib/panel-api";
+import { getQuestionList } from "@/lib/questions";
+import { getQuizBoard } from "@/lib/quiz";
+import { getRsvpBoard } from "@/lib/rsvp";
+import { getNeighbourHistory, getSeatingBoard, getSeatOccupancy } from "@/lib/seating";
+import { shellMessages } from "@/lib/shell/messages";
+import { getTvSpotlight } from "@/lib/tv-spotlight";
+import { getVenue } from "@/lib/venue";
+
+// The client's work in the restaurant panel (client-restaurant-split, S-14; PRD v2 FR-026, „Personel a praca
+// klienta”): /panel/wydarzenia/<id>/<section> renders the client's own island for that section with the panel's API
+// base (/api/panel/events/<id>/klient → the organizer routes for this event). Owners and managers; editable only while
+// „Lokal prowadzi” is on — otherwise the island is read-only (inert) under a banner saying the client leads. The
+// platform admin in support mode gets a static render (no hydration, so no polling log rows) without the guests' link
+// keys (no „linki”) and without the guests' diets, allergies and notes for the kitchen (withoutDiets; the PR #4
+// review's decision 2: health data, like the export support mode never gets). ONE guard call; a waiter, another
+// restaurant, an unknown section or id → the no-access page (404).
+const locale = Astro.locals.locale;
+const t = clientWorkMessages(locale);
+const shell = shellMessages(locale);
+const sectionParam = Astro.params.sekcja;
+const section = isClientSection(sectionParam) ? sectionParam : null;
+const panel = section ? await findPanelEvent(Astro.locals, Astro.params.id, EVENT_STAFF_ROLES) : null;
+const support = panel?.support ?? null;
+const access =
+  panel && section && !(support && KEY_SECTIONS.includes(section))
+    ? await getClientAccess(panel.db, panel.event.restaurantId, panel.event.id)
+    : null;
+if (!panel || !section || !access) {
+  Astro.response.status = 404;
+}
+
+const db = panel?.db;
+const eventId = access?.event.id ?? 0;
+const mode = previewMode(access?.event.venueLeads ?? false, support !== null);
+const readOnly = mode !== "staff-leads";
+const hydrate = support === null;
+const apiBase = panelClientApiBase(eventId);
+const eventPath = panelEventPath(eventId);
+// event-modules (S-17): the client's sections follow the event's modules here too.
+const modules = access?.event.modules;
+const questionModules = {
+  questions: modules?.questions ?? true,
+  aiTopics: modules?.aiTopics ?? true,
+  tvSpotlight: modules?.tvSpotlight ?? true,
+};
+const drawEnabled = modules?.seatingDraw ?? true;
+const gameOn = modules?.guessing ?? true;
+const questionsOn = questionModules.questions || questionModules.aiTopics || questionModules.tvSpotlight;
+// pub-quiz (S-28): the paid module's preview, a note while it is off.
+const quizOn = modules?.pubQuiz ?? false;
+const titles = {
+  goscie: shell.guestsTitle,
+  sale: shell.venueTitle,
+  rozsadzenie: shell.seatingTitle,
+  linki: shell.linksTitle,
+  potwierdzenia: shell.rsvpTitle,
+  strzaly: shell.guessesTitle,
+  pytania: shell.questionsTitle,
+  zamowienia: shell.ordersTitle,
+  quiz: shell.quizTitle,
+} as const;
+
+// The same server reads as the client's page of that section (support mode: without the diets).
+const loaded =
+  access && db && section
+    ? section === "goscie"
+      ? { section, list: await getGuestList(db, eventId) }
+      : section === "sale"
+        ? { section, venue: await getVenue(db, eventId), occupancy: await getSeatOccupancy(db, eventId) }
+        : section === "rozsadzenie"
+          ? { section, board: await getSeatingBoard(db, eventId), history: await getNeighbourHistory(db, eventId) }
+          : section === "linki"
+            ? { section, links: await getGuestLinks(db, eventId) }
+            : section === "potwierdzenia"
+              ? { section, rsvp: await getRsvpBoard(db, eventId, new Date()) }
+              : section === "strzaly"
+                ? { section, board: await getGuessBoard(db, eventId) }
+                : section === "pytania"
+                  ? {
+                      section,
+                      list: await getQuestionList(db, eventId),
+                      // The island shows the counts only; the costs are on the event page („Koszty AI”).
+                      ai: clientAiUsage(await getAiTopicUsage(db, eventId, locale)),
+                      tv: await getTvSpotlight(db, eventId),
+                    }
+                  : section === "quiz"
+                    ? { section, quiz: quizOn ? await getQuizBoard(db, eventId) : null }
+                    : { section, board: await getOrderBoard(db, eventId) }
+    : null;
+const data = support && loaded ? withoutDiets(loaded) : loaded;
+const cardsPath = access && !support ? `${organizerPath(access.event.organizerKey)}/karteczki` : "";
+// A section whose module is off shows ModuleOff OUTSIDE the read-only frame, so its way back stays reachable.
+const moduleOff =
+  data?.section === "strzaly" && !gameOn
+    ? "guessing"
+    : data?.section === "pytania" && !questionsOn
+      ? "questions"
+      : data?.section === "quiz" && !data.quiz
+        ? "pubQuiz"
+        : null;
+---
+
+{panel && access && data ? (
+  <Layout title={t.pageTitle(titles[data.section], access.event.name)}>
+    <main class="mx-auto flex max-w-6xl flex-col gap-6 p-4 sm:p-8" data-client-preview={data.section}>
+      <header class="flex flex-col gap-2">
+        <a href={eventPath} class="self-start py-2 text-sm text-muted-foreground underline-offset-4 hover:underline">
+          {t.kicker(access.event.name)}
+        </a>
+        <h1 class="text-3xl font-bold">{titles[data.section]}</h1>
+      </header>
+      {support && <SupportBanner support={support} locale={locale} />}
+      <LeadBanner kind={mode} eventPath={eventPath} locale={locale} />
+      {moduleOff && <ModuleOff module={moduleOff} backPath={eventPath} locale={locale} />}
+      {!moduleOff && (
+        <ReadOnlyFrame readOnly={readOnly} locale={locale}>
+          {data.section === "goscie" &&
+            (hydrate ? (
+              <GuestManager client:load apiBase={apiBase} initialList={data.list} locale={locale} />
+            ) : (
+              <GuestManager apiBase={apiBase} initialList={data.list} locale={locale} />
+            ))}
+          {data.section === "sale" &&
+            (hydrate ? (
+              <VenueEditor
+                client:load
+                apiBase={apiBase}
+                initialVenue={data.venue}
+                initialOccupancy={data.occupancy}
+                locale={locale}
+              />
+            ) : (
+              <VenueEditor
+                apiBase={apiBase}
+                initialVenue={data.venue}
+                initialOccupancy={data.occupancy}
+                locale={locale}
+              />
+            ))}
+          {data.section === "rozsadzenie" &&
+            (hydrate ? (
+              <SeatingEditor
+                client:load
+                apiBase={apiBase}
+                panelPath={eventPath}
+                initialBoard={data.board}
+                initialHistory={data.history}
+                drawEnabled={drawEnabled}
+                locale={locale}
+              />
+            ) : (
+              <SeatingEditor
+                apiBase={apiBase}
+                panelPath={eventPath}
+                initialBoard={data.board}
+                initialHistory={data.history}
+                drawEnabled={drawEnabled}
+                locale={locale}
+              />
+            ))}
+          {data.section === "linki" && (
+            <GuestLinksManager
+              client:load
+              apiBase={apiBase}
+              origin={Astro.url.origin}
+              cardsPath={cardsPath}
+              guestsPath={`${eventPath}/goscie`}
+              initial={data.links}
+              locale={locale}
+            />
+          )}
+          {data.section === "potwierdzenia" &&
+            data.rsvp &&
+            (hydrate ? (
+              <RsvpManager client:load apiBase={apiBase} initial={data.rsvp} sectionsBase={eventPath} locale={locale} />
+            ) : (
+              <RsvpManager apiBase={apiBase} initial={data.rsvp} sectionsBase={eventPath} locale={locale} />
+            ))}
+          {data.section === "strzaly" &&
+            gameOn &&
+            (hydrate ? (
+              <GuessManager
+                client:load
+                apiBase={apiBase}
+                guestsPath={`${eventPath}/goscie`}
+                initial={data.board}
+                locale={locale}
+              />
+            ) : (
+              <GuessManager apiBase={apiBase} guestsPath={`${eventPath}/goscie`} initial={data.board} locale={locale} />
+            ))}
+          {data.section === "pytania" &&
+            questionsOn &&
+            (hydrate ? (
+              <QuestionManager
+                client:load
+                apiBase={apiBase}
+                initial={data.list}
+                aiInitial={data.ai}
+                tvInitial={data.tv}
+                modules={questionModules}
+                locale={locale}
+              />
+            ) : (
+              <QuestionManager
+                apiBase={apiBase}
+                initial={data.list}
+                aiInitial={data.ai}
+                tvInitial={data.tv}
+                modules={questionModules}
+                locale={locale}
+              />
+            ))}
+          {data.section === "quiz" &&
+            data.quiz &&
+            (hydrate ? (
+              <QuizManager client:load apiBase={apiBase} initial={data.quiz} locale={locale} />
+            ) : (
+              <QuizManager apiBase={apiBase} initial={data.quiz} locale={locale} />
+            ))}
+          {data.section === "zamowienia" &&
+            (hydrate ? (
+              <OrderManager client:load apiBase={apiBase} initial={data.board} locale={locale} />
+            ) : (
+              <OrderManager apiBase={apiBase} initial={data.board} locale={locale} />
+            ))}
+        </ReadOnlyFrame>
+      )}
+      {
+        // „Cennik wydarzenia” (FR-027): prices are always the venue's, whoever leads; members only (not support mode).
+        data.section === "zamowienia" && hydrate && (
+          <PriceListEditor
+            client:load
+            apiBase={panelEventApiBase(eventId)}
+            initial={priceList(data.board.items, data.board.drinks)}
+            locale={locale}
+          />
+        )
+      }
+    </main>
+  </Layout>
+) : (
+  <NoAccess />
+)}

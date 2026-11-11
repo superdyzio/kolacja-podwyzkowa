@@ -1,21 +1,33 @@
 ---
+import { TvRoomLinks } from "@/components/tv/TvRoomLinks";
 import NoAccess from "@/components/NoAccess.astro";
+import BrandHeader from "@/components/branding/BrandHeader.astro";
+import { EventBrandingManager } from "@/components/branding/EventBrandingManager";
+import LeadBanner from "@/components/lead/LeadBanner.astro";
+import { EventModulesManager } from "@/components/modules/EventModulesManager";
+import ReadOnlyFrame from "@/components/lead/ReadOnlyFrame.astro";
 import { OfflineSync } from "@/components/offline/OfflineSync";
 import { ResetPanel } from "@/components/reset/ResetPanel";
 import Layout from "@/layouts/Layout.astro";
-import { accessFor, organizerPath, restaurantPath, tvPath } from "@/lib/access";
-import { getAiProviderStatus } from "@/lib/ai";
-import { formatAiTopicSummary, MAX_EVENT_TOPICS, MAX_GUEST_TOPICS } from "@/lib/ai-topics/limits";
+import { accessFor, organizerPath, tvPath } from "@/lib/access";
+import { formatClientAiTopicSummary, MAX_EVENT_TOPICS, MAX_GUEST_TOPICS } from "@/lib/ai-topics/limits";
 import { getAiTopicUsage } from "@/lib/ai-topics/service";
+import { brandingMessages, getEventBranding } from "@/lib/branding";
 import { getDb } from "@/lib/db";
 import { formatGuestLinksSummary, getGuestAccessEnabled } from "@/lib/guest-links";
 import { formatGuessSummary, getGuessBoard } from "@/lib/guesses";
+import { getEventModules, modulesMessages } from "@/lib/modules";
 import { formatOrderSummary, getOrderItems, orderTotals } from "@/lib/orders";
 import { formatGuestSummary, summarizeGuestList } from "@/lib/guests";
 import { formatQuestionSummary, getQuestionList } from "@/lib/questions";
+import { formatQuizSummary, getQuizBoard } from "@/lib/quiz";
+import { formatRsvpSummary, getRsvpBoard } from "@/lib/rsvp";
 import { formatSeatingSummary, getSeatingBoard, summarizeSeating } from "@/lib/seating";
 import { shellMessages } from "@/lib/shell/messages";
+import { printMessages } from "@/lib/prints/messages";
 import { formatVenueSummary, summarizeVenue } from "@/lib/venue";
+import GuestDataNote from "@/components/privacy/GuestDataNote.astro";
+import { getEventRetention } from "@/lib/privacy/service";
 
 // Organizer view (shell). The middleware has already checked the key; this is the second, role-specific check.
 const locale = Astro.locals.locale;
@@ -27,23 +39,49 @@ if (!access) {
 
 const db = access ? getDb() : null;
 // One read of the seating board carries the guest list and the venue too.
-const [board, guestAccessEnabled, guessBoard, questionList, aiUsage, orderItems] = db
-  ? await Promise.all([
-      getSeatingBoard(db),
-      getGuestAccessEnabled(db),
-      getGuessBoard(db),
-      getQuestionList(db),
-      getAiTopicUsage(db, locale),
-      getOrderItems(db),
-    ])
-  : [null, false, null, null, null, null];
+// event-modules (S-17): a switched-off module's card is gone and its data is not read.
+const on = access?.event.modules;
+const [
+  board,
+  guestAccessEnabled,
+  guessBoard,
+  questionList,
+  aiUsage,
+  orderItems,
+  modules,
+  branding,
+  rsvpBoard,
+  retention,
+  quizBoard,
+] =
+  access && db
+    ? await Promise.all([
+        getSeatingBoard(db, access.event.id),
+        getGuestAccessEnabled(db, access.event.id),
+        on?.guessing ? getGuessBoard(db, access.event.id) : null,
+        on?.questions ? getQuestionList(db, access.event.id) : null,
+        on?.aiTopics ? getAiTopicUsage(db, access.event.id, locale) : null,
+        getOrderItems(db, access.event.id),
+        getEventModules(db, access.event.id),
+        // event-branding (S-18): the brand header and „Marka wydarzenia”.
+        getEventBranding(db, access.event.id),
+        // guest-rsvp-menu (S-25): the RSVP card's summary.
+        getRsvpBoard(db, access.event.id, new Date()),
+        // privacy-retention (S-26): when the guests' data goes (the key lookup has applied the retention already).
+        getEventRetention(db, access.event.id),
+        // pub-quiz (S-28): the quiz card's summary, only while the module is on.
+        on?.pubQuiz ? getQuizBoard(db, access.event.id) : null,
+      ])
+    : [null, false, null, null, null, null, null, null, null, null, null];
 const view = access
   ? {
       name: access.event.name,
+      // client-restaurant-split: while the venue leads, the client's link is view-only.
+      venueLeads: access.event.venueLeads,
       apiBase: `/api${organizerPath(access.event.organizerKey)}`,
       organizerUrl: new URL(organizerPath(access.event.organizerKey), Astro.url).href,
       tvUrl: new URL(tvPath(access.event.tvKey), Astro.url).href,
-      restaurantUrl: new URL(restaurantPath(access.event.restaurantKey), Astro.url).href,
+      roomNames: board ? board.venue.rooms.map((room) => room.name) : [],
       guestsPath: `${organizerPath(access.event.organizerKey)}/goscie`,
       guestSummary: board ? formatGuestSummary(summarizeGuestList(board.guestList), locale) : null,
       venuePath: `${organizerPath(access.event.organizerKey)}/sale`,
@@ -56,26 +94,48 @@ const view = access
       linksSummary: board
         ? formatGuestLinksSummary({ enabled: guestAccessEnabled, guestCount: board.guestList.guests.length }, locale)
         : null,
+      rsvpPath: `${organizerPath(access.event.organizerKey)}/potwierdzenia`,
+      rsvpSummary: rsvpBoard ? formatRsvpSummary(rsvpBoard, locale) : null,
       guessesPath: `${organizerPath(access.event.organizerKey)}/strzaly`,
       guessesSummary: guessBoard ? formatGuessSummary(guessBoard, locale) : null,
       questionsPath: `${organizerPath(access.event.organizerKey)}/pytania`,
       questionsSummary: questionList ? formatQuestionSummary(questionList.questions, locale) : null,
       aiTopicsPath: `${organizerPath(access.event.organizerKey)}/pytania#tematy-ai`,
-      aiTopicsSummary: aiUsage ? formatAiTopicSummary(aiUsage, getAiProviderStatus(locale), locale) : null,
+      // client-restaurant-split: the counts only; the provider and the cost are the venue's („Koszty AI”).
+      aiTopicsSummary: aiUsage ? formatClientAiTopicSummary(aiUsage, locale) : null,
       readoutPath: `${organizerPath(access.event.organizerKey)}/odczyt`,
+      // room-prints (S-24): the board, table cards, place cards and the staff list.
+      printsPath: `${organizerPath(access.event.organizerKey)}/wydruki`,
       ordersPath: `${organizerPath(access.event.organizerKey)}/zamowienia`,
       ordersSummary: orderItems ? formatOrderSummary(orderTotals(orderItems), locale) : null,
+      guessesOn: access.event.modules.guessing,
+      // The questions page also holds the TV screen and the AI topics.
+      questionsOn: access.event.modules.questions || access.event.modules.tvSpotlight,
+      aiTopicsOn: access.event.modules.aiTopics,
+      quizPath: `${organizerPath(access.event.organizerKey)}/quiz`,
+      quizSummary: quizBoard ? formatQuizSummary(quizBoard, locale) : null,
+      quizOn: access.event.modules.pubQuiz,
+      modules,
+      modulesApi: `/api${organizerPath(access.event.organizerKey)}/modules`,
+      branding,
+      retention,
     }
   : null;
+const tm = modulesMessages(locale);
+const tb = brandingMessages(locale);
+const tp = printMessages(locale);
 ---
 
 {view ? (
   <Layout title={t.pageTitle(view.name)}>
     <main class="mx-auto flex max-w-3xl flex-col gap-8 p-4 sm:p-8">
       <header class="flex flex-col gap-1">
+        <BrandHeader branding={view.branding} base={`${view.apiBase}/branding`} locale={locale} />
         <p class="text-sm text-muted-foreground">{t.kicker}</p>
         <h1 class="text-3xl font-bold">{view.name}</h1>
+        {view.retention && <GuestDataNote retention={view.retention} locale={locale} />}
       </header>
+      {view.venueLeads && <LeadBanner kind="client" locale={locale} />}
       <OfflineSync client:load apiBase={view.apiBase} locale={locale} />
 
       <section aria-labelledby="links-heading" class="flex flex-col gap-4 rounded-xl border p-4 sm:p-6">
@@ -107,19 +167,8 @@ const view = access
             class="w-full rounded-md border bg-muted px-3 py-2 font-mono text-sm"
           />
           <p class="text-sm text-muted-foreground">{t.tvLinkHint}</p>
-        </div>
-        <div class="flex flex-col gap-2">
-          <label for="restaurant-link" class="font-medium">
-            {t.restaurantLink}
-          </label>
-          <input
-            id="restaurant-link"
-            type="text"
-            readonly
-            value={view.restaurantUrl}
-            class="w-full rounded-md border bg-muted px-3 py-2 font-mono text-sm"
-          />
-          <p class="text-sm text-muted-foreground">{t.restaurantLinkHint}</p>
+          {/* tv-room-rotation (S-20): one TV link per room. */}
+          <TvRoomLinks client:load tvUrl={view.tvUrl} rooms={view.roomNames} locale={locale} />
         </div>
       </section>
 
@@ -182,43 +231,79 @@ const view = access
           </li>
           <li>
             <a
-              href={view.guessesPath}
+              href={view.rsvpPath}
+              data-rsvp-card
               class="flex h-full flex-col gap-2 rounded-xl border p-4 transition-colors hover:bg-accent focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
             >
               <div class="flex items-center justify-between gap-2">
-                <h3 class="font-semibold">{t.guessesTitle}</h3>
+                <h3 class="font-semibold">{t.rsvpTitle}</h3>
                 <span class="rounded-full bg-primary px-2 py-0.5 text-xs text-primary-foreground">{t.open}</span>
               </div>
-              <p class="text-sm text-muted-foreground">{t.guessesText}</p>
-              {view.guessesSummary && <p class="text-sm font-medium">{view.guessesSummary}</p>}
+              <p class="text-sm text-muted-foreground">{t.rsvpText}</p>
+              {view.rsvpSummary && <p class="text-sm font-medium">{view.rsvpSummary}</p>}
             </a>
           </li>
-          <li>
-            <a
-              href={view.questionsPath}
-              class="flex h-full flex-col gap-2 rounded-xl border p-4 transition-colors hover:bg-accent focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
-            >
-              <div class="flex items-center justify-between gap-2">
-                <h3 class="font-semibold">{t.questionsTitle}</h3>
-                <span class="rounded-full bg-primary px-2 py-0.5 text-xs text-primary-foreground">{t.open}</span>
-              </div>
-              <p class="text-sm text-muted-foreground">{t.questionsText}</p>
-              {view.questionsSummary && <p class="text-sm font-medium">{view.questionsSummary}</p>}
-            </a>
-          </li>
-          <li>
-            <a
-              href={view.aiTopicsPath}
-              class="flex h-full flex-col gap-2 rounded-xl border p-4 transition-colors hover:bg-accent focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
-            >
-              <div class="flex items-center justify-between gap-2">
-                <h3 class="font-semibold">{t.aiTopicsTitle}</h3>
-                <span class="rounded-full bg-primary px-2 py-0.5 text-xs text-primary-foreground">{t.open}</span>
-              </div>
-              <p class="text-sm text-muted-foreground">{t.aiTopicsText(MAX_GUEST_TOPICS, MAX_EVENT_TOPICS)}</p>
-              {view.aiTopicsSummary && <p class="text-sm font-medium">{view.aiTopicsSummary}</p>}
-            </a>
-          </li>
+          {view.guessesOn && (
+            <li>
+              <a
+                href={view.guessesPath}
+                class="flex h-full flex-col gap-2 rounded-xl border p-4 transition-colors hover:bg-accent focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
+              >
+                <div class="flex items-center justify-between gap-2">
+                  <h3 class="font-semibold">{t.guessesTitle}</h3>
+                  <span class="rounded-full bg-primary px-2 py-0.5 text-xs text-primary-foreground">{t.open}</span>
+                </div>
+                <p class="text-sm text-muted-foreground">{t.guessesText}</p>
+                {view.guessesSummary && <p class="text-sm font-medium">{view.guessesSummary}</p>}
+              </a>
+            </li>
+          )}
+          {view.questionsOn && (
+            <li>
+              <a
+                href={view.questionsPath}
+                class="flex h-full flex-col gap-2 rounded-xl border p-4 transition-colors hover:bg-accent focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
+              >
+                <div class="flex items-center justify-between gap-2">
+                  <h3 class="font-semibold">{t.questionsTitle}</h3>
+                  <span class="rounded-full bg-primary px-2 py-0.5 text-xs text-primary-foreground">{t.open}</span>
+                </div>
+                <p class="text-sm text-muted-foreground">{t.questionsText}</p>
+                {view.questionsSummary && <p class="text-sm font-medium">{view.questionsSummary}</p>}
+              </a>
+            </li>
+          )}
+          {view.aiTopicsOn && (
+            <li>
+              <a
+                href={view.aiTopicsPath}
+                class="flex h-full flex-col gap-2 rounded-xl border p-4 transition-colors hover:bg-accent focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
+              >
+                <div class="flex items-center justify-between gap-2">
+                  <h3 class="font-semibold">{t.aiTopicsTitle}</h3>
+                  <span class="rounded-full bg-primary px-2 py-0.5 text-xs text-primary-foreground">{t.open}</span>
+                </div>
+                <p class="text-sm text-muted-foreground">{t.aiTopicsText(MAX_GUEST_TOPICS, MAX_EVENT_TOPICS)}</p>
+                {view.aiTopicsSummary && <p class="text-sm font-medium">{view.aiTopicsSummary}</p>}
+              </a>
+            </li>
+          )}
+          {view.quizOn && (
+            <li>
+              <a
+                href={view.quizPath}
+                data-quiz-card
+                class="flex h-full flex-col gap-2 rounded-xl border p-4 transition-colors hover:bg-accent focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
+              >
+                <div class="flex items-center justify-between gap-2">
+                  <h3 class="font-semibold">{t.quizTitle}</h3>
+                  <span class="rounded-full bg-primary px-2 py-0.5 text-xs text-primary-foreground">{t.open}</span>
+                </div>
+                <p class="text-sm text-muted-foreground">{t.quizText}</p>
+                {view.quizSummary && <p class="text-sm font-medium">{view.quizSummary}</p>}
+              </a>
+            </li>
+          )}
           <li>
             <a
               href={view.ordersPath}
@@ -230,6 +315,19 @@ const view = access
               </div>
               <p class="text-sm text-muted-foreground">{t.ordersText}</p>
               {view.ordersSummary && <p class="text-sm font-medium">{view.ordersSummary}</p>}
+            </a>
+          </li>
+          <li>
+            <a
+              href={view.printsPath}
+              data-prints-card
+              class="flex h-full flex-col gap-2 rounded-xl border p-4 transition-colors hover:bg-accent focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
+            >
+              <div class="flex items-center justify-between gap-2">
+                <h3 class="font-semibold">{tp.hubTitle}</h3>
+                <span class="rounded-full bg-primary px-2 py-0.5 text-xs text-primary-foreground">{t.open}</span>
+              </div>
+              <p class="text-sm text-muted-foreground">{tp.shellCardText}</p>
             </a>
           </li>
           <li>
@@ -247,6 +345,39 @@ const view = access
         </ul>
       </section>
 
+      {view.modules && (
+        <section aria-labelledby="modules-heading" class="flex flex-col gap-3 rounded-xl border p-4 sm:p-6">
+          <h2 id="modules-heading" class="text-xl font-semibold">
+            {tm.heading}
+          </h2>
+          <p class="text-sm text-muted-foreground">{tm.intro}</p>
+          <ReadOnlyFrame readOnly={view.venueLeads} locale={locale}>
+            <EventModulesManager
+              client:load
+              initial={view.modules}
+              clientApi={view.venueLeads ? null : view.modulesApi}
+              locale={locale}
+            />
+          </ReadOnlyFrame>
+        </section>
+      )}
+
+      {view.branding && (
+        <section
+          aria-labelledby="branding-heading"
+          class="flex flex-col gap-3 rounded-xl border p-4 sm:p-6"
+          data-event-branding
+        >
+          <h2 id="branding-heading" class="text-xl font-semibold">
+            {tb.eventHeading}
+          </h2>
+          <p class="text-sm text-muted-foreground">{tb.eventHint}</p>
+          <ReadOnlyFrame readOnly={view.venueLeads} locale={locale}>
+            <EventBrandingManager client:load apiBase={view.apiBase} initial={view.branding} locale={locale} />
+          </ReadOnlyFrame>
+        </section>
+      )}
+
       <section
         aria-labelledby="reset-heading"
         class="flex flex-col gap-3 rounded-xl border border-destructive/40 p-4 sm:p-6"
@@ -255,7 +386,9 @@ const view = access
           {t.resetHeading}
         </h2>
         <p class="text-sm text-muted-foreground">{t.resetText}</p>
-        <ResetPanel client:load apiBase={view.apiBase} locale={locale} />
+        <ReadOnlyFrame readOnly={view.venueLeads} locale={locale}>
+          <ResetPanel client:load apiBase={view.apiBase} variant="trial" locale={locale} />
+        </ReadOnlyFrame>
       </section>
     </main>
   </Layout>

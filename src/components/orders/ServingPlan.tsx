@@ -1,12 +1,17 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { DietBadges } from "@/components/diets/DietBadges";
+import { useMapSearch } from "@/components/hooks/useMapSearch";
+import { MapSearch } from "@/components/map-search/MapSearch";
 import { Button } from "@/components/ui/button";
-import { VenueDrawing, type VenueDrawingTable } from "@/components/venue-drawing/VenueDrawing";
+import { VenueDrawing, type DrawingMark, type VenueDrawingTable } from "@/components/venue-drawing/VenueDrawing";
+import { dietSeatLookup } from "@/lib/diets/board";
 import type { Locale } from "@/lib/i18n";
+import { mapSearchMessages } from "@/lib/map-search/messages";
 import { servingMessages } from "@/lib/orders/messages";
 import { describeSelection, markedTables, type ResolvedSelection, type ServingLine } from "@/lib/orders/serving";
 import { cn } from "@/lib/utils";
 import { planImagePath } from "@/lib/venue/pin";
-import type { TvSeatingDto } from "@/types";
+import type { DietBoardDto, TvSeatingDto } from "@/types";
 
 interface Props {
   // API base of the page's link ("/api/r/<key>" or "/api/o/<key>"): the plan image only gives the aspect ratio.
@@ -16,8 +21,14 @@ interface Props {
   servingTables: ReadonlySet<string>;
   selection: ResolvedSelection<ServingLine> | null;
   onClear: () => void;
+  // guest-import-diets (S-23): the diets at the published seats, shown under a found guest (staff and client only).
+  diets?: DietBoardDto;
   locale: Locale;
   className?: string;
+  // staff-offline-readout (S-27): the aspect ratio saved with an offline copy, used until (or unless) the plan image
+  // loads; the measured one is reported to the page, which saves it with the copy.
+  fallbackAspect?: number;
+  onAspect?: (planVersion: number, aspect: number) => void;
 }
 
 // Without a plan image (or until it has loaded) the drawing stands on a 16:9 stage (as on the TV).
@@ -26,20 +37,43 @@ const BLANK_ASPECT = 16 / 9;
 // The plan of the order pages (serving-highlight): the venue drawn from the PUBLISHED seating with the names at the
 // chairs, and the places of what is picked in the lists lit up (chairs, or the middle of a table, with the pieces'
 // numbers); the caption says it in words. While something is picked, only the tables it touches stay bright.
-export function ServingPlan({ apiBase, seating, servingTables, selection, onClear, locale, className }: Props) {
+// guest-map-search (S-22): a guest searched by name lights up violet on the same plan (the published seating it
+// draws; the note says so), next to whatever dish is picked; their table stays bright.
+export function ServingPlan({
+  apiBase,
+  seating,
+  servingTables,
+  selection,
+  onClear,
+  diets,
+  locale,
+  className,
+  fallbackAspect,
+  onAspect,
+}: Props) {
   const t = servingMessages(locale);
   const [loaded, setLoaded] = useState<{ version: number; aspect: number } | null>(null);
-  const aspect = loaded !== null && loaded.version === seating.planVersion ? loaded.aspect : BLANK_ASPECT;
-  const marks = selection?.marks;
+  const aspect =
+    loaded !== null && loaded.version === seating.planVersion ? loaded.aspect : (fallbackAspect ?? BLANK_ASPECT);
+  useEffect(() => {
+    if (loaded !== null) {
+      onAspect?.(loaded.version, loaded.aspect);
+    }
+  }, [loaded, onAspect]);
+  const servingMarks = selection?.marks;
+  const search = useMapSearch(seating.tables);
+  // Search marks last: at a chair with both, the found guest's colour wins (the serving label stays).
+  const marks = useMemo((): DrawingMark[] => [...(servingMarks ?? []), ...search.marks], [servingMarks, search.marks]);
+  const dietAt = useMemo(() => (diets && diets.tables.length > 0 ? dietSeatLookup(diets) : null), [diets]);
 
   const tables = useMemo((): VenueDrawingTable[] => {
-    const bright = marks ? markedTables(marks) : servingTables;
+    const serving = servingMarks ? markedTables(servingMarks) : servingTables;
     return seating.tables.map((table, index) => ({
       ...table,
       key: `${String(index).padStart(3, "0")} ${table.name}`,
-      muted: !bright.has(table.name),
+      muted: !serving.has(table.name) && !search.foundTables.has(table.name),
     }));
-  }, [seating.tables, servingTables, marks]);
+  }, [seating.tables, servingTables, servingMarks, search.foundTables]);
 
   function readNatural(img: HTMLImageElement | null) {
     const version = seating.planVersion;
@@ -78,6 +112,21 @@ export function ServingPlan({ apiBase, seating, servingTables, selection, onClea
       {seating.publishedAt === null ? (
         <p className="text-muted-foreground">{t.seatingNotReady}</p>
       ) : (
+        <MapSearch
+          search={search}
+          locale={locale}
+          note={mapSearchMessages(locale).publishedNote}
+          hitExtra={
+            dietAt
+              ? (table, seat) => {
+                  const diet = dietAt(table, seat);
+                  return diet ? <DietBadges diets={diet.diets} note={diet.note} locale={locale} /> : null;
+                }
+              : undefined
+          }
+        />
+      )}
+      {seating.publishedAt !== null && (
         <div className="bg-background rounded-xl border p-2">
           {seating.planVersion !== null && (
             <img

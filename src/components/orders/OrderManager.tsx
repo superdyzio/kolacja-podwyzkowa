@@ -1,13 +1,23 @@
-import { Fragment, useMemo, useState } from "react";
+import { Fragment, useCallback, useMemo, useState } from "react";
+import { DietBadges } from "@/components/diets/DietBadges";
+import { DietSection } from "@/components/diets/DietSection";
 import { useOrderBoard } from "@/components/hooks/useOrderBoard";
 import { useServingSelection } from "@/components/hooks/useServingSelection";
+import { useStaffReadout } from "@/components/hooks/useStaffReadout";
 import { Button } from "@/components/ui/button";
+import { dietSeatLookup } from "@/lib/diets/board";
 import { formatAmount } from "@/lib/guesses/amount";
 import type { Locale } from "@/lib/i18n";
 import { billTotalGrosze } from "@/lib/orders/drinks";
 import { drinkMessages, orderMessages, servingMessages } from "@/lib/orders/messages";
 import { dishKey, dishSuggestions, lineTotal } from "@/lib/orders/rules";
+import { courseLabel } from "@/lib/menu/rules";
+import { formatSavedAt } from "@/lib/offline/readout";
+import { staffReadoutFromBoard, type PlanAspect, type StaffReadoutScope } from "@/lib/offline/staff";
+import { staffOfflineMessages } from "@/lib/offline/staff-messages";
 import { describeLines, formatServedSummary } from "@/lib/orders/summary";
+import { PANEL_PATH } from "@/lib/auth/paths";
+import { WAITER_ENTRY_PATH } from "@/lib/event-waiters/paths";
 import { cn } from "@/lib/utils";
 import type { OrderBoardDto, OrderItemDto } from "@/types";
 import type { OrderRequest } from "@/components/hooks/useOrderBoard";
@@ -22,6 +32,12 @@ interface Props {
   apiBase: string;
   initial: OrderBoardDto;
   locale: Locale;
+  // waiter-day-and-refills (S-21): the floor (/panel/obsluga/<id>) — lines are marked and added, never edited or
+  // deleted; drinks are added only.
+  floor?: boolean;
+  // staff-offline-readout (S-27): both floors keep the tablet's price-free copy of the board on this device (for this
+  // event and this account or waiter, until the end of the floor window). Never the client's link or the previews.
+  readout?: StaffReadoutScope;
 }
 
 function sum(items: readonly OrderItemDto[]): number {
@@ -37,12 +53,38 @@ function lineKey(item: OrderItemDto): string {
 // grouped where it is served — by the PUBLISHED seating, exactly as the restaurant sees it — with „Wydane”, edit and
 // delete. serving-highlight: the plan beside the lists (above them on narrow screens, pinned while something is picked)
 // lights up where a dish, one piece of it or a line goes. bill-drinks: „Napoje do rachunku” at the bottom (the
-// organizer's own list) and the bill total (dishes + drinks) at the top.
-export function OrderManager({ apiBase, initial, locale }: Props) {
+// organizer's own list) and the bill total (dishes + drinks) at the top. guest-import-diets (S-23): „Diety i alergie”
+// under the totals and each seat's diet next to its name (the client, the staff's preview and both floors).
+// staff-offline-readout (S-27): on the floors every board the server confirms is saved (price-free) for the offline
+// readout page (`<floor>/odczyt`, also served by the readout worker when the floor cannot load); while the server
+// cannot be reached, a note says when it was saved and links there. The app's denial forgets the copy.
+export function OrderManager({ apiBase, initial, locale, floor = false, readout }: Props) {
   const t = orderMessages(locale);
   const s = servingMessages(locale);
   const d = drinkMessages(locale);
-  const { board, pending, failure, send: sendRequest, dismissFailure } = useOrderBoard(apiBase, initial, locale);
+  const so = staffOfflineMessages(locale);
+  const {
+    board,
+    pending,
+    failure,
+    send: sendRequest,
+    dismissFailure,
+    syncedAt,
+    offline,
+    denied,
+  } = useOrderBoard(apiBase, initial, locale);
+  const [aspect, setAspect] = useState<NonNullable<PlanAspect> | null>(null);
+  const onAspect = useCallback((planVersion: number, ratio: number) => {
+    setAspect((previous) =>
+      previous?.planVersion === planVersion && previous.aspect === ratio ? previous : { planVersion, aspect: ratio },
+    );
+  }, []);
+  const copy = useMemo(
+    () =>
+      readout ? staffReadoutFromBoard(board, aspect?.planVersion === board.seating.planVersion ? aspect : null) : null,
+    [readout, board, aspect],
+  );
+  const saved = useStaffReadout(readout ?? null, copy, syncedAt, denied);
   // Where a failed save is reported: next to the drinks panel for its own requests, at the top for everything else.
   const [failureAtDrinks, setFailureAtDrinks] = useState(false);
   const send = (request: OrderRequest) => {
@@ -55,9 +97,29 @@ export function OrderManager({ apiBase, initial, locale }: Props) {
   };
   const [editingId, setEditingId] = useState<number | null>(null);
   const dishes = useMemo(() => dishSuggestions(board.items), [board.items]);
-  const { totals, placement } = board;
+  const { totals, placement, diets } = board;
+  const dietAt = useMemo(() => dietSeatLookup(diets), [diets]);
   const serving = useServingSelection(placement, board.prep, lineKey);
+  const byCourse = board.prep.some((line) => line.course !== null);
   const servingTables = useMemo(() => new Set(placement.tables.map((table) => table.name)), [placement.tables]);
+
+  // staff-offline-readout (S-27) + PR #4 review: once the app denies a floor (the window ended, the event archived, the
+  // session or the waiter's access ended) the board gives way to this, like the tablet's „gone” state — no form, box or
+  // chip offers a write that can only fail. The copy is already forgotten (useStaffReadout); a later 200 (the event
+  // restored) brings the board back.
+  if (readout && denied) {
+    const backPath =
+      readout.area === "waiter" ? WAITER_ENTRY_PATH : readout.area === "floor" ? PANEL_PATH : readout.livePath;
+    return (
+      <div role="alert" data-staff-readout-note="gone" className="flex flex-col gap-2 rounded-xl border p-4 sm:p-6">
+        <h2 className="text-2xl font-bold">{so.liveGoneTitle}</h2>
+        <p>{so.liveGoneText}</p>
+        <a href={backPath} className="self-start py-2 underline underline-offset-4">
+          {so.liveGoneBack[readout.area]}
+        </a>
+      </div>
+    );
+  }
 
   function body(values: OrderItemFormValues) {
     return { ...values, note: values.note.trim() === "" ? null : values.note };
@@ -94,10 +156,15 @@ export function OrderManager({ apiBase, initial, locale }: Props) {
             guests={board.guests}
             tables={board.tables}
             dishes={dishes}
+            menu={board.menu}
             locale={locale}
-            onEdit={() => {
-              setEditingId(item.id);
-            }}
+            onEdit={
+              floor
+                ? null
+                : () => {
+                    setEditingId(item.id);
+                  }
+            }
             onCancel={() => {
               setEditingId(null);
             }}
@@ -108,9 +175,13 @@ export function OrderManager({ apiBase, initial, locale }: Props) {
             onPiece={(piece, delivered) =>
               send({ method: "PUT", path: `/orders/${String(item.id)}/pieces`, body: { piece, delivered } })
             }
-            onDelete={() => {
-              deleteLine(item);
-            }}
+            onDelete={
+              floor
+                ? null
+                : () => {
+                    deleteLine(item);
+                  }
+            }
             selected={serving.selectedSpot === lineKey(item)}
             onSelect={
               onPlan
@@ -137,6 +208,23 @@ export function OrderManager({ apiBase, initial, locale }: Props) {
   return (
     <div className="grid gap-6 lg:grid-cols-2 lg:items-start">
       <div className="flex flex-col gap-6 lg:col-start-1 lg:row-start-1">
+        {readout && offline && (
+          <p
+            role="status"
+            data-staff-readout-note="offline"
+            className="rounded-lg border border-amber-500/50 bg-amber-500/10 p-3 text-sm"
+          >
+            {so.liveOffline}
+            {saved && (
+              <span className="block">
+                {so.liveSaved(formatSavedAt(saved.savedAt, new Date(), locale))}{" "}
+                <a href={readout.readoutPath} className="underline underline-offset-4">
+                  {so.readoutLink}
+                </a>
+              </span>
+            )}
+          </p>
+        )}
         <section aria-labelledby="order-total-heading" className="flex flex-col gap-1 rounded-xl border p-4 sm:p-6">
           <h2 id="order-total-heading" className="text-muted-foreground text-sm">
             {d.billTotal}
@@ -155,6 +243,8 @@ export function OrderManager({ apiBase, initial, locale }: Props) {
           </p>
         </section>
 
+        <DietSection diets={diets} published={board.published} locale={locale} />
+
         {!failureAtDrinks && failureAlert}
 
         <section aria-labelledby="order-add-heading" className="flex flex-col gap-3 rounded-xl border p-4 sm:p-6">
@@ -167,6 +257,7 @@ export function OrderManager({ apiBase, initial, locale }: Props) {
             guests={board.guests}
             tables={board.tables}
             dishes={dishes}
+            menu={board.menu}
             pending={pending}
             locale={locale}
             submitLabel={t.add}
@@ -181,7 +272,9 @@ export function OrderManager({ apiBase, initial, locale }: Props) {
         servingTables={servingTables}
         selection={serving.resolved}
         onClear={serving.clear}
+        diets={diets}
         locale={locale}
+        onAspect={readout ? onAspect : undefined}
         className={cn(
           "bg-background lg:sticky lg:top-4 lg:col-start-2 lg:row-span-2 lg:row-start-1",
           serving.resolved &&
@@ -206,12 +299,21 @@ export function OrderManager({ apiBase, initial, locale }: Props) {
                   </tr>
                 </thead>
                 <tbody>
-                  {board.prep.map((line) => {
+                  {board.prep.map((line, index) => {
                     const key = dishKey(line.name);
                     const dish = serving.dishes.get(key);
                     const picked = serving.selectedDish === key;
+                    // menu-catalog-courses: a course heading before each course (only once any line has one).
+                    const heading = byCourse && (index === 0 || board.prep[index - 1].course !== line.course);
                     return (
-                      <Fragment key={line.name}>
+                      <Fragment key={`${line.course ?? ""}|${line.name}`}>
+                        {heading && (
+                          <tr className="bg-muted/60 border-t" data-course={line.course ?? "other"}>
+                            <th colSpan={4} scope="colgroup" className="p-2 text-left text-xs font-semibold uppercase">
+                              {courseLabel(line.course, locale)}
+                            </th>
+                          </tr>
+                        )}
                         <tr className={cn("border-t align-top", picked && "bg-red-500/10")}>
                           <td className="p-0">
                             <button
@@ -287,15 +389,21 @@ export function OrderManager({ apiBase, initial, locale }: Props) {
                   </h3>
                   <span className="font-semibold">{formatAmount(sum(items))}</span>
                 </header>
-                {table.seats.map((seat) => (
-                  <div key={seat.seat} className="flex flex-col gap-2">
-                    <h4 className="flex flex-wrap justify-between gap-2 text-sm font-medium">
-                      <span>{t.seat(seat.seat, seat.guestName)}</span>
-                      <span className="text-muted-foreground">{formatAmount(sum(seat.items))}</span>
-                    </h4>
-                    {renderLines(seat.items, true)}
-                  </div>
-                ))}
+                {table.seats.map((seat) => {
+                  const diet = dietAt(table.name, seat.seat);
+                  return (
+                    <div key={seat.seat} className="flex flex-col gap-2">
+                      <h4 className="flex flex-wrap justify-between gap-2 text-sm font-medium">
+                        <span>
+                          {t.seat(seat.seat, seat.guestName)}
+                          {diet && <DietBadges diets={diet.diets} note={diet.note} locale={locale} className="ml-2" />}
+                        </span>
+                        <span className="text-muted-foreground">{formatAmount(sum(seat.items))}</span>
+                      </h4>
+                      {renderLines(seat.items, true)}
+                    </div>
+                  );
+                })}
                 {table.tableItems.length > 0 && (
                   <div className="flex flex-col gap-2">
                     <h4 className="text-sm font-medium">{t.onTable}</h4>
@@ -341,10 +449,12 @@ export function OrderManager({ apiBase, initial, locale }: Props) {
         {failureAtDrinks && failureAlert}
         <DrinkPanel
           drinks={board.drinks}
+          menuDrinks={board.menu.items.filter((item) => item.course === "drinks")}
           totals={board.drinkTotals}
           pending={pending}
           locale={locale}
           send={sendDrink}
+          addOnly={floor}
         />
       </div>
     </div>

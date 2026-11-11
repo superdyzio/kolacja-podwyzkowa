@@ -15,6 +15,8 @@ interface Props {
   // The working arrangement is an untouched draw (the button says „Losuj ponownie”).
   drawn: boolean;
   canDraw: boolean;
+  // event-modules (S-17): the seating draw module is on (off: no draw button and no repeat stats; going back stays).
+  drawEnabled?: boolean;
   pending: boolean;
   drawing: boolean;
   onDraw: () => void;
@@ -53,6 +55,7 @@ export function DrawPanel({
   upToDate,
   drawn,
   canDraw,
+  drawEnabled = true,
   pending,
   drawing,
   onDraw,
@@ -72,9 +75,11 @@ export function DrawPanel({
       </div>
 
       <div className="flex flex-wrap gap-2">
-        <Button type="button" className="h-10" disabled={pending || !canDraw} onClick={onDraw}>
-          {drawing ? t.drawing : drawn ? t.redraw : t.draw}
-        </Button>
+        {drawEnabled && (
+          <Button type="button" className="h-10" disabled={pending || !canDraw} onClick={onDraw} data-draw-button>
+            {drawing ? t.drawing : drawn ? t.redraw : t.draw}
+          </Button>
+        )}
         {published !== null && !upToDate && (
           <Button type="button" variant="outline" className={wrapping} disabled={pending} onClick={onDiscard}>
             {t.discardChanges}
@@ -87,19 +92,21 @@ export function DrawPanel({
         )}
       </div>
 
-      <div aria-live="polite" className="flex flex-col gap-1">
-        <p className="text-sm font-medium">
-          {statsLine(repeats.length, snapshotCount, upToDate, published !== null, locale)}
-        </p>
-        {showPairs && (
-          <ul className="max-h-48 list-disc overflow-y-auto pl-5 text-sm">
-            {repeats.map((pair) => (
-              <li key={`${pair.guestIds[0]}-${pair.guestIds[1]}`}>{describeRepeat(pair, locale)}</li>
-            ))}
-          </ul>
-        )}
-      </div>
-      <p className="text-muted-foreground text-xs">{formatHistoryCount(snapshotCount, locale)}</p>
+      {drawEnabled && (
+        <div aria-live="polite" className="flex flex-col gap-1">
+          <p className="text-sm font-medium">
+            {statsLine(repeats.length, snapshotCount, upToDate, published !== null, locale)}
+          </p>
+          {showPairs && (
+            <ul className="max-h-48 list-disc overflow-y-auto pl-5 text-sm">
+              {repeats.map((pair) => (
+                <li key={`${pair.guestIds[0]}-${pair.guestIds[1]}`}>{describeRepeat(pair, locale)}</li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+      {drawEnabled && <p className="text-muted-foreground text-xs">{formatHistoryCount(snapshotCount, locale)}</p>}
     </section>
   );
 }

@@ -1,0 +1,25 @@
+---
+import { legalLinksMessages } from "@/lib/legal/landing";
+import { PRIVACY_POLICY_PATH, TERMS_PATH } from "@/lib/legal/paths";
+
+// The links to both DRAFT legal documents (landing-legal, S-30; FR-041). Only on the product page and the staff doors
+// (/logowanie, /haslo/<token>, /panel, /kelner): never in the Layout, which also serves the guests', the TV's, the
+// tablet's and the print pages (white-label — the documents carry the product's name).
+interface Props {
+  class?: string;
+}
+
+const t = legalLinksMessages(Astro.locals.locale);
+const { class: className } = Astro.props;
+---
+
+<nav
+  aria-label={t.label}
+  class:list={["flex flex-wrap gap-x-4 gap-y-1 text-sm text-muted-foreground", className]}
+  data-legal-links
+>
+  <a href={TERMS_PATH} class="underline underline-offset-4 hover:text-foreground">{`${t.terms} (${t.draft})`}</a>
+  <a href={PRIVACY_POLICY_PATH} class="underline underline-offset-4 hover:text-foreground">
+    {`${t.privacy} (${t.draft})`}
+  </a>
+</nav>

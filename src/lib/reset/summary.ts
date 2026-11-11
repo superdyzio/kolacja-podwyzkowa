@@ -83,6 +83,19 @@ export function describeResetCount(
     case "guestLinks":
       items = nonEmpty([counts.guests > 0 && t.links(counts.guests), counts.guestAccessEnabled && t.guestAccessOn]);
       break;
+    case "quiz":
+      items = nonEmpty([
+        counts.quizAnswers > 0 && t.quizAnswers(counts.quizAnswers),
+        counts.quizAsked > 0 && t.quizAsked(counts.quizAsked),
+      ]);
+      break;
+    case "rsvp":
+      items = nonEmpty([
+        counts.rsvpAnswers > 0 && t.rsvpAnswers(counts.rsvpAnswers),
+        counts.rsvpOptions > 0 && t.rsvpOptions(counts.rsvpOptions),
+        counts.rsvpDeadlineSet && t.rsvpDeadlineSet,
+      ]);
+      break;
   }
   return items.length > 0 ? items.join(" · ") : t.nothingToReset;
 }
@@ -145,6 +158,24 @@ function resultLine(part: ResetPart, outcome: ResetOutcome, locale: Locale): str
       return outcome.guestKeysReplaced > 0
         ? t.newGuestLinks(label, t.guestsAcc(outcome.guestKeysReplaced))
         : t.guestAccessOff(label);
+    case "quiz":
+      return removedLine(
+        part,
+        locale,
+        [before.quizAnswers > 0 && t.quizAnswers(before.quizAnswers)],
+        before.quizAsked > 0 ? t.quizTail : undefined,
+      );
+    case "rsvp":
+      return removedLine(
+        part,
+        locale,
+        [
+          before.rsvpAnswers > 0 && t.rsvpAnswers(before.rsvpAnswers),
+          before.rsvpOptions > 0 && t.rsvpOptions(before.rsvpOptions),
+          before.rsvpDeadlineSet && t.rsvpDeadlineAcc,
+        ],
+        before.rsvpDeadlineSet ? t.rsvpTail : undefined,
+      );
   }
 }
 

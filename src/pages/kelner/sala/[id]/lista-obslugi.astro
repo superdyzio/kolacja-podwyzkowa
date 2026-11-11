@@ -1,0 +1,36 @@
+---
+import NoAccess from "@/components/NoAccess.astro";
+import RoomPrint from "@/components/prints/RoomPrint.astro";
+import Layout from "@/layouts/Layout.astro";
+import { waiterFloorPath } from "@/lib/event-waiters/paths";
+import { getRoomPrintSource, printMessages } from "@/lib/prints";
+import { findWaiterFloorEvent } from "@/lib/waiter-api";
+
+// The staff list to print for the per-event waiter (room-prints, S-24; FR-038, US-08): /kelner/sala/<id>/lista-obslugi
+// on the waiter's OWN event while it is on the floor — the same guard as the waiter's floor (no waiter session → 303
+// /kelner; another event, archived, outside the window → the no-access page with 404). No link into /panel and no logo
+// images (names and the colour).
+const locale = Astro.locals.locale;
+const t = printMessages(locale);
+const floor = await findWaiterFloorEvent(Astro.locals, Astro.params.id);
+const source = floor ? await getRoomPrintSource(floor.db, floor.event.id, { diets: true }) : null;
+if (!floor || !source) {
+  Astro.response.status = 404;
+}
+---
+
+{floor && source ? (
+  <Layout title={t.pageTitle(t.kinds["lista-obslugi"], source.event.name)} languageSwitch={false}>
+    <RoomPrint
+      options={{ kind: "lista-obslugi" }}
+      source={source}
+      logoBase={null}
+      back={{ href: waiterFloorPath(floor.event.id), label: t.backToFloor }}
+      seatingHref={null}
+      support={null}
+      locale={locale}
+    />
+  </Layout>
+) : (
+  <NoAccess />
+)}

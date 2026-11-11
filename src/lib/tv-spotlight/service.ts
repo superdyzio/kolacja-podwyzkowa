@@ -1,16 +1,19 @@
-import { EVENT_ID } from "@/lib/event";
 import { secureRandom } from "@/lib/questions/draw";
+import { getTvQuiz, getTvQuizVersion } from "@/lib/quiz/service";
 import { getSeatingVersion, getTvSeating } from "@/lib/seating/service";
 import type { DbClient } from "@/lib/supabase-client";
 import type { TvScreenDto, TvSpotlightDto } from "@/types";
 import { pickPerson } from "./draw";
 import { isTvSpotlightKind, normalizeSpotlightText, tvScreenVersion } from "./rules";
 
-// What the organizer shows on the TV over the seating (tv-spotlight) for the singleton event. Functions take the client
-// as a parameter (no `astro:*`), so they are tested against the local DB. Supabase errors always throw.
+// What the organizer shows on the TV over the seating (tv-spotlight) of one event. Functions take the client and the
+// event id as parameters (no `astro:*`), so they are tested against the local DB; every read and write is limited to
+// that event (multi-tenant-events). Supabase errors always throw.
 //
 // public.tv_spotlight: every show inserts a new row and then deletes the older ones, hiding deletes them all; readers
 // take the newest row. Its id is the last part of the TV polling token, so every show is a new version for the TV.
+// guest-erasure: a „person” row names its guest (guest_id), so deleting the guest deletes the row (foreign key cascade)
+// and the TV drops the name on its next poll.
 
 function fail(action: string, message: string): never {
   throw new Error(`Nie udało się ${action}: ${message}`);
@@ -21,11 +24,11 @@ interface SpotlightRow {
   spotlight: TvSpotlightDto;
 }
 
-async function newestRow(db: DbClient): Promise<SpotlightRow | null> {
+async function newestRow(db: DbClient, eventId: number): Promise<SpotlightRow | null> {
   const { data, error } = await db
     .from("tv_spotlight")
     .select("id, kind, text, shown_at")
-    .eq("event_id", EVENT_ID)
+    .eq("event_id", eventId)
     .order("id", { ascending: false })
     .limit(1)
     .maybeSingle();
@@ -41,11 +44,11 @@ async function newestRow(db: DbClient): Promise<SpotlightRow | null> {
   return { id: data.id, spotlight: { kind: data.kind, text: data.text, shownAt: data.shown_at } };
 }
 
-async function newestId(db: DbClient): Promise<number | null> {
+async function newestId(db: DbClient, eventId: number): Promise<number | null> {
   const { data, error } = await db
     .from("tv_spotlight")
     .select("id")
-    .eq("event_id", EVENT_ID)
+    .eq("event_id", eventId)
     .order("id", { ascending: false })
     .limit(1)
     .maybeSingle();
@@ -56,20 +59,26 @@ async function newestId(db: DbClient): Promise<number | null> {
 }
 
 // What is on the TV now (null = the plan).
-export async function getTvSpotlight(db: DbClient): Promise<TvSpotlightDto | null> {
-  return (await newestRow(db))?.spotlight ?? null;
+export async function getTvSpotlight(db: DbClient, eventId: number): Promise<TvSpotlightDto | null> {
+  return (await newestRow(db, eventId))?.spotlight ?? null;
 }
 
-async function show(db: DbClient, kind: TvSpotlightDto["kind"], text: string): Promise<TvSpotlightDto> {
+async function show(
+  db: DbClient,
+  eventId: number,
+  kind: TvSpotlightDto["kind"],
+  text: string,
+  guestId: number | null = null,
+): Promise<TvSpotlightDto> {
   const { data, error } = await db
     .from("tv_spotlight")
-    .insert({ event_id: EVENT_ID, kind, text })
+    .insert({ event_id: eventId, kind, text, guest_id: guestId })
     .select("id, shown_at")
     .single();
   if (error) {
     fail("pokazać na TV", error.message);
   }
-  const older = await db.from("tv_spotlight").delete().eq("event_id", EVENT_ID).lt("id", data.id);
+  const older = await db.from("tv_spotlight").delete().eq("event_id", eventId).lt("id", data.id);
   if (older.error) {
     fail("pokazać na TV", older.error.message);
   }
@@ -79,22 +88,27 @@ async function show(db: DbClient, kind: TvSpotlightDto["kind"], text: string): P
 export type ShowOnTvResult = { status: "shown"; spotlight: TvSpotlightDto } | { status: "invalid" };
 
 // The organizer sends a question or an AI topic to the TV; it stays there until hidden or replaced.
-export async function showOnTv(db: DbClient, kind: "question" | "topic", rawText: string): Promise<ShowOnTvResult> {
+export async function showOnTv(
+  db: DbClient,
+  eventId: number,
+  kind: "question" | "topic",
+  rawText: string,
+): Promise<ShowOnTvResult> {
   const text = normalizeSpotlightText(rawText);
   if (text === null) {
     return { status: "invalid" };
   }
-  return { status: "shown", spotlight: await show(db, kind, text) };
+  return { status: "shown", spotlight: await show(db, eventId, kind, text) };
 }
 
 export type DrawPersonResult = { status: "shown"; spotlight: TvSpotlightDto } | { status: "nobody" };
 
 // Draws one PRESENT guest (CSPRNG) and puts their name on the TV; never the person on the TV right now unless they
 // are the only one present.
-export async function drawPersonOnTv(db: DbClient): Promise<DrawPersonResult> {
+export async function drawPersonOnTv(db: DbClient, eventId: number): Promise<DrawPersonResult> {
   const [guests, current] = await Promise.all([
-    db.from("guest").select("display_name").eq("is_absent", false),
-    newestRow(db),
+    db.from("guest").select("id, display_name").eq("event_id", eventId).eq("is_absent", false),
+    newestRow(db, eventId),
   ]);
   if (guests.error) {
     fail("odczytać listy gości", guests.error.message);
@@ -105,32 +119,58 @@ export async function drawPersonOnTv(db: DbClient): Promise<DrawPersonResult> {
     shownName,
     secureRandom,
   );
-  if (name === null) {
+  // Display names are unique per event, so the name picks exactly one guest.
+  const guest = name === null ? undefined : guests.data.find((row) => row.display_name === name);
+  if (name === null || !guest) {
     return { status: "nobody" };
   }
-  return { status: "shown", spotlight: await show(db, "person", name) };
+  return { status: "shown", spotlight: await show(db, eventId, "person", name, guest.id) };
 }
 
 // Back to the plan.
-export async function hideTvSpotlight(db: DbClient): Promise<void> {
-  const { error } = await db.from("tv_spotlight").delete().eq("event_id", EVENT_ID);
+export async function hideTvSpotlight(db: DbClient, eventId: number): Promise<void> {
+  const { error } = await db.from("tv_spotlight").delete().eq("event_id", eventId);
   if (error) {
     fail("schować z TV", error.message);
   }
 }
 
 // Everything the TV shows (the TV page and its poll use this one function, so their versions match).
-export async function getTvScreen(db: DbClient): Promise<TvScreenDto> {
-  const [seating, current] = await Promise.all([getTvSeating(db), newestRow(db)]);
+// event-modules (S-17): with „Pokaż na TV” off (`spotlightOn` false) the TV shows no spotlight and the token's last part
+// is 0, so the TV drops it on its next poll; the row stays and comes back when the module is on again.
+// pub-quiz (S-28): with the quiz module on (`quizOn`) a running quiz rides along with its own token part; without a
+// run, or with the module off, the TV shows none and the token keeps its 3 parts.
+export async function getTvScreen(
+  db: DbClient,
+  eventId: number,
+  spotlightOn = true,
+  quizOn = false,
+): Promise<TvScreenDto> {
+  const [seating, current, quiz] = await Promise.all([
+    getTvSeating(db, eventId),
+    spotlightOn ? newestRow(db, eventId) : Promise.resolve(null),
+    quizOn ? getTvQuiz(db, eventId) : Promise.resolve(null),
+  ]);
   return {
     ...seating,
-    version: tvScreenVersion(seating.version, current?.id ?? null),
+    version: tvScreenVersion(seating.version, current?.id ?? null, quiz?.version),
     spotlight: current?.spotlight ?? null,
+    quiz: quiz?.quiz ?? null,
   };
 }
 
-// The TV polling token without reading the seating (the 204 path): three tiny queries in parallel.
-export async function getTvScreenVersion(db: DbClient): Promise<string> {
-  const [seatingVersion, spotlightId] = await Promise.all([getSeatingVersion(db), newestId(db)]);
-  return tvScreenVersion(seatingVersion, spotlightId);
+// The TV polling token without reading the seating (the 204 path): three tiny queries in parallel (four with the
+// quiz on).
+export async function getTvScreenVersion(
+  db: DbClient,
+  eventId: number,
+  spotlightOn = true,
+  quizOn = false,
+): Promise<string> {
+  const [seatingVersion, spotlightId, quizVersion] = await Promise.all([
+    getSeatingVersion(db, eventId),
+    spotlightOn ? newestId(db, eventId) : Promise.resolve(null),
+    quizOn ? getTvQuizVersion(db, eventId) : Promise.resolve(null),
+  ]);
+  return tvScreenVersion(seatingVersion, spotlightId, quizVersion ?? undefined);
 }

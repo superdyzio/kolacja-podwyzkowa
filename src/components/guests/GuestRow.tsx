@@ -1,11 +1,15 @@
 import { useId, useState, type SubmitEvent } from "react";
+import { DietBadges } from "@/components/diets/DietBadges";
 import { Button } from "@/components/ui/button";
+import { dietMessages } from "@/lib/diets/messages";
+import type { DietTag } from "@/lib/diets/rules";
 import { Input } from "@/components/ui/input";
 import { guestManagerMessages } from "@/lib/guests/messages";
 import { MAX_DISPLAY_NAME_LENGTH } from "@/lib/guests/names";
 import type { Locale } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 import type { GuestDto } from "@/types";
+import { DietEditor } from "./DietEditor";
 
 interface Props {
   guest: GuestDto;
@@ -17,10 +21,12 @@ interface Props {
   onRename: (displayName: string) => Promise<boolean>;
   onToggleAbsent: () => void;
   onDelete: () => void;
+  // guest-import-diets (S-23): saves the guest's diet and note; resolves to true when saved.
+  onSaveDiet: (diets: DietTag[], dietNote: string | null) => Promise<boolean>;
   locale: Locale;
 }
 
-// One guest on the organizer list: select for a group, rename, mark absent/present, delete.
+// One guest on the organizer list: select for a group, rename, mark absent/present, the diet (S-23), delete.
 export function GuestRow({
   guest,
   groupPartners,
@@ -30,11 +36,14 @@ export function GuestRow({
   onRename,
   onToggleAbsent,
   onDelete,
+  onSaveDiet,
   locale,
 }: Props) {
   const t = guestManagerMessages(locale);
+  const dt = dietMessages(locale);
   const inputId = useId();
   const [editing, setEditing] = useState(false);
+  const [editingDiet, setEditingDiet] = useState(false);
   const [draft, setDraft] = useState(guest.displayName);
   const grouped = guest.groupId !== null;
 
@@ -48,7 +57,7 @@ export function GuestRow({
   return (
     <li
       className={cn(
-        "flex flex-col gap-2 rounded-lg border p-2 sm:flex-row sm:items-center",
+        "flex flex-col gap-2 rounded-lg border p-2 sm:flex-row sm:flex-wrap sm:items-center",
         guest.isAbsent && "bg-muted",
       )}
     >
@@ -115,11 +124,12 @@ export function GuestRow({
                 </span>
               )}
             </span>
+            <DietBadges diets={guest.diets} note={guest.dietNote} locale={locale} className="mt-1" />
           </div>
         )}
       </div>
 
-      {!editing && (
+      {!editing && !editingDiet && (
         <div className="flex flex-wrap gap-2 pl-11 sm:pl-0">
           <Button
             type="button"
@@ -145,6 +155,18 @@ export function GuestRow({
           </Button>
           <Button
             type="button"
+            variant="outline"
+            className="h-10"
+            disabled={pending}
+            aria-label={dt.editLabel(guest.displayName)}
+            onClick={() => {
+              setEditingDiet(true);
+            }}
+          >
+            {dt.editButton}
+          </Button>
+          <Button
+            type="button"
             variant="ghost"
             className="text-destructive hover:text-destructive h-10"
             disabled={pending}
@@ -152,6 +174,19 @@ export function GuestRow({
           >
             {t.remove}
           </Button>
+        </div>
+      )}
+      {editingDiet && (
+        <div className="w-full sm:basis-full">
+          <DietEditor
+            guest={guest}
+            pending={pending}
+            onSave={onSaveDiet}
+            onCancel={() => {
+              setEditingDiet(false);
+            }}
+            locale={locale}
+          />
         </div>
       )}
     </li>

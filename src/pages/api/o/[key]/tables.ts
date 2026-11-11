@@ -36,7 +36,7 @@ export const POST: APIRoute = async ({ locals, request }) => {
     return body.response;
   }
 
-  const result = await addTable(api.db, body.data);
+  const result = await addTable(api.db, api.access.event.id, body.data);
   switch (result.status) {
     case "invalid":
       return jsonError(400, describeTableFieldProblem(result.problem, locals.locale));
@@ -47,6 +47,6 @@ export const POST: APIRoute = async ({ locals, request }) => {
     case "too-many":
       return jsonError(400, tablesLimitMessage(locals.locale));
     case "added":
-      return jsonResponse(await getVenue(api.db), 201);
+      return jsonResponse(await getVenue(api.db, api.access.event.id), 201);
   }
 };

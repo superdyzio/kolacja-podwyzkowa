@@ -1,0 +1,349 @@
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import {
+  addRestaurantMember,
+  createStaffAccount,
+  findEventMembership,
+  findRestaurantMembership,
+  getMemberships,
+  getTokenInfo,
+  issueStaffToken,
+  redeemStaffToken,
+} from "@/lib/auth";
+import {
+  addRestaurantOwner,
+  createRestaurantWithOwner,
+  issueOwnerLink,
+  listPlatformRestaurants,
+  setRestaurantDisabled,
+} from "@/lib/platform";
+import type { DbClient } from "@/lib/supabase-client";
+import { getSupportLog } from "@/lib/support";
+import { getTeam } from "@/lib/team";
+import { createTestEvent, hasLocalDb, localDb, releaseTestEvent, testTag, type TestEvent } from "./helpers";
+
+// platform-restaurants (S-10): restaurants with owners, the list with counters, owner links and the on/off switch on
+// the local DB. Every restaurant and account used here is the test's own and is deleted after.
+
+const PASSWORD = "haslo-platformy-123";
+
+function tokenOf(path: string): string {
+  return path.replace("/haslo/", "");
+}
+
+describe.skipIf(!hasLocalDb)("platform restaurants (integration)", () => {
+  let db: DbClient;
+  let event: TestEvent | undefined;
+  const tag = testTag();
+  const restaurantIds: number[] = [];
+  const accountIds: number[] = [];
+
+  function email(label: string): string {
+    return `${label}-${tag}@test.stolik`;
+  }
+
+  async function activeAccount(label: string): Promise<{ id: number; email: string }> {
+    const address = email(label);
+    const created = await createStaffAccount(db, { email: address });
+    if (created.status !== "created") throw new Error(created.status);
+    accountIds.push(created.id);
+    const link = await issueStaffToken(db, created.id, "invite");
+    if (link.status !== "issued") throw new Error("link");
+    const redeemed = await redeemStaffToken(db, link.token, { password: PASSWORD, repeat: PASSWORD });
+    if (redeemed.status !== "ok") throw new Error(redeemed.status);
+    return { id: created.id, email: address };
+  }
+
+  async function created(label: string, ownerLabel: string) {
+    const result = await createRestaurantWithOwner(
+      db,
+      { name: `Restauracja ${label} ${tag}`, owner: { email: email(ownerLabel), displayName: `Właściciel ${label}` } },
+      null,
+    );
+    restaurantIds.push(result.restaurantId);
+    accountIds.push(result.owner.accountId);
+    return result;
+  }
+
+  beforeAll(async () => {
+    db = localDb();
+    event = await createTestEvent(db, "platforma");
+  });
+
+  afterAll(async () => {
+    if (restaurantIds.length > 0) {
+      await db.from("restaurant").delete().in("id", restaurantIds);
+    }
+    if (accountIds.length > 0) {
+      await db.from("staff_account").delete().in("id", accountIds);
+    }
+    await releaseTestEvent(db, event);
+  });
+
+  it("creates a restaurant with a new owner (no password) and an invitation for them", async () => {
+    const result = await created("nowa", "wlasciciel-nowej");
+    expect(result.owner).toMatchObject({ email: email("wlasciciel-nowej"), created: true, hasPassword: false });
+    expect(result.owner.link?.kind).toBe("invite");
+    expect(result.owner.link?.path).toMatch(/^\/haslo\/[A-Za-z0-9_-]{43}$/);
+    const token = tokenOf(result.owner.link?.path ?? "");
+    expect(await getTokenInfo(db, token)).toEqual({ kind: "invite", email: email("wlasciciel-nowej") });
+
+    const membership = await findRestaurantMembership(db, result.owner.accountId, result.restaurantId);
+    expect(membership).toMatchObject({ restaurant: { id: result.restaurantId }, role: "owner" });
+  });
+
+  it("gives no link to an owner whose account already has a password", async () => {
+    const person = await activeAccount("z-haslem");
+    const result = await createRestaurantWithOwner(
+      db,
+      { name: `Restauracja z hasłem ${tag}`, owner: { email: person.email, displayName: null } },
+      person.id,
+    );
+    restaurantIds.push(result.restaurantId);
+    expect(result.owner).toEqual({
+      accountId: person.id,
+      email: person.email,
+      created: false,
+      hasPassword: true,
+      link: null,
+    });
+    expect((await getMemberships(db, person.id)).map((m) => m.restaurantId)).toContain(result.restaurantId);
+  });
+
+  it("adds owners to an existing restaurant; a waiter becomes owner; an unknown restaurant is not found", async () => {
+    const result = await created("dodawanie", "pierwszy");
+    const waiter = await activeAccount("kelner");
+    await addRestaurantMember(db, result.restaurantId, waiter.id, "waiter");
+    const promoted = await addRestaurantOwner(
+      db,
+      result.restaurantId,
+      { email: waiter.email, displayName: null },
+      null,
+    );
+    expect(promoted).toMatchObject({ status: "added", owner: { accountId: waiter.id, hasPassword: true, link: null } });
+    expect(await findRestaurantMembership(db, waiter.id, result.restaurantId)).toMatchObject({ role: "owner" });
+
+    expect(await addRestaurantOwner(db, 2_000_000_000, { email: email("nikt"), displayName: null }, null)).toEqual({
+      status: "not-found",
+    });
+    const { count } = await db
+      .from("staff_account")
+      .select("id", { count: "exact", head: true })
+      .eq("email", email("nikt"));
+    expect(count).toBe(0);
+  });
+
+  it("lists every restaurant with its counters and owners", async () => {
+    if (!event) throw new Error("event");
+    const result = await created("lista", "wlasciciel-listy");
+    const manager = await activeAccount("menedzer");
+    await addRestaurantMember(db, result.restaurantId, manager.id, "manager");
+
+    const list = await listPlatformRestaurants(db);
+    const { data: all } = await db.from("restaurant").select("id");
+    expect(list.map((r) => r.id).sort((a, b) => a - b)).toEqual((all ?? []).map((r) => r.id).sort((a, b) => a - b));
+
+    const mine = list.find((r) => r.id === result.restaurantId);
+    expect(mine).toEqual({
+      id: result.restaurantId,
+      name: `Restauracja lista ${tag}`,
+      disabled: false,
+      eventCount: 0,
+      memberCount: 2,
+      owners: [
+        {
+          accountId: result.owner.accountId,
+          email: email("wlasciciel-listy"),
+          displayName: "Właściciel lista",
+          hasPassword: false,
+        },
+      ],
+    });
+    const withEvent = list.find((r) => r.id === event?.restaurantId);
+    expect(withEvent).toMatchObject({ eventCount: 1, memberCount: 0, owners: [] });
+  });
+
+  it("issues owner links: an invitation before the password, a reset after, never for a non-owner", async () => {
+    const admin = await createStaffAccount(db, { email: email("admin-linki"), isPlatformAdmin: true });
+    if (admin.status !== "created") throw new Error(admin.status);
+    accountIds.push(admin.id);
+    const result = await created("linki", "wlasciciel-linkow");
+    const first = await issueOwnerLink(db, result.restaurantId, result.owner.accountId, admin.id);
+    expect(first).toMatchObject({ status: "issued", link: { kind: "invite" } });
+    if (first.status !== "issued") return;
+    // The fresh link supersedes the creation's invitation.
+    expect(await getTokenInfo(db, tokenOf(result.owner.link?.path ?? ""))).toBeNull();
+
+    const redeemed = await redeemStaffToken(db, tokenOf(first.link.path), { password: PASSWORD, repeat: PASSWORD });
+    expect(redeemed.status).toBe("ok");
+    const reset = await issueOwnerLink(db, result.restaurantId, result.owner.accountId, admin.id);
+    expect(reset).toMatchObject({ status: "issued", link: { kind: "reset" } });
+
+    const waiter = await activeAccount("kelner-linki");
+    await addRestaurantMember(db, result.restaurantId, waiter.id, "waiter");
+    expect(await issueOwnerLink(db, result.restaurantId, waiter.id, admin.id)).toEqual({ status: "not-found" });
+    const other = await created("inna", "wlasciciel-innej");
+    expect(await issueOwnerLink(db, result.restaurantId, other.owner.accountId, admin.id)).toEqual({
+      status: "not-found",
+    });
+    expect(await issueOwnerLink(db, 2_000_000_000, result.owner.accountId, admin.id)).toEqual({ status: "not-found" });
+    // Only a platform administrator issues them (the route's guard decides first; the DB function checks again).
+    expect(await issueOwnerLink(db, result.restaurantId, waiter.id, waiter.id)).toEqual({ status: "not-found" });
+    expect(await issueOwnerLink(db, result.restaurantId, result.owner.accountId, waiter.id)).toEqual({
+      status: "not-found",
+    });
+
+    // review-fixes: every issued link is in the owner's support log (newest first), with the admin, the link's kind,
+    // the account's e-mail and the expiry; the refusals wrote nothing.
+    const log = await getSupportLog(db, result.restaurantId);
+    expect(log.entries.map((entry) => [entry.kind, entry.link])).toEqual([
+      ["link", { kind: "reset", email: email("wlasciciel-linkow") }],
+      ["link", { kind: "invite", email: email("wlasciciel-linkow") }],
+    ]);
+    expect(log.entries[0]?.admin.email).toBe(email("admin-linki"));
+    expect(new Date(log.entries[0]?.expiresAt ?? 0).toISOString()).toBe(
+      reset.status === "issued" ? reset.link.expiresAt : "",
+    );
+    expect((await getSupportLog(db, other.restaurantId)).entries).toEqual([]);
+    // An owner of two restaurants: the link opens both, so both owners' logs get the row.
+    await addRestaurantMember(db, other.restaurantId, result.owner.accountId, "manager");
+    expect(await issueOwnerLink(db, result.restaurantId, result.owner.accountId, admin.id)).toMatchObject({
+      status: "issued",
+      link: { kind: "reset" },
+    });
+    expect((await getSupportLog(db, result.restaurantId)).entries).toHaveLength(3);
+    expect((await getSupportLog(db, other.restaurantId)).entries.map((entry) => entry.link)).toEqual([
+      { kind: "reset", email: email("wlasciciel-linkow") },
+    ]);
+  });
+
+  it("never issues an owner link for a platform administrator's account (review2-fixes)", async () => {
+    const admin = await createStaffAccount(db, { email: email("admin-a"), isPlatformAdmin: true });
+    if (admin.status !== "created") throw new Error(admin.status);
+    accountIds.push(admin.id);
+    // A peer administrator who is also an owner (with a password, and another without one yet).
+    const peer = await createStaffAccount(db, { email: email("admin-b"), isPlatformAdmin: true });
+    if (peer.status !== "created") throw new Error(peer.status);
+    accountIds.push(peer.id);
+    const link = await issueStaffToken(db, peer.id, "invite");
+    if (link.status !== "issued") throw new Error("link");
+    expect((await redeemStaffToken(db, link.token, { password: PASSWORD, repeat: PASSWORD })).status).toBe("ok");
+    const pending = await createStaffAccount(db, { email: email("admin-c"), isPlatformAdmin: true });
+    if (pending.status !== "created") throw new Error(pending.status);
+    accountIds.push(pending.id);
+    const result = await created("admin-wlasciciel", "wlasciciel-zwykly");
+    await addRestaurantMember(db, result.restaurantId, peer.id, "owner");
+    await addRestaurantMember(db, result.restaurantId, pending.id, "owner");
+
+    expect(await issueOwnerLink(db, result.restaurantId, peer.id, admin.id)).toEqual({ status: "not-found" });
+    expect(await issueOwnerLink(db, result.restaurantId, pending.id, admin.id)).toEqual({ status: "not-found" });
+    // Even for themself: an administrator's own link comes from the operator (npm run platform:admin).
+    expect(await issueOwnerLink(db, result.restaurantId, peer.id, peer.id)).toEqual({ status: "not-found" });
+    const { count } = await db
+      .from("staff_token")
+      .select("id", { count: "exact", head: true })
+      .in("account_id", [peer.id, pending.id])
+      .is("used_at", null);
+    expect(count).toBe(0);
+    expect((await getSupportLog(db, result.restaurantId)).entries).toEqual([]);
+    // The ordinary owner of the same restaurant still gets one.
+    expect(await issueOwnerLink(db, result.restaurantId, result.owner.accountId, admin.id)).toMatchObject({
+      status: "issued",
+      link: { kind: "invite" },
+    });
+  });
+
+  it("logs the administrator's invitation of „Nowa restauracja” and „Dodaj właściciela” for the owner (review2-fixes)", async () => {
+    const admin = await createStaffAccount(db, { email: email("admin-zaproszenia"), isPlatformAdmin: true });
+    if (admin.status !== "created") throw new Error(admin.status);
+    accountIds.push(admin.id);
+    const result = await createRestaurantWithOwner(
+      db,
+      { name: `Restauracja zaproszeń ${tag}`, owner: { email: email("zaproszony"), displayName: null } },
+      admin.id,
+    );
+    restaurantIds.push(result.restaurantId);
+    accountIds.push(result.owner.accountId);
+    expect(result.owner).toMatchObject({ created: true, hasPassword: false, link: { kind: "invite" } });
+    const token = tokenOf(result.owner.link?.path ?? "");
+    expect(await getTokenInfo(db, token)).toEqual({ kind: "invite", email: email("zaproszony") });
+
+    const second = await addRestaurantOwner(
+      db,
+      result.restaurantId,
+      { email: email("drugi-zaproszony"), displayName: null },
+      admin.id,
+    );
+    if (second.status !== "added") throw new Error(second.status);
+    accountIds.push(second.owner.accountId);
+    expect(second.owner).toMatchObject({ created: true, hasPassword: false, link: { kind: "invite" } });
+
+    // An owner with a password gets no link and no row; an administrator's account without one gets no link either.
+    const person = await activeAccount("z-haslem-zaproszenia");
+    expect(
+      await addRestaurantOwner(db, result.restaurantId, { email: person.email, displayName: null }, admin.id),
+    ).toMatchObject({ status: "added", owner: { hasPassword: true, link: null } });
+    const pendingAdmin = await createStaffAccount(db, { email: email("admin-bez-hasla"), isPlatformAdmin: true });
+    if (pendingAdmin.status !== "created") throw new Error(pendingAdmin.status);
+    accountIds.push(pendingAdmin.id);
+    expect(
+      await addRestaurantOwner(
+        db,
+        result.restaurantId,
+        { email: email("admin-bez-hasla"), displayName: null },
+        admin.id,
+      ),
+    ).toMatchObject({ status: "added", owner: { accountId: pendingAdmin.id, hasPassword: false, link: null } });
+
+    const log = await getSupportLog(db, result.restaurantId);
+    expect(log.entries.map((entry) => [entry.kind, entry.link, entry.admin.email])).toEqual([
+      ["link", { kind: "invite", email: email("drugi-zaproszony") }, email("admin-zaproszenia")],
+      ["link", { kind: "invite", email: email("zaproszony") }, email("admin-zaproszenia")],
+    ]);
+    expect(new Date(log.entries[1]?.expiresAt ?? 0).toISOString()).toBe(result.owner.link?.expiresAt);
+  });
+
+  it("a disabled restaurant opens nothing through the membership lookups and is listed as disabled", async () => {
+    if (!event) throw new Error("event");
+    const owner = await activeAccount("wlasciciel-wylaczanej");
+    await addRestaurantMember(db, event.restaurantId, owner.id, "owner");
+    expect(await findEventMembership(db, owner.id, event.id)).not.toBeNull();
+
+    expect(await setRestaurantDisabled(db, event.restaurantId, true)).toBe("updated");
+    expect(await findRestaurantMembership(db, owner.id, event.restaurantId)).toBeNull();
+    expect(await findEventMembership(db, owner.id, event.id)).toBeNull();
+    expect(await getMemberships(db, owner.id)).toEqual([
+      { restaurantId: event.restaurantId, restaurantName: expect.any(String) as string, role: "owner", disabled: true },
+    ]);
+    const { data: first } = await db.from("restaurant").select("disabled_at").eq("id", event.restaurantId).single();
+    expect(await setRestaurantDisabled(db, event.restaurantId, true)).toBe("updated");
+    const { data: again } = await db.from("restaurant").select("disabled_at").eq("id", event.restaurantId).single();
+    expect(again?.disabled_at).toBe(first?.disabled_at);
+    expect((await listPlatformRestaurants(db)).find((r) => r.id === event?.restaurantId)?.disabled).toBe(true);
+
+    expect(await setRestaurantDisabled(db, event.restaurantId, false)).toBe("updated");
+    expect(await findEventMembership(db, owner.id, event.id)).toMatchObject({ role: "owner" });
+    expect(await setRestaurantDisabled(db, 2_000_000_000, true)).toBe("not-found");
+  });
+
+  it("the team (restaurant-team getTeam) orders the members by role with their account ids", async () => {
+    if (!event) throw new Error("event");
+    const waiter = await activeAccount("a-kelner");
+    const manager = await activeAccount("b-menedzer");
+    const owner = await activeAccount("c-wlasciciel");
+    await addRestaurantMember(db, event.restaurantId, waiter.id, "waiter");
+    await addRestaurantMember(db, event.restaurantId, manager.id, "manager");
+    await addRestaurantMember(db, event.restaurantId, owner.id, "owner");
+    const team = await getTeam(db, event.restaurantId, { accountId: owner.id, role: "owner" });
+    expect(team.you).toEqual({ accountId: owner.id, role: "owner" });
+    const roles = team.members.map((m) => m.role);
+    expect(roles.indexOf("owner")).toBeLessThan(roles.indexOf("manager"));
+    expect(roles.indexOf("manager")).toBeLessThan(roles.indexOf("waiter"));
+    expect(team.members.find((m) => m.email === waiter.email)).toEqual({
+      accountId: waiter.id,
+      email: waiter.email,
+      displayName: null,
+      role: "waiter",
+      hasPassword: true,
+    });
+  });
+});

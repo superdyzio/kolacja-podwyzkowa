@@ -34,7 +34,7 @@ export const PATCH: APIRoute = async ({ locals, params, request }) => {
     return body.response;
   }
 
-  const result = await updateQuestion(api.db, id, body.data);
+  const result = await updateQuestion(api.db, api.access.event.id, id, body.data);
   switch (result.status) {
     case "invalid":
       return jsonError(400, describeQuestionProblem(result.reason, locals.locale));
@@ -43,7 +43,7 @@ export const PATCH: APIRoute = async ({ locals, params, request }) => {
     case "not-found":
       return jsonError(404, questionMessages(locals.locale).notFound);
     case "updated":
-      return jsonResponse(await getQuestionList(api.db));
+      return jsonResponse(await getQuestionList(api.db, api.access.event.id));
   }
 };
 
@@ -56,9 +56,9 @@ export const DELETE: APIRoute = async ({ locals, params }) => {
   if (id === null) {
     return jsonError(404, questionMessages(locals.locale).notFound);
   }
-  const result = await deleteQuestion(api.db, id);
+  const result = await deleteQuestion(api.db, api.access.event.id, id);
   if (result.status === "not-found") {
     return jsonError(404, questionMessages(locals.locale).notFound);
   }
-  return jsonResponse(await getQuestionList(api.db));
+  return jsonResponse(await getQuestionList(api.db, api.access.event.id));
 };

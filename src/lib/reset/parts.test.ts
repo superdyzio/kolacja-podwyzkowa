@@ -11,6 +11,7 @@ import {
   RESET_PARTS,
   selectAllResetParts,
   toggleResetPart,
+  TRIAL_RESET_PARTS,
 } from "./parts";
 
 describe("reset parts", () => {
@@ -27,6 +28,8 @@ describe("reset parts", () => {
       "Zamówienia i napoje",
       "Pytania",
       "Linki gości",
+      "Pub quiz",
+      "Potwierdzenia",
     ]);
   });
 
@@ -44,8 +47,9 @@ describe("reset parts", () => {
     expect(isResetPart(1)).toBe(false);
   });
 
-  it("implies guesses, AI usage and seating for guests, seating for the venue", () => {
-    expect(RESET_IMPLIES.guests).toEqual(["guesses", "aiUsage", "seating"]);
+  it("implies guesses, AI usage, seating, the quiz and the RSVP for guests, seating for the venue", () => {
+    expect(RESET_IMPLIES.guests).toEqual(["guesses", "aiUsage", "seating", "quiz", "rsvp"]);
+    expect(RESET_PART_DESCRIPTIONS.rsvp).toContain("Nieobecności na liście gości zostają");
     expect(RESET_IMPLIES.venue).toEqual(["seating"]);
   });
 });
@@ -58,6 +62,8 @@ describe("expandResetParts", () => {
       "seating",
       "guests",
       "guestLinks",
+      "quiz",
+      "rsvp",
     ]);
     expect(expandResetParts(["venue"])).toEqual(["seating", "venue"]);
     expect(expandResetParts(["questions", "guesses"])).toEqual(["guesses", "questions"]);
@@ -84,7 +90,7 @@ describe("selection in the modal", () => {
 
   it("leaves a locked part as it is and releases implied parts with their parent", () => {
     const withGuests = toggleResetPart([], "guests");
-    expect(expandResetParts(withGuests)).toEqual(["guesses", "aiUsage", "seating", "guests"]);
+    expect(expandResetParts(withGuests)).toEqual(["guesses", "aiUsage", "seating", "guests", "quiz", "rsvp"]);
     expect(toggleResetPart(withGuests, "seating")).toEqual(withGuests);
     expect(expandResetParts(toggleResetPart(withGuests, "guests"))).toEqual([]);
   });
@@ -101,5 +107,15 @@ describe("selection in the modal", () => {
     expect(isEveryResetPartSelected(selectAllResetParts())).toBe(true);
     expect(isEveryResetPartSelected(["guests", "venue", "orders", "questions", "guestLinks"])).toBe(true);
     expect(isEveryResetPartSelected(["guests", "venue", "questions"])).toBe(false);
+  });
+
+  it("offers the client only the trial parts, with nothing implied beyond them", () => {
+    expect(TRIAL_RESET_PARTS).toEqual(["guesses", "seating", "quiz"]);
+    expect(expandResetParts(TRIAL_RESET_PARTS)).toEqual([...TRIAL_RESET_PARTS]);
+    expect(selectAllResetParts(TRIAL_RESET_PARTS)).toEqual(["guesses", "seating", "quiz"]);
+    expect(isEveryResetPartSelected(["guesses", "seating", "quiz"], TRIAL_RESET_PARTS)).toBe(true);
+    expect(isEveryResetPartSelected(["guesses", "seating"], TRIAL_RESET_PARTS)).toBe(false);
+    expect(isEveryResetPartSelected(["seating"], TRIAL_RESET_PARTS)).toBe(false);
+    expect(isEveryResetPartSelected(["guests"], TRIAL_RESET_PARTS)).toBe(true);
   });
 });

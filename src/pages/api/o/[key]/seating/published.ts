@@ -14,6 +14,6 @@ export const GET: APIRoute = async ({ locals }) => {
   if (api instanceof Response) {
     return api;
   }
-  const body: PublishedSeatingResponseDto = { published: await getPublishedSeating(api.db) };
+  const body: PublishedSeatingResponseDto = { published: await getPublishedSeating(api.db, api.access.event.id) };
   return jsonResponse(body);
 };

@@ -7,12 +7,12 @@ import { AiProviderError, type AiGeneration, type AiTopicProvider } from "@/lib/
 import { generateTopic, getAiTopicUsage, getGuestAiQuota } from "@/lib/ai-topics/service";
 import type { DbClient } from "@/lib/supabase-client";
 import {
-  acquireTestEvent,
+  createTestEvent,
   createTestGuests,
   deleteTestGuests,
   hasLocalDb,
   localDb,
-  releaseEvent,
+  releaseTestEvent,
   testTag,
   type TestEvent,
 } from "./helpers";
@@ -37,7 +37,7 @@ describe.skipIf(!hasLocalDb)("AI topic generation", () => {
   }
 
   async function guests(count: number): Promise<number[]> {
-    const created = await createTestGuests(db, testTag(), count);
+    const created = await createTestGuests(db, event.id, testTag(), count);
     guestIds.push(...created.ids);
     return created.ids;
   }
@@ -48,6 +48,7 @@ describe.skipIf(!hasLocalDb)("AI topic generation", () => {
       .select(
         "id, requester, guest_id, category, status, finished_at, model, input_tokens, output_tokens, failure_kind, http_status",
       )
+      .eq("event_id", event.id)
       .gt("id", maxIdBefore)
       .order("id");
     if (error) {
@@ -58,7 +59,7 @@ describe.skipIf(!hasLocalDb)("AI topic generation", () => {
 
   beforeAll(async () => {
     db = localDb();
-    event = await acquireTestEvent(db);
+    event = await createTestEvent(db);
   });
 
   beforeEach(async () => {
@@ -70,7 +71,7 @@ describe.skipIf(!hasLocalDb)("AI topic generation", () => {
   });
 
   afterEach(async () => {
-    const { error } = await db.from("ai_topic").delete().gt("id", maxIdBefore);
+    const { error } = await db.from("ai_topic").delete().eq("event_id", event.id).gt("id", maxIdBefore);
     if (error) {
       throw new Error(error.message);
     }
@@ -78,13 +79,13 @@ describe.skipIf(!hasLocalDb)("AI topic generation", () => {
   });
 
   afterAll(async () => {
-    await releaseEvent(db, event);
+    await releaseTestEvent(db, event);
   });
 
   it("generates a topic for a guest and counts it", async () => {
     const [guest = 0] = await guests(1);
-    const before = await getAiTopicUsage(db);
-    const result = await generateTopic(db, fast, { guestId: guest, category: "refleksyjne" });
+    const before = await getAiTopicUsage(db, event.id);
+    const result = await generateTopic(db, event.id, fast, { guestId: guest, category: "refleksyjne" });
     expect(result.status).toBe("generated");
     if (result.status !== "generated") {
       return;
@@ -95,35 +96,42 @@ describe.skipIf(!hasLocalDb)("AI topic generation", () => {
       expect.objectContaining({ requester: "guest", guest_id: guest, category: "refleksyjne", status: "succeeded" }),
     ]);
     expect((await rowsSince())[0]?.finished_at).not.toBeNull();
-    expect(await getGuestAiQuota(db, guest)).toEqual({
+    expect(await getGuestAiQuota(db, event.id, guest)).toEqual({
       limit: MAX_GUEST_TOPICS,
       used: 1,
       remaining: MAX_GUEST_TOPICS - 1,
       eventExhausted: false,
     });
-    expect((await getAiTopicUsage(db)).used).toBe(before.used + 1);
+    expect((await getAiTopicUsage(db, event.id)).used).toBe(before.used + 1);
   });
 
   it("picks a category when none is chosen", async () => {
-    const result = await generateTopic(db, fast, { guestId: null, category: null }, { random: () => 0.999_999 });
+    const result = await generateTopic(
+      db,
+      event.id,
+      fast,
+      { guestId: null, category: null },
+      { random: () => 0.999_999 },
+    );
     expect(result).toMatchObject({ status: "generated", topic: { category: "refleksyjne" } });
     expect(await rowsSince()).toEqual([expect.objectContaining({ requester: "organizer", guest_id: null })]);
   });
 
   it("does not count failed attempts", async () => {
     const [guest = 0] = await guests(1);
-    const before = await getAiTopicUsage(db);
+    const before = await getAiTopicUsage(db, event.id);
     const failing = createMockProvider({ delayMs: () => 0, fail: true });
-    expect(await generateTopic(db, failing, { guestId: guest, category: "generyczne" })).toEqual({
+    expect(await generateTopic(db, event.id, failing, { guestId: guest, category: "generyczne" })).toEqual({
       status: "failed",
       kind: "unavailable",
     });
     expect(
-      await generateTopic(db, fast, { guestId: guest, category: "generyczne" }, { simulateFailure: true }),
+      await generateTopic(db, event.id, fast, { guestId: guest, category: "generyczne" }, { simulateFailure: true }),
     ).toMatchObject({ status: "failed" });
     expect(
       await generateTopic(
         db,
+        event.id,
         fake(() => Promise.resolve("Co sądzisz o polityce rządu?")),
         {
           guestId: guest,
@@ -134,14 +142,15 @@ describe.skipIf(!hasLocalDb)("AI topic generation", () => {
     expect(
       await generateTopic(
         db,
+        event.id,
         fake(() => Promise.resolve(' „" ** ')),
         { guestId: guest, category: "generyczne" },
       ),
     ).toEqual({ status: "failed", kind: "empty" });
 
     expect((await rowsSince()).map((row) => row.status)).toEqual(["failed", "failed", "failed", "failed"]);
-    expect(await getGuestAiQuota(db, guest)).toMatchObject({ used: 0, remaining: MAX_GUEST_TOPICS });
-    const after = await getAiTopicUsage(db);
+    expect(await getGuestAiQuota(db, event.id, guest)).toMatchObject({ used: 0, remaining: MAX_GUEST_TOPICS });
+    const after = await getAiTopicUsage(db, event.id);
     expect(after.used).toBe(before.used);
     expect(after.failed).toBe(before.failed + 4);
   });
@@ -150,20 +159,22 @@ describe.skipIf(!hasLocalDb)("AI topic generation", () => {
     const [guest = 0] = await guests(1);
     const never = fake(() => new Promise<string>(() => undefined));
     const started = Date.now();
-    expect(await generateTopic(db, never, { guestId: guest, category: "generyczne" }, { timeoutMs: 50 })).toEqual({
+    expect(
+      await generateTopic(db, event.id, never, { guestId: guest, category: "generyczne" }, { timeoutMs: 50 }),
+    ).toEqual({
       status: "failed",
       kind: "timeout",
     });
     expect(Date.now() - started).toBeLessThan(2000);
     expect(await rowsSince()).toEqual([expect.objectContaining({ status: "failed" })]);
-    expect(await getGuestAiQuota(db, guest)).toMatchObject({ used: 0 });
+    expect(await getGuestAiQuota(db, event.id, guest)).toMatchObject({ used: 0 });
   });
 
   it("fails a misconfigured provider before reserving anything", async () => {
     const [guest = 0] = await guests(1);
     for (const env of [{ provider: "anthropic" }, { provider: "openai" }]) {
       const broken = createAiProvider(parseAiConfig(env));
-      expect(await generateTopic(db, broken, { guestId: guest, category: "generyczne" })).toEqual({
+      expect(await generateTopic(db, event.id, broken, { guestId: guest, category: "generyczne" })).toEqual({
         status: "failed",
         kind: "not-configured",
       });
@@ -175,29 +186,33 @@ describe.skipIf(!hasLocalDb)("AI topic generation", () => {
     const [guest = 0] = await guests(1);
     for (let index = 0; index < 2; index++) {
       expect(
-        (await generateTopic(db, fast, { guestId: guest, category: "generyczne" }, { guestLimit: 2 })).status,
+        (await generateTopic(db, event.id, fast, { guestId: guest, category: "generyczne" }, { guestLimit: 2 })).status,
       ).toBe("generated");
     }
-    expect(await generateTopic(db, fast, { guestId: guest, category: "generyczne" }, { guestLimit: 2 })).toEqual({
+    expect(
+      await generateTopic(db, event.id, fast, { guestId: guest, category: "generyczne" }, { guestLimit: 2 }),
+    ).toEqual({
       status: "guest-limit",
     });
     for (let index = 0; index < 3; index++) {
-      expect((await generateTopic(db, fast, { guestId: null, category: null }, { guestLimit: 2 })).status).toBe(
-        "generated",
-      );
+      expect(
+        (await generateTopic(db, event.id, fast, { guestId: null, category: null }, { guestLimit: 2 })).status,
+      ).toBe("generated");
     }
-    expect(await getGuestAiQuota(db, guest)).toMatchObject({ used: 2, remaining: MAX_GUEST_TOPICS - 2 });
+    expect(await getGuestAiQuota(db, event.id, guest)).toMatchObject({ used: 2, remaining: MAX_GUEST_TOPICS - 2 });
   });
 
   it("stops everyone at the evening limit", async () => {
     const [guest = 0] = await guests(1);
-    const { used } = await getAiTopicUsage(db);
+    const { used } = await getAiTopicUsage(db, event.id);
     const options = { eventLimit: used + 1 };
-    expect((await generateTopic(db, fast, { guestId: null, category: null }, options)).status).toBe("generated");
-    expect(await generateTopic(db, fast, { guestId: null, category: null }, options)).toEqual({
+    expect((await generateTopic(db, event.id, fast, { guestId: null, category: null }, options)).status).toBe(
+      "generated",
+    );
+    expect(await generateTopic(db, event.id, fast, { guestId: null, category: null }, options)).toEqual({
       status: "event-limit",
     });
-    expect(await generateTopic(db, fast, { guestId: guest, category: null }, options)).toEqual({
+    expect(await generateTopic(db, event.id, fast, { guestId: guest, category: null }, options)).toEqual({
       status: "event-limit",
     });
   });
@@ -205,10 +220,10 @@ describe.skipIf(!hasLocalDb)("AI topic generation", () => {
   it("refuses a guest who no longer exists", async () => {
     const [guest = 0] = await guests(1);
     await deleteTestGuests(db, guestIds.splice(0));
-    expect(await generateTopic(db, fast, { guestId: guest, category: "generyczne" })).toEqual({
+    expect(await generateTopic(db, event.id, fast, { guestId: guest, category: "generyczne" })).toEqual({
       status: "not-found",
     });
-    expect(await getGuestAiQuota(db, guest)).toEqual({
+    expect(await getGuestAiQuota(db, event.id, guest)).toEqual({
       limit: MAX_GUEST_TOPICS,
       used: 0,
       remaining: MAX_GUEST_TOPICS,
@@ -217,14 +232,16 @@ describe.skipIf(!hasLocalDb)("AI topic generation", () => {
   });
   it("records the model and the billed tokens and estimates the cost", async () => {
     const [guest = 0] = await guests(1);
-    const before = await getAiTopicUsage(db);
+    const before = await getAiTopicUsage(db, event.id);
     const usage = { inputTokens: 300, outputTokens: 40 };
     const haiku = billed("claude-haiku-5-5", () =>
       Promise.resolve({ text: "Czy wolisz góry czy morze — i dlaczego?", usage }),
     );
-    expect((await generateTopic(db, haiku, { guestId: guest, category: "generyczne" })).status).toBe("generated");
+    expect((await generateTopic(db, event.id, haiku, { guestId: guest, category: "generyczne" })).status).toBe(
+      "generated",
+    );
     expect(
-      await generateTopic(db, haiku, { guestId: null, category: "generyczne" }, { random: () => 0 }),
+      await generateTopic(db, event.id, haiku, { guestId: null, category: "generyczne" }, { random: () => 0 }),
     ).toMatchObject({ status: "generated" });
     expect(await rowsSince()).toEqual([
       expect.objectContaining({
@@ -237,7 +254,7 @@ describe.skipIf(!hasLocalDb)("AI topic generation", () => {
       }),
       expect.objectContaining({ status: "succeeded", model: "claude-haiku-5-5", input_tokens: 300 }),
     ]);
-    const after = await getAiTopicUsage(db);
+    const after = await getAiTopicUsage(db, event.id);
     expect(after.inputTokens).toBe(before.inputTokens + 600);
     expect(after.outputTokens).toBe(before.outputTokens + 80);
     if (before.costNanoUsd !== null) {
@@ -246,7 +263,7 @@ describe.skipIf(!hasLocalDb)("AI topic generation", () => {
     }
     expect(after.lastFailureHint).toBeNull();
     // The guest's own quota carries nothing about tokens or cost.
-    expect(Object.keys(await getGuestAiQuota(db, guest)).sort()).toEqual([
+    expect(Object.keys(await getGuestAiQuota(db, event.id, guest)).sort()).toEqual([
       "eventExhausted",
       "limit",
       "remaining",
@@ -256,7 +273,7 @@ describe.skipIf(!hasLocalDb)("AI topic generation", () => {
 
   it("records why an attempt failed and the tokens it was still billed for", async () => {
     const [guest = 0] = await guests(1);
-    const before = await getAiTopicUsage(db);
+    const before = await getAiTopicUsage(db, event.id);
     const refused = billed("claude-haiku-5-5", () =>
       Promise.reject(new AiProviderError("refusal", undefined, undefined, { inputTokens: 250, outputTokens: 5 })),
     );
@@ -264,15 +281,15 @@ describe.skipIf(!hasLocalDb)("AI topic generation", () => {
       Promise.resolve({ text: "Co sądzisz o polityce rządu?", usage: { inputTokens: 260, outputTokens: 12 } }),
     );
     const broke = billed("claude-haiku-5-5", () => Promise.reject(new AiProviderError("no-credits", 400)));
-    expect(await generateTopic(db, refused, { guestId: guest, category: "generyczne" })).toEqual({
+    expect(await generateTopic(db, event.id, refused, { guestId: guest, category: "generyczne" })).toEqual({
       status: "failed",
       kind: "refusal",
     });
-    expect(await generateTopic(db, offLimits, { guestId: guest, category: "kontrowersyjne" })).toEqual({
+    expect(await generateTopic(db, event.id, offLimits, { guestId: guest, category: "kontrowersyjne" })).toEqual({
       status: "failed",
       kind: "off-limits",
     });
-    expect(await generateTopic(db, broke, { guestId: guest, category: "generyczne" })).toEqual({
+    expect(await generateTopic(db, event.id, broke, { guestId: guest, category: "generyczne" })).toEqual({
       status: "failed",
       kind: "no-credits",
       httpStatus: 400,
@@ -288,7 +305,7 @@ describe.skipIf(!hasLocalDb)("AI topic generation", () => {
         output_tokens: null,
       }),
     ]);
-    const after = await getAiTopicUsage(db);
+    const after = await getAiTopicUsage(db, event.id);
     expect(after.used).toBe(before.used);
     expect(after.inputTokens).toBe(before.inputTokens + 510);
     expect(after.lastFailureHint).toBe(
@@ -296,27 +313,33 @@ describe.skipIf(!hasLocalDb)("AI topic generation", () => {
     );
 
     // A later success clears the warning.
-    expect((await generateTopic(db, fast, { guestId: null, category: null })).status).toBe("generated");
-    expect((await getAiTopicUsage(db)).lastFailureHint).toBeNull();
+    expect((await generateTopic(db, event.id, fast, { guestId: null, category: null })).status).toBe("generated");
+    expect((await getAiTopicUsage(db, event.id)).lastFailureHint).toBeNull();
   });
 
   it("explains a failed attempt of an older kind or one that expired while pending", async () => {
-    await generateTopic(db, createMockProvider({ delayMs: () => 0, fail: true }), { guestId: null, category: null });
-    expect((await getAiTopicUsage(db)).lastFailureHint).toBe("Dostawca AI niedostępny.");
+    await generateTopic(db, event.id, createMockProvider({ delayMs: () => 0, fail: true }), {
+      guestId: null,
+      category: null,
+    });
+    expect((await getAiTopicUsage(db, event.id)).lastFailureHint).toBe("Dostawca AI niedostępny.");
     const id = (await rowsSince()).at(0)?.id ?? 0;
     const { error } = await db.from("ai_topic").update({ failure_kind: null }).eq("id", id);
     expect(error).toBeNull();
-    expect((await getAiTopicUsage(db)).lastFailureHint).toBe("Przyczyna nie została zapisana.");
-    expect((await getAiTopicUsage(db, "en")).lastFailureHint).toBe("The cause was not recorded.");
+    expect((await getAiTopicUsage(db, event.id)).lastFailureHint).toBe("Przyczyna nie została zapisana.");
+    expect((await getAiTopicUsage(db, event.id, "en")).lastFailureHint).toBe("The cause was not recorded.");
   });
 
   it("writes the topic and the hints in the requester's language (i18n)", async () => {
-    const result = await generateTopic(db, fast, { guestId: null, category: "generyczne", locale: "en" });
+    const result = await generateTopic(db, event.id, fast, { guestId: null, category: "generyczne", locale: "en" });
     expect(result).toMatchObject({ status: "generated", topic: { category: "generyczne" } });
     if (result.status === "generated") {
       expect(MOCK_TOPICS_EN.generyczne).toContain(result.topic.text);
     }
-    await generateTopic(db, createMockProvider({ delayMs: () => 0, fail: true }), { guestId: null, category: null });
-    expect((await getAiTopicUsage(db, "en")).lastFailureHint).toBe("AI provider unavailable.");
+    await generateTopic(db, event.id, createMockProvider({ delayMs: () => 0, fail: true }), {
+      guestId: null,
+      category: null,
+    });
+    expect((await getAiTopicUsage(db, event.id, "en")).lastFailureHint).toBe("AI provider unavailable.");
   });
 });

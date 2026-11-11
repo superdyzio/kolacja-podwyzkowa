@@ -28,6 +28,7 @@ describe("counting pieces", () => {
     const line: OrderItemDto = {
       id: 1,
       name: "Rosół",
+      course: null,
       note: null,
       quantity: 2,
       unitPriceGrosze: 1_000,
@@ -38,7 +39,7 @@ describe("counting pieces", () => {
       marks: [{ piece: 2, by: "guest", guestId: GUEST }],
     };
     expect(organizerPrepList([line])).toEqual([
-      { name: "Rosół", quantity: 2, toServe: 1, notes: [], totalGrosze: 2_000 },
+      { course: null, name: "Rosół", quantity: 2, toServe: 1, notes: [], totalGrosze: 2_000 },
     ]);
   });
 

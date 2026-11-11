@@ -1,0 +1,67 @@
+---
+import Layout from "@/layouts/Layout.astro";
+import NoAccess from "@/components/NoAccess.astro";
+import ReadOnlyFrame from "@/components/lead/ReadOnlyFrame.astro";
+import SupportBanner from "@/components/support/SupportBanner.astro";
+import { TemplateHeader } from "@/components/templates/TemplateHeader";
+import { VenueEditor } from "@/components/venue/VenueEditor";
+import { EVENT_STAFF_ROLES } from "@/lib/events";
+import { findPanelTemplate } from "@/lib/panel-api";
+import { templateApiBase, templateMessages } from "@/lib/templates";
+import { getVenue } from "@/lib/venue";
+
+// A restaurant's venue template (venue-templates, S-15; FR-030): its name (rename, delete) and its room in the
+// client's own venue editor (VenueEditor) with the template dispatcher as its API base
+// (/api/panel/templates/<id>/sala → the organizer's venue routes for the template's rows): plan upload, rooms, tables,
+// outlines, rotation, chair pitch, the AI layout read. A template has no guests, so the editor's seat-loss warnings
+// never fire. Owners and managers through the template guard (ONE call); a waiter, another restaurant, an event's id,
+// an unknown or malformed id → the no-access page (404). The platform administrator in support mode (logged for the
+// owner) gets a static, read-only render (no hydration, so no polling log rows) without the name form.
+const locale = Astro.locals.locale;
+const t = templateMessages(locale);
+const panel = await findPanelTemplate(Astro.locals, Astro.params.id, EVENT_STAFF_ROLES);
+const venue = panel ? await getVenue(panel.db, panel.template.id) : null;
+if (!panel || !venue) {
+  Astro.response.status = 404;
+}
+const support = panel?.support ?? null;
+const apiBase = templateApiBase(panel?.template.id ?? 0);
+---
+
+{panel && venue ? (
+  <Layout title={t.pageTitle(panel.template.name)}>
+    <main class="mx-auto flex max-w-6xl flex-col gap-6 p-4 sm:p-8" data-template-page={panel.template.id}>
+      <header class="flex flex-col gap-2">
+        <a
+          href={`/panel/restauracje/${String(panel.restaurant.id)}`}
+          class="self-start py-2 text-sm text-muted-foreground underline-offset-4 hover:underline"
+        >
+          {t.backTo(panel.restaurant.name)}
+        </a>
+        <p class="text-sm text-muted-foreground">{t.kicker}</p>
+        <h1 class="text-3xl font-bold">{panel.template.name}</h1>
+        <p class="max-w-3xl text-sm text-muted-foreground">{t.pageIntro}</p>
+      </header>
+      {support && <SupportBanner support={support} locale={locale} />}
+      {!support && (
+        <TemplateHeader
+          client:load
+          templateId={panel.template.id}
+          restaurantId={panel.restaurant.id}
+          initialName={panel.template.name}
+          locale={locale}
+        />
+      )}
+      <h2 class="text-xl font-semibold">{t.editorHeading}</h2>
+      <ReadOnlyFrame readOnly={support !== null} locale={locale}>
+        {support ? (
+          <VenueEditor apiBase={apiBase} initialVenue={venue} initialOccupancy={[]} locale={locale} />
+        ) : (
+          <VenueEditor client:load apiBase={apiBase} initialVenue={venue} initialOccupancy={[]} locale={locale} />
+        )}
+      </ReadOnlyFrame>
+    </main>
+  </Layout>
+) : (
+  <NoAccess />
+)}

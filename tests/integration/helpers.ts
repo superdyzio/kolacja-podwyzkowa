@@ -1,4 +1,4 @@
-import { createEvent, EVENT_ID, hasEvent } from "@/lib/event";
+import { createEvent, createRestaurant } from "@/lib/event";
 import { createServiceClient, type DbClient } from "@/lib/supabase-client";
 
 // Integration tests run only against a LOCAL Supabase (127.0.0.1 / localhost) so they can never touch a hosted
@@ -36,20 +36,25 @@ export function localDb(): DbClient {
   return createServiceClient(env.url, env.serviceRoleKey);
 }
 
+// multi-tenant-events: every test file works on its OWN restaurant and event (never on events that were already in
+// the DB, which may be real data) and deletes them afterwards; every row of the event goes with it (ON DELETE CASCADE).
 export interface TestEvent {
+  id: number;
+  restaurantId: number;
   name: string;
   organizerKey: string;
   tvKey: string;
   restaurantKey: string;
-  // Only an event the test created itself may be deleted afterwards; a pre-existing event is real data.
-  createdByTest: boolean;
 }
 
-export async function readEvent(db: DbClient): Promise<Omit<TestEvent, "createdByTest">> {
+export async function readEventKeys(
+  db: DbClient,
+  eventId: number,
+): Promise<{ name: string; organizerKey: string; tvKey: string; restaurantKey: string }> {
   const { data, error } = await db
     .from("event")
     .select("name, organizer_key, tv_key, restaurant_key")
-    .eq("id", EVENT_ID)
+    .eq("id", eventId)
     .single();
   if (error) {
     throw new Error(`Nie udało się odczytać wydarzenia: ${error.message}`);
@@ -62,23 +67,30 @@ export async function readEvent(db: DbClient): Promise<Omit<TestEvent, "createdB
   };
 }
 
-// Reuses the existing event, or creates one that releaseEvent() deletes afterwards (its guests and groups go with
-// it through ON DELETE CASCADE).
-export async function acquireTestEvent(db: DbClient): Promise<TestEvent> {
-  if (await hasEvent(db)) {
-    return { ...(await readEvent(db)), createdByTest: false };
+// A fresh restaurant with one event (with the starter questions, like every new event); remove with
+// releaseTestEvent().
+export async function createTestEvent(db: DbClient, label = "test"): Promise<TestEvent> {
+  const tag = testTag();
+  const restaurant = await createRestaurant(db, `Restauracja ${label} ${tag}`);
+  const result = await createEvent(db, { restaurantId: restaurant.id, name: `Wydarzenie ${label} ${tag}` });
+  if (result.status !== "created") {
+    throw new Error("Nie udało się utworzyć testowego wydarzenia.");
   }
-  await createEvent(db);
-  return { ...(await readEvent(db)), createdByTest: true };
+  return { ...result.event, restaurantId: restaurant.id };
 }
 
-export async function releaseEvent(db: DbClient, event: TestEvent): Promise<void> {
-  if (!event.createdByTest) {
+// Deletes the test's event (everything in it cascades) and then its restaurant.
+export async function releaseTestEvent(db: DbClient, event: TestEvent | undefined): Promise<void> {
+  if (!event) {
     return;
   }
-  const { error } = await db.from("event").delete().eq("organizer_key", event.organizerKey);
-  if (error) {
-    throw new Error(`Nie udało się usunąć testowego wydarzenia: ${error.message}`);
+  const deleted = await db.from("event").delete().eq("id", event.id);
+  if (deleted.error) {
+    throw new Error(`Nie udało się usunąć testowego wydarzenia: ${deleted.error.message}`);
+  }
+  const restaurant = await db.from("restaurant").delete().eq("id", event.restaurantId);
+  if (restaurant.error) {
+    throw new Error(`Nie udało się usunąć testowej restauracji: ${restaurant.error.message}`);
   }
 }
 
@@ -102,17 +114,17 @@ export async function deleteTestRooms(db: DbClient, ids: readonly number[]): Pro
   }
 }
 
-// The venue plan is a singleton: a test may upload one only when none exists (it would overwrite real data).
-export async function planExists(db: DbClient): Promise<boolean> {
-  const { data, error } = await db.from("venue_plan").select("event_id").eq("event_id", EVENT_ID).maybeSingle();
+// The venue plan is one per event: a test may upload one only when none exists (it would overwrite another test's).
+export async function planExists(db: DbClient, eventId: number): Promise<boolean> {
+  const { data, error } = await db.from("venue_plan").select("event_id").eq("event_id", eventId).maybeSingle();
   if (error) {
     throw new Error(`Nie udało się odczytać planu: ${error.message}`);
   }
   return data !== null;
 }
 
-export async function deleteTestPlan(db: DbClient): Promise<void> {
-  const { error } = await db.from("venue_plan").delete().eq("event_id", EVENT_ID);
+export async function deleteTestPlan(db: DbClient, eventId: number): Promise<void> {
+  const { error } = await db.from("venue_plan").delete().eq("event_id", eventId);
   if (error) {
     throw new Error(`Nie udało się usunąć testowego planu: ${error.message}`);
   }
@@ -152,8 +164,11 @@ export async function deleteTestSnapshots(db: DbClient, ids: readonly number[]):
   }
 }
 
-export async function countSnapshots(db: DbClient): Promise<number> {
-  const { count, error } = await db.from("seating_snapshot").select("id", { count: "exact", head: true });
+export async function countSnapshots(db: DbClient, eventId: number): Promise<number> {
+  const { count, error } = await db
+    .from("seating_snapshot")
+    .select("id", { count: "exact", head: true })
+    .eq("event_id", eventId);
   if (error) {
     throw new Error(`Nie udało się policzyć migawek: ${error.message}`);
   }
@@ -171,13 +186,14 @@ export interface TestSeating {
 
 export async function createTestSeating(
   db: DbClient,
+  eventId: number,
   tag: string,
   tables: { seatCount: number; shape: "round" | "rectangular" }[],
   guestCount: number,
 ): Promise<TestSeating> {
   const { data: room, error: roomError } = await db
     .from("venue_room")
-    .insert({ name: `Sala ${tag}` })
+    .insert({ event_id: eventId, name: `Sala ${tag}` })
     .select("id")
     .single();
   if (roomError) {
@@ -188,6 +204,7 @@ export async function createTestSeating(
     .from("venue_table")
     .insert(
       tables.map((t, index) => ({
+        event_id: eventId,
         room_id: room.id,
         name: tableNames[index] ?? "",
         seat_count: t.seatCount,
@@ -203,7 +220,7 @@ export async function createTestSeating(
   const guestNames = Array.from({ length: guestCount }, (_, index) => `G${index + 1} ${tag}`);
   const { data: guestRows, error: guestError } = await db
     .from("guest")
-    .insert(guestNames.map((display_name) => ({ display_name })))
+    .insert(guestNames.map((display_name) => ({ event_id: eventId, display_name })))
     .select("id, display_name");
   if (guestError) {
     throw new Error(guestError.message);
@@ -229,16 +246,16 @@ export async function cleanupTestSeating(db: DbClient, seating: TestSeating | nu
 }
 
 // The guest-access switch (S-05) is shared event state: tests read it first and put it back afterwards.
-export async function readGuestAccessEnabled(db: DbClient): Promise<boolean> {
-  const { data, error } = await db.from("event").select("guest_access_enabled").eq("id", EVENT_ID).single();
+export async function readGuestAccessEnabled(db: DbClient, eventId: number): Promise<boolean> {
+  const { data, error } = await db.from("event").select("guest_access_enabled").eq("id", eventId).single();
   if (error) {
     throw new Error(`Nie udało się odczytać przełącznika dostępu gości: ${error.message}`);
   }
   return data.guest_access_enabled;
 }
 
-export async function writeGuestAccessEnabled(db: DbClient, enabled: boolean): Promise<void> {
-  const { error } = await db.from("event").update({ guest_access_enabled: enabled }).eq("id", EVENT_ID);
+export async function writeGuestAccessEnabled(db: DbClient, eventId: number, enabled: boolean): Promise<void> {
+  const { error } = await db.from("event").update({ guest_access_enabled: enabled }).eq("id", eventId);
   if (error) {
     throw new Error(`Nie udało się zmienić przełącznika dostępu gości: ${error.message}`);
   }
@@ -263,11 +280,11 @@ export interface GuessSettings {
   correctAmountGrosze: number | null;
 }
 
-export async function readGuessSettings(db: DbClient): Promise<GuessSettings> {
+export async function readGuessSettings(db: DbClient, eventId: number): Promise<GuessSettings> {
   const { data, error } = await db
     .from("event")
     .select("guess_intake_open, correct_amount_grosze")
-    .eq("id", EVENT_ID)
+    .eq("id", eventId)
     .single();
   if (error) {
     throw new Error(`Nie udało się odczytać ustawień strzałów: ${error.message}`);
@@ -275,11 +292,11 @@ export async function readGuessSettings(db: DbClient): Promise<GuessSettings> {
   return { intakeOpen: data.guess_intake_open, correctAmountGrosze: data.correct_amount_grosze };
 }
 
-export async function writeGuessSettings(db: DbClient, settings: GuessSettings): Promise<void> {
+export async function writeGuessSettings(db: DbClient, eventId: number, settings: GuessSettings): Promise<void> {
   const { error } = await db
     .from("event")
     .update({ guess_intake_open: settings.intakeOpen, correct_amount_grosze: settings.correctAmountGrosze })
-    .eq("id", EVENT_ID);
+    .eq("id", eventId);
   if (error) {
     throw new Error(`Nie udało się zmienić ustawień strzałów: ${error.message}`);
   }
@@ -288,13 +305,14 @@ export async function writeGuessSettings(db: DbClient, settings: GuessSettings):
 // Guests created for one test (tagged names, in this order); remove with deleteTestGuests().
 export async function createTestGuests(
   db: DbClient,
+  eventId: number,
   tag: string,
   count: number,
 ): Promise<{ ids: number[]; names: string[] }> {
   const names = Array.from({ length: count }, (_, index) => `G${index + 1} ${tag}`);
   const { data, error } = await db
     .from("guest")
-    .insert(names.map((display_name) => ({ display_name })))
+    .insert(names.map((display_name) => ({ event_id: eventId, display_name })))
     .select("id, display_name");
   if (error) {
     throw new Error(error.message);

@@ -1,0 +1,34 @@
+---
+import { authMessages } from "@/lib/auth/messages";
+import type { Locale } from "@/lib/i18n";
+import { supportMessages } from "@/lib/support";
+import { teamMessages } from "@/lib/team";
+import type { TeamDto } from "@/types";
+
+// The restaurant's team in the platform administrator's support mode (admin-support-log, S-13): what the owner sees,
+// as a plain list — no invitations, role changes, removals or one-time links.
+interface Props {
+  team: TeamDto;
+  locale: Locale;
+}
+
+const { team, locale } = Astro.props;
+const t = teamMessages(locale);
+const roleLabels = authMessages(locale).roleLabels;
+---
+
+<p class="text-sm text-muted-foreground">{supportMessages(locale).teamReadOnly}</p>
+<ul class="flex flex-col divide-y" data-support-team>
+  {team.members.map((member) => (
+    <li class="flex flex-wrap items-center justify-between gap-2 py-3" data-member-id={member.accountId}>
+      <span class="flex flex-col">
+        <span class="font-medium break-all">
+          {member.displayName ? `${member.displayName} · ` : ""}
+          {member.email}
+        </span>
+        <span class="text-sm text-muted-foreground">{member.hasPassword ? t.accountActive : t.accountPending}</span>
+      </span>
+      <span class="rounded-full border px-2 py-0.5 text-sm">{roleLabels[member.role]}</span>
+    </li>
+  ))}
+</ul>

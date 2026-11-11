@@ -1,4 +1,5 @@
 import { useId } from "react";
+import type { DietTag } from "@/lib/diets/rules";
 import type { Locale } from "@/lib/i18n";
 import { seatRows } from "@/lib/seating/board";
 import { seatingEditorMessages } from "@/lib/seating/messages";
@@ -13,6 +14,8 @@ export interface OccupantView {
   pinned: boolean;
   absent: boolean;
   partners: string[];
+  diets: DietTag[];
+  dietNote: string | null;
 }
 
 export interface SeatView {
@@ -126,6 +129,8 @@ function SeatButton({
             pinned={occupant.pinned}
             absent={occupant.absent}
             partners={occupant.partners}
+            diets={occupant.diets}
+            dietNote={occupant.dietNote}
             locale={locale}
           />
         )}

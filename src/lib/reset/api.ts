@@ -1,5 +1,5 @@
 import { z } from "astro/zod";
-import { RESET_PARTS } from "./parts";
+import { RESET_PARTS, TRIAL_RESET_PARTS } from "./parts";
 
 // Schemas of the organizer reset: the request body of POST /api/o/<key>/reset (strict: any extra key is 400
 // „Nieprawidłowe dane.”) and the JSON the DB functions reset_counts / reset_event answer with (validated before use,
@@ -9,6 +9,11 @@ export const ResetPartSchema = z.enum(RESET_PARTS);
 
 export const ResetRequestBody = z.strictObject({
   parts: z.array(ResetPartSchema).min(1).max(RESET_PARTS.length),
+});
+
+// POST /api/o/<key>/trial-reset — the client's „Reset prób”: only the trial parts (strict like the full reset).
+export const TrialResetRequestBody = z.strictObject({
+  parts: z.array(z.enum(TRIAL_RESET_PARTS)).min(1).max(TRIAL_RESET_PARTS.length),
 });
 
 const Count = z.number().int().min(0);
@@ -30,6 +35,13 @@ export const ResetCountsSchema = z.strictObject({
   orders: Count,
   questions: Count,
   guestAccessEnabled: z.boolean(),
+  // pub-quiz (S-28).
+  quizAnswers: Count,
+  quizAsked: Count,
+  // rsvp-reset.
+  rsvpAnswers: Count,
+  rsvpOptions: Count,
+  rsvpDeadlineSet: z.boolean(),
 });
 
 export const ResetEventAnswerSchema = z.strictObject({

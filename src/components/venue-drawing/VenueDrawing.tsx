@@ -6,13 +6,13 @@ import {
   LINE_HEIGHT,
   STAGE_WIDTH,
   chairRadius,
+  contentView,
   estimateTextWidth,
   layoutDrawing,
   padRect,
   pitchUnits,
   roomRect,
   stageHeight,
-  unionRect,
   viewBoxOf,
   type DrawingTableInput,
   type LaidOutTable,
@@ -41,11 +41,16 @@ export interface VenueDrawingTable extends DrawingTableInput {
 
 // A highlighted place (serving-highlight): a chair (seat) or the middle of a table (seat null), by table name, with an
 // optional short label (instance numbers) drawn on it; `done` = already served (drawn grey, no pulse).
+// guest-map-search (S-22): `tone` "search" = a guest found by name, drawn violet (a pulsing chair and a steady ring
+// around its table) so it is never mistaken for a serving mark or the guest's own red chair; absent = "serving".
+export type DrawingMarkTone = "serving" | "search";
+
 export interface DrawingMark {
   table: string;
   seat: number | null;
   label: string | null;
   done: boolean;
+  tone?: DrawingMarkTone;
 }
 
 interface Props {
@@ -141,13 +146,24 @@ function marksByTable(marks: readonly DrawingMark[]): Map<string, TableMarks> {
   return byTable;
 }
 
-// Two marks at one place (served and not yet): one mark, served only when both are.
+// Two marks at one place (served and not yet): one mark, served only when both are. A found guest's mark wins the
+// colour (it is what the person just asked for) and keeps the serving label.
 function mergeMark(previous: DrawingMark | null, mark: DrawingMark): DrawingMark {
   if (!previous) {
     return mark;
   }
   const label = [previous.label, mark.label].filter((part) => part !== null).join(",");
-  return { ...mark, label: label === "" ? null : label, done: mark.done && previous.done };
+  const search = isSearch(previous) || isSearch(mark);
+  return {
+    ...mark,
+    label: label === "" ? null : label,
+    done: !search && mark.done && previous.done,
+    tone: search ? "search" : "serving",
+  };
+}
+
+function isSearch(mark: DrawingMark | null | undefined): boolean {
+  return mark?.tone === "search";
 }
 
 // The font of a mark's label so it fits in a circle of radius r.
@@ -235,8 +251,11 @@ export function VenueDrawing({
     if (focusIndex >= 0) {
       return padRect(laidOut[focusIndex].bounds, pitch * 0.8);
     }
-    const content = unionRect([...laidOut.map((table) => table.bounds), ...roomRects, ...(showStage ? [stage] : [])]);
-    return padRect(content ?? stage, pitch * 0.6);
+    return contentView(
+      [...laidOut.map((table) => table.bounds), ...roomRects, ...(showStage ? [stage] : [])],
+      pitch,
+      stage,
+    );
   }, [focus, tables, laidOut, roomRects, showStage, aspect, pitch]);
 
   const stroke = Math.max(0.5, pitch * 0.05);
@@ -341,14 +360,18 @@ function DrawnTable({
       ? "fill-red-500/15 stroke-red-600"
       : null;
   const bodyStroke = tableMark || table.highlighted ? stroke * 4 : selected ? stroke * 3 : stroke;
-  // A ring around the body: pulsing for a table mark still to serve, steady for the guest's own table.
+  // A ring around the body: pulsing for a table mark still to serve, steady for the guest's own table, steady violet
+  // for a table where a found guest sits (guest-map-search).
+  const found = [...marks.seats.values()].some(isSearch);
   const ring = tableMark
     ? tableMark.done
       ? null
       : "stroke-red-500/40 motion-safe:animate-pulse"
     : table.highlighted
       ? "stroke-red-500/30"
-      : null;
+      : found
+        ? "stroke-violet-500/45"
+        : null;
   return (
     <g
       className={cn(table.muted && "opacity-40", onPointerDown && "cursor-grab touch-none")}
@@ -420,14 +443,15 @@ function DrawnTable({
         const mine = chair.seat === highlightSeat;
         const mark = marks.seats.get(chair.seat);
         if (mark) {
+          const search = isSearch(mark);
           return (
-            <g key={chair.seat}>
+            <g key={chair.seat} data-found-seat={search ? "" : undefined}>
               {!mark.done && (
                 <circle
                   cx={chair.x}
                   cy={chair.y}
-                  r={chairR * 2}
-                  className="fill-red-500/25 motion-safe:animate-pulse"
+                  r={chairR * (search ? 2.4 : 2)}
+                  className={cn(search ? "fill-violet-500/30" : "fill-red-500/25", "motion-safe:animate-pulse")}
                 />
               )}
               <MarkBadge x={chair.x} y={chair.y} r={chairR * 1.4} mark={mark} stroke={stroke} />
@@ -458,7 +482,8 @@ function DrawnTable({
       })}
       {laidOut.labels.map((placed) => {
         const seatMark = marks.seats.get(placed.seat);
-        const mine = placed.seat === highlightSeat || (seatMark !== undefined && !seatMark.done);
+        const foundName = isSearch(seatMark);
+        const mine = !foundName && (placed.seat === highlightSeat || (seatMark !== undefined && !seatMark.done));
         return (
           <text
             key={placed.seat}
@@ -468,7 +493,13 @@ function DrawnTable({
             textAnchor="middle"
             dominantBaseline="central"
             data-seat-name=""
-            className={mine ? "fill-red-700 font-bold" : cn(styles.name, "font-semibold")}
+            className={
+              foundName
+                ? "fill-violet-700 font-bold dark:fill-violet-300"
+                : mine
+                  ? "fill-red-700 font-bold"
+                  : cn(styles.name, "font-semibold")
+            }
           >
             {placed.name}
           </text>
@@ -486,7 +517,13 @@ function MarkBadge({ x, y, r, mark, stroke }: { x: number; y: number; r: number;
         cy={y}
         r={r}
         strokeWidth={stroke * 1.5}
-        className={mark.done ? "fill-neutral-500 stroke-white" : "fill-red-600 stroke-white"}
+        className={
+          isSearch(mark)
+            ? "fill-violet-600 stroke-white"
+            : mark.done
+              ? "fill-neutral-500 stroke-white"
+              : "fill-red-600 stroke-white"
+        }
       />
       {mark.label && (
         <text

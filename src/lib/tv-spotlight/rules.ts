@@ -34,10 +34,14 @@ export function normalizeSpotlightText(raw: string): string | null {
   return length >= 1 && length <= MAX_SPOTLIGHT_LENGTH ? text : null;
 }
 
-// The TV polling token: the seating token ("<snapshot id>.<plan version>", seatingVersion()) plus the spotlight's
-// row id (0 = nothing shown). The seating token itself is untouched, because the guests' token is built from it.
-export function tvScreenVersion(seatingVersion: string, spotlightId: number | null): string {
-  return `${seatingVersion}.${spotlightId ?? 0}`;
+// The TV polling token: the seating token ("<snapshot id>.<plan version>", seatingVersion(); "<snapshot id>-<erased>…"
+// once a published guest was deleted — guest-erasure) plus the spotlight's row id (0 = nothing shown). The guests'
+// token starts with the two-part seating token, never with this one.
+// pub-quiz (S-28): while a quiz runs with the module on, a 4th part: the quiz's own token ("<revision>-<answers>",
+// the revision never reused); left out (undefined) otherwise, so every other TV keeps its 3-part token.
+export function tvScreenVersion(seatingVersion: string, spotlightId: number | null, quiz?: string | null): string {
+  const base = `${seatingVersion}.${spotlightId ?? 0}`;
+  return quiz === undefined ? base : `${base}.${quiz ?? 0}`;
 }
 
 // Font size on the TV in vh: the longer the text, the smaller, so 300 characters still fit on a 16:9 screen.

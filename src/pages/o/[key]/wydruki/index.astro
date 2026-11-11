@@ -1,0 +1,59 @@
+---
+import NoAccess from "@/components/NoAccess.astro";
+import { OfflineSync } from "@/components/offline/OfflineSync";
+import PrintLinks from "@/components/prints/PrintLinks.astro";
+import PrintState from "@/components/prints/PrintState.astro";
+import Layout from "@/layouts/Layout.astro";
+import { accessFor, organizerPath } from "@/lib/access";
+import { getDb } from "@/lib/db";
+import { getRoomPrintSource, printMessages } from "@/lib/prints";
+
+// The client's room prints (room-prints, S-24; FR-038): /o/<key>/wydruki — the publication state, the four prints
+// with their formats (/o/<key>/wydruki/<kind>) and the existing QR cards of the guests' links (/o/<key>/karteczki).
+// The middleware has already checked the key; this is the second, role-specific check.
+const locale = Astro.locals.locale;
+const t = printMessages(locale);
+const access = accessFor(Astro.locals, "organizer");
+const db = access ? getDb() : null;
+const source = access && db ? await getRoomPrintSource(db, access.event.id, { diets: false }) : null;
+if (!access || !source) {
+  Astro.response.status = 404;
+}
+const base = access ? organizerPath(access.event.organizerKey) : "";
+---
+
+{access && source ? (
+  <Layout title={t.pageTitle(t.hubTitle, source.event.name)}>
+    <main class="mx-auto flex max-w-3xl flex-col gap-6 p-4 sm:p-8" data-print-hub>
+      <header class="flex flex-col gap-2">
+        <a href={base} class="self-start py-2 text-sm text-muted-foreground underline-offset-4 hover:underline">
+          {t.backToShell}
+        </a>
+        <h1 class="text-3xl font-bold">{t.hubTitle}</h1>
+        <p class="text-lg font-medium">{source.event.name}</p>
+        <p class="text-sm text-muted-foreground">{t.hubIntro}</p>
+      </header>
+      <OfflineSync client:load apiBase={`/api${base}`} locale={locale} />
+      <PrintState
+        publishedAt={source.published?.publishedAt ?? null}
+        upToDate={source.upToDate}
+        purgedAt={source.event.purgedAt}
+        seatingHref={`${base}/rozsadzenie`}
+        locale={locale}
+      />
+      <PrintLinks base={`${base}/wydruki`} locale={locale} />
+      <section class="flex flex-col gap-2 rounded-xl border p-4" data-print-qr-cards>
+        <a
+          href={`${base}/karteczki`}
+          class="flex items-center justify-between gap-2 font-semibold underline-offset-4 hover:underline"
+        >
+          <span>{t.qrCardsTitle}</span>
+          <span class="rounded-full bg-primary px-2 py-0.5 text-xs font-normal text-primary-foreground">{t.open}</span>
+        </a>
+        <p class="text-sm text-muted-foreground">{t.qrCardsText}</p>
+      </section>
+    </main>
+  </Layout>
+) : (
+  <NoAccess />
+)}
